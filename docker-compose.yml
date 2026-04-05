@@ -1,0 +1,34 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: nutrichat-pg
+    environment:
+      POSTGRES_USER: nutrichat
+      POSTGRES_PASSWORD: nutrichat
+      POSTGRES_DB: nutrichat
+    ports:
+      - "5411:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nutrichat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nutrichat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_data:
+  redis_data:
