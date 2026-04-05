@@ -64,8 +64,28 @@ async def handle_message(
     last_ai = next(
         (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)), None
     )
+
+    # Expose structured items so the frontend can render editable quantity fields.
+    # Only included when paused (confirmation card shown); empty after log/cancel.
+    items = []
+    if still_paused:
+        for r in result.get("usda_results", []):
+            items.append({
+                "food_name": r["food_name"],
+                "qty_g": r["qty_g"],
+                "confidence": r["match_confidence"],
+                "kcal": r["kcal"],
+                "protein_g": r["protein_g"],
+                "carbs_g": r["carbs_g"],
+                "fat_g": r["fat_g"],
+                "fiber_g": r["fiber_g"],
+                "fdc_id": r["fdc_id"],
+                "candidates": r.get("candidates", []),
+            })
+
     return {
         "status": "success",
         "message": last_ai.content if last_ai else "",
         "paused": still_paused,
+        "items": items,
     }
