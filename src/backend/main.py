@@ -9,9 +9,10 @@ from backend.api import meals
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     db_url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
-    
-    # Utilizing the async context manager from AsyncPostgresSaver ensuring connection pooling lifecycle is handled properly
-    async with AsyncPostgresSaver.from_conn_string(db_url) as checkpointer:
+    # AsyncPostgresSaver uses psycopg (v3) which needs plain postgresql:// not +asyncpg
+    psycopg_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+
+    async with AsyncPostgresSaver.from_conn_string(psycopg_url) as checkpointer:
         await checkpointer.setup()
         app_instance.state.checkpointer = checkpointer
         yield
