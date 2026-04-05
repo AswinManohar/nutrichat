@@ -63,8 +63,13 @@ async def extract_node(state: AgentState) -> dict:
     )
     if last_human is None:
         return {"entities": []}
-    result = extract_entities(last_human.content)
-    return {"entities": [e.model_dump() for e in result.entities]}
+    try:
+        result = extract_entities(last_human.content)
+        # Filter out any entity the LLM returned with qty_g <= 0 (can't be logged)
+        valid = [e for e in result.entities if e.qty_g > 0]
+    except Exception:
+        valid = []
+    return {"entities": [e.model_dump() for e in valid]}
 
 
 async def usda_batch_node(state: AgentState) -> dict:
@@ -78,6 +83,10 @@ async def usda_batch_node(state: AgentState) -> dict:
 async def present_node(state: AgentState) -> dict:
     """Format and send the confirmation card to the user."""
     from backend.agent.tools.usda import USDAResult
+    if not state["usda_results"]:
+        return {
+            "messages": [AIMessage(content="I didn't catch any food items in that. What did you eat?")]
+        }
     results = [USDAResult(**r) for r in state["usda_results"]]
     card = format_confirmation_card(results)
     return {"messages": [AIMessage(content=card)]}
@@ -96,6 +105,11 @@ async def apply_correction_node(state: AgentState) -> dict:
     correction_text = last_human.content if last_human else ""
     result = apply_correction(state["entities"], correction_text)
     return {"entities": [e.model_dump() for e in result.entities]}
+
+
+async def cancel_node(state: AgentState) -> dict:
+    """Acknowledge cancellation — no meal is logged."""
+    return {"messages": [AIMessage(content="Cancelled. No meal logged.")]}
 
 
 async def log_node(state: AgentState) -> dict:
@@ -128,13 +142,13 @@ def _route_response(state: AgentState) -> str:
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
     if last_human is None:
-        return END
+        return "cancel"
     intent = classify_intent(last_human.content)
     if intent == "confirm":
         return "log"
     if intent == "correct":
         return "apply_correction"
-    return END  # reject
+    return "cancel"  # reject
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +174,7 @@ def build_graph(checkpointer=None):
     workflow.add_node("present", present_node)
     workflow.add_node("intent_router", intent_router_node)
     workflow.add_node("apply_correction", apply_correction_node)
+    workflow.add_node("cancel", cancel_node)
     workflow.add_node("log", log_node)
 
     workflow.set_entry_point("router")
@@ -181,10 +196,11 @@ def build_graph(checkpointer=None):
     workflow.add_conditional_edges(
         "intent_router",
         _route_response,
-        {"log": "log", "apply_correction": "apply_correction", END: END},
+        {"log": "log", "apply_correction": "apply_correction", "cancel": "cancel"},
     )
     workflow.add_edge("apply_correction", "usda_batch")
     workflow.add_edge("log", END)
+    workflow.add_edge("cancel", END)
 
     return workflow.compile(
         checkpointer=checkpointer,
