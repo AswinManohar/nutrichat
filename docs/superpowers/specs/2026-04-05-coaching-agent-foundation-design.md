@@ -193,8 +193,29 @@ Example outputs:
 
 ---
 
-## 8. What this is NOT (yet)
+## 8. Data Retrieval Strategy
 
+Two distinct retrieval patterns are needed — SQL for numbers, vector search for meal recall:
+
+| Query type | Example | Approach | Why |
+|---|---|---|---|
+| Today macros | "how much protein today?" | Redis | Sub-10ms, already computed atomically |
+| Historical macros | "protein this week?" | SQL aggregation on `meal_log` | Structured, deterministic |
+| Micronutrients | "how much B12 today?" | SQL + JSONB on `meal_log.entities` | Structured nutrient data, exact lookup |
+| Meal recall | "when did I last have salmon?" | pgvector hybrid search | Semantic — can't match by exact field |
+| Meal recall | "what high-protein meals this week?" | pgvector hybrid search | Intent-based, not keyword-based |
+
+**Foundation scope (this spec):** Redis + SQL + JSONB only. Covers all macronutrient and micronutrient queries.
+
+**Next layer (tracked in GitHub issues):** pgvector hybrid search for meal recall queries. The `meal_log.embedding` column already exists in the schema. Hybrid search combines a pgvector ANN search with a SQL date/nutrient filter, then reranks by recency.
+
+RAG (chunked document retrieval) is **not needed** here — meal logs are structured records, not documents. Vector search is used purely for semantic meal recall, not for knowledge retrieval.
+
+---
+
+## 9. What this is NOT (yet)
+
+- **Hybrid search / meal recall** — "when did I last eat X?" — tracked in GitHub issues
 - **Proactive coaching** — daily protein alerts, weekly check-ins (Phase 2 next layer)
 - **Recipe suggestions** — recipe agent is a separate specialist
 - **Trend analysis** — "am I improving?" comparisons over weeks/months
