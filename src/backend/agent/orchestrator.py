@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
+from kombu.exceptions import OperationalError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
@@ -9,6 +11,9 @@ from backend.agent.coaching import CoachingAgent
 from backend.agent.graph import build_graph
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.config import get_tunables
+from backend.workers.tasks import extract_and_store_facts
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
@@ -96,11 +101,29 @@ async def handle_message(
         and not image_b64
         and await _classify_intent(user_input) == "coaching"
     ):
-        return await _handle_coaching(user_id, user_input)
+        result = await _handle_coaching(user_id, user_input)
+    else:
+        result = await _handle_meal_logging(
+            graph, config, user_input, user_id, image_b64, is_paused
+        )
 
-    return await _handle_meal_logging(
-        graph, config, user_input, user_id, image_b64, is_paused
-    )
+    # Preference memory (PRD F6): fire-and-forget on every handled turn.
+    _enqueue_fact_extraction(user_id, user_input, result["message"])
+    return result
+
+
+def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) -> None:
+    """Enqueue preference-fact extraction; a broker outage never blocks the reply.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        user_input: The user's message this turn.
+        agent_reply: The agent's response this turn.
+    """
+    try:
+        extract_and_store_facts.delay(user_id, user_input, agent_reply)
+    except (OperationalError, OSError) as exc:
+        logger.warning("Could not enqueue fact extraction: %s", exc)
 
 
 async def _handle_meal_logging(

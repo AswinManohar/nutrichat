@@ -193,3 +193,17 @@ def test_nutrients_by_name_prefers_kcal_over_kj():
         raw = _nutrients_by_name(payload)
         assert raw["Energy"] == (313.0, "kcal")
         assert raw["Protein"] == (13.0, "g")
+
+
+def test_energy_falls_back_to_atwater_names():
+    # Foundation entries often lack a plain "Energy" row and report kcal
+    # under Atwater names instead.
+    from backend.agent.tools.usda import _energy_kcal
+
+    raw = {
+        "Energy (Atwater General Factors)": (47.0, "kcal"),
+        "Protein": (1.0, "g"),
+    }
+    assert _energy_kcal(raw) == 47.0
+    assert _energy_kcal({"Energy": (100.0, "kcal")}) == 100.0
+    assert _energy_kcal({"Protein": (1.0, "g")}) == 0.0

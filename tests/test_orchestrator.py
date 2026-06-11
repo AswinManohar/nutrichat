@@ -8,6 +8,13 @@ from langchain_core.messages import AIMessage
 from backend.agent.orchestrator import _IntentResult, _classify_intent, handle_message
 
 
+@pytest.fixture(autouse=True)
+def _mock_fact_task():
+    """Keep extract_and_store_facts.delay() off the real Redis broker."""
+    with patch("backend.agent.orchestrator.extract_and_store_facts") as task_mock:
+        yield task_mock
+
+
 @pytest.mark.asyncio
 async def test_classify_intent_log_signal_no_llm():
     mock_llm = MagicMock()
@@ -148,3 +155,20 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
     handle_mock.assert_not_called()
     graph.ainvoke.assert_awaited_once()
     assert result["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
+    graph = _mock_graph(is_paused=False)
+
+    with (
+        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch(
+            "backend.agent.orchestrator._classify_intent",
+            new_callable=AsyncMock,
+            return_value="log_meal",
+        ),
+    ):
+        await handle_message("user-1", "I had 2 eggs", "thread-1", None)
+
+    _mock_fact_task.delay.assert_called_once_with("user-1", "I had 2 eggs", "ok")

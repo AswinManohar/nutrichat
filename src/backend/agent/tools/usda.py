@@ -29,6 +29,14 @@ _MACRO_MAP = {
     "Fatty acids, total saturated": "sat_fat_g",
 }
 
+# Foundation entries often report energy only under Atwater names (in kcal),
+# with no plain "Energy" row — check these in order.
+_ENERGY_KEYS = (
+    "Energy",
+    "Energy (Atwater General Factors)",
+    "Energy (Atwater Specific Factors)",
+)
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -155,6 +163,14 @@ def _nutrients_by_name(food_nutrients: list[dict]) -> dict[str, tuple[float, str
     return raw
 
 
+def _energy_kcal(raw: dict[str, tuple[float, str]]) -> float:
+    """First non-zero energy value across the known FDC energy names."""
+    for key in _ENERGY_KEYS:
+        if key in raw and raw[key][0] > 0:
+            return raw[key][0]
+    return 0.0
+
+
 def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
     foods = data.get("foods", [])
     if not foods:
@@ -168,6 +184,7 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         field: round(raw.get(fdc_name, (0.0, "g"))[0] * scale, 2)
         for fdc_name, field in _MACRO_MAP.items()
     }
+    macros["kcal"] = round(_energy_kcal(raw) * scale, 2)
     nutrients = {
         name: NutrientValue(amount=round(val * scale, 3), unit=unit)
         for name, (val, unit) in raw.items()
@@ -198,6 +215,9 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
         field: round(_val(fdc_name) * scale, 2)
         for fdc_name, field in _MACRO_MAP.items()
     }
+    macros["kcal"] = round(
+        next((_val(k) for k in _ENERGY_KEYS if _val(k) > 0), 0.0) * scale, 2
+    )
     nutrients = {
         name: NutrientValue(
             amount=(
