@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient, ApiError } from './client'
-import type { LogMealRequest, LogMealResponse, TodayTotals, GoalData } from './types'
+import type { DayTrend, LogMealRequest, LogMealResponse, TodayTotals, GoalData } from './types'
+
+export const useTrends = (days = 91) => {
+  return useQuery<DayTrend[], Error>({
+    queryKey: ['trends', days],
+    queryFn: () => apiClient.get<DayTrend[]>(`/meals/trends?days=${days}`),
+    staleTime: 60_000,
+  })
+}
 
 export const useDashboard = () => {
   return useQuery<TodayTotals, Error>({

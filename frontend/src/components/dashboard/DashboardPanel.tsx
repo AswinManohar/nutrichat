@@ -1,5 +1,6 @@
 import { useDashboard, useGoals } from '../../api/hooks'
 import { MacroRings } from './MacroRings'
+import { TrendsSection } from './TrendsSection'
 
 const DATE_FMT = new Intl.DateTimeFormat('en-US', {
   weekday: 'long',
@@ -63,9 +64,14 @@ export function DashboardPanel() {
         </svg>
       </section>
 
+      {/* Trends: heatmap + calorie sparkline */}
+      <div style={{ '--i': 3 } as React.CSSProperties}>
+        <TrendsSection kcalGoal={goals?.kcal_goal ?? 2000} />
+      </div>
+
       {/* Dietary preferences */}
       {goals?.dietary_prefs && Object.keys(goals.dietary_prefs).length > 0 && (
-        <section className="space-y-2.5" style={{ '--i': 3 } as React.CSSProperties}>
+        <section className="space-y-2.5" style={{ '--i': 4 } as React.CSSProperties}>
           <h3 className="label-caps">Dietary Focus</h3>
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(goals.dietary_prefs).map((pref) => (

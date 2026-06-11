@@ -56,6 +56,14 @@ class MemoryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class JunkConfig(BaseModel):
+    sugar_density_g: float = Field(ge=0)
+    sat_fat_density_g: float = Field(ge=0)
+    fiber_floor_g: float = Field(ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SummariesConfig(BaseModel):
     veg_day_fiber_threshold_g: float = Field(ge=0)
     weak_spot_ratio: float = Field(ge=0.0, le=1.0)
@@ -99,6 +107,7 @@ class Tunables(BaseModel):
     models: ModelsConfig
     token_limits: TokenLimitsConfig
     usda: UsdaConfig
+    junk: JunkConfig
     memory: MemoryConfig
     summaries: SummariesConfig
     redis: RedisConfig

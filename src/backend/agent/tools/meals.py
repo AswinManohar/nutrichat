@@ -236,6 +236,29 @@ def classify_intent(message: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _is_junk(result) -> bool:
+    """Flag a USDAResult as junk food via per-100g nutrient density.
+
+    Junk when (sugar dense AND fiber poor) OR saturated-fat dense —
+    thresholds in tunables.yaml `junk` section. Whole fruit escapes via
+    the fiber floor.
+    """
+    if result.qty_g <= 0:
+        return False
+    per100 = 100.0 / result.qty_g
+    junk = _TUNABLES.junk
+    sugar_dense = result.sugar_g * per100 >= junk.sugar_density_g
+    fiber_poor = result.fiber_g * per100 < junk.fiber_floor_g
+    sat_fat_dense = result.sat_fat_g * per100 >= junk.sat_fat_density_g
+    return (sugar_dense and fiber_poor) or sat_fat_dense
+
+
+def _junk_flags(usda_results: list) -> dict:
+    """Build the meal_log.flags payload from resolved USDA results."""
+    junk_items = [r.food_name for r in usda_results if _is_junk(r)]
+    return {"has_junk": bool(junk_items), "junk_items": junk_items}
+
+
 async def _insert_meal_log(
     user_id: str,
     meal_type: str,
@@ -245,14 +268,15 @@ async def _insert_meal_log(
     """Insert a meal_log row and return the generated meal_id."""
     meal_id = str(uuid.uuid4())
     entities = [r.model_dump() for r in usda_results]
+    flags = _junk_flags(usda_results)
     async with get_session()() as session:
         await session.execute(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities) "
+                "fat_g, fiber_g, entities, flags) "
                 "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, :carbs_g, "
-                ":fat_g, :fiber_g, CAST(:entities AS jsonb))"
+                ":fat_g, :fiber_g, CAST(:entities AS jsonb), CAST(:flags AS jsonb))"
             ),
             {
                 "meal_id": meal_id,
@@ -264,6 +288,7 @@ async def _insert_meal_log(
                 "fat_g": totals["fat_g"],
                 "fiber_g": totals["fiber_g"],
                 "entities": json.dumps(entities),
+                "flags": json.dumps(flags),
             },
         )
         await session.commit()

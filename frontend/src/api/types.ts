@@ -39,3 +39,12 @@ export interface GoalData {
   dietary_prefs: Record<string, unknown>;
   streak_days?: number;
 }
+
+export interface DayTrend {
+  date: string; // ISO date
+  kcal: number;
+  protein_g: number;
+  fiber_g: number;
+  n_meals: number;
+  junk_meals: number;
+}

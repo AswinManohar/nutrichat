@@ -92,6 +92,17 @@ memory:
   # Used in: agent/context.py
   top_k_preferences: 3
 
+junk:
+  # Per-100g nutrient-density heuristic used by log_meal to flag junk
+  # food in meal_log.flags ({"has_junk": bool, "junk_items": [...]}).
+  # An item is junk when (sugar_per_100g >= sugar_density_g AND
+  # fiber_per_100g < fiber_floor_g) OR sat_fat_per_100g >= sat_fat_density_g.
+  # Whole fruit escapes via the fiber floor; soda/candy/pastry/fried
+  # foods get caught. Tune against real logs.
+  sugar_density_g: 9.0
+  sat_fat_density_g: 7.0
+  fiber_floor_g: 2.0
+
 summaries:
   # A day with total fiber >= this many grams counts as a "veg day" in
   # daily_summary (proxy — entities carry no food-category field).
