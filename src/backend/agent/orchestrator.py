@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from kombu.exceptions import OperationalError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langsmith import traceable
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.coaching import CoachingAgent
@@ -37,6 +38,13 @@ _intent_llm = make_llm(
 _coaching_agent = CoachingAgent()
 
 
+def _trace_inputs(inputs: dict) -> dict:
+    """Keep only small, serializable fields in LangSmith trace inputs."""
+    keep = ("user_id", "user_input", "thread_id", "message", "is_paused")
+    return {k: v for k, v in inputs.items() if k in keep}
+
+
+@traceable(name="classify_intent", run_type="chain", process_inputs=_trace_inputs)
 async def _classify_intent(message: str) -> str:
     """Classify a fresh user message as log_meal or coaching.
 
@@ -67,6 +75,7 @@ async def _classify_intent(message: str) -> str:
     return result.type
 
 
+@traceable(name="handle_message", run_type="chain", process_inputs=_trace_inputs)
 async def handle_message(
     user_id: str,
     user_input: str,
@@ -126,6 +135,7 @@ def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) ->
         logger.warning("Could not enqueue fact extraction: %s", exc)
 
 
+@traceable(name="meal_logging", run_type="chain", process_inputs=_trace_inputs)
 async def _handle_meal_logging(
     graph: Any,
     config: dict[str, Any],
@@ -204,6 +214,7 @@ async def _handle_meal_logging(
     }
 
 
+@traceable(name="coaching", run_type="chain", process_inputs=_trace_inputs)
 async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
 
