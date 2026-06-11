@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
-from typing import Optional
 
 import aiohttp
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
+from backend.config import get_tunables
 from backend.db.session import get_session
 
 logger = logging.getLogger(__name__)
 
-USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+_TUNABLES = get_tunables()
+
+USDA_SEARCH_URL = _TUNABLES.usda.search_url
 
 _MACRO_MAP = {
     "Energy": "kcal",
@@ -60,7 +64,7 @@ class USDAResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _cache_lookup(food_name: str) -> Optional[dict]:
+async def _cache_lookup(food_name: str) -> dict | None:
     """Check Postgres food_source for a matching food name (case-insensitive)."""
     try:
         async with get_session()() as session:
@@ -74,7 +78,7 @@ async def _cache_lookup(food_name: str) -> Optional[dict]:
             row = result.fetchone()
             if row:
                 return {"fdc_id": row[0], "food_name": row[1], "nutrients": row[2]}
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.warning("Cache lookup failed: %s", exc)
     return None
 
@@ -85,19 +89,20 @@ async def _cache_write(fdc_id: int, food_name: str, nutrients: dict) -> None:
         async with get_session()() as session:
             await session.execute(
                 text(
-                    "INSERT INTO food_source (fdc_id, food_name, nutrients, nutrients_count, source_db) "
+                    "INSERT INTO food_source "
+                    "(fdc_id, food_name, nutrients, nutrients_count, source_db) "
                     "VALUES (:fdc_id, :name, CAST(:nutrients AS jsonb), :count, 'FDC') "
                     "ON CONFLICT (fdc_id) DO NOTHING"
                 ),
                 {
                     "fdc_id": fdc_id,
                     "name": food_name,
-                    "nutrients": __import__("json").dumps(nutrients),
+                    "nutrients": json.dumps(nutrients),
                     "count": len(nutrients),
                 },
             )
             await session.commit()
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.warning("Cache write failed: %s", exc)
 
 
@@ -116,25 +121,47 @@ def _confidence(query: str, description: str) -> float:
 
 
 def _miss_result(entity) -> USDAResult:
-    from backend.agent.tools.meals import FoodEntity  # avoid circular at module level
     return USDAResult(
-        fdc_id=-1, food_name=entity.food_name, qty_g=entity.qty_g,
-        match_confidence=0.0, candidates=[],
-        kcal=0.0, protein_g=0.0, carbs_g=0.0, fat_g=0.0,
-        fiber_g=0.0, sugar_g=0.0, sat_fat_g=0.0, nutrients={},
+        fdc_id=-1,
+        food_name=entity.food_name,
+        qty_g=entity.qty_g,
+        match_confidence=0.0,
+        candidates=[],
+        kcal=0.0,
+        protein_g=0.0,
+        carbs_g=0.0,
+        fat_g=0.0,
+        fiber_g=0.0,
+        sugar_g=0.0,
+        sat_fat_g=0.0,
+        nutrients={},
     )
 
 
-def _parse_fdc_response(data: dict, entity) -> Optional[USDAResult]:
+def _nutrients_by_name(food_nutrients: list[dict]) -> dict[str, tuple[float, str]]:
+    """Key FDC nutrient entries by name, keeping kcal when Energy repeats.
+
+    FDC lists "Energy" twice — once in kcal and once in kJ. A naive
+    name-keyed dict lets the kJ row overwrite kcal (a ~4.2x calorie
+    inflation bug), so the kcal entry always wins here.
+    """
+    raw: dict[str, tuple[float, str]] = {}
+    for n in food_nutrients:
+        name = n.get("nutrientName", "")
+        unit = n.get("unitName", "g").lower()
+        if name == "Energy" and name in raw and unit != "kcal":
+            continue  # keep the kcal entry already stored
+        raw[name] = (float(n.get("value", 0.0)), unit)
+    return raw
+
+
+def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
     foods = data.get("foods", [])
     if not foods:
         return None
 
     top = foods[0]
-    raw: dict[str, tuple[float, str]] = {}
-    for n in top.get("foodNutrients", []):
-        name = n.get("nutrientName", "")
-        raw[name] = (float(n.get("value", 0.0)), n.get("unitName", "g").lower())
+    raw = _nutrients_by_name(top.get("foodNutrients", []))
 
     scale = entity.qty_g / 100.0
     macros = {
@@ -173,7 +200,11 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
     }
     nutrients = {
         name: NutrientValue(
-            amount=round(float(v.get("amount", 0)) * scale, 3) if isinstance(v, dict) else 0.0,
+            amount=(
+                round(float(v.get("amount", 0)) * scale, 3)
+                if isinstance(v, dict)
+                else 0.0
+            ),
             unit=v.get("unit", "g") if isinstance(v, dict) else "g",
         )
         for name, v in raw.items()
@@ -182,7 +213,7 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
         fdc_id=cached["fdc_id"],
         food_name=cached["food_name"],
         qty_g=entity.qty_g,
-        match_confidence=0.95,
+        match_confidence=_TUNABLES.usda.cache_hit_confidence,
         candidates=[],
         **macros,
         nutrients=nutrients,
@@ -204,25 +235,31 @@ async def _fetch_one(session: aiohttp.ClientSession, entity) -> USDAResult:
     params = {
         "api_key": api_key,
         "query": entity.food_name,
-        "dataType": "Foundation,SR Legacy",
-        "pageSize": 5,
+        "dataType": _TUNABLES.usda.data_types,
+        "pageSize": _TUNABLES.usda.page_size,
     }
 
-    data: Optional[dict] = None
-    for attempt in range(2):
+    data: dict | None = None
+    max_attempts = _TUNABLES.usda.max_attempts
+    for attempt in range(max_attempts):
         try:
             async with session.get(
-                USDA_SEARCH_URL, params=params,
-                timeout=aiohttp.ClientTimeout(total=8),
+                USDA_SEARCH_URL,
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=_TUNABLES.usda.request_timeout_s),
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
             break
-        except (aiohttp.ClientTimeout, aiohttp.ClientError) as exc:
-            if attempt == 1:
-                logger.error("FDC request failed after retry for %s: %s", entity.food_name, exc)
+        # aiohttp timeouts surface as asyncio.TimeoutError (ClientTimeout is
+        # the config object, not an exception class).
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            if attempt == max_attempts - 1:
+                logger.error(
+                    "FDC request failed after retry for %s: %s", entity.food_name, exc
+                )
                 return _miss_result(entity)
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(_TUNABLES.usda.retry_backoff_s)
 
     if data is None:
         return _miss_result(entity)
@@ -231,10 +268,12 @@ async def _fetch_one(session: aiohttp.ClientSession, entity) -> USDAResult:
     if result is None:
         return _miss_result(entity)
 
-    # Cache raw per-100g nutrients for future hits
+    # Cache raw per-100g nutrients for future hits (kcal-preferring dedup).
     raw_per_100g = {
-        n["nutrientName"]: {"amount": n.get("value", 0.0), "unit": n.get("unitName", "g")}
-        for n in data["foods"][0].get("foodNutrients", [])
+        name: {"amount": amount, "unit": unit}
+        for name, (amount, unit) in _nutrients_by_name(
+            data["foods"][0].get("foodNutrients", [])
+        ).items()
     }
     await _cache_write(result.fdc_id, result.food_name, raw_per_100g)
     return result
@@ -261,6 +300,4 @@ async def usda_lookup_batch(entities: list) -> list[USDAResult]:
         aiohttp.ClientError: If FDC API is unreachable after retries.
     """
     async with aiohttp.ClientSession() as session:
-        return list(await asyncio.gather(
-            *[_fetch_one(session, e) for e in entities]
-        ))
+        return list(await asyncio.gather(*[_fetch_one(session, e) for e in entities]))

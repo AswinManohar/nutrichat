@@ -1,0 +1,260 @@
+# ============================================================================
+# NutriChat tunables — every prompt, model name, token limit, and threshold
+# that you may want to tune lives here. Code reads this file once at import
+# via backend.config.get_tunables(); restart uvicorn / celery after editing.
+#
+# Override the file location with the NUTRICHAT_TUNABLES_PATH env var
+# (useful for A/B-testing an alternative prompt set without touching git).
+# ============================================================================
+
+models:
+  # Entity extraction, image classification, corrections, intent routing,
+  # query parsing, fact extraction. Cheapest/fastest tier — every user
+  # message touches this model at least once.
+  # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/tools/meals.py,
+  #          agent/orchestrator.py, agent/coaching.py, workers/tasks.py
+  extraction: "gemini-3.1-flash-lite-preview"
+
+  # Conversational coaching responses (grounded answers to nutrition
+  # questions). Mid tier — better prose quality than flash-lite.
+  # Used in: agent/coaching.py generate_response()
+  coaching: "gemini-2.5-flash"
+
+  # Embedding model for meal summaries, preference facts, and query-time
+  # ANN search. MUST stay consistent with embedding_dim below and with the
+  # vector(768) columns in meal_log / user_memory — changing the model
+  # without re-embedding all stored vectors breaks similarity search.
+  # Used in: agent/llm.py embed_text(), agent/context.py _embed_query()
+  embedding: "models/gemini-embedding-001"
+
+  # Output dimensionality requested from the embedding model. Must equal
+  # the pgvector column dimension (vector(768)). Do not change without a
+  # migration + full re-embed.
+  embedding_dim: 768
+
+token_limits:
+  # Max output tokens for the log_meal/coaching intent classifier in
+  # agent/orchestrator.py. Gemini 3.1 flash-lite spends "thinking" tokens
+  # from this same budget before emitting the structured JSON — values
+  # below ~100 cause truncated/empty output and OutputParserException.
+  # 200 is safe; raise if you see intent-classification parse errors.
+  intent_classifier_max_output: 200
+
+usda:
+  # FoodData Central search endpoint.
+  # Used in: agent/tools/usda.py
+  search_url: "https://api.nal.usda.gov/fdc/v1/foods/search"
+
+  # Which FDC data types to search. Foundation + SR Legacy are whole-food
+  # entries with full nutrient panels; add "Branded" to match packaged
+  # products (noisier descriptions, lower match confidence).
+  data_types: "Foundation,SR Legacy"
+
+  # Number of candidate foods requested per search. The top hit becomes
+  # the match; the first 3 become the "candidates" alternatives shown on
+  # the confirmation card.
+  page_size: 5
+
+  # Per-request timeout (seconds) for the FDC API.
+  request_timeout_s: 8
+
+  # Total attempts per lookup (1 initial + retries). On final failure the
+  # item is returned as a miss (fdc_id=-1) and excluded from logging.
+  max_attempts: 2
+
+  # Seconds to sleep between retry attempts.
+  retry_backoff_s: 1.0
+
+  # Confidence assigned to Postgres cache hits (skips Jaccard scoring —
+  # a cached row was already accepted once).
+  cache_hit_confidence: 0.95
+
+  # Below this match confidence the confirmation card shows a warning
+  # flag (⚠) next to the item.
+  low_confidence_flag_below: 0.6
+
+  # Below this match confidence the card offers the next-best candidate
+  # ("say 'use X' to switch").
+  suggest_alternative_below: 0.85
+
+memory:
+  # Cosine-distance threshold for preference-fact dedup in
+  # workers/tasks.py extract_and_store_facts. A new fact whose nearest
+  # existing user_memory row is closer than this is dropped as a
+  # duplicate. Lower = stricter (more near-duplicates stored). PRD §10.2.
+  dedup_distance_threshold: 0.05
+
+  # Confidence assigned to newly extracted preference facts.
+  new_fact_confidence: 0.8
+
+  # Number of preference facts retrieved by pgvector ANN for the coaching
+  # system prompt. PRD §5.2 budgets ~150 tokens for this block.
+  # Used in: agent/context.py
+  top_k_preferences: 3
+
+summaries:
+  # A day with total fiber >= this many grams counts as a "veg day" in
+  # daily_summary (proxy — entities carry no food-category field).
+  # Used in: workers/tasks.py aggregate_daily_summary
+  veg_day_fiber_threshold_g: 5.0
+
+  # A weekly average below this fraction of the user's goal marks the
+  # nutrient as a weak spot in weekly_summary.
+  weak_spot_ratio: 0.6
+
+  # A meal type (or protein goal) logged/hit on fewer than this many days
+  # per week is reported as missed/weak in weekly_summary.
+  missed_meal_min_days: 4
+
+redis:
+  # TTL (seconds) on the per-user `today:{user_id}` hash. Refreshed on
+  # every meal log; the midnight reset_day_keys cron deletes keys
+  # explicitly, so this is a safety net for inactive users.
+  # Used in: db/redis_client.py increment_today
+  today_key_ttl_s: 86400
+
+routing:
+  # Keyword pre-filter for the orchestrator's log_meal/coaching intent
+  # router (agent/orchestrator.py). Matching any query signal routes to
+  # coaching; otherwise matching any log signal routes to meal logging;
+  # otherwise the LLM fallback decides. Substring match on the lowercased
+  # message. Query signals win over log signals.
+  log_signals:
+    - "had"
+    - "ate"
+    - "just had"
+    - "for breakfast"
+    - "for lunch"
+    - "for dinner"
+    - "logged"
+    - "i ate"
+    - "i had"
+  query_signals:
+    - "how much"
+    - "how many"
+    - "did i"
+    - "what was"
+    - "show me"
+    - "vitamin"
+    - "mineral"
+    - "protein"
+    - "calories"
+    - "fiber"
+    - "carbs"
+    - "fat"
+    - "nutrient"
+    - "today"
+    - "this week"
+    - "yesterday"
+
+  # Keyword sets for the confirmation-card reply classifier in
+  # agent/tools/meals.py classify_intent (no LLM). Word-level match after
+  # punctuation stripping; multi-word entries match as substrings.
+  # Anything matching neither set is treated as a correction.
+  confirm_keywords:
+    - "yes"
+    - "yep"
+    - "yeah"
+    - "correct"
+    - "right"
+    - "ok"
+    - "okay"
+    - "log"
+    - "confirm"
+    - "looks good"
+    - "sure"
+    - "good"
+    - "perfect"
+  reject_keywords:
+    - "no"
+    - "nope"
+    - "cancel"
+    - "nevermind"
+    - "never mind"
+    - "stop"
+    - "quit"
+
+prompts:
+  # --- Meal logging pipeline (agent/tools/meals.py) ----------------------
+
+  # System prompt for free-text -> FoodEntity extraction. The gram
+  # conversion table here is the single biggest lever on quantity
+  # accuracy — extend it with foods your eval set gets wrong.
+  extraction_system: |
+    Extract all food items from the meal description.
+    Return food_name (USDA-style, specific), qty_g (gram weight), unit (original unit mentioned),
+    confidence (0-1, lower for vague quantities like 'some' or 'a bit').
+
+    Common conversions:
+    1 large egg=61g | 1 tbsp=14g | 1 cup oats cooked=234g
+    1 slice bread=28g | 1 medium banana=118g | 1 cup milk=244g
+
+  # System prompt for food photo classification (multimodal).
+  image_classify_system: |
+    You are a food image classifier.
+    Identify every distinct food item and discernible ingredient visible in the image.
+    If no food is present, set is_food=false and explain why in reason.
+
+  # System prompt for applying user corrections to the entity list while
+  # the graph is paused at the confirmation card. The current entity list
+  # is appended at call time.
+  correction_system: |
+    You are updating a confirmed food entity list based on a user correction.
+    Apply the correction precisely:
+    - Quantity change ("actually 3 eggs") → update qty_g
+    - Addition ("add a coffee") → append new entity
+    - Removal ("remove the toast") → drop matching entity
+    - Substitution ("almond milk not oat") → replace food_name, keep qty_g
+    - Multiple corrections → apply all
+    Return the complete updated entity list.
+
+  # --- Orchestrator intent routing (agent/orchestrator.py) ---------------
+
+  # LLM fallback for messages the keyword pre-filter can't classify.
+  intent_system: |
+    log_meal or coaching?
+    log_meal: user describes food they ate ("2 eggs", "had pasta")
+    coaching: user asks about nutrition ("how much protein", "vitamin B12")
+    Reply with one word.
+
+  # --- Coaching agent (agent/coaching.py) --------------------------------
+
+  # Structured parse of a nutrition question into time range + nutrients.
+  query_parse_system: |
+    Extract the time range and nutrients from this nutrition question.
+    time_range: today | yesterday | this_week | last_7_days | custom
+    nutrients: use USDA names for micros, macro aliases (kcal/protein_g/carbs_g/fat_g/fiber_g) for macros.
+    include_goals: true if the user asks about goals or targets.
+
+  # Grounded response generation — the "never invent numbers" constraint
+  # is the core hallucination guard for coaching answers.
+  coaching_response_system: |
+    You are a concise nutrition assistant.
+    Answer using only the data provided — never invent numbers.
+    Include goal comparisons when goal data is present.
+    Keep answers under 3 sentences.
+
+  # --- Coaching context prompt blocks (agent/context.py) -----------------
+  # Assembled by build_system_prompt() per the PRD §5.2 ~456-token budget.
+
+  coaching_role_and_tone: |
+    You are NutriChat, a nutrition coach. Be encouraging, concise,
+    and grounded only in the user's own logged data and goals. Never invent
+    numbers — if data is missing, say so.
+
+  coaching_hard_constraints: |
+    Hard constraints:
+    - Never give medical advice or diagnose conditions.
+    - Never claim a food was logged unless it appears in the provided data.
+    - Keep responses under 4 sentences unless the user asks for detail.
+    - Use the user's units (grams, kcal) — do not convert to other systems.
+
+  # --- Background workers (workers/tasks.py) -----------------------------
+
+  # Preference-fact extraction from a conversation turn (Celery task).
+  fact_extraction_system: |
+    Extract any lasting user preferences, dietary
+    restrictions, or recurring habits mentioned in this conversation turn
+    (e.g. "prefers oat milk", "avoids red meat", "usually skips breakfast").
+    Return an empty list if nothing lasting is mentioned. Do not extract
+    one-off facts about a single meal.

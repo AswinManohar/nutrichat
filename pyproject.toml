@@ -18,11 +18,11 @@ dependencies = [
     # Database
     "sqlalchemy[asyncio]>=2.0.0",
     "asyncpg>=0.30.0",
-    "psycopg2-binary>=2.9.0",  # Alembic sync driver
-    "psycopg>=3.0.0",  # LangGraph checkpointer async driver
+    "psycopg2-binary>=2.9.0", # Alembic sync driver
+    "psycopg>=3.0.0", # LangGraph checkpointer async driver
     "pgvector>=0.3.0",
     "alembic>=1.13.0",
-    "langgraph-checkpoint-postgres>=2.0.0",  # Persistent chat history
+    "langgraph-checkpoint-postgres>=2.0.0", # Persistent chat history
     # Cache / queue
     "redis>=5.0.0",
     "celery[redis]>=5.4.0",
@@ -34,6 +34,7 @@ dependencies = [
     "pydantic>=2.8.0",
     "pydantic-settings>=2.4.0",
     "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
@@ -72,3 +73,6 @@ files = ["src/backend"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: requires a live Postgres + Redis (deselect with '-m \"not integration\"')",
+]

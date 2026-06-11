@@ -1,25 +1,26 @@
 from __future__ import annotations
 
-from typing import Optional
-
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from backend.agent.orchestrator import handle_message
+from backend.auth.supabase import get_current_user_id
 
 router = APIRouter(prefix="/meals", tags=["meals"])
 
 
 class LogMealRequest(BaseModel):
     user_input: str
-    conversation_id: Optional[str] = None
-    image_b64: Optional[str] = None
+    conversation_id: str | None = None
+    image_b64: str | None = None
 
 
 @router.post("/log")
-async def log_meal(req: LogMealRequest, request: Request) -> dict:
-    # Phase 1: placeholder until auth integration (must be a valid UUID)
-    user_id = "00000000-0000-0000-0000-000000000001"
+async def log_meal(
+    req: LogMealRequest,
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     thread_id = req.conversation_id or user_id
     checkpointer = request.app.state.checkpointer
 

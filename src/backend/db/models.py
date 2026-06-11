@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -81,7 +80,7 @@ class MealLog(Base):
     fat_g: Mapped[float] = mapped_column(Float, nullable=False)
     fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
     entities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    embedding: Mapped[Optional[list]] = mapped_column(Vector(768), nullable=True)
+    embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     __table_args__ = (
@@ -114,7 +113,7 @@ class UserMemory(Base):
         nullable=False,
     )
     fact: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[list]] = mapped_column(Vector(768), nullable=True)
+    embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -140,7 +139,7 @@ class FoodSource(Base):
     food_name: Mapped[str] = mapped_column(String(255), nullable=False)
     nutrients: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     nutrients_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    data_quality: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    data_quality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source_db: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default="FDC"
     )

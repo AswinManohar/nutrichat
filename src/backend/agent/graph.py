@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Annotated, Optional, Sequence
+from collections.abc import Sequence
+from typing import Annotated
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, StateGraph
@@ -17,7 +18,6 @@ from backend.agent.tools.meals import (
 )
 from backend.agent.tools.usda import usda_lookup_batch
 
-
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
@@ -26,10 +26,10 @@ from backend.agent.tools.usda import usda_lookup_batch
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     user_id: str
-    image_b64: Optional[str]
+    image_b64: str | None
     entities: list[dict]
     usda_results: list[dict]
-    meal_type: Optional[str]
+    meal_type: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,14 @@ async def classify_node(state: AgentState) -> dict:
     if not result.is_food:
         reason = result.reason or "No food visible."
         return {
-            "messages": [AIMessage(content=f"I couldn't identify food in that image. {reason} Try describing your meal instead.")]
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"I couldn't identify food in that image. {reason} "
+                        "Try describing your meal instead."
+                    )
+                )
+            ]
         }
     combined = ", ".join(result.food_items + result.ingredients)
     # Inject as HumanMessage so extract_node reads it as the meal description
@@ -75,6 +82,7 @@ async def extract_node(state: AgentState) -> dict:
 async def usda_batch_node(state: AgentState) -> dict:
     """Resolve all food entities against USDA FoodData Central (cache-first)."""
     from backend.agent.tools.meals import FoodEntity
+
     entities = [FoodEntity(**e) for e in state["entities"]]
     results = await usda_lookup_batch(entities)
     return {"usda_results": [r.model_dump() for r in results]}
@@ -83,9 +91,14 @@ async def usda_batch_node(state: AgentState) -> dict:
 async def present_node(state: AgentState) -> dict:
     """Format and send the confirmation card to the user."""
     from backend.agent.tools.usda import USDAResult
+
     if not state["usda_results"]:
         return {
-            "messages": [AIMessage(content="I didn't catch any food items in that. What did you eat?")]
+            "messages": [
+                AIMessage(
+                    content="I didn't catch any food items in that. What did you eat?"
+                )
+            ]
         }
     results = [USDAResult(**r) for r in state["usda_results"]]
     card = format_confirmation_card(results)
@@ -115,6 +128,7 @@ async def cancel_node(state: AgentState) -> dict:
 async def log_node(state: AgentState) -> dict:
     """Persist confirmed meal to Postgres and Redis."""
     from backend.agent.tools.usda import USDAResult
+
     results = [USDAResult(**r) for r in state["usda_results"]]
     meal_type = state.get("meal_type") or "unspecified"
     result = await log_meal(state["user_id"], results, meal_type)

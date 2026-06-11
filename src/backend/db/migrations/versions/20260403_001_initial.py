@@ -84,7 +84,9 @@ def upgrade() -> None:
     )
     # Alter the placeholder column to the real vector type.
     # op.alter_column() does not support custom types, so we use raw DDL.
-    op.execute("ALTER TABLE meal_log ALTER COLUMN embedding TYPE vector(768) USING NULL")
+    op.execute(
+        "ALTER TABLE meal_log ALTER COLUMN embedding TYPE vector(768) USING NULL"
+    )
 
     # B-tree indexes
     op.create_index("ix_meal_log_user_logged_at", "meal_log", ["user_id", "logged_at"])
@@ -96,14 +98,12 @@ def upgrade() -> None:
     )
 
     # IVFFlat index — cosine similarity, 100 lists
-    op.execute(
-        """
+    op.execute("""
         CREATE INDEX ix_meal_log_embedding
         ON meal_log
         USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 100)
-        """
-    )
+        """)
 
     # ------------------------------------------------------------------
     # user_memory
@@ -137,14 +137,12 @@ def upgrade() -> None:
         "ALTER TABLE user_memory ALTER COLUMN embedding TYPE vector(768) USING NULL"
     )
     op.create_index("ix_user_memory_user_id", "user_memory", ["user_id"])
-    op.execute(
-        """
+    op.execute("""
         CREATE INDEX ix_user_memory_embedding
         ON user_memory
         USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 100)
-        """
-    )
+        """)
 
     # ------------------------------------------------------------------
     # food_source
@@ -221,7 +219,9 @@ def upgrade() -> None:
         sa.Column(
             "missed_meals", ARRAY(sa.String()), nullable=False, server_default="{}"
         ),
-        sa.UniqueConstraint("user_id", "week_start", name="uq_weekly_summary_user_week"),
+        sa.UniqueConstraint(
+            "user_id", "week_start", name="uq_weekly_summary_user_week"
+        ),
     )
     op.create_index(
         "ix_weekly_summary_user_week", "weekly_summary", ["user_id", "week_start"]

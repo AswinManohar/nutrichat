@@ -13,7 +13,6 @@ from backend.agent.tools.meals import (
 )
 from backend.agent.tools.usda import NutrientValue, USDAResult
 
-
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------
@@ -36,10 +35,18 @@ def test_food_entity_rejects_extra_fields():
 
 def test_usda_result_has_nutrients():
     r = USDAResult(
-        fdc_id=1, food_name="egg", qty_g=61.0,
-        match_confidence=0.9, candidates=[],
-        kcal=87.0, protein_g=6.0, carbs_g=0.6,
-        fat_g=6.0, fiber_g=0.0, sugar_g=0.6, sat_fat_g=1.6,
+        fdc_id=1,
+        food_name="egg",
+        qty_g=61.0,
+        match_confidence=0.9,
+        candidates=[],
+        kcal=87.0,
+        protein_g=6.0,
+        carbs_g=0.6,
+        fat_g=6.0,
+        fiber_g=0.0,
+        sugar_g=0.6,
+        sat_fat_g=1.6,
         nutrients={"Vitamin C": NutrientValue(amount=0.0, unit="mg")},
     )
     assert r.nutrients["Vitamin C"].amount == 0.0
@@ -81,10 +88,18 @@ def test_classify_intent_correct():
 
 def _make_result(fdc_id: int = 172187, kcal: float = 182.0) -> USDAResult:
     return USDAResult(
-        fdc_id=fdc_id, food_name="Egg, scrambled", qty_g=122.0,
-        match_confidence=0.9, candidates=["Egg, scrambled", "Egg, fried"],
-        kcal=kcal, protein_g=12.0, carbs_g=2.0,
-        fat_g=13.0, fiber_g=0.0, sugar_g=1.0, sat_fat_g=3.4,
+        fdc_id=fdc_id,
+        food_name="Egg, scrambled",
+        qty_g=122.0,
+        match_confidence=0.9,
+        candidates=["Egg, scrambled", "Egg, fried"],
+        kcal=kcal,
+        protein_g=12.0,
+        carbs_g=2.0,
+        fat_g=13.0,
+        fiber_g=0.0,
+        sugar_g=1.0,
+        sat_fat_g=3.4,
         nutrients={},
     )
 
@@ -102,10 +117,19 @@ def test_format_card_shows_totals():
 
 def test_format_card_miss_shows_error():
     miss = USDAResult(
-        fdc_id=-1, food_name="mystery_food", qty_g=100.0,
-        match_confidence=0.0, candidates=[],
-        kcal=0.0, protein_g=0.0, carbs_g=0.0, fat_g=0.0,
-        fiber_g=0.0, sugar_g=0.0, sat_fat_g=0.0, nutrients={},
+        fdc_id=-1,
+        food_name="mystery_food",
+        qty_g=100.0,
+        match_confidence=0.0,
+        candidates=[],
+        kcal=0.0,
+        protein_g=0.0,
+        carbs_g=0.0,
+        fat_g=0.0,
+        fiber_g=0.0,
+        sugar_g=0.0,
+        sat_fat_g=0.0,
+        nutrients={},
     )
     card = format_confirmation_card([miss])
     assert "not found" in card.lower() or "mystery_food" in card
@@ -120,10 +144,16 @@ def test_format_card_miss_shows_error():
 async def test_log_meal_returns_result():
     results = [_make_result(kcal=182.0)]
 
-    with patch("backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock) as mock_insert, \
-         patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock):
+    with (
+        patch(
+            "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
+        ) as mock_insert,
+        patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock),
+        patch("backend.agent.tools.meals.embed_meal_summary"),
+    ):
         mock_insert.return_value = "test-meal-uuid"
         from backend.agent.tools.meals import log_meal
+
         result = await log_meal("user1", results, "breakfast")
 
     assert result.meal_id == "test-meal-uuid"
@@ -134,17 +164,32 @@ async def test_log_meal_returns_result():
 @pytest.mark.asyncio
 async def test_log_meal_excludes_misses():
     miss = USDAResult(
-        fdc_id=-1, food_name="unknown", qty_g=100.0,
-        match_confidence=0.0, candidates=[],
-        kcal=0.0, protein_g=0.0, carbs_g=0.0, fat_g=0.0,
-        fiber_g=0.0, sugar_g=0.0, sat_fat_g=0.0, nutrients={},
+        fdc_id=-1,
+        food_name="unknown",
+        qty_g=100.0,
+        match_confidence=0.0,
+        candidates=[],
+        kcal=0.0,
+        protein_g=0.0,
+        carbs_g=0.0,
+        fat_g=0.0,
+        fiber_g=0.0,
+        sugar_g=0.0,
+        sat_fat_g=0.0,
+        nutrients={},
     )
     good = _make_result(kcal=182.0)
 
-    with patch("backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock) as mock_insert, \
-         patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock):
+    with (
+        patch(
+            "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
+        ) as mock_insert,
+        patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock),
+        patch("backend.agent.tools.meals.embed_meal_summary"),
+    ):
         mock_insert.return_value = "uuid-2"
         from backend.agent.tools.meals import log_meal
+
         result = await log_meal("user1", [miss, good], "lunch")
 
     assert result.n_items == 1

@@ -52,9 +52,7 @@ async def verify() -> None:
 
         # Indexes (query pg_indexes for all expected names)
         result = await conn.execute(
-            text(
-                "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
-            )
+            text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
         )
         existing_indexes = {row[0] for row in result}
         missing_indexes = EXPECTED_INDEXES - existing_indexes
