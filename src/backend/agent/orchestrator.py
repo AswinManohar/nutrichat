@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
+import logfire
 from kombu.exceptions import OperationalError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langsmith import traceable
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.coaching import CoachingAgent
@@ -38,13 +38,6 @@ _intent_llm = make_llm(
 _coaching_agent = CoachingAgent()
 
 
-def _trace_inputs(inputs: dict) -> dict:
-    """Keep only small, serializable fields in LangSmith trace inputs."""
-    keep = ("user_id", "user_input", "thread_id", "message", "is_paused")
-    return {k: v for k, v in inputs.items() if k in keep}
-
-
-@traceable(name="classify_intent", run_type="chain", process_inputs=_trace_inputs)
 async def _classify_intent(message: str) -> str:
     """Classify a fresh user message as log_meal or coaching.
 
@@ -66,16 +59,16 @@ async def _classify_intent(message: str) -> str:
     if has_log:
         return "log_meal"
 
-    result = await _intent_llm.ainvoke(
-        [
-            SystemMessage(content=_INTENT_SYSTEM),
-            HumanMessage(content=message),
-        ]
-    )
+    with logfire.span("classify_intent_llm"):
+        result = await _intent_llm.ainvoke(
+            [
+                SystemMessage(content=_INTENT_SYSTEM),
+                HumanMessage(content=message),
+            ]
+        )
     return result.type
 
 
-@traceable(name="handle_message", run_type="chain", process_inputs=_trace_inputs)
 async def handle_message(
     user_id: str,
     user_input: str,
@@ -99,22 +92,32 @@ async def handle_message(
     Returns:
         Dict with status, message, paused, and items.
     """
-    graph = build_graph(checkpointer)
-    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+    with logfire.span(
+        "handle_message",
+        user_id=user_id,
+        thread_id=thread_id,
+        has_image=bool(image_b64),
+    ) as span:
+        graph = build_graph(checkpointer)
+        config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
 
-    current_state = await graph.aget_state(config)
-    is_paused = bool(current_state.next)
+        current_state = await graph.aget_state(config)
+        is_paused = bool(current_state.next)
 
-    if (
-        not is_paused
-        and not image_b64
-        and await _classify_intent(user_input) == "coaching"
-    ):
-        result = await _handle_coaching(user_id, user_input)
-    else:
-        result = await _handle_meal_logging(
-            graph, config, user_input, user_id, image_b64, is_paused
+        is_coaching = (
+            not is_paused
+            and not image_b64
+            and await _classify_intent(user_input) == "coaching"
         )
+        if is_coaching:
+            result = await _handle_coaching(user_id, user_input)
+        else:
+            result = await _handle_meal_logging(
+                graph, config, user_input, user_id, image_b64, is_paused
+            )
+
+        span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
+        span.set_attribute("paused", result["paused"])
 
     # Preference memory (PRD F6): fire-and-forget on every handled turn.
     _enqueue_fact_extraction(user_id, user_input, result["message"])
@@ -135,7 +138,6 @@ def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) ->
         logger.warning("Could not enqueue fact extraction: %s", exc)
 
 
-@traceable(name="meal_logging", run_type="chain", process_inputs=_trace_inputs)
 async def _handle_meal_logging(
     graph: Any,
     config: dict[str, Any],
@@ -157,64 +159,66 @@ async def _handle_meal_logging(
     Returns:
         Dict with status, message, paused, and items.
     """
-    if is_paused:
-        # Resume: inject new message into checkpoint state, then resume with None
-        await graph.aupdate_state(
-            config,
-            {"messages": [HumanMessage(content=user_input)]},
-        )
-        result = await graph.ainvoke(None, config=config)
-    else:
-        # Fresh start: supply full initial state
-        result = await graph.ainvoke(
-            {
-                "messages": [HumanMessage(content=user_input)],
-                "user_id": user_id,
-                "image_b64": image_b64 or "",
-                "entities": [],
-                "usda_results": [],
-                "meal_type": None,
-            },
-            config=config,
-        )
-
-    # Check if graph paused again (e.g. after correction loop re-presents card)
-    new_state = await graph.aget_state(config)
-    still_paused = bool(new_state.next)
-
-    last_ai = next(
-        (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)), None
-    )
-
-    # Expose structured items so the frontend can render editable quantity fields.
-    # Only included when paused (confirmation card shown); empty after log/cancel.
-    items = []
-    if still_paused:
-        for r in result.get("usda_results", []):
-            items.append(
+    with logfire.span("meal_logging"):
+        if is_paused:
+            # Resume: inject new message into checkpoint state, then resume with None
+            await graph.aupdate_state(
+                config,
+                {"messages": [HumanMessage(content=user_input)]},
+            )
+            result = await graph.ainvoke(None, config=config)
+        else:
+            # Fresh start: supply full initial state
+            result = await graph.ainvoke(
                 {
-                    "food_name": r["food_name"],
-                    "qty_g": r["qty_g"],
-                    "confidence": r["match_confidence"],
-                    "kcal": r["kcal"],
-                    "protein_g": r["protein_g"],
-                    "carbs_g": r["carbs_g"],
-                    "fat_g": r["fat_g"],
-                    "fiber_g": r["fiber_g"],
-                    "fdc_id": r["fdc_id"],
-                    "candidates": r.get("candidates", []),
-                }
+                    "messages": [HumanMessage(content=user_input)],
+                    "user_id": user_id,
+                    "image_b64": image_b64 or "",
+                    "entities": [],
+                    "usda_results": [],
+                    "meal_type": None,
+                },
+                config=config,
             )
 
-    return {
-        "status": "success",
-        "message": last_ai.content if last_ai else "",
-        "paused": still_paused,
-        "items": items,
-    }
+        # Check if graph paused again (e.g. after correction loop re-presents card)
+        new_state = await graph.aget_state(config)
+        still_paused = bool(new_state.next)
+
+        last_ai = next(
+            (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)),
+            None,
+        )
+
+        # Expose structured items so the frontend can render editable quantity
+        # fields. Only included when paused (confirmation card shown); empty
+        # after log/cancel.
+        items = []
+        if still_paused:
+            for r in result.get("usda_results", []):
+                items.append(
+                    {
+                        "food_name": r["food_name"],
+                        "qty_g": r["qty_g"],
+                        "confidence": r["match_confidence"],
+                        "kcal": r["kcal"],
+                        "protein_g": r["protein_g"],
+                        "carbs_g": r["carbs_g"],
+                        "fat_g": r["fat_g"],
+                        "fiber_g": r["fiber_g"],
+                        "fdc_id": r["fdc_id"],
+                        "candidates": r.get("candidates", []),
+                    }
+                )
+
+        return {
+            "status": "success",
+            "message": last_ai.content if last_ai else "",
+            "paused": still_paused,
+            "items": items,
+        }
 
 
-@traceable(name="coaching", run_type="chain", process_inputs=_trace_inputs)
 async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
 
@@ -226,5 +230,6 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
         Dict with status, message, paused=False, and items=[] — same shape
         as meal logging so web and Telegram channels stay uniform.
     """
-    message = await _coaching_agent.handle(user_id, user_input)
+    with logfire.span("coaching"):
+        message = await _coaching_agent.handle(user_id, user_input)
     return {"status": "success", "message": message, "paused": False, "items": []}

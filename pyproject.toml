@@ -35,6 +35,10 @@ dependencies = [
     "pydantic-settings>=2.4.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.3",
+    "logfire[asyncpg,celery,fastapi,httpx,redis]>=4.36.0",
+    "pydantic-ai-slim[google]>=1.107.0",
+    "opentelemetry-instrumentation-langchain>=0.61.0",
+    "opentelemetry-instrumentation-aiohttp-client>=0.63b1",
 ]
 
 [dependency-groups]

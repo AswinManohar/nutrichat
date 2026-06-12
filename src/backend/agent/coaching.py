@@ -4,11 +4,12 @@ import json
 from datetime import date, timedelta
 from typing import Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic_ai import Agent
+from pydantic_ai.models.google import GoogleModel
 from redis.exceptions import RedisError
 
-from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
+from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
 from backend.agent.tools.history import (
     get_macros_for_range,
     get_micronutrients_for_range,
@@ -40,7 +41,16 @@ _QUERY_PARSE_SYSTEM = _TUNABLES.prompts.query_parse_system
 
 _RESPONSE_SYSTEM = _TUNABLES.prompts.coaching_response_system
 
-_query_parser_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(QueryParsed)
+_parse_agent = Agent(
+    GoogleModel(FLASH_LITE_MODEL),
+    output_type=QueryParsed,
+    system_prompt=_QUERY_PARSE_SYSTEM,
+)
+
+_response_agent = Agent(
+    GoogleModel(COACHING_MODEL),
+    system_prompt=_RESPONSE_SYSTEM,
+)
 
 
 async def parse_query(message: str) -> QueryParsed:
@@ -53,12 +63,8 @@ async def parse_query(message: str) -> QueryParsed:
         Parsed query with time_range, optional date bounds, nutrients, and
         include_goals.
     """
-    return await _query_parser_llm.ainvoke(
-        [
-            SystemMessage(content=_QUERY_PARSE_SYSTEM),
-            HumanMessage(content=message),
-        ]
-    )
+    result = await _parse_agent.run(message)
+    return result.output
 
 
 def _resolve_date_range(parsed: QueryParsed) -> tuple[date, date]:
@@ -140,19 +146,9 @@ async def generate_response(message: str, data: dict) -> str:
     Returns:
         Natural language response, under 3 sentences.
     """
-    llm = make_llm(COACHING_MODEL)
-    response = await llm.ainvoke(
-        [
-            SystemMessage(content=_RESPONSE_SYSTEM),
-            HumanMessage(
-                content=(
-                    f"User question: {message}\n\n"
-                    f"Data:\n{json.dumps(data, default=str)}"
-                )
-            ),
-        ]
-    )
-    return response.content
+    content = f"User question: {message}\n\nData:\n{json.dumps(data, default=str)}"
+    result = await _response_agent.run(content)
+    return result.output
 
 
 class CoachingAgent:

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from backend.api import goals, meals
+from backend.observability import configure_observability
 
 
 @asynccontextmanager
@@ -25,6 +26,8 @@ async def lifespan(app_instance: FastAPI):
 
 
 app = FastAPI(title="NutriChat", version="0.1.0", lifespan=lifespan)
+
+configure_observability(app)
 
 app.add_middleware(
     CORSMiddleware,

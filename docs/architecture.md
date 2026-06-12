@@ -155,9 +155,39 @@ uvicorn + celery after editing. `NUTRICHAT_TUNABLES_PATH` env var points to an
 alternative file for prompt experiments.
 
 Secrets and infrastructure endpoints stay in `.env` (see CLAUDE.md) — the
-YAML holds behaviour, not credentials.
+YAML holds behaviour, not credentials. `LOGFIRE_TOKEN` and
+`LOGFIRE_ENVIRONMENT` configure observability (§7); the app and workers run
+fine without a token.
 
-## 7. Idempotency & failure properties
+## 7. Observability
+
+`src/backend/observability.py` configures **Logfire** (OpenTelemetry) once per
+process via `configure_observability()`, called from `main.py` (API process,
+with the FastAPI app) and from a Celery `worker_process_init` signal handler
+in `workers/tasks.py` (worker processes). Without `LOGFIRE_TOKEN` set,
+`send_to_logfire="if-token-present"` makes this a local no-op — safe for tests
+and CI.
+
+What is traced:
+
+- FastAPI request/response spans (`logfire.instrument_fastapi`).
+- Orchestrator spans: `handle_message` (with `user_id`, `thread_id`,
+  `has_image`, and resulting `intent`/`paused` attributes),
+  `classify_intent_llm`, `coaching`, and `meal_logging`.
+- LangGraph node execution + Gemini calls, via the OpenLLMetry
+  `LangchainInstrumentor`.
+- The Pydantic AI coaching pilot (`logfire.instrument_pydantic_ai`).
+- USDA lookups (`aiohttp` client, via `logfire.instrument_aiohttp_client`),
+  Postgres (`asyncpg`), Redis, and Celery task execution.
+
+**Image scrubbing:** a custom `ScrubbingOptions` callback
+(`_scrub_extra`) redacts any span attribute whose key contains `image_b64`,
+any `data:image/...;base64,` URI, and any string value that looks like a
+base64 blob over 1KB — replacing the value with `"<redacted image>"` before
+export. `image_b64` content (and the LangGraph `checkpointer`) is never
+passed as a span attribute directly.
+
+## 8. Idempotency & failure properties
 
 | Operation | Property |
 |---|---|

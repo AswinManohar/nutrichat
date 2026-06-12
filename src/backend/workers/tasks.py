@@ -8,6 +8,7 @@ from typing import Any
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_init
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -18,6 +19,7 @@ from backend.config import get_tunables
 from backend.db.models import MealLog, UserGoal, UserMemory
 from backend.db.redis_client import reset_day_key
 from backend.db.session import dispose_engine, get_session
+from backend.observability import configure_observability
 
 _TUNABLES = get_tunables()
 
@@ -41,6 +43,13 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=23, minute=0, day_of_week="sun"),
     },
 }
+
+
+@worker_process_init.connect
+def _init_observability(**_: object) -> None:
+    """Configure Logfire in each Celery worker process."""
+    configure_observability()
+
 
 # Tunable thresholds — see src/backend/config/tunables.yaml for docs.
 _DEDUP_DISTANCE_THRESHOLD = _TUNABLES.memory.dedup_distance_threshold

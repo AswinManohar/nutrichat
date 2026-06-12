@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
+from backend.agent import coaching
 from backend.agent.coaching import CoachingAgent, QueryParsed, fetch_data, parse_query
 from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
@@ -20,10 +21,14 @@ def _mock_session_factory(goal=None):
 
 @pytest.mark.asyncio
 async def test_parse_query_today_macro():
-    expected = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=False)
-    mock_llm = MagicMock()
-    mock_llm.ainvoke = AsyncMock(return_value=expected)
-    with patch("backend.agent.coaching._query_parser_llm", mock_llm):
+    test_model = TestModel(
+        custom_output_args={
+            "time_range": "today",
+            "nutrients": ["kcal"],
+            "include_goals": False,
+        }
+    )
+    with coaching._parse_agent.override(model=test_model):
         parsed = await parse_query("how many calories today?")
 
     assert parsed.time_range == "today"
@@ -32,12 +37,14 @@ async def test_parse_query_today_macro():
 
 @pytest.mark.asyncio
 async def test_parse_query_micronutrient():
-    expected = QueryParsed(
-        time_range="this_week", nutrients=["Vitamin B12, total"], include_goals=False
+    test_model = TestModel(
+        custom_output_args={
+            "time_range": "this_week",
+            "nutrients": ["Vitamin B12, total"],
+            "include_goals": False,
+        }
     )
-    mock_llm = MagicMock()
-    mock_llm.ainvoke = AsyncMock(return_value=expected)
-    with patch("backend.agent.coaching._query_parser_llm", mock_llm):
+    with coaching._parse_agent.override(model=test_model):
         parsed = await parse_query("how much B12 this week?")
 
     assert parsed.time_range == "this_week"
