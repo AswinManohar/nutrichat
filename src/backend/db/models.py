@@ -56,7 +56,8 @@ class MealLog(Base):
     """Every logged meal with full nutrient breakdown and pgvector embedding.
 
     Written by the log_meal tool. Embedding column populated async by Celery.
-    Never re-aggregated at request time — Redis holds running daily totals.
+    Source of truth for today's totals: get_today_totals sums the rows in the
+    current nutrition-day window (Redis holds a write-through cache copy).
     """
 
     __tablename__ = "meal_log"
@@ -243,6 +244,48 @@ class WeeklySummary(Base):
         UniqueConstraint("user_id", "week_start", name="uq_weekly_summary_user_week"),
         Index("ix_weekly_summary_user_week", "user_id", "week_start"),
         Index("ix_weekly_summary_cursor", "user_id", "updated_at", "id"),
+    )
+
+
+class NutrientCheckup(Base):
+    """Pre-aggregated rolling 7-day nutrient averages + trend vs prior week.
+
+    Written nightly by the Celery build_nutrient_checkup task. Read by
+    GET /nutrient-checkup for the dashboard card. Never computed from
+    meal_log at request time.
+    """
+
+    __tablename__ = "nutrient_checkup"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    nutrients: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    notable_nutrients: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    telegram_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    chat_nudge_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_nutrient_checkup_user_date"),
+        Index("ix_nutrient_checkup_user_date", "user_id", "date"),
     )
 
 
