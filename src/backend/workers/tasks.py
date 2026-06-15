@@ -11,12 +11,18 @@ from celery.schedules import crontab
 from celery.signals import worker_process_init
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import text as sa_text
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 from backend.agent.llm import FLASH_LITE_MODEL, embed_text, make_llm
+from backend.agent.tools.history import (
+    get_nutrient_checkup_aggregates,
+    summarize_nutrient_checkup,
+)
 from backend.config import get_tunables
-from backend.db.models import MealLog, UserGoal, UserMemory
+from backend.db.models import MealLog, NutrientCheckup, UserGoal, UserMemory
 from backend.db.redis_client import reset_day_key
 from backend.db.session import dispose_engine, get_session
 from backend.observability import configure_observability
@@ -29,14 +35,25 @@ celery_app = Celery(
     backend=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
 )
 
+# Interpret crontab schedules in the app's local timezone so the daily
+# rollover lines up with the nutrition-day boundary (day.* in tunables.yaml).
+celery_app.conf.timezone = _TUNABLES.day.timezone
+celery_app.conf.enable_utc = False
+
 celery_app.conf.beat_schedule = {
+    # Today's totals are derived from meal_log and roll over on their own at
+    # the reset hour; this cron only clears the legacy Redis cache key.
     "reset-day-keys": {
         "task": "backend.workers.tasks.reset_day_keys",
-        "schedule": crontab(hour=0, minute=0),
+        "schedule": crontab(hour=1, minute=0),
     },
     "aggregate-daily-summary": {
         "task": "backend.workers.tasks.aggregate_daily_summary",
-        "schedule": crontab(hour=0, minute=5),
+        "schedule": crontab(hour=1, minute=15),
+    },
+    "build-nutrient-checkup": {
+        "task": "backend.workers.tasks.build_nutrient_checkup",
+        "schedule": crontab(hour=1, minute=30),
     },
     "build-weekly-summary": {
         "task": "backend.workers.tasks.build_weekly_summary",
@@ -356,6 +373,69 @@ def build_weekly_summary(week_start: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# build_nutrient_checkup
+# ---------------------------------------------------------------------------
+
+
+async def _build_nutrient_checkup(target_date: date) -> None:
+    window_start = target_date - timedelta(days=6)
+
+    session_factory = get_session()
+    async with session_factory() as session:
+        result = await session.execute(
+            sa_text(
+                "SELECT DISTINCT user_id FROM meal_log "
+                "WHERE logged_at::date BETWEEN :window_start AND :target_date "
+                "AND deleted_at IS NULL"
+            ),
+            {"window_start": window_start, "target_date": target_date},
+        )
+        user_ids = [row.user_id for row in result.all()]
+
+        for user_id in user_ids:
+            nutrients = await get_nutrient_checkup_aggregates(user_id, target_date)
+            notable, summary_text = summarize_nutrient_checkup(nutrients)
+
+            stmt = pg_insert(NutrientCheckup).values(
+                user_id=user_id,
+                date=target_date,
+                nutrients=nutrients,
+                notable_nutrients=notable,
+                summary_text=summary_text,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "date"],
+                set_={
+                    "nutrients": stmt.excluded.nutrients,
+                    "notable_nutrients": stmt.excluded.notable_nutrients,
+                    "summary_text": stmt.excluded.summary_text,
+                    "generated_at": func.now(),
+                },
+            )
+            await session.execute(stmt)
+        await session.commit()
+
+
+@celery_app.task(name="backend.workers.tasks.build_nutrient_checkup")
+def build_nutrient_checkup(target_date: str | None = None) -> None:
+    """Upsert `nutrient_checkup` rows for every user active in the last 7 days.
+
+    Runs nightly at 01:30 (after aggregate_daily_summary) for the 7-day
+    window ending on `target_date`.
+
+    Args:
+        target_date: ISO date string for the last day of the window.
+            Defaults to yesterday.
+    """
+    resolved = (
+        date.fromisoformat(target_date)
+        if target_date
+        else date.today() - timedelta(days=1)
+    )
+    _run(_build_nutrient_checkup(resolved))
+
+
+# ---------------------------------------------------------------------------
 # reset_day_keys
 # ---------------------------------------------------------------------------
 
@@ -382,5 +462,6 @@ __all__ = [
     "extract_and_store_facts",
     "aggregate_daily_summary",
     "build_weekly_summary",
+    "build_nutrient_checkup",
     "reset_day_keys",
 ]
