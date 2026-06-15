@@ -1,12 +1,26 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
+from backend.config import get_tunables
 from backend.db.models import MealLog
 from backend.db.session import get_session
+
+_TUNABLES = get_tunables()
+_CHECKUP_MICRONUTRIENTS = _TUNABLES.nutrient_checkup.micronutrients
+_CHECKUP_FLAT_THRESHOLD = _TUNABLES.nutrient_checkup.flat_threshold_pct
+_CHECKUP_RDA = _TUNABLES.nutrient_checkup.rda
+
+# Display name -> (meal_log column, unit) for the macro nutrients in the
+# Daily Nutrient Check-up. Sugar and vitamins/minerals come from
+# _CHECKUP_MICRONUTRIENTS instead (entities[].nutrients, USDA names).
+_CHECKUP_MACROS: dict[str, tuple[str, str]] = {
+    "Protein": ("protein_g", "g"),
+    "Fiber": ("fiber_g", "g"),
+}
 
 
 async def get_macros_for_range(
@@ -100,6 +114,192 @@ async def get_micronutrients_for_range(
                 results[nutrient] = {"amount": float(row.total), "unit": row.unit}
 
     return results
+
+
+def _trend(cur_avg: float, prev_avg: float) -> tuple[float | None, str]:
+    """Compute trend_pct and up/down/flat direction vs the prior week.
+
+    Returns (None, "flat") if both weeks are zero, (None, "up") if only the
+    prior week is zero (no baseline to divide by), and otherwise the percent
+    change with "flat" applied when it falls within
+    ``nutrient_checkup.flat_threshold_pct``.
+    """
+    if prev_avg == 0:
+        return (None, "flat") if cur_avg == 0 else (None, "up")
+
+    trend_pct = (cur_avg - prev_avg) / prev_avg
+    if abs(trend_pct) < _CHECKUP_FLAT_THRESHOLD:
+        direction = "flat"
+    elif trend_pct > 0:
+        direction = "up"
+    else:
+        direction = "down"
+    return trend_pct, direction
+
+
+async def get_nutrient_checkup_aggregates(
+    user_id: str, end_date: date
+) -> dict[str, dict[str, float | str | None]]:
+    """Compute rolling 7-day nutrient averages + trend vs the prior 7 days.
+
+    Protein and Fiber are averaged from `meal_log`'s top-level columns; Sugar
+    and the configured vitamins/minerals are averaged from
+    `meal_log.entities[].nutrients` (see `nutrient_checkup.micronutrients` in
+    tunables.yaml). Used by the build_nutrient_checkup cron.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        end_date: Last day (inclusive) of the current 7-day window.
+
+    Returns:
+        Dict keyed by display nutrient name (e.g. "Protein", "Vitamin C") ->
+        {avg, prev_avg, unit, trend_pct, direction}. avg/prev_avg are daily
+        averages (sum over 7 days / 7); trend_pct is None when the prior
+        week has no data.
+    """
+    cur_from = end_date - timedelta(days=6)
+    prev_to = cur_from - timedelta(days=1)
+    prev_from = prev_to - timedelta(days=6)
+
+    cur_macros = await get_macros_for_range(user_id, cur_from, end_date)
+    prev_macros = await get_macros_for_range(user_id, prev_from, prev_to)
+
+    usda_names = [m.usda_name for m in _CHECKUP_MICRONUTRIENTS.values()]
+    cur_micro = await get_micronutrients_for_range(user_id, cur_from, end_date, usda_names)
+    prev_micro = await get_micronutrients_for_range(user_id, prev_from, prev_to, usda_names)
+
+    result: dict[str, dict[str, float | str | None]] = {}
+
+    for display_name, (field, unit) in _CHECKUP_MACROS.items():
+        cur_avg = cur_macros[field] / 7
+        prev_avg = prev_macros[field] / 7
+        trend_pct, direction = _trend(cur_avg, prev_avg)
+        rda = _CHECKUP_RDA[display_name]
+        rda_pct = (cur_avg / rda) * 100 if rda else None
+        result[display_name] = {
+            "avg": cur_avg,
+            "prev_avg": prev_avg,
+            "unit": unit,
+            "trend_pct": trend_pct,
+            "direction": direction,
+            "rda_pct": rda_pct,
+        }
+
+    for display_name, micro_cfg in _CHECKUP_MICRONUTRIENTS.items():
+        cur_entry = cur_micro.get(micro_cfg.usda_name)
+        prev_entry = prev_micro.get(micro_cfg.usda_name)
+        cur_avg = float(cur_entry["amount"]) / 7 if cur_entry else 0.0
+        prev_avg = float(prev_entry["amount"]) / 7 if prev_entry else 0.0
+        entry_with_unit = cur_entry or prev_entry
+        unit = str(entry_with_unit["unit"]) if entry_with_unit else micro_cfg.unit
+        trend_pct, direction = _trend(cur_avg, prev_avg)
+        rda = _CHECKUP_RDA[display_name]
+        rda_pct = (cur_avg / rda) * 100 if rda else None
+        result[display_name] = {
+            "avg": cur_avg,
+            "prev_avg": prev_avg,
+            "unit": unit,
+            "trend_pct": trend_pct,
+            "direction": direction,
+            "rda_pct": rda_pct,
+        }
+
+    return result
+
+
+_NOTABLE_UNDER_THRESHOLD = 70.0
+_NOTABLE_OVER_THRESHOLD = 150.0
+
+_NUTRIENT_FOOD_HINTS: dict[str, str] = {
+    "Protein": "lean meat, eggs, beans, or dairy",
+    "Fiber": "whole grains, legumes, or vegetables",
+    "Vitamin C": "citrus fruits, berries, or peppers",
+    "Vitamin D": "fatty fish, eggs, or fortified foods",
+    "Iron": "red meat, spinach, or legumes",
+    "Calcium": "dairy, leafy greens, or fortified plant milk",
+    "Vitamin B-12": "meat, fish, eggs, or dairy",
+}
+
+
+def _phrase_for(item: dict[str, float | str]) -> str:
+    """Return the "why" clause for a single notable nutrient."""
+    if item["status"] == "over":
+        return "you're well above the daily target"
+    hint = _NUTRIENT_FOOD_HINTS.get(str(item["name"]))
+    if hint:
+        return f"consider eating more {hint}"
+    return "consider eating more of this nutrient"
+
+
+def _combined_phrase(items: list[dict[str, float | str]]) -> str:
+    """Return the "why" clause for two notable nutrients."""
+    statuses = {item["status"] for item in items}
+    if statuses == {"under"}:
+        hints = [
+            _NUTRIENT_FOOD_HINTS[str(item["name"])]
+            for item in items
+            if str(item["name"]) in _NUTRIENT_FOOD_HINTS
+        ]
+        if hints:
+            return "consider eating more " + " and ".join(hints)
+        return "consider eating more of these nutrients"
+    if statuses == {"over"}:
+        return "you're well above the daily targets for these"
+    return "let's bring these closer to your daily targets"
+
+
+def summarize_nutrient_checkup(
+    nutrients: dict[str, dict[str, float | str | None]],
+) -> tuple[list[dict[str, float | str]], str | None]:
+    """Build a one-line summary of nutrients notably off their RDA targets.
+
+    A nutrient is "notable" if its `rda_pct` is below
+    `_NOTABLE_UNDER_THRESHOLD` (under-target) or above
+    `_NOTABLE_OVER_THRESHOLD` (over-target). The top 2 notable nutrients,
+    ranked by distance from 100%, drive a deterministic template summary.
+
+    Args:
+        nutrients: Output of `get_nutrient_checkup_aggregates`, keyed by
+            display name, each with an `rda_pct` (float or None).
+
+    Returns:
+        A tuple of (notable nutrients, summary text). `notable` is a list of
+        dicts with `name`, `rda_pct`, and `status` ("under" or "over").
+        `summary_text` is None when nothing is notable.
+    """
+    notable: list[dict[str, float | str]] = []
+    for name, values in nutrients.items():
+        rda_pct = values["rda_pct"]
+        if rda_pct is None:
+            continue
+        rda_pct = float(rda_pct)
+        if rda_pct < _NOTABLE_UNDER_THRESHOLD:
+            notable.append({"name": name, "rda_pct": rda_pct, "status": "under"})
+        elif rda_pct > _NOTABLE_OVER_THRESHOLD:
+            notable.append({"name": name, "rda_pct": rda_pct, "status": "over"})
+
+    if not notable:
+        return [], None
+
+    notable.sort(key=lambda item: abs(float(item["rda_pct"]) - 100.0), reverse=True)
+    top = notable[:2]
+
+    if len(top) == 1:
+        item = top[0]
+        summary_text = (
+            f"This week, your {item['name']} intake is at "
+            f"{item['rda_pct']:.0f}% of the daily target — {_phrase_for(item)}."
+        )
+    else:
+        first, second = top
+        phrase = _combined_phrase(top)
+        summary_text = (
+            f"This week: {first['name']} is at {first['rda_pct']:.0f}% and "
+            f"{second['name']} is at {second['rda_pct']:.0f}% of their daily "
+            f"targets — {phrase}."
+        )
+
+    return top, summary_text
 
 
 async def get_food_breakdown_for_range(
@@ -269,4 +469,6 @@ __all__ = [
     "get_history",
     "get_macros_for_range",
     "get_micronutrients_for_range",
+    "get_nutrient_checkup_aggregates",
+    "summarize_nutrient_checkup",
 ]
