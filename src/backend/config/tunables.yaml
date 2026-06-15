@@ -41,6 +41,25 @@ token_limits:
   intent_classifier_max_output: 200
 
 usda:
+  # ── How food matching works (read before tuning) ────────────────────────
+  # For each food the user names, usda_lookup_batch:
+  #   1. Searches FoodData Central and takes FDC's top relevance-ranked hit
+  #      (which entry wins is governed by FDC ranking + `data_types`, NOT by
+  #      our score — see data_types/page_size below).
+  #   2. Scores that hit with _confidence = query-word COVERAGE: the fraction
+  #      of the user's food words found in the FDC description, after
+  #      singularizing and dropping filler words. Coverage (not Jaccard) is
+  #      used deliberately: FDC descriptions are verbose ("Rice, white,
+  #      long-grain, raw, enriched") and a union-based metric wrongly tanked
+  #      correct matches, sending almost everything to the LLM estimator.
+  #      So "white rice" and "banana" score 1.0; "chicken biryani" vs
+  #      "Chicken spread" scores 0.5 (only "chicken" matched).
+  #   3. If that score is below `match_confidence_floor` (or there is no hit
+  #      at all), it DISCARDS the weak USDA hit and LLM-estimates instead.
+  # Net effect: USDA is strongly preferred; the estimator is the exception,
+  # reserved for genuine misses. `match_confidence_floor` is the main dial.
+  # ─────────────────────────────────────────────────────────────────────────
+
   # FoodData Central search endpoint.
   # Used in: agent/tools/usda.py
   search_url: "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -48,11 +67,17 @@ usda:
   # Which FDC data types to search. Foundation + SR Legacy are whole-food
   # entries with full nutrient panels; add "Branded" to match packaged
   # products (noisier descriptions, lower match confidence).
+  # NOTE: this also steers WHICH entry wins. We take FDC's #1 relevance hit,
+  # so a loose query can land on a sub-ideal entry (e.g. "white rice" ->
+  # "Flour, rice, white", "greek yogurt" -> a flavored branded yogurt). That
+  # is an FDC-ranking effect, separate from the match/estimate gate; narrow
+  # or widen `data_types` to influence it.
   data_types: "Foundation,SR Legacy"
 
   # Number of candidate foods requested per search. The top hit becomes
   # the match; the first 3 become the "candidates" alternatives shown on
-  # the confirmation card.
+  # the confirmation card. (We do not re-rank these by coverage — the top
+  # hit is FDC's relevance #1; raising this only widens the alternatives.)
   page_size: 5
 
   # Per-request timeout (seconds) for the FDC API.
@@ -65,7 +90,7 @@ usda:
   # Seconds to sleep between retry attempts.
   retry_backoff_s: 1.0
 
-  # Confidence assigned to Postgres cache hits (skips Jaccard scoring —
+  # Confidence assigned to Postgres cache hits (skips coverage scoring —
   # a cached row was already accepted once).
   cache_hit_confidence: 0.95
 
@@ -80,10 +105,20 @@ usda:
   # Confidence gate (Plan A — LLM nutrition estimation fallback). When the
   # best FDC match's match_confidence is below this floor (or there is no
   # usable match at all, fdc_id=-1), usda_lookup_batch discards the weak hit
-  # and calls estimate_nutrition_llm() instead. This catches cases like
-  # "chicken biryani" mis-matching to "Chicken spread" — a low-Jaccard
-  # match that would otherwise be logged with wrong macros.
-  match_confidence_floor: 0.5
+  # and calls estimate_nutrition_llm() instead.
+  #
+  # match_confidence is query-word COVERAGE: the fraction of the user's food
+  # words found in the FDC description (see _confidence). Tuning guide:
+  #   0.5  — accept any half-matched food; lets "chicken biryani" log as
+  #          "Chicken spread" (1 of 2 words). Too loose.
+  #   0.6  — DEFAULT. Rejects half-matches (biryani -> estimate) but accepts
+  #          a real food missing one filler descriptor (e.g. "spicy chicken
+  #          curry" -> "Chicken curry", 2/3). Strongly prefers USDA.
+  #   0.75 — stricter: requires nearly all query words present; estimates
+  #          more often. Raise this if USDA is matching too loosely.
+  #   1.0  — only exact full-coverage matches use USDA; everything else
+  #          is LLM-estimated.
+  match_confidence_floor: 0.6
 
   # match_confidence assigned to LLM nutrition estimates (USDAResult.
   # estimated=True, source="LLM_ESTIMATE"). Kept low/neutral rather than
@@ -133,10 +168,67 @@ summaries:
 
 redis:
   # TTL (seconds) on the per-user `today:{user_id}` hash. Refreshed on
-  # every meal log; the midnight reset_day_keys cron deletes keys
-  # explicitly, so this is a safety net for inactive users.
+  # every meal log. Today's totals are now derived authoritatively from
+  # meal_log (see day.* below); this hash is a write-through cache that the
+  # 01:00 reset_day_keys cron also clears.
   # Used in: db/redis_client.py increment_today
   today_key_ttl_s: 86400
+
+day:
+  # The rolling "nutrition day" for daily totals. Today's progress resets at
+  # reset_hour, local time in `timezone`; meals logged between midnight and
+  # reset_hour count toward the previous day. Derived from meal_log rows, so
+  # the rollover happens automatically — no cron has to fire for it.
+  # Used in: db/redis_client.py current_day_bounds / get_today_totals
+  timezone: Europe/Oslo
+  reset_hour: 1
+
+nutrient_checkup:
+  # Daily Nutrient Check-up (issue #9): rolling 7-day daily averages + trend
+  # vs the prior 7 days, written nightly by build_nutrient_checkup. Protein
+  # and Fiber come from meal_log's top-level columns (get_macros_for_range);
+  # Sugar and the vitamins/minerals below come from meal_log.entities[]
+  # .nutrients (exact USDA names, via get_micronutrients_for_range). Note:
+  # LLM-estimated items contribute macros but no vitamins, so vitamin
+  # averages may undercount for users with many estimated foods.
+  # Used in: agent/tools/history.py get_nutrient_checkup_aggregates
+  micronutrients:
+    Sugar:
+      usda_name: "Total Sugars"
+      unit: g
+    "Vitamin C":
+      usda_name: "Vitamin C, total ascorbic acid"
+      unit: mg
+    "Vitamin D":
+      usda_name: "Vitamin D (D2 + D3)"
+      unit: mcg
+    Iron:
+      usda_name: "Iron, Fe"
+      unit: mg
+    Calcium:
+      usda_name: "Calcium, Ca"
+      unit: mg
+    "Vitamin B-12":
+      usda_name: "Vitamin B-12"
+      unit: mcg
+
+  # A trend within +/- this fraction of the prior week's average is reported
+  # as "flat" (->) rather than up/down, so small week-to-week noise doesn't
+  # flip the arrow.
+  flat_threshold_pct: 0.05
+
+  # Generic adult daily values (FDA 2016 Daily Values where available).
+  # Sugar has no official DV; we use 50g as a WHO "free sugars" proxy —
+  # documented here because it's a judgment call, not a regulatory figure.
+  rda:
+    Protein: 50          # g
+    Fiber: 28            # g
+    Sugar: 50            # g (proxy, see comment above)
+    "Vitamin C": 90       # mg
+    "Vitamin D": 20       # mcg
+    Iron: 18              # mg
+    Calcium: 1300         # mg
+    "Vitamin B-12": 2.4   # mcg
 
 routing:
   # Keyword pre-filter for the orchestrator's log_meal/coaching intent

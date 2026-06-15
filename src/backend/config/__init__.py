@@ -80,6 +80,32 @@ class RedisConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DayConfig(BaseModel):
+    """Defines the rolling 'nutrition day' boundary for daily totals."""
+
+    timezone: str = Field(min_length=1)
+    reset_hour: int = Field(ge=0, le=23)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MicronutrientConfig(BaseModel):
+    usda_name: str
+    unit: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NutrientCheckupConfig(BaseModel):
+    """USDA nutrient map + trend threshold + RDA baseline for the Check-up."""
+
+    micronutrients: dict[str, MicronutrientConfig]
+    flat_threshold_pct: float = Field(ge=0.0, le=1.0)
+    rda: dict[str, float]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RoutingConfig(BaseModel):
     log_signals: list[str]
     query_signals: list[str]
@@ -114,6 +140,8 @@ class Tunables(BaseModel):
     memory: MemoryConfig
     summaries: SummariesConfig
     redis: RedisConfig
+    day: DayConfig
+    nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
     prompts: PromptsConfig
 
