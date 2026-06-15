@@ -1,0 +1,157 @@
+[
+  {
+    "q": "what is the most unhealthiest food i had",
+    "a": "Your cheeseburger, logged once at 550 kcal, is flagged as junk and is your second highest-calorie item, making it your unhealthiest food, with French fries also flagged as junk.",
+    "status": "success"
+  },
+  {
+    "q": "How much protein did I eat yesterday?",
+    "a": "No meals logged for that period yet.",
+    "status": "success"
+  },
+  {
+    "q": "Did I meet my calorie goal this week?",
+    "a": "Over the last 7 days you logged 1,354.1 kcal across only 2 meals. Your logging appears sparse, so a true daily average against your 2,023 kcal/day goal isn't reliable with so few entries.",
+    "status": "success"
+  },
+  {
+    "q": "What are my top 3 most frequently eaten foods?",
+    "a": "Your most frequent foods are scrambled eggs and whole wheat toast, both logged 7 times, followed by grilled chicken breast, logged 6 times.",
+    "status": "success"
+  },
+  {
+    "q": "How much fiber have I had so far this month?",
+    "a": "You've logged 20.3g of fiber across 5 meals so far this month, averaging about 4.06g per logged meal. Your logging looks sparse for the month, so a true daily average isn't reliable.",
+    "status": "success"
+  },
+  {
+    "q": "Show me the highest calorie foods I ate in the last 7 days.",
+    "a": "Your highest-calorie food over the last 7 days was a chicken burrito at 700 kcal, followed by green goddess salad dressing at 427 kcal, and cooked pasta at 330 kcal.",
+    "status": "success"
+  },
+  {
+    "q": "What was my total fat intake last month?",
+    "a": "Over the last month you logged 224g of fat across 14 meals, averaging about 16g per logged meal. Your logging looks sparse for a full month, so a true daily average isn't reliable.",
+    "status": "success"
+  },
+  {
+    "q": "Have I eaten any junk food recently?",
+    "a": "Yes, you've recently logged \"French fries\" and \"Cheeseburger\" once each, both of which are flagged as junk foods, and the cheeseburger was one of your highest-calorie items at 550 kcal. You also had \"Salad dressing, russian dressing\" once, which is flagged.",
+    "status": "success"
+  },
+  {
+    "q": "Am I eating enough Vitamin B-12?",
+    "a": "I don't have data on vitamin b12 for that period.",
+    "status": "success"
+  },
+  {
+    "q": "What was my calorie intake over the last 90 days?",
+    "a": "Over the last 90 days you logged 15,654.1 kcal across 38 meals. Your logging looks sparse for that period, averaging about 412 kcal per logged meal, so a true daily average isn't reliable.",
+    "status": "success"
+  },
+  {
+    "q": "How does my carbohydrate intake look for this week?",
+    "a": "You logged 91.9g of carbohydrates over the week across 2 meals. This averages to about 46g per logged meal, but your logging appears sparse for the week.",
+    "status": "success"
+  },
+  {
+    "q": "What are my favorite foods to eat?",
+    "a": "Your most frequent foods are scrambled eggs and whole wheat toast, both logged 7 times. Grilled chicken breast, mixed green salad, plain nonfat Greek yogurt, mixed berries, and white rice were each logged 6 times.",
+    "status": "success"
+  },
+  {
+    "q": "Am I eating too much sugar?",
+    "a": "I don't have data on sugar for that period.",
+    "status": "success"
+  },
+  {
+    "q": "Did I eat more protein or carbs today?",
+    "a": "You've eaten 36.6g of protein today from 1 meal. Your carbohydrate intake data isn't available for comparison.",
+    "status": "success"
+  },
+  {
+    "q": "What's the unhealthiest thing I ate last week?",
+    "a": "Your unhealthiest logged item last week was Salad dressing, russian dressing, which was flagged as junk. The highest-calorie individual item you had was a Chicken burrito at 700 kcal.",
+    "status": "success"
+  },
+  {
+    "q": "Is my diet balanced right now?",
+    "a": "You've logged 5174.1 kcal, 299.6g protein, and 48.3g fiber across 11 meals. Your daily goals are 2023 kcal, 126g protein, and 38g fiber. Without knowing the exact duration of this period, it's hard to precisely assess balance against your daily goals, but items like chicken burritos (700 kcal) and French fries (300 kcal) suggest a high caloric intake.",
+    "status": "success"
+  },
+  {
+    "q": "What's the most calorie-dense food I logged today?",
+    "a": "Today, your most calorie-dense food was the green goddess salad dressing, logged at 427.0 kcal.",
+    "status": "success"
+  },
+  {
+    "q": "How much iron did I get from my meals in the last 30 days?",
+    "a": "I don't have data on iron for that period.",
+    "status": "success"
+  },
+  {
+    "q": "Show me my macro breakdown for yesterday.",
+    "a": "No meals logged for that period yet.",
+    "status": "success"
+  },
+  {
+    "q": "What should I cut back on to improve my health?",
+    "a": "Your logged data shows French fries and cheeseburgers were flagged as junk food, and a chicken burrito was your highest-calorie item at 700 kcal. Cutting back on these, along with high-calorie salad dressings like the Russian or Green Goddess dressing, would be a good place to start.",
+    "status": "success"
+  },
+  {
+    "q": "Have I hit my fiber goal today?",
+    "a": "You've had 0.3g of fiber today against a goal of 38g, so you're about 37.7g short. Adding vegetables, fruits, or whole grains to your meals would help significantly.",
+    "status": "success"
+  },
+  {
+    "q": "What's the healthiest food I've eaten this month?",
+    "a": "Based on your logged foods this month, plain nonfat Greek yogurt and mixed berries are generally considered healthy choices.",
+    "status": "success"
+  },
+  {
+    "q": "How many calories do I have left for today?",
+    "a": "You've had 704.1 kcal today against your goal of 2023 kcal, leaving you with 1318.9 kcal remaining for the rest of the day.",
+    "status": "success"
+  },
+  {
+    "q": "What did I eat most often in the past two months?",
+    "a": "In the past two months, your most frequent foods were scrambled eggs and whole wheat toast, both logged 7 times. Grilled chicken breast, mixed green salad, plain nonfat Greek yogurt, mixed berries, and white rice were also common, each logged 6 times.",
+    "status": "success"
+  },
+  {
+    "q": "Tell me my average daily protein intake for the last 30 days.",
+    "a": "Over the last 30 days you logged 299.6g of protein total across only 11 meals. Your logging looks sparse, so a true daily average isn't reliable; you averaged roughly 27.2g of protein per logged meal.",
+    "status": "success"
+  },
+  {
+    "q": "Have I logged any meals that are considered unhealthy?",
+    "a": "Yes, you've logged a cheeseburger, French fries, and Russian salad dressing, all of which are flagged as junk foods. The cheeseburger was also one of your highest-calorie items at 550 kcal.",
+    "status": "success"
+  },
+  {
+    "q": "What is my vitamin D intake looking like?",
+    "a": "I don't have data on vitamin D for that period.",
+    "status": "success"
+  },
+  {
+    "q": "Did I hit my protein goal every day last week?",
+    "a": "I can't break that down day by day yet. Across last week you logged 106.6g of protein total across only 3 meals, against your daily goal of 126g, so logging looks too sparse to tell if you hit it daily.",
+    "status": "success"
+  },
+  {
+    "q": "What are the most frequent junk foods I consume?",
+    "a": "You've logged \"Salad dressing, russian dressing\", \"French fries\", and \"Cheeseburger\" as junk foods, each appearing once.",
+    "status": "success"
+  },
+  {
+    "q": "How much water did I drink yesterday?",
+    "a": "I don't have data on water for that period.",
+    "status": "success"
+  },
+  {
+    "q": "Summarize my nutrition for the last 7 days.",
+    "a": "Over the last 7 days, you logged 3 meals totaling 2054.1 kcal, 106.6g protein, 156.9g carbs, 106.7g fat, and 13.3g fiber. Logging appears sparse, so a true daily average isn't reliable, but each logged meal averaged about 685 kcal.",
+    "status": "success"
+  }
+]

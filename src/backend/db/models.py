@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -82,12 +83,23 @@ class MealLog(Base):
     entities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         # PRD-specified B-tree indexes
         Index("ix_meal_log_user_logged_at", "user_id", "logged_at"),
         Index("ix_meal_log_user_protein", "user_id", "protein_g"),
         Index("ix_meal_log_hybrid", "user_id", "meal_type", "protein_g", "logged_at"),
+        # Keyset pagination cursor for the integration API
+        Index("ix_meal_log_cursor", "user_id", "updated_at", "meal_id"),
         # IVFFlat index created via raw DDL in the Alembic migration
         # because SQLAlchemy Index() does not support operator classes.
     )
@@ -178,10 +190,17 @@ class DailySummary(Base):
         Boolean, nullable=False, default=False
     )
     has_veg_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("user_id", "date", name="uq_daily_summary_user_date"),
         Index("ix_daily_summary_user_date", "user_id", "date"),
+        Index("ix_daily_summary_cursor", "user_id", "updated_at", "id"),
     )
 
 
@@ -213,8 +232,77 @@ class WeeklySummary(Base):
     missed_meals: Mapped[list] = mapped_column(
         ARRAY(String), nullable=False, default=list
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("user_id", "week_start", name="uq_weekly_summary_user_week"),
         Index("ix_weekly_summary_user_week", "user_id", "week_start"),
+        Index("ix_weekly_summary_cursor", "user_id", "updated_at", "id"),
+    )
+
+
+class TelegramLink(Base):
+    """Binds a Telegram chat to a NutriChat user.
+
+    Written by the bot process after a `/link <code>` command validates a
+    short-lived Redis code. RLS is enabled with no policies — service-role
+    only (matches the integration_token posture).
+    """
+
+    __tablename__ = "telegram_link"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class IntegrationToken(Base):
+    """Service token for read-only third-party access to nutrition data.
+
+    Minted via `python -m backend.scripts.mint_token`. Tokens are stored as
+    a SHA-256 hash; the plaintext `nck_<token>` value is shown only once at
+    mint time. RLS is enabled with no policies — service-role only.
+    """
+
+    __tablename__ = "integration_token"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    scopes: Mapped[list] = mapped_column(
+        ARRAY(String), nullable=False, default=lambda: ["nutrition:read"]
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index("ix_integration_token_token_hash", "token_hash"),
     )

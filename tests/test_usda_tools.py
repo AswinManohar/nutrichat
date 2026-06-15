@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agent.tools.meals import FoodEntity
 from backend.agent.tools.usda import (
+    NutritionEstimate,
+    estimate_nutrition_llm,
     usda_lookup_batch,
     USDAResult,
     _confidence,
@@ -98,7 +100,55 @@ async def test_scales_nutrients_to_qty_g():
 
 
 @pytest.mark.asyncio
-async def test_usda_miss_returns_error_result():
+async def test_usda_miss_falls_back_to_estimate_when_llm_succeeds():
+    """A true USDA miss (no foods returned) now falls back to an LLM
+    estimate (Plan A) rather than being returned as a bare miss."""
+    entity = FoodEntity(food_name="xyzzy_nonexistent_food", qty_g=100.0, unit="g")
+
+    fake_run = MagicMock()
+    fake_run.output = NutritionEstimate(
+        kcal=120.0,
+        protein_g=5.0,
+        carbs_g=15.0,
+        fat_g=3.0,
+        fiber_g=1.0,
+        sugar_g=1.0,
+        sat_fat_g=1.0,
+    )
+
+    with (
+        patch(
+            "backend.agent.tools.usda._cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch(
+            "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            return_value=fake_run,
+        ),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    assert results[0].fdc_id == -1
+    assert results[0].estimated is True
+    assert results[0].source == "LLM_ESTIMATE"
+
+
+@pytest.mark.asyncio
+async def test_usda_miss_returns_bare_miss_when_llm_also_fails():
+    """If the LLM estimate call itself fails, fall back to a bare miss
+    (fdc_id=-1, estimated=False) so the item is excluded from logging."""
     entity = FoodEntity(food_name="xyzzy_nonexistent_food", qty_g=100.0, unit="g")
 
     with (
@@ -107,15 +157,26 @@ async def test_usda_miss_returns_error_result():
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LLM unavailable"),
         ),
     ):
         results = await usda_lookup_batch([entity])
 
     assert results[0].fdc_id == -1
     assert results[0].match_confidence == 0.0
+    assert results[0].estimated is False
 
 
 @pytest.mark.asyncio
@@ -152,16 +213,30 @@ async def test_batch_parallel_multiple_entities():
         FoodEntity(food_name="toast", qty_g=28.0, unit="slice"),
     ]
 
+    fake_run = MagicMock()
+    fake_run.output = _FAKE_ESTIMATE
+
     with (
         patch(
             "backend.agent.tools.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            return_value=fake_run,
         ),
     ):
         results = await usda_lookup_batch(entities)
@@ -207,3 +282,173 @@ def test_energy_falls_back_to_atwater_names():
     assert _energy_kcal(raw) == 47.0
     assert _energy_kcal({"Energy": (100.0, "kcal")}) == 100.0
     assert _energy_kcal({"Protein": (1.0, "g")}) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Plan A — confidence gate + LLM estimation fallback
+# ---------------------------------------------------------------------------
+
+# A weak match — "chicken biryani" vs "Chicken spread" shares no words,
+# so _confidence() returns 0.0, well below match_confidence_floor (0.5).
+WEAK_MATCH_RESPONSE = {
+    "foods": [
+        {
+            "fdcId": 99999,
+            "description": "Chicken spread",
+            "foodNutrients": [
+                {"nutrientName": "Energy", "value": 200.0, "unitName": "kcal"},
+                {"nutrientName": "Protein", "value": 10.0, "unitName": "g"},
+            ],
+        }
+    ]
+}
+
+_FAKE_ESTIMATE = NutritionEstimate(
+    kcal=450.0,
+    protein_g=25.0,
+    carbs_g=55.0,
+    fat_g=12.0,
+    fiber_g=3.0,
+    sugar_g=2.0,
+    sat_fat_g=4.0,
+)
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_match_falls_back_to_llm_estimate():
+    entity = FoodEntity(food_name="chicken biryani", qty_g=300.0, unit="bowl")
+
+    fake_run = MagicMock()
+    fake_run.output = _FAKE_ESTIMATE
+
+    with (
+        patch(
+            "backend.agent.tools.usda._cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch(
+            "aiohttp.ClientSession.get",
+            return_value=_mock_http_response(WEAK_MATCH_RESPONSE),
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            return_value=fake_run,
+        ),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.fdc_id == -1
+    assert r.estimated is True
+    assert r.source == "LLM_ESTIMATE"
+    assert r.food_name == "chicken biryani"
+    # 300g of a 450 kcal/300g estimate -> kcal scales with qty_g
+    assert r.kcal == pytest.approx(450.0, rel=0.05)
+
+
+@pytest.mark.asyncio
+async def test_no_match_falls_back_to_llm_estimate():
+    entity = FoodEntity(food_name="xyzzy_nonexistent_food", qty_g=100.0, unit="g")
+
+    fake_run = MagicMock()
+    fake_run.output = _FAKE_ESTIMATE
+
+    with (
+        patch(
+            "backend.agent.tools.usda._cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch(
+            "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            return_value=fake_run,
+        ),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    assert results[0].estimated is True
+    assert results[0].source == "LLM_ESTIMATE"
+
+
+@pytest.mark.asyncio
+async def test_estimate_uses_cache_when_present():
+    cached = {
+        "fdc_id": -123,
+        "food_name": "chicken biryani",
+        "nutrients": {
+            "kcal": 150.0,
+            "protein_g": 8.0,
+            "carbs_g": 18.0,
+            "fat_g": 4.0,
+            "fiber_g": 1.0,
+            "sugar_g": 1.0,
+            "sat_fat_g": 1.5,
+        },
+    }
+
+    with (
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=cached,
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+        ) as mock_run,
+    ):
+        result = await estimate_nutrition_llm("chicken biryani", qty_g=300.0)
+
+    mock_run.assert_not_called()
+    assert result.estimated is True
+    assert result.source == "LLM_ESTIMATE"
+    # cached per-100g kcal=150 -> 300g => 450
+    assert result.kcal == pytest.approx(450.0)
+
+
+@pytest.mark.asyncio
+async def test_high_confidence_match_is_not_overridden():
+    entity = FoodEntity(food_name="scrambled egg", qty_g=61.0, unit="piece")
+
+    with (
+        patch(
+            "backend.agent.tools.usda._cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch(
+            "aiohttp.ClientSession.get",
+            return_value=_mock_http_response(MOCK_FDC_RESPONSE),
+        ),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+        ) as mock_run,
+    ):
+        results = await usda_lookup_batch([entity])
+
+    mock_run.assert_not_called()
+    assert results[0].estimated is False
+    assert results[0].source == "USDA"

@@ -80,8 +80,13 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
                 <p className="text-[11px] text-muted mt-0.5">
                   {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein ·{' '}
                   {scaled[i].fiber_g.toFixed(0)}g fiber
-                  {item.confidence < LOW_CONFIDENCE && !swaps[i] && (
+                  {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
                     <span className="ml-1.5 text-warn font-semibold">· check match</span>
+                  )}
+                  {(item.estimated || item.source === 'LLM_ESTIMATE') && (
+                    <span className="ml-1.5 text-muted font-semibold">
+                      · ≈ estimated (not in USDA)
+                    </span>
                   )}
                 </p>
               </div>

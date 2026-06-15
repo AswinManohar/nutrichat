@@ -199,7 +199,7 @@ async def _aggregate_daily_summary(target_date: date) -> None:
                 "COALESCE(SUM(protein_g), 0) AS protein_g, "
                 "COALESCE(SUM(fiber_g), 0) AS fiber_g "
                 "FROM meal_log "
-                "WHERE logged_at::date = :target_date "
+                "WHERE logged_at::date = :target_date AND deleted_at IS NULL "
                 "GROUP BY user_id"
             ),
             {"target_date": target_date},
@@ -284,6 +284,7 @@ async def _build_weekly_summary(week_start: date) -> None:
                 "SELECT user_id, meal_type, COUNT(DISTINCT logged_at::date) AS n_days "
                 "FROM meal_log "
                 "WHERE logged_at::date BETWEEN :week_start AND :week_end "
+                "AND deleted_at IS NULL "
                 "GROUP BY user_id, meal_type"
             ),
             {"week_start": week_start, "week_end": week_end},

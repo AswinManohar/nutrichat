@@ -166,8 +166,18 @@ def format_confirmation_card(usda_results: list) -> str:
     }
 
     for r in usda_results:
-        if r.fdc_id == -1:
+        if r.fdc_id == -1 and not r.estimated:
             lines.append(f"  ❌ {r.food_name} ({r.qty_g:.0f}g) — not found in USDA")
+            continue
+
+        if r.estimated:
+            lines.append(
+                f"  ≈ {r.food_name} ({r.qty_g:.0f}g) — estimated (not in USDA) — "
+                f"{r.kcal:.0f} kcal · {r.protein_g:.0f}g protein · "
+                f"{r.fiber_g:.0f}g fiber"
+            )
+            for key in totals:
+                totals[key] += getattr(r, key)
             continue
 
         flag = (
@@ -310,7 +320,9 @@ async def log_meal(
     Returns:
         MealLogResult with meal_id, totals, and confirmation message.
     """
-    resolved = [r for r in usda_results if r.fdc_id != -1]
+    # LLM estimates also carry fdc_id=-1 (no real FDC row) but ARE usable
+    # nutrition data — only exclude true misses (no estimate either).
+    resolved = [r for r in usda_results if r.fdc_id != -1 or r.estimated]
     totals = {
         "kcal": round(sum(r.kcal for r in resolved), 1),
         "protein_g": round(sum(r.protein_g for r in resolved), 1),
@@ -337,3 +349,29 @@ async def log_meal(
             f"{totals['fiber_g']:.0f}g fiber"
         ),
     )
+
+
+async def soft_delete_meal(meal_id: str, user_id: str) -> bool:
+    """Mark a meal_log row as deleted without removing it.
+
+    The `meal_log_set_updated_at` trigger bumps `updated_at`, which lets the
+    integration API surface this as a tombstone on the next poll.
+
+    Args:
+        meal_id: UUID of the meal to delete.
+        user_id: Supabase Auth UUID — scopes the update to the owner.
+
+    Returns:
+        True if a row was updated, False if no matching row was found.
+    """
+    async with get_session()() as session:
+        result = await session.execute(
+            sa_text(
+                "UPDATE meal_log SET deleted_at = now() "
+                "WHERE meal_id = :meal_id AND user_id = :user_id "
+                "AND deleted_at IS NULL"
+            ),
+            {"meal_id": meal_id, "user_id": user_id},
+        )
+        await session.commit()
+    return result.rowcount > 0

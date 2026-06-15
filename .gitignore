@@ -11,3 +11,19 @@ wheels/
 
 # Environment secrets
 .env
+.env.local
+frontend/.env*
+
+# Local Netlify folder
+.netlify
+
+# Local agent/skill tooling (not project code)
+.mcp.json
+.agents/
+.claude/agents/
+.claude/skills/
+skills/
+skills-lock.json
+# Stray local artifacts
+.railway-config-pull-*/
+*-this-session-is-being-continued-*.txt

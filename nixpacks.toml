@@ -1,0 +1,13 @@
+# Nixpacks build plan for Railway. Selects Python 3.13 (matches
+# pyproject.toml requires-python) and installs dependencies with uv so the
+# `backend` package (src/backend) is importable without PYTHONPATH tweaks.
+[phases.setup]
+nixPkgs = ["python313", "uv"]
+
+[phases.install]
+cmds = ["uv sync --frozen"]
+
+[start]
+# Overridden per-service by railway.json (web) or the Railway service
+# "Custom Start Command" (worker / bot) — see docs/deployment/railway.md.
+cmd = "uv run uvicorn backend.main:app --host 0.0.0.0 --port $PORT"

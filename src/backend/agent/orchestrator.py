@@ -208,6 +208,8 @@ async def _handle_meal_logging(
                         "fiber_g": r["fiber_g"],
                         "fdc_id": r["fdc_id"],
                         "candidates": r.get("candidates", []),
+                        "source": r.get("source", "USDA"),
+                        "estimated": r.get("estimated", False),
                     }
                 )
 

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-from backend.api import goals, meals
+from backend.api import goals, integrations, meals, telegram_link
 from backend.observability import configure_observability
 
 
@@ -29,8 +29,19 @@ app = FastAPI(title="NutriChat", version="0.1.0", lifespan=lifespan)
 
 configure_observability(app)
 
+# Production frontend (Vercel) origin, in addition to localhost dev origins.
+# Set FRONTEND_ORIGIN to the deployed Vercel URL, e.g.
+# https://nutrichat.vercel.app — comma-separated values are supported for
+# preview deployments (e.g. multiple Vercel preview URLs).
+_frontend_origins = [
+    origin.strip()
+    for origin in os.environ.get("FRONTEND_ORIGIN", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=_frontend_origins,
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
@@ -39,6 +50,13 @@ app.add_middleware(
 
 app.include_router(meals.router)
 app.include_router(goals.router)
+app.include_router(integrations.router)
+app.include_router(telegram_link.router)
+
+if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
+    from backend.telegram.bot import setup_webhook
+
+    setup_webhook(app)
 
 
 @app.get("/health")

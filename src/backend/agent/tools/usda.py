@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import re
 
 import aiohttp
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic_ai import Agent
+from pydantic_ai.models.google import GoogleModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.agent.llm import FLASH_LITE_MODEL
 from backend.config import get_tunables
 from backend.db.session import get_session
 
@@ -66,6 +71,31 @@ class USDAResult(BaseModel):
     # Full nutrient breakdown scaled to qty_g (~50 nutrients)
     nutrients: dict[str, NutrientValue]
 
+    # Plan A — LLM nutrition estimation fallback (agent/tools/usda.py
+    # estimate_nutrition_llm). "USDA" for real FoodData Central matches
+    # (incl. cache hits), "LLM_ESTIMATE" when no confident USDA match was
+    # found and the model estimated macros instead.
+    source: str = "USDA"
+    estimated: bool = False
+
+
+class NutritionEstimate(BaseModel):
+    """LLM-estimated nutrition for a food at a specific gram weight.
+
+    Used by estimate_nutrition_llm() as the pydantic-ai structured output
+    type. All values are TOTALS for the given qty_g, not per-100g.
+    """
+
+    kcal: float = Field(ge=0.0)
+    protein_g: float = Field(ge=0.0)
+    carbs_g: float = Field(ge=0.0)
+    fat_g: float = Field(ge=0.0)
+    fiber_g: float = Field(ge=0.0)
+    sugar_g: float = Field(ge=0.0)
+    sat_fat_g: float = Field(ge=0.0)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 # ---------------------------------------------------------------------------
 # Cache helpers
@@ -73,13 +103,18 @@ class USDAResult(BaseModel):
 
 
 async def _cache_lookup(food_name: str) -> dict | None:
-    """Check Postgres food_source for a matching food name (case-insensitive)."""
+    """Check Postgres food_source for a real USDA match (case-insensitive).
+
+    Excludes LLM_ESTIMATE rows — those are looked up separately via
+    _estimate_cache_lookup so a previous estimate never masquerades as a
+    confident USDA hit.
+    """
     try:
         async with get_session()() as session:
             result = await session.execute(
                 text(
                     "SELECT fdc_id, food_name, nutrients FROM food_source "
-                    "WHERE food_name ILIKE :name LIMIT 1"
+                    "WHERE food_name ILIKE :name AND source_db = 'FDC' LIMIT 1"
                 ),
                 {"name": f"%{food_name}%"},
             )
@@ -114,15 +149,83 @@ async def _cache_write(fdc_id: int, food_name: str, nutrients: dict) -> None:
         logger.warning("Cache write failed: %s", exc)
 
 
+def _normalize_food_name(food_name: str) -> str:
+    """Lowercase + collapse whitespace for stable LLM-estimate cache keys."""
+    return " ".join(food_name.lower().split())
+
+
+def _estimate_fdc_id(normalized_name: str) -> int:
+    """Deterministic negative fdc_id for an LLM-estimate cache row.
+
+    food_source.fdc_id is the primary key, so estimates can't all share
+    -1 — hash the normalized food name into a stable negative integer
+    instead (collisions across distinct foods are astronomically
+    unlikely and self-heal via ON CONFLICT DO NOTHING + re-estimate).
+    """
+    digest = hashlib.sha256(normalized_name.encode("utf-8")).hexdigest()
+    return -1 * (int(digest[:15], 16) % 2_000_000_000 + 1)
+
+
+async def _estimate_cache_lookup(food_name: str) -> dict | None:
+    """Check food_source for a previously cached LLM estimate (per-100g)."""
+    normalized = _normalize_food_name(food_name)
+    try:
+        async with get_session()() as session:
+            result = await session.execute(
+                text(
+                    "SELECT fdc_id, food_name, nutrients FROM food_source "
+                    "WHERE food_name = :name AND source_db = 'LLM_ESTIMATE' LIMIT 1"
+                ),
+                {"name": normalized},
+            )
+            row = result.fetchone()
+            if row:
+                return {"fdc_id": row[0], "food_name": row[1], "nutrients": row[2]}
+    except SQLAlchemyError as exc:
+        logger.warning("Estimate cache lookup failed: %s", exc)
+    return None
+
+
+async def _estimate_cache_write(food_name: str, nutrients_per_100g: dict) -> None:
+    """Cache an LLM nutrition estimate (per-100g) keyed by normalized name."""
+    normalized = _normalize_food_name(food_name)
+    fdc_id = _estimate_fdc_id(normalized)
+    try:
+        async with get_session()() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO food_source "
+                    "(fdc_id, food_name, nutrients, nutrients_count, source_db) "
+                    "VALUES (:fdc_id, :name, CAST(:nutrients AS jsonb), :count, "
+                    "'LLM_ESTIMATE') "
+                    "ON CONFLICT (fdc_id) DO NOTHING"
+                ),
+                {
+                    "fdc_id": fdc_id,
+                    "name": normalized,
+                    "nutrients": json.dumps(nutrients_per_100g),
+                    "count": len(nutrients_per_100g),
+                },
+            )
+            await session.commit()
+    except SQLAlchemyError as exc:
+        logger.warning("Estimate cache write failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 def _confidence(query: str, description: str) -> float:
-    """Jaccard similarity between query words and FDC description words."""
-    a = set(query.lower().split())
-    b = set(description.lower().split())
+    """Jaccard similarity between query words and FDC description words.
+
+    FDC descriptions are comma-separated ("Egg, whole, cooked, scrambled"),
+    so punctuation is stripped before tokenizing — otherwise "scrambled"
+    and "scrambled," never match and every score is artificially low.
+    """
+    a = set(re.sub(r"[^\w\s]", "", query.lower()).split())
+    b = set(re.sub(r"[^\w\s]", "", description.lower()).split())
     if not a or not b:
         return 0.5
     return round(len(a & b) / len(a | b), 3)
@@ -241,12 +344,131 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
 
 
 # ---------------------------------------------------------------------------
+# LLM nutrition estimate (Plan A fallback)
+# ---------------------------------------------------------------------------
+
+_ESTIMATE_SYSTEM = _TUNABLES.prompts.nutrition_estimate_system
+
+_estimate_agent = Agent(
+    GoogleModel(FLASH_LITE_MODEL),
+    output_type=NutritionEstimate,
+    system_prompt=_ESTIMATE_SYSTEM,
+)
+
+
+def _estimate_result(entity, per_100g: dict[str, float]) -> USDAResult:
+    """Build a USDAResult tagged as an LLM estimate from per-100g macros."""
+    scale = entity.qty_g / 100.0
+    macros = {field: round(val * scale, 2) for field, val in per_100g.items()}
+    return USDAResult(
+        fdc_id=-1,
+        food_name=entity.food_name,
+        qty_g=entity.qty_g,
+        match_confidence=_TUNABLES.usda.llm_estimate_confidence,
+        candidates=[],
+        **macros,
+        nutrients={},
+        source="LLM_ESTIMATE",
+        estimated=True,
+    )
+
+
+async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
+    """Estimate nutrition for a food the USDA database can't confidently match.
+
+    Cache-first: checks food_source for a previously cached LLM_ESTIMATE row
+    (keyed by normalized food name, stored per-100g) before calling Gemini.
+
+    Args:
+        food_name: Free-text food name, e.g. "chicken biryani".
+        qty_g: Gram weight of the portion.
+
+    Returns:
+        USDAResult with fdc_id=-1, source="LLM_ESTIMATE", estimated=True,
+        and macros scaled to qty_g.
+    """
+    cached = await _estimate_cache_lookup(food_name)
+    if cached:
+        per_100g = {k: float(v) for k, v in cached["nutrients"].items()}
+        entity_like = _EntityShim(food_name=cached["food_name"], qty_g=qty_g)
+        return _estimate_result(entity_like, per_100g)
+
+    entity_like = _EntityShim(food_name=food_name, qty_g=qty_g)
+    try:
+        run = await _estimate_agent.run(
+            f"Food: {food_name}\nQuantity: {qty_g}g"
+        )
+        estimate = run.output
+    except Exception as exc:  # noqa: BLE001 — any LLM/provider failure -> miss
+        logger.error("LLM nutrition estimate failed for %s: %s", food_name, exc)
+        return _miss_result(entity_like)
+
+    # Store per-100g so qty scaling works the same as USDA cache rows.
+    scale_to_100 = 100.0 / qty_g if qty_g else 0.0
+    per_100g = {
+        field: getattr(estimate, field) * scale_to_100
+        for field in (
+            "kcal",
+            "protein_g",
+            "carbs_g",
+            "fat_g",
+            "fiber_g",
+            "sugar_g",
+            "sat_fat_g",
+        )
+    }
+    await _estimate_cache_write(food_name, per_100g)
+
+    return USDAResult(
+        fdc_id=-1,
+        food_name=food_name,
+        qty_g=qty_g,
+        match_confidence=_TUNABLES.usda.llm_estimate_confidence,
+        candidates=[],
+        kcal=estimate.kcal,
+        protein_g=estimate.protein_g,
+        carbs_g=estimate.carbs_g,
+        fat_g=estimate.fat_g,
+        fiber_g=estimate.fiber_g,
+        sugar_g=estimate.sugar_g,
+        sat_fat_g=estimate.sat_fat_g,
+        nutrients={},
+        source="LLM_ESTIMATE",
+        estimated=True,
+    )
+
+
+class _EntityShim:
+    """Minimal food_name/qty_g object for reusing _miss_result/_estimate_result."""
+
+    def __init__(self, food_name: str, qty_g: float) -> None:
+        self.food_name = food_name
+        self.qty_g = qty_g
+
+
+# ---------------------------------------------------------------------------
 # Core fetch
 # ---------------------------------------------------------------------------
 
 
 async def _fetch_one(session: aiohttp.ClientSession, entity) -> USDAResult:
-    """Fetch one entity: cache-first, FDC on miss, write cache on miss."""
+    """Fetch one entity: cache-first, FDC on miss, write cache on miss.
+
+    Confidence gate (Plan A): if the best USDA match's match_confidence is
+    below usda.match_confidence_floor, or there is no usable match at all
+    (fdc_id == -1), discard the weak hit and fall back to
+    estimate_nutrition_llm() instead.
+    """
+    result = await _fetch_usda(session, entity)
+
+    floor = _TUNABLES.usda.match_confidence_floor
+    if result.fdc_id == -1 or result.match_confidence < floor:
+        return await estimate_nutrition_llm(entity.food_name, entity.qty_g)
+    return result
+
+
+async def _fetch_usda(session: aiohttp.ClientSession, entity) -> USDAResult:
+    """Fetch one entity from the real USDA pipeline: cache-first, FDC on miss."""
     cached = await _cache_lookup(entity.food_name)
     if cached:
         return _result_from_cache(cached, entity)

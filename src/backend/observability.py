@@ -61,6 +61,17 @@ def configure_observability(app: FastAPI | None = None) -> None:
         return
     _configured = True
 
+    # Production kill-switch: set LOGFIRE_ENABLED=false to ship no telemetry.
+    # Logfire is still configured with send_to_logfire=False so that the
+    # logfire.span(...) calls scattered through the code stay valid local
+    # no-ops; all instrumentation is skipped to avoid the patching overhead.
+    if os.environ.get("LOGFIRE_ENABLED", "true").lower() != "true":
+        logfire.configure(
+            service_name="nutrichat", send_to_logfire=False, console=False
+        )
+        logger.info("Logfire disabled (LOGFIRE_ENABLED=false); spans are no-ops")
+        return
+
     logfire.configure(
         service_name="nutrichat",
         environment=os.environ.get("LOGFIRE_ENVIRONMENT", "dev"),
@@ -93,6 +104,15 @@ def configure_observability(app: FastAPI | None = None) -> None:
         logfire.instrument_aiohttp_client()
     except ImportError:
         logger.warning("logfire aiohttp_client instrumentation unavailable")
+
+    # Pydantic AI's GoogleModel issues Gemini calls over httpx (USDA uses
+    # aiohttp, instrumented above). capture_all records request/response
+    # bodies and headers; sensitive headers (x-goog-api-key, authorization)
+    # are redacted by Logfire's default scrubbing plus _scrub_extra.
+    try:
+        logfire.instrument_httpx(capture_all=True)
+    except ImportError:
+        logger.warning("logfire httpx instrumentation unavailable")
 
     try:
         from opentelemetry.instrumentation.langchain import LangchainInstrumentor

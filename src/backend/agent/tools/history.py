@@ -102,6 +102,106 @@ async def get_micronutrients_for_range(
     return results
 
 
+async def get_food_breakdown_for_range(
+    user_id: str, date_from: date, date_to: date
+) -> dict[str, list[dict]]:
+    """Summarize logged foods over a range for food-content reasoning.
+
+    Unnests `meal_log.entities` to find the most frequently logged foods
+    and the highest-calorie individual items, and cross-references
+    `meal_log.flags.junk_items` to find flagged junk foods.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        date_from: Start of the range (inclusive).
+        date_to: End of the range (inclusive).
+
+    Returns:
+        Dict with:
+            top_foods_by_frequency: list of {food_name, count, total_kcal},
+                up to 8 items, ordered by count desc.
+            flagged_junk_foods: list of {food_name, count}, foods that
+                appeared in flags.junk_items, ordered by count desc.
+            highest_calorie_foods: list of {food_name, kcal}, top 5
+                individual items by per-item kcal.
+    """
+    params = {"user_id": user_id, "date_from": date_from, "date_to": date_to}
+
+    async with get_session()() as session:
+        freq_result = await session.execute(
+            sa_text(
+                "SELECT "
+                "item->>'food_name' AS food_name, "
+                "COUNT(*) AS count, "
+                "COALESCE(SUM((item->>'kcal')::float), 0) AS total_kcal "
+                "FROM meal_log, "
+                "jsonb_array_elements(entities) AS item "
+                "WHERE user_id = :user_id "
+                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND deleted_at IS NULL "
+                "GROUP BY item->>'food_name' "
+                "ORDER BY count DESC "
+                "LIMIT 8"
+            ),
+            params,
+        )
+        top_foods_by_frequency = [
+            {
+                "food_name": row.food_name,
+                "count": int(row.count),
+                "total_kcal": float(row.total_kcal),
+            }
+            for row in freq_result
+        ]
+
+        junk_result = await session.execute(
+            sa_text(
+                "SELECT "
+                "junk_item AS food_name, "
+                "COUNT(*) AS count "
+                "FROM meal_log, "
+                "jsonb_array_elements_text(flags->'junk_items') AS junk_item "
+                "WHERE user_id = :user_id "
+                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND deleted_at IS NULL "
+                "AND (flags->>'has_junk')::boolean IS TRUE "
+                "GROUP BY junk_item "
+                "ORDER BY count DESC"
+            ),
+            params,
+        )
+        flagged_junk_foods = [
+            {"food_name": row.food_name, "count": int(row.count)} for row in junk_result
+        ]
+
+        high_kcal_result = await session.execute(
+            sa_text(
+                "SELECT "
+                "item->>'food_name' AS food_name, "
+                "(item->>'kcal')::float AS kcal "
+                "FROM meal_log, "
+                "jsonb_array_elements(entities) AS item "
+                "WHERE user_id = :user_id "
+                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND deleted_at IS NULL "
+                "AND item->>'kcal' IS NOT NULL "
+                "ORDER BY kcal DESC "
+                "LIMIT 5"
+            ),
+            params,
+        )
+        highest_calorie_foods = [
+            {"food_name": row.food_name, "kcal": float(row.kcal)}
+            for row in high_kcal_result
+        ]
+
+    return {
+        "top_foods_by_frequency": top_foods_by_frequency,
+        "flagged_junk_foods": flagged_junk_foods,
+        "highest_calorie_foods": highest_calorie_foods,
+    }
+
+
 async def get_history(
     user_id: str,
     query_embedding: list[float] | None = None,
@@ -164,4 +264,9 @@ async def get_history(
     ]
 
 
-__all__ = ["get_macros_for_range", "get_micronutrients_for_range", "get_history"]
+__all__ = [
+    "get_food_breakdown_for_range",
+    "get_history",
+    "get_macros_for_range",
+    "get_micronutrients_for_range",
+]

@@ -1,6 +1,31 @@
 import { useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
 import type { ChatMessage } from '../../stores/mealStore'
 import { ConfirmationCard } from './ConfirmationCard'
+
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
+  em: ({ children }) => <em className="text-muted">{children}</em>,
+  ul: ({ children }) => <ul className="my-1.5 ml-4 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1.5 ml-4 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="leading-snug">{children}</li>,
+  h1: ({ children }) => <h4 className="font-display text-[15px] font-bold mt-2 mb-1">{children}</h4>,
+  h2: ({ children }) => <h4 className="font-display text-[15px] font-bold mt-2 mb-1">{children}</h4>,
+  h3: ({ children }) => <h3 className="font-display text-[14px] font-bold mt-2 mb-1">{children}</h3>,
+  h4: ({ children }) => <h4 className="font-display text-[14px] font-bold mt-2 mb-1">{children}</h4>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="text-sage underline">
+      {children}
+    </a>
+  ),
+  code: ({ children }) => (
+    <code className="bg-sand-border/60 rounded px-1 py-0.5 text-[13px]">{children}</code>
+  ),
+}
 
 interface ChatThreadProps {
   messages: ChatMessage[]
@@ -86,13 +111,15 @@ export function ChatThread({ messages, onAction, isLoading }: ChatThreadProps) {
                     />
                   </div>
                 )}
-                <p
-                  className={`text-[14px] leading-relaxed whitespace-pre-wrap ${
-                    isUser ? '' : 'text-ink-soft'
-                  }`}
-                >
-                  {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
-                </p>
+                {isUser ? (
+                  <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                ) : (
+                  <div className="text-[14px] leading-relaxed text-ink-soft">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                      {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
 
               {hasCard && (

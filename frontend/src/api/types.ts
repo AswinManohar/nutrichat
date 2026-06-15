@@ -10,6 +10,10 @@ export interface MealItem {
   fdc_id: number;
   /** Alternative USDA description strings, first entry = current match */
   candidates: string[];
+  /** "USDA" for real FoodData Central matches, "LLM_ESTIMATE" otherwise */
+  source: string;
+  /** True when nutrition was estimated by the LLM (no confident USDA match) */
+  estimated: boolean;
 }
 
 export interface LogMealRequest {
@@ -38,6 +42,16 @@ export interface GoalData {
   fiber_goal: number;
   dietary_prefs: Record<string, unknown>;
   streak_days?: number;
+}
+
+export interface TelegramLinkCode {
+  code: string;
+  expires_in: number;
+  bot_username: string;
+}
+
+export interface TelegramLinkStatus {
+  linked: boolean;
 }
 
 export interface DayTrend {

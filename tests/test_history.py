@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agent.tools.history import (
+    get_food_breakdown_for_range,
     get_history,
     get_macros_for_range,
     get_micronutrients_for_range,
@@ -95,6 +96,60 @@ async def test_get_micronutrients_for_range_omits_missing_nutrients():
         )
 
     assert result == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_get_food_breakdown_for_range_returns_expected_shape():
+    freq_rows = [
+        MagicMock(food_name="Chicken breast, grilled", count=9, total_kcal=2250.0),
+        MagicMock(food_name="Whey protein shake", count=7, total_kcal=1400.0),
+    ]
+    junk_rows = [
+        MagicMock(food_name="Cheeseburger", count=5),
+        MagicMock(food_name="French fries", count=4),
+    ]
+    high_kcal_rows = [
+        MagicMock(food_name="Cheeseburger", kcal=550.0),
+        MagicMock(food_name="French fries", kcal=300.0),
+    ]
+
+    freq_result = MagicMock()
+    freq_result.__iter__.return_value = iter(freq_rows)
+    junk_result = MagicMock()
+    junk_result.__iter__.return_value = iter(junk_rows)
+    high_kcal_result = MagicMock()
+    high_kcal_result.__iter__.return_value = iter(high_kcal_rows)
+
+    session = MagicMock()
+    session.execute = AsyncMock(
+        side_effect=[freq_result, junk_result, high_kcal_result]
+    )
+    factory = _mock_session_factory(session)
+
+    with patch("backend.agent.tools.history.get_session", return_value=factory):
+        result = await get_food_breakdown_for_range(
+            "user-1", date(2026, 5, 13), date(2026, 6, 11)
+        )
+
+    assert result["top_foods_by_frequency"] == [
+        {"food_name": "Chicken breast, grilled", "count": 9, "total_kcal": 2250.0},
+        {"food_name": "Whey protein shake", "count": 7, "total_kcal": 1400.0},
+    ]
+    assert result["flagged_junk_foods"] == [
+        {"food_name": "Cheeseburger", "count": 5},
+        {"food_name": "French fries", "count": 4},
+    ]
+    assert result["highest_calorie_foods"] == [
+        {"food_name": "Cheeseburger", "kcal": 550.0},
+        {"food_name": "French fries", "kcal": 300.0},
+    ]
+    assert session.execute.await_count == 3
+    # All three queries are parameterized and date-range filtered.
+    for call in session.execute.call_args_list:
+        stmt = str(call[0][0])
+        assert "logged_at::date BETWEEN :date_from AND :date_to" in stmt
+        assert "deleted_at IS NULL" in stmt
 
 
 @pytest.mark.asyncio

@@ -80,6 +80,7 @@ async def get_trends(
                 "COUNT(*) FILTER (WHERE (flags->>'has_junk')::boolean) AS junk_meals "
                 "FROM meal_log "
                 "WHERE user_id = :user_id AND logged_at::date >= :date_from "
+                "AND deleted_at IS NULL "
                 "GROUP BY day ORDER BY day"
             ),
             {"user_id": user_id, "date_from": date_from},

@@ -44,6 +44,8 @@ class UsdaConfig(BaseModel):
     cache_hit_confidence: float = Field(ge=0.0, le=1.0)
     low_confidence_flag_below: float = Field(ge=0.0, le=1.0)
     suggest_alternative_below: float = Field(ge=0.0, le=1.0)
+    match_confidence_floor: float = Field(ge=0.0, le=1.0)
+    llm_estimate_confidence: float = Field(ge=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,6 +99,7 @@ class PromptsConfig(BaseModel):
     coaching_role_and_tone: str
     coaching_hard_constraints: str
     fact_extraction_system: str
+    nutrition_estimate_system: str
 
     model_config = ConfigDict(extra="forbid")
 

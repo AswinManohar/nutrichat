@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient, ApiError } from './client'
-import type { DayTrend, LogMealRequest, LogMealResponse, TodayTotals, GoalData } from './types'
+import type {
+  DayTrend,
+  LogMealRequest,
+  LogMealResponse,
+  TodayTotals,
+  GoalData,
+  TelegramLinkCode,
+  TelegramLinkStatus,
+} from './types'
 
 export const useTrends = (days = 91) => {
   return useQuery<DayTrend[], Error>({
@@ -50,6 +58,29 @@ export const useUpdateGoals = () => {
     onSuccess: (data) => {
       queryClient.setQueryData(['goals'], data)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export const useTelegramLinkStatus = () => {
+  return useQuery<TelegramLinkStatus, ApiError>({
+    queryKey: ['telegram', 'link'],
+    queryFn: () => apiClient.get<TelegramLinkStatus>('/telegram/link'),
+  })
+}
+
+export const useGenerateTelegramLinkCode = () => {
+  return useMutation<TelegramLinkCode, Error, void>({
+    mutationFn: () => apiClient.post<TelegramLinkCode>('/telegram/link-code'),
+  })
+}
+
+export const useDisconnectTelegram = () => {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, void>({
+    mutationFn: () => apiClient.delete<void>('/telegram/link'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['telegram', 'link'] })
     },
   })
 }

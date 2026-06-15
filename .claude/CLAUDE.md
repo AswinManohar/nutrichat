@@ -22,6 +22,7 @@ and tracks daily nutrition goals.
 | Embeddings | Gemini gemini-embedding-001 (768-dim via output_dimensionality) |
 | Auth | Supabase Auth |
 | Frontend | React 19 · TypeScript · Vite · Tailwind CSS |
+| Telegram bot | aiogram 3 (polling for dev, webhook for prod) |
 | Food data | USDA FoodData Central (CC0, free) |
 | Hosting | Railway (backend) · Vercel (frontend) |
 
@@ -96,6 +97,7 @@ USDA_API_KEY=            # fdc.nal.usda.gov/api-key-signup/
 uvicorn backend.main:app --reload --port 8000
 alembic upgrade head
 celery -A backend.workers.tasks worker --loglevel=info
+python -m backend.telegram.bot   # Telegram bot, polling mode (dev)
 
 # Frontend
 cd frontend && npm run dev

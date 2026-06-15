@@ -20,6 +20,7 @@ EXPECTED_TABLES = {
     "food_source",
     "daily_summary",
     "weekly_summary",
+    "integration_token",
 }
 
 EXPECTED_INDEXES = {
@@ -27,11 +28,15 @@ EXPECTED_INDEXES = {
     "ix_meal_log_user_protein",
     "ix_meal_log_hybrid",
     "ix_meal_log_embedding",
+    "ix_meal_log_cursor",
     "ix_user_memory_embedding",
     "ix_user_memory_user_id",
     "ix_food_source_food_name",
     "ix_daily_summary_user_date",
+    "ix_daily_summary_cursor",
     "ix_weekly_summary_user_week",
+    "ix_weekly_summary_cursor",
+    "ix_integration_token_token_hash",
 }
 
 

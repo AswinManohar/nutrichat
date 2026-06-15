@@ -1,16 +1,34 @@
 import React, { useState } from 'react'
-import { useGoals, useUpdateGoals } from '../api/hooks'
+import {
+  useGoals,
+  useUpdateGoals,
+  useTelegramLinkStatus,
+  useGenerateTelegramLinkCode,
+  useDisconnectTelegram,
+} from '../api/hooks'
 import { GoalSlider } from '../components/onboarding/GoalSlider'
 import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
-import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target } from 'lucide-react'
+import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send } from 'lucide-react'
 
 export const SettingsPage: React.FC = () => {
   const { user, signOut, isBypassed, disableBypass } = useAuthStore()
   const { data: goals, isLoading: goalsLoading } = useGoals()
   const updateGoalsMutation = useUpdateGoals()
+
+  // Telegram linking
+  const { data: telegramStatus } = useTelegramLinkStatus()
+  const generateLinkCodeMutation = useGenerateTelegramLinkCode()
+  const disconnectTelegramMutation = useDisconnectTelegram()
+  const [linkCode, setLinkCode] = useState<{ code: string; bot_username: string } | null>(null)
+
+  const handleGenerateCode = () => {
+    generateLinkCodeMutation.mutate(undefined, {
+      onSuccess: (data) => setLinkCode({ code: data.code, bot_username: data.bot_username }),
+    })
+  }
 
   // Local state for settings form
   const [kcalGoal, setKcalGoal] = useState(2000)
@@ -174,6 +192,60 @@ export const SettingsPage: React.FC = () => {
             </Button>
           </div>
         </form>
+
+        {/* Telegram Linking Card */}
+        <Card className="border border-sand-border bg-sand backdrop-blur-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-sage-deep" />
+              Telegram Bot
+            </CardTitle>
+            <CardDescription>
+              Log meals and ask coaching questions from Telegram.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs">
+            {telegramStatus?.linked ? (
+              <div className="flex items-center justify-between">
+                <span className="text-ink-soft">Telegram is connected to your account.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => disconnectTelegramMutation.mutate()}
+                  isLoading={disconnectTelegramMutation.isPending}
+                  className="border-sand-border hover:bg-danger/5 hover:text-danger hover:border-danger/20"
+                >
+                  Disconnect
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {linkCode ? (
+                  <div className="bg-container border border-sage/30 rounded-xl p-3 space-y-1">
+                    <p className="text-ink-soft">
+                      Send this to{' '}
+                      <span className="font-semibold">@{linkCode.bot_username || 'the bot'}</span> within
+                      10 minutes:
+                    </p>
+                    <p className="font-mono text-lg font-bold text-sage-deep">
+                      /link {linkCode.code}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-muted">Not connected yet.</p>
+                )}
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleGenerateCode}
+                  isLoading={generateLinkCodeMutation.isPending}
+                >
+                  {linkCode ? 'Generate new code' : 'Connect Telegram'}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Profile / Account Settings Section */}
         <Card className="border border-sand-border bg-sand backdrop-blur-md mt-4">

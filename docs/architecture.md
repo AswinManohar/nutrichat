@@ -1,7 +1,7 @@
 # NutriChat — System Architecture
 
-> Status: reflects the implemented backend as of 2026-06-11 (milestones M0–M5
-> complete; web frontend, Telegram bot, and eval harness not yet built).
+> Status: reflects the implemented backend as of 2026-06-12 (milestones
+> M0–M5 + M7 Telegram bot complete; eval harness not yet built).
 > Diagrams are Mermaid — rendered by GitHub, VS Code (with the Mermaid
 > extension), or https://mermaid.live.
 
@@ -11,7 +11,7 @@
 flowchart TB
     subgraph Clients
         WEB["Web app (React 19)\n— planned M6"]
-        TG["Telegram bot (aiogram)\n— planned M7"]
+        TG["Telegram bot (aiogram)\nbackend/telegram/"]
         CURL["curl / API clients\n(current test interface)"]
     end
 
@@ -19,7 +19,14 @@ flowchart TB
         AUTH["auth/supabase.py\nJWT validation\n(DEV_BYPASS_AUTH escape hatch)"]
         MEALS_API["api/meals.py\nPOST /meals/log"]
         GOALS_API["api/goals.py\nGET/POST/PUT /goals"]
+        TGLINK_API["api/telegram_link.py\nlink-code · link status"]
         ORCH["agent/orchestrator.py\nhandle_message()\nintent routing"]
+    end
+
+    subgraph TGBOT["Telegram bot process (telegram/)"]
+        TGHANDLERS["handlers.py\n/start /link /new /goals\ntext · photo · confirm/cancel"]
+        TGAUTH["auth.py\nresolve_user_id(chat_id)"]
+        TGSESS["session.py\nper-chat thread_id"]
     end
 
     subgraph Agents
@@ -43,8 +50,8 @@ flowchart TB
     end
 
     subgraph Storage
-        PG[("PostgreSQL 16 + pgvector\nmeal_log · user_goal · user_memory\nfood_source · daily_summary\nweekly_summary · checkpoints")]
-        RDS[("Redis\ntoday:{user} totals\n+ Celery broker")]
+        PG[("PostgreSQL 16 + pgvector\nmeal_log · user_goal · user_memory\nfood_source · daily_summary\nweekly_summary · telegram_link\ncheckpoints")]
+        RDS[("Redis\ntoday:{user} totals\ntglink:code:* · tguser:*\ntgthread:{chat_id}\n+ Celery broker")]
     end
 
     subgraph External
@@ -55,8 +62,16 @@ flowchart TB
 
     CFG["config/tunables.yaml\nprompts · models · thresholds"]
 
-    WEB & TG & CURL --> AUTH --> MEALS_API
+    WEB & CURL --> AUTH --> MEALS_API
     AUTH --> GOALS_API
+    AUTH --> TGLINK_API
+    TGLINK_API --> RDS
+    TGLINK_API --> PG
+    TG --> TGHANDLERS
+    TGHANDLERS --> TGAUTH --> PG & RDS
+    TGHANDLERS --> TGSESS --> RDS
+    TGHANDLERS -->|"handle_message() in-process"| ORCH
+    TGHANDLERS <-->|checkpoints| PG
     MEALS_API --> ORCH
     ORCH -->|log_meal / paused / image| GRAPH
     ORCH -->|coaching question| COACH
@@ -161,6 +176,9 @@ fine without a token.
 
 ## 7. Observability
 
+> Full deep dive (trace trees per action, cost tracking, scrubbing, runbook):
+> [`observability.md`](./observability.md).
+
 `src/backend/observability.py` configures **Logfire** (OpenTelemetry) once per
 process via `configure_observability()`, called from `main.py` (API process,
 with the FastAPI app) and from a Celery `worker_process_init` signal handler
@@ -176,9 +194,13 @@ What is traced:
   `classify_intent_llm`, `coaching`, and `meal_logging`.
 - LangGraph node execution + Gemini calls, via the OpenLLMetry
   `LangchainInstrumentor`.
-- The Pydantic AI coaching pilot (`logfire.instrument_pydantic_ai`).
+- The Pydantic AI coaching pilot (`logfire.instrument_pydantic_ai`), plus its
+  raw Gemini HTTP calls (`logfire.instrument_httpx`, since GoogleModel uses httpx).
 - USDA lookups (`aiohttp` client, via `logfire.instrument_aiohttp_client`),
   Postgres (`asyncpg`), Redis, and Celery task execution.
+- **LLM cost** (`src/backend/agent/cost.py`): each Pydantic AI run is priced with
+  `genai-prices` and emitted as an `llm_cost` log-point plus a `gen_ai.cost_usd`
+  metric counter, labelled by model and operation.
 
 **Image scrubbing:** a custom `ScrubbingOptions` callback
 (`_scrub_extra`) redacts any span attribute whose key contains `image_b64`,
@@ -199,3 +221,14 @@ passed as a span attribute directly.
 | `log_meal` | **Not idempotent** — but protected by graph structure: the `log` node runs at most once per confirmation interrupt; a second "yes" on the same thread finds the graph at END and starts a fresh extraction instead |
 | Postgres insert + Redis increment | Not atomic — if Redis fails after the insert, today's totals undercount until the nightly aggregate; Postgres is the source of truth |
 | Celery task DB engine | Each task runs in a fresh event loop and disposes the engine afterwards (`_run()` wrapper) — prevents cross-loop asyncpg failures |
+
+## 9. Integration API
+
+`/v1/integrations/*` (see [docs/integration-api.md](integration-api.md))
+exposes a read-only, service-token-authenticated feed of meals, daily/weekly
+summaries, and goals for third-party consumers. Auth is separate from
+Supabase user JWTs — tokens are minted offline via
+`backend.scripts.mint_token` and validated by
+`backend.auth.integration.get_integration_user`. `meal_log` carries
+`updated_at`/`deleted_at` (with `moddatetime` triggers) so consumers can poll
+with keyset cursors and reconcile soft-deletes as tombstones.
