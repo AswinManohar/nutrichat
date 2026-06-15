@@ -6,6 +6,8 @@ import type {
   LogMealResponse,
   TodayTotals,
   GoalData,
+  NutrientCheckupResponse,
+  PendingNudgeResponse,
   TelegramLinkCode,
   TelegramLinkStatus,
 } from './types'
@@ -15,6 +17,37 @@ export const useTrends = (days = 91) => {
     queryKey: ['trends', days],
     queryFn: () => apiClient.get<DayTrend[]>(`/meals/trends?days=${days}`),
     staleTime: 60_000,
+  })
+}
+
+export const useNutrientCheckup = () => {
+  return useQuery<NutrientCheckupResponse, ApiError>({
+    queryKey: ['nutrient-checkup'],
+    queryFn: () => apiClient.get<NutrientCheckupResponse>('/nutrient-checkup'),
+    staleTime: 60_000,
+    retry: (failureCount, error) => {
+      // 404 means build_nutrient_checkup hasn't run for this user yet
+      if (error.status === 404) return false
+      return failureCount < 3
+    },
+  })
+}
+
+export const usePendingNudge = () => {
+  return useQuery<PendingNudgeResponse, ApiError>({
+    queryKey: ['nutrient-checkup', 'pending-nudge'],
+    queryFn: () => apiClient.get<PendingNudgeResponse>('/nutrient-checkup/pending-nudge'),
+    staleTime: Infinity,
+    retry: (failureCount, error) => {
+      if (error.status === 404) return false
+      return failureCount < 3
+    },
+  })
+}
+
+export const useAckPendingNudge = () => {
+  return useMutation<void, Error, void>({
+    mutationFn: () => apiClient.post<void>('/nutrient-checkup/pending-nudge/ack'),
   })
 }
 

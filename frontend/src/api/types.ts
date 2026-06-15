@@ -62,3 +62,25 @@ export interface DayTrend {
   n_meals: number;
   junk_meals: number;
 }
+
+export interface NutrientCheckupItem {
+  name: string;
+  avg: number;
+  prev_avg: number;
+  unit: string;
+  trend_pct: number | null;
+  direction: 'up' | 'down' | 'flat';
+  rda_pct: number | null;
+}
+
+export interface NutrientCheckupResponse {
+  date: string; // ISO date
+  nutrients: NutrientCheckupItem[];
+  generated_at: string;
+  notable: string[];
+  summary_text: string | null;
+}
+
+export interface PendingNudgeResponse {
+  summary_text: string | null;
+}
