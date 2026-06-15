@@ -62,3 +62,35 @@ async def test_build_nutrient_checkup_persists_summary_fields():
     params = compiled.params
     assert params["notable_nutrients"] == notable
     assert params["summary_text"] == summary_text
+
+
+@pytest.mark.asyncio
+async def test_send_daily_summary_telegram_sends_and_marks_sent():
+    from backend.workers.tasks import _send_daily_summary_telegram
+
+    row = MagicMock(chat_id=123456, user_id="user-1", summary_text="Eat more fiber!")
+    select_result = MagicMock()
+    select_result.all.return_value = [row]
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=select_result)
+    session.commit = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    bot.__aenter__ = AsyncMock(return_value=bot)
+    bot.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("backend.workers.tasks.get_session", return_value=factory),
+        patch("backend.telegram.bot.build_bot", return_value=bot),
+    ):
+        await _send_daily_summary_telegram(date(2026, 6, 14))
+
+    bot.send_message.assert_awaited_once_with(123456, "Eat more fiber!")
+    # Second execute call is the UPDATE marking telegram_sent_at.
+    update_call = session.execute.call_args_list[1]
+    stmt = str(update_call[0][0])
+    assert "telegram_sent_at" in stmt
+    session.commit.assert_awaited()

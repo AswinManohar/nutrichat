@@ -55,6 +55,10 @@ celery_app.conf.beat_schedule = {
         "task": "backend.workers.tasks.build_nutrient_checkup",
         "schedule": crontab(hour=1, minute=30),
     },
+    "send-daily-summary-telegram": {
+        "task": "backend.workers.tasks.send_daily_summary_telegram",
+        "schedule": crontab(hour=7, minute=0),
+    },
     "build-weekly-summary": {
         "task": "backend.workers.tasks.build_weekly_summary",
         "schedule": crontab(hour=23, minute=0, day_of_week="sun"),
@@ -436,6 +440,66 @@ def build_nutrient_checkup(target_date: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# send_daily_summary_telegram
+# ---------------------------------------------------------------------------
+
+
+async def _send_daily_summary_telegram(target_date: date) -> None:
+    # Imported here, not at module level: backend.telegram.bot -> handlers ->
+    # agent.orchestrator -> agent.tools.meals -> backend.workers.tasks would
+    # otherwise be a circular import at module load time.
+    import backend.telegram.bot as telegram_bot
+
+    session_factory = get_session()
+    async with session_factory() as session:
+        result = await session.execute(
+            sa_text(
+                "SELECT tl.chat_id, nc.user_id, nc.summary_text "
+                "FROM nutrient_checkup nc "
+                "JOIN telegram_link tl ON tl.user_id = nc.user_id "
+                "WHERE nc.date = :target_date "
+                "AND nc.summary_text IS NOT NULL "
+                "AND nc.telegram_sent_at IS NULL"
+            ),
+            {"target_date": target_date},
+        )
+        rows = result.all()
+
+        async with telegram_bot.build_bot() as bot:
+            for row in rows:
+                await bot.send_message(row.chat_id, row.summary_text)
+                await session.execute(
+                    sa_text(
+                        "UPDATE nutrient_checkup SET telegram_sent_at = now() "
+                        "WHERE user_id = :user_id AND date = :target_date"
+                    ),
+                    {"user_id": row.user_id, "target_date": target_date},
+                )
+        await session.commit()
+
+
+@celery_app.task(name="backend.workers.tasks.send_daily_summary_telegram")
+def send_daily_summary_telegram(target_date: str | None = None) -> None:
+    """Send the daily nutrient summary to linked Telegram chats.
+
+    Runs at 07:00 (after the 01:30 build_nutrient_checkup), for any user
+    whose `nutrient_checkup` row for `target_date` has a non-null
+    `summary_text` and hasn't been sent yet.
+
+    Args:
+        target_date: ISO date string for the check-up date to send.
+            Defaults to yesterday (the date build_nutrient_checkup just
+            computed).
+    """
+    resolved = (
+        date.fromisoformat(target_date)
+        if target_date
+        else date.today() - timedelta(days=1)
+    )
+    _run(_send_daily_summary_telegram(resolved))
+
+
+# ---------------------------------------------------------------------------
 # reset_day_keys
 # ---------------------------------------------------------------------------
 
@@ -463,5 +527,6 @@ __all__ = [
     "aggregate_daily_summary",
     "build_weekly_summary",
     "build_nutrient_checkup",
+    "send_daily_summary_telegram",
     "reset_day_keys",
 ]

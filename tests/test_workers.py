@@ -7,6 +7,7 @@ from backend.db.models import MealLog
 from backend.workers.tasks import (
     _ExtractedFacts,
     aggregate_daily_summary,
+    build_nutrient_checkup,
     build_weekly_summary,
     embed_meal_summary,
     extract_and_store_facts,
@@ -202,3 +203,69 @@ def test_reset_day_keys_resets_all_users():
     assert reset_mock.await_count == 2
     reset_mock.assert_any_await("user-1")
     reset_mock.assert_any_await("user-2")
+
+
+def test_build_nutrient_checkup_upserts_active_users():
+    user_rows = MagicMock()
+    user_rows.all.return_value = [MagicMock(user_id="user-1"), MagicMock(user_id="user-2")]
+
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=[user_rows, MagicMock(), MagicMock()])
+    session.commit = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    fake_nutrients = {
+        "Protein": {
+            "avg": 100.0,
+            "prev_avg": 90.0,
+            "unit": "g",
+            "trend_pct": 0.111,
+            "direction": "up",
+            "rda_pct": 200.0,
+        }
+    }
+
+    with (
+        patch("backend.workers.tasks.get_session", return_value=factory),
+        patch(
+            "backend.workers.tasks.get_nutrient_checkup_aggregates",
+            new_callable=AsyncMock,
+            return_value=fake_nutrients,
+        ) as agg_mock,
+    ):
+        build_nutrient_checkup(target_date="2026-06-14")
+
+    # One SELECT for active users + one upsert per user.
+    assert session.execute.await_count == 3
+    assert agg_mock.await_count == 2
+    agg_mock.assert_any_await("user-1", date(2026, 6, 14))
+    agg_mock.assert_any_await("user-2", date(2026, 6, 14))
+
+    upsert_call = session.execute.call_args_list[1]
+    compiled = upsert_call[0][0].compile()
+    assert compiled.params["nutrients"] == fake_nutrients
+    assert compiled.params["date"] == date(2026, 6, 14)
+    session.commit.assert_awaited_once()
+
+
+def test_build_nutrient_checkup_skips_users_without_recent_meals():
+    user_rows = MagicMock()
+    user_rows.all.return_value = []
+
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=user_rows)
+    session.commit = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    with (
+        patch("backend.workers.tasks.get_session", return_value=factory),
+        patch(
+            "backend.workers.tasks.get_nutrient_checkup_aggregates",
+            new_callable=AsyncMock,
+        ) as agg_mock,
+    ):
+        build_nutrient_checkup(target_date="2026-06-14")
+
+    agg_mock.assert_not_awaited()
+    assert session.execute.await_count == 1
+    session.commit.assert_awaited_once()
