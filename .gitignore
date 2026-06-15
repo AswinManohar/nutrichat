@@ -17,6 +17,12 @@ frontend/.env*
 # Local Netlify folder
 .netlify
 
+# Local dev script logs
+logs/
+
+# Sphinx build output
+docs/_build/
+
 # Local agent/skill tooling (not project code)
 .mcp.json
 .agents/

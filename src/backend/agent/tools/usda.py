@@ -24,6 +24,12 @@ _TUNABLES = get_tunables()
 
 USDA_SEARCH_URL = _TUNABLES.usda.search_url
 
+# Grammatical fillers dropped before matching so they don't count as
+# required query words (e.g. "rice with chicken" -> {rice, chicken}).
+_MATCH_STOPWORDS = frozenset(
+    {"and", "or", "with", "the", "a", "an", "of", "in", "on", "to"}
+)
+
 _MACRO_MAP = {
     "Energy": "kcal",
     "Protein": "protein_g",
@@ -217,18 +223,47 @@ async def _estimate_cache_write(food_name: str, nutrients_per_100g: dict) -> Non
 # ---------------------------------------------------------------------------
 
 
-def _confidence(query: str, description: str) -> float:
-    """Jaccard similarity between query words and FDC description words.
+def _singularize(token: str) -> str:
+    """Crude, symmetric singularizer so plurals match (eggs->egg).
 
-    FDC descriptions are comma-separated ("Egg, whole, cooked, scrambled"),
-    so punctuation is stripped before tokenizing — otherwise "scrambled"
-    and "scrambled," never match and every score is artificially low.
+    Applied to both query and description tokens, so even rough rules are
+    safe for matching — both sides normalize identically. Handles the
+    common English plural endings; leaves short tokens alone.
     """
-    a = set(re.sub(r"[^\w\s]", "", query.lower()).split())
-    b = set(re.sub(r"[^\w\s]", "", description.lower()).split())
+    if len(token) <= 3:
+        return token
+    if token.endswith("ies"):
+        return token[:-3] + "y"
+    if token.endswith(("ses", "shes", "ches", "xes")):
+        return token[:-2]
+    if token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _tokenize(text_value: str) -> set[str]:
+    """Lowercase, strip punctuation, drop stopwords, singularize."""
+    raw = re.sub(r"[^\w\s]", " ", text_value.lower()).split()
+    return {_singularize(t) for t in raw if t not in _MATCH_STOPWORDS}
+
+
+def _confidence(query: str, description: str) -> float:
+    """Match confidence as query-word coverage by the FDC description.
+
+    Returns the fraction of the user's food words that appear in the FDC
+    description (after singularizing and dropping filler words). Coverage,
+    not Jaccard: FDC descriptions are verbose ("Rice, white, long-grain,
+    regular, raw, enriched") and Jaccard's union denominator wrongly tanks
+    correct matches. Coverage asks the right question — "is the food the
+    user named actually in this description?" — so "white rice" and "banana"
+    score 1.0, while "chicken biryani" vs "Chicken spread" scores 0.5
+    (only "chicken" matched) and falls below the floor.
+    """
+    a = _tokenize(query)
+    b = _tokenize(description)
     if not a or not b:
         return 0.5
-    return round(len(a & b) / len(a | b), 3)
+    return round(len(a & b) / len(a), 3)
 
 
 def _miss_result(entity) -> USDAResult:
@@ -395,9 +430,7 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
 
     entity_like = _EntityShim(food_name=food_name, qty_g=qty_g)
     try:
-        run = await _estimate_agent.run(
-            f"Food: {food_name}\nQuantity: {qty_g}g"
-        )
+        run = await _estimate_agent.run(f"Food: {food_name}\nQuantity: {qty_g}g")
         estimate = run.output
     except Exception as exc:  # noqa: BLE001 — any LLM/provider failure -> miss
         logger.error("LLM nutrition estimate failed for %s: %s", food_name, exc)

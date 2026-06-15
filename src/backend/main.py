@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-from backend.api import goals, integrations, meals, telegram_link
+from backend.api import goals, integrations, meals, nutrient_checkup, telegram_link
 from backend.observability import configure_observability
 
 
@@ -52,6 +52,7 @@ app.include_router(meals.router)
 app.include_router(goals.router)
 app.include_router(integrations.router)
 app.include_router(telegram_link.router)
+app.include_router(nutrient_checkup.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook

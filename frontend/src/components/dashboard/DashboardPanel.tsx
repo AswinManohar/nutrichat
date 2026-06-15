@@ -1,5 +1,6 @@
 import { useDashboard, useGoals } from '../../api/hooks'
 import { MacroRings } from './MacroRings'
+import { NutrientCheckupCard } from './NutrientCheckupCard'
 import { TrendsSection } from './TrendsSection'
 
 const DATE_FMT = new Intl.DateTimeFormat('en-US', {
@@ -69,9 +70,14 @@ export function DashboardPanel() {
         <TrendsSection kcalGoal={goals?.kcal_goal ?? 2000} />
       </div>
 
+      {/* Weekly nutrient check-up */}
+      <div style={{ '--i': 4 } as React.CSSProperties}>
+        <NutrientCheckupCard />
+      </div>
+
       {/* Dietary preferences */}
       {goals?.dietary_prefs && Object.keys(goals.dietary_prefs).length > 0 && (
-        <section className="space-y-2.5" style={{ '--i': 4 } as React.CSSProperties}>
+        <section className="space-y-2.5" style={{ '--i': 5 } as React.CSSProperties}>
           <h3 className="label-caps">Dietary Focus</h3>
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(goals.dietary_prefs).map((pref) => (

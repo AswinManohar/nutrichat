@@ -91,23 +91,21 @@ export const LoginPage: React.FC = () => {
         <div className="grid grid-cols-2 bg-sand p-1.5 border border-sand-border rounded-xl mb-6 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab('bypass')}
-            className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === 'bypass'
+            className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'bypass'
                 ? 'bg-sage text-white shadow-md'
                 : 'text-muted hover:text-ink'
-            }`}
+              }`}
           >
             Developer Bypass
           </button>
           <button
             onClick={() => setActiveTab('standard')}
-            className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === 'standard'
+            className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'standard'
                 ? 'bg-sage text-white shadow-md'
                 : 'text-muted hover:text-ink'
-            }`}
+              }`}
           >
-            Supabase Auth
+            Authenticate
           </button>
         </div>
 

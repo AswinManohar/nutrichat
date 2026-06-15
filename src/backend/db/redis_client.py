@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import redis.asyncio as redis
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
 
 from backend.config import get_tunables
 
-_TODAY_KEY_TTL_S = get_tunables().redis.today_key_ttl_s
+_TUNABLES = get_tunables()
+_TODAY_KEY_TTL_S = _TUNABLES.redis.today_key_ttl_s
+_DAY_TZ = ZoneInfo(_TUNABLES.day.timezone)
+_DAY_RESET_HOUR = _TUNABLES.day.reset_hour
 
 # Global connection pool
 _redis_pool: redis.Redis | None = None
@@ -33,20 +39,69 @@ class TodayTotals(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-async def get_today_totals(user_id: str) -> TodayTotals:
-    """Retrieve today's running totals from Redis as TodayTotals."""
-    client = get_redis()
-    key = f"today:{user_id}"
-    data = await client.hgetall(key)
+def current_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """Return the [start, end) UTC bounds of the current nutrition day.
 
-    if not data:
-        return TodayTotals()
+    A nutrition day runs from ``reset_hour`` to ``reset_hour`` in the
+    configured local timezone (see ``day.*`` in tunables.yaml). Anything
+    logged before ``reset_hour`` belongs to the previous day, so today's
+    totals appear to reset at exactly ``reset_hour`` local time.
+
+    Args:
+        now: Instant to evaluate. Defaults to the current time. A naive
+            datetime is assumed to be UTC.
+
+    Returns:
+        ``(start_utc, end_utc)`` covering the active nutrition day.
+    """
+    if now is None:
+        now = datetime.now(_DAY_TZ)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=ZoneInfo("UTC"))
+    now_local = now.astimezone(_DAY_TZ)
+
+    # Shift back by reset_hour so the date() lands on the day that owns `now`.
+    day_date = (now_local - timedelta(hours=_DAY_RESET_HOUR)).date()
+    start_local = datetime.combine(day_date, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
+    end_local = start_local + timedelta(days=1)
+    utc = ZoneInfo("UTC")
+    return start_local.astimezone(utc), end_local.astimezone(utc)
+
+
+async def get_today_totals(user_id: str) -> TodayTotals:
+    """Return the user's consumed totals for the current nutrition day.
+
+    Derived directly from ``meal_log`` rows within the active day window
+    (``current_day_bounds``), so the rollover happens automatically at the
+    configured reset hour — no background job has to fire for it. Deleted
+    meals are excluded.
+    """
+    from backend.db.models import MealLog
+    from backend.db.session import get_session
+
+    start_utc, end_utc = current_day_bounds()
+    session_factory = get_session()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(
+                func.coalesce(func.sum(MealLog.kcal), 0.0),
+                func.coalesce(func.sum(MealLog.protein_g), 0.0),
+                func.coalesce(func.sum(MealLog.fiber_g), 0.0),
+                func.count(MealLog.meal_id),
+            ).where(
+                MealLog.user_id == user_id,
+                MealLog.logged_at >= start_utc,
+                MealLog.logged_at < end_utc,
+                MealLog.deleted_at.is_(None),
+            )
+        )
+        kcal, protein_g, fiber_g, n_meals = result.one()
 
     return TodayTotals(
-        kcal=float(data.get("kcal", 0.0)),
-        protein_g=float(data.get("protein_g", 0.0)),
-        fiber_g=float(data.get("fiber_g", 0.0)),
-        n_meals=int(data.get("n_meals", 0)),
+        kcal=float(kcal),
+        protein_g=float(protein_g),
+        fiber_g=float(fiber_g),
+        n_meals=int(n_meals),
     )
 
 

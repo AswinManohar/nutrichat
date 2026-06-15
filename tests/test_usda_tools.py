@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.agent.tools.meals import FoodEntity
 from backend.agent.tools.usda import (
     NutritionEstimate,
-    estimate_nutrition_llm,
-    usda_lookup_batch,
-    USDAResult,
     _confidence,
     _nutrients_by_name,
+    estimate_nutrition_llm,
+    usda_lookup_batch,
 )
+from backend.config import get_tunables
 
 MOCK_FDC_RESPONSE = {
     "foods": [
@@ -252,6 +253,33 @@ def test_confidence_exact_match():
 def test_confidence_no_overlap():
     score = _confidence("apple", "broccoli steamed")
     assert score == 0.0
+
+
+def test_confidence_full_coverage_despite_verbose_description():
+    # Every query word is present; FDC's extra descriptors and plurals must
+    # NOT drag the score down (the Jaccard regression that over-estimated).
+    assert _confidence("banana", "Bananas, raw") == 1.0
+    assert _confidence("white rice", "Rice, white, long-grain, raw") == 1.0
+    assert (
+        _confidence(
+            "grilled chicken breast",
+            "Chicken, broilers or fryers, breast, meat only, cooked, grilled",
+        )
+        == 1.0
+    )
+
+
+def test_confidence_partial_match_below_floor():
+    # Only "chicken" overlaps with "Chicken spread" -> 1 of 2 words = 0.5,
+    # below the 0.6 floor, so this correctly falls through to estimation.
+    score = _confidence("chicken biryani", "Chicken spread")
+    assert score == 0.5
+    assert score < get_tunables().usda.match_confidence_floor
+
+
+def test_confidence_drops_filler_words():
+    # "with" is a stopword; coverage is over {rice, chicken}.
+    assert _confidence("rice with chicken", "Rice, white, chicken added") == 1.0
 
 
 def test_nutrients_by_name_prefers_kcal_over_kj():
