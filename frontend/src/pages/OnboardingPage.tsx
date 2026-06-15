@@ -7,7 +7,7 @@ import { GoalSlider } from '../components/onboarding/GoalSlider'
 import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
-import { Flame, Target, Heart, Dumbbell } from 'lucide-react'
+import { Flame, Heart, Dumbbell } from 'lucide-react'
 
 export const OnboardingPage: React.FC = () => {
   const navigate = useNavigate()
@@ -112,11 +112,8 @@ export const OnboardingPage: React.FC = () => {
   return (
     <div className="min-height-screen w-full bg-surface flex flex-col items-center justify-center p-4 md:p-8">
       <div className="w-full max-w-2xl">
-        {/* Header logo / branding */}
+        {/* Header branding */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-gradient-to-tr from-sage to-sage-deep rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 mb-3">
-            <Target className="w-6 h-6 text-white" />
-          </div>
           <h1 className="font-display text-3xl text-sage-deep">
             Welcome to NutriChat
           </h1>

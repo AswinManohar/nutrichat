@@ -8,7 +8,6 @@ import { MobileNav } from './MobileNav'
 function LoadingScreen({ message }: { message: string }) {
   return (
     <div className="fixed inset-0 bg-surface flex flex-col items-center justify-center gap-5 z-50">
-      <span className="font-display text-2xl text-sage-deep rise-in">Næring</span>
       <div className="flex gap-1.5">
         <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '0ms' }} />
         <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '150ms' }} />

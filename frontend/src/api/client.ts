@@ -12,17 +12,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const { token, isBypassed, debugUserId } = useAuthStore.getState()
-  
+  const { token } = useAuthStore.getState()
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
 
-  // Add authorization details
-  if (isBypassed) {
-    headers['X-Debug-User-Id'] = debugUserId
-    headers['Authorization'] = 'Bearer dev-bypass-token'
-  } else if (token) {
+  if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
 

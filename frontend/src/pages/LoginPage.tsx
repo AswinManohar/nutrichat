@@ -1,15 +1,12 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../stores/authStore'
 import { supabase } from '../lib/supabase'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
-import { ShieldAlert, Sparkles, LogIn, Mail, Lock, User } from 'lucide-react'
+import { Sparkles, LogIn, Mail, Lock, User } from 'lucide-react'
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate()
-  const { enableBypass } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'bypass' | 'standard'>('bypass')
 
   // Standard Auth States
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
@@ -19,15 +16,6 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
-
-  // Bypass States
-  const [customUserId, setCustomUserId] = useState('00000000-0000-0000-0000-000000000000')
-
-  const handleBypassSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    enableBypass(customUserId)
-    navigate('/chat')
-  }
 
   const handleStandardSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -87,83 +75,20 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-muted mt-1">AI-Powered Macro Coaching & Meal Logging</p>
         </div>
 
-        {/* Tab triggers */}
-        <div className="grid grid-cols-2 bg-sand p-1.5 border border-sand-border rounded-xl mb-6 backdrop-blur-sm">
-          <button
-            onClick={() => setActiveTab('bypass')}
-            className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'bypass'
-                ? 'bg-sage text-white shadow-md'
-                : 'text-muted hover:text-ink'
-              }`}
-          >
-            Developer Bypass
-          </button>
-          <button
-            onClick={() => setActiveTab('standard')}
-            className={`py-2 text-xs font-semibold rounded-lg transition-all ${activeTab === 'standard'
-                ? 'bg-sage text-white shadow-md'
-                : 'text-muted hover:text-ink'
-              }`}
-          >
-            Authenticate
-          </button>
-        </div>
-
         <Card className="border border-sand-border shadow-2xl bg-sand backdrop-blur-md">
-          {activeTab === 'bypass' && (
-            <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-ink-soft" />
-                  Dev Bypass Mode
-                </CardTitle>
-                <CardDescription>
-                  Bypass Supabase credential checks and run directly against the backend.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleBypassSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">
-                      Mock User UUID
-                    </label>
-                    <input
-                      type="text"
-                      value={customUserId}
-                      onChange={(e) => setCustomUserId(e.target.value)}
-                      placeholder="Enter a UUID..."
-                      className="w-full bg-surface border border-sand-border rounded-xl px-4 py-2.5 text-xs text-ink-soft font-mono focus:outline-none focus:ring-1 focus:ring-sage/30"
-                    />
-                  </div>
-
-                  <div className="bg-warn/10 border border-warn/30 p-3 rounded-xl text-[10px] text-ink-soft/90 leading-relaxed">
-                    <strong>Note:</strong> In this mode, the client injects custom HTTP headers. It requires the FastAPI backend to have <code>DEV_BYPASS_AUTH=true</code> in its environment.
-                  </div>
-
-                  <Button type="submit" variant="primary" className="w-full flex items-center gap-2 py-2.5">
-                    <LogIn className="w-4 h-4" />
-                    Enter Application
-                  </Button>
-                </form>
-              </CardContent>
-            </>
-          )}
-
-          {activeTab === 'standard' && (
-            <>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LogIn className="w-5 h-5 text-sage-deep" />
-                  {authMode === 'signin' ? 'Standard Login' : 'Create Account'}
-                </CardTitle>
-                <CardDescription>
-                  {authMode === 'signin'
-                    ? 'Sign in securely with your Supabase account.'
-                    : 'Sign up for a free tracker account.'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleStandardSubmit} className="space-y-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-sage-deep" />
+              {authMode === 'signin' ? 'Standard Login' : 'Create Account'}
+            </CardTitle>
+            <CardDescription>
+              {authMode === 'signin'
+                ? 'Sign in securely with your Supabase account.'
+                : 'Sign up for a free tracker account.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleStandardSubmit} className="space-y-4">
                   {errorMsg && (
                     <div className="bg-danger/10 border border-danger/20 text-danger text-xs p-3 rounded-xl">
                       {errorMsg}
@@ -242,10 +167,8 @@ export const LoginPage: React.FC = () => {
                         : 'Already have an account? Sign In'}
                     </button>
                   </div>
-                </form>
-              </CardContent>
-            </>
-          )}
+            </form>
+          </CardContent>
         </Card>
       </div>
     </div>

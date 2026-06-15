@@ -7,19 +7,27 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from fastapi import Request
+
 from backend.api import nutrient_checkup
+from backend.auth.supabase import get_current_user_id
 from backend.db.models import NutrientCheckup
+
+
+def _override_user(request: Request) -> str:
+    """Resolve the test user from the X-Debug-User-Id header (auth override)."""
+    return request.headers.get("X-Debug-User-Id", "user-1")
 
 
 def _make_app() -> FastAPI:
     app = FastAPI()
     app.include_router(nutrient_checkup.router)
+    app.dependency_overrides[get_current_user_id] = _override_user
     return app
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
+def client() -> TestClient:
     return TestClient(_make_app())
 
 

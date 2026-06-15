@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { MessageSquare, Settings, LogOut, ShieldAlert } from 'lucide-react'
+import { MessageSquare, Settings, LogOut } from 'lucide-react'
 
 export function Sidebar() {
-  const { user, signOut, isBypassed, disableBypass } = useAuthStore()
+  const { user, signOut } = useAuthStore()
 
   const navItems = [
     { label: 'Chat & Log', path: '/chat', icon: MessageSquare },
@@ -13,29 +13,6 @@ export function Sidebar() {
   return (
     <aside className="w-60 bg-surface border-r border-sand-border p-6 flex-col justify-between hidden md:flex h-screen sticky top-0">
       <div className="flex flex-col gap-10">
-        {/* Wordmark */}
-        <div className="px-1">
-          <h2 className="font-display text-[22px] text-sage-deep leading-tight">Næring</h2>
-          <span className="label-caps text-[10px]">Nutrition, plainly</span>
-        </div>
-
-        {/* Developer bypass banner */}
-        {isBypassed && (
-          <div className="bg-warn/20 border border-warn/40 rounded-xl p-3 flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-ink-soft text-xs font-semibold">
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Developer Mode
-            </div>
-            <p className="text-[11px] text-muted leading-normal">Auth validation is bypassed locally.</p>
-            <button
-              onClick={disableBypass}
-              className="text-[11px] text-sage-deep hover:underline font-medium text-left"
-            >
-              Re-enable Supabase
-            </button>
-          </div>
-        )}
-
         {/* Navigation */}
         <nav className="flex flex-col gap-1">
           {navItems.map((item) => (

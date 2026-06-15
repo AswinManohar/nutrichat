@@ -11,10 +11,10 @@ import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
-import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send } from 'lucide-react'
+import { Sparkles, Save, LogOut, Heart, Target, Send } from 'lucide-react'
 
 export const SettingsPage: React.FC = () => {
-  const { user, signOut, isBypassed, disableBypass } = useAuthStore()
+  const { user, signOut } = useAuthStore()
   const { data: goals, isLoading: goalsLoading } = useGoals()
   const updateGoalsMutation = useUpdateGoals()
 
@@ -262,28 +262,9 @@ export const SettingsPage: React.FC = () => {
               <span className="text-ink font-mono text-[10px]">{user?.id}</span>
             </div>
             
-            {isBypassed ? (
-              <div className="bg-warn/10 border border-warn/30 p-3.5 rounded-xl flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-ink-soft font-semibold">
-                  <ShieldAlert className="w-4 h-4" />
-                  Offline Developer Mode is Active
-                </div>
-                <p className="text-[11px] text-muted leading-normal">
-                  All requests bypass live Supabase session authorization checks. Useful for offline code edits.
-                </p>
-                <button
-                  type="button"
-                  onClick={disableBypass}
-                  className="text-ink-soft hover:text-ink font-semibold underline text-left w-fit self-start"
-                >
-                  Switch back to Supabase Authentication
-                </button>
-              </div>
-            ) : (
-              <div className="text-muted leading-normal">
-                Connected securely via Supabase Auth services.
-              </div>
-            )}
+            <div className="text-muted leading-normal">
+              Connected securely via Supabase Auth services.
+            </div>
 
             <Button
               type="button"

@@ -80,7 +80,6 @@ export function ChatPage() {
         {/* Header */}
         <header className="px-5 md:px-6 h-16 flex items-center justify-between glass-header sticky top-0 z-10 border-b border-sand-border">
           <div>
-            <h1 className="font-display text-lg text-sage-deep leading-tight">Næring</h1>
             <p className="text-[11px] text-muted">Log meals or ask about your nutrition</p>
           </div>
           <button

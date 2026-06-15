@@ -88,27 +88,6 @@ def test_missing_sub_claim_returns_401(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_dev_bypass_uses_debug_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
-    client = TestClient(_make_app())
-
-    resp = client.get("/whoami", headers={"X-Debug-User-Id": "debug-user"})
-    assert resp.status_code == 200
-    assert resp.json() == {"user_id": "debug-user"}
-
-
-def test_dev_bypass_without_header_falls_back_to_401(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
-    client = TestClient(_make_app())
-
-    resp = client.get("/whoami")
-    assert resp.status_code == 401
-
-
 def _b64url_uint(value: int, length: int = 32) -> str:
     """Base64url-encode an unsigned integer as a fixed-length byte string."""
     return base64.urlsafe_b64encode(value.to_bytes(length, "big")).rstrip(b"=").decode()
