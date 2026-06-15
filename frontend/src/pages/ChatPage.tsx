@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMealStore } from '../stores/mealStore'
-import { useDashboard, useLogMeal } from '../api/hooks'
+import { useDashboard, useLogMeal, usePendingNudge, useAckPendingNudge } from '../api/hooks'
+import { useResizablePanel } from '../hooks/use-resizable-panel'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
 import { DashboardPanel } from '../components/dashboard/DashboardPanel'
@@ -11,6 +12,17 @@ export function ChatPage() {
   const { data: totals } = useDashboard()
   const logMealMutation = useLogMeal()
   const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false)
+  const { width: dashboardWidth, onPointerDown: onResizerPointerDown } = useResizablePanel()
+  const { data: pendingNudge } = usePendingNudge()
+  const ackNudgeMutation = useAckPendingNudge()
+
+  useEffect(() => {
+    if (!pendingNudge?.summary_text || conversationId !== null) return
+    addMessage({ sender: 'agent', text: pendingNudge.summary_text })
+    ackNudgeMutation.mutate()
+    // Only fire once per pending summary; ack makes subsequent fetches return null.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNudge?.summary_text])
 
   const handleSend = (text: string, imageB64?: string | null) => {
     addMessage({
@@ -64,7 +76,7 @@ export function ChatPage() {
   return (
     <div className="flex-1 flex flex-col md:flex-row h-screen overflow-hidden bg-surface">
       {/* Chat column */}
-      <div className="flex-1 flex flex-col h-full md:border-r md:border-sand-border overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Header */}
         <header className="px-5 md:px-6 h-16 flex items-center justify-between glass-header sticky top-0 z-10 border-b border-sand-border">
           <div>
@@ -117,8 +129,20 @@ export function ChatPage() {
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />
       </div>
 
+      {/* Drag handle (desktop) */}
+      <div
+        onPointerDown={onResizerPointerDown}
+        className="hidden md:block w-1.5 flex-shrink-0 cursor-col-resize group relative z-10"
+        title="Drag to resize"
+      >
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-sand-border group-hover:bg-sage group-active:bg-sage transition-colors" />
+      </div>
+
       {/* Dashboard column (desktop) */}
-      <div className="hidden md:block w-96 h-full overflow-hidden flex-shrink-0 bg-surface">
+      <div
+        className="hidden md:block h-full overflow-hidden flex-shrink-0 bg-surface"
+        style={{ width: dashboardWidth }}
+      >
         <DashboardPanel />
       </div>
     </div>
