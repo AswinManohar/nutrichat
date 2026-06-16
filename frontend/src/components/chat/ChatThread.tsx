@@ -31,6 +31,7 @@ const MARKDOWN_COMPONENTS: Components = {
 interface ChatThreadProps {
   messages: ChatMessage[]
   onAction: (text: string) => void
+  onDismissCard: () => void
   isLoading: boolean
 }
 
@@ -54,7 +55,7 @@ function TypingIndicator() {
   )
 }
 
-export function ChatThread({ messages, onAction, isLoading }: ChatThreadProps) {
+export function ChatThread({ messages, onAction, onDismissCard, isLoading }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -125,7 +126,12 @@ export function ChatThread({ messages, onAction, isLoading }: ChatThreadProps) {
               </div>
 
               {hasCard && (
-                <ConfirmationCard items={msg.items!} onAction={onAction} isLoading={isLoading} />
+                <ConfirmationCard
+                  items={msg.items!}
+                  onAction={onAction}
+                  onDismiss={onDismissCard}
+                  isLoading={isLoading}
+                />
               )}
 
               <span className="text-[10px] text-muted px-1">

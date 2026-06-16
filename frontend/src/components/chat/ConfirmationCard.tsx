@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { MealItem } from '../../api/types'
 import { ChevronDown, Plus, Minus, X } from 'lucide-react'
 
 interface ConfirmationCardProps {
   items: MealItem[]
   onAction: (text: string) => void
+  onDismiss: () => void
   isLoading: boolean
 }
 
@@ -15,12 +16,24 @@ const LOW_CONFIDENCE = 0.6
  * Quantity edits, candidate switches, and removals are sent back as
  * plain-text corrections — the backend re-resolves and re-presents.
  */
-export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCardProps) {
+export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: ConfirmationCardProps) {
   const [qtys, setQtys] = useState<number[]>(() => items.map((i) => i.qty_g))
   const [openCandidates, setOpenCandidates] = useState<number | null>(null)
   const [swaps, setSwaps] = useState<Record<number, string>>({})
   const [removed, setRemoved] = useState<Set<number>>(new Set())
   const [prevItems, setPrevItems] = useState(items)
+  const dismissedRef = useRef(false)
+
+  // Every visible item removed → drop the card from the chat (no backend call).
+  // Computed before any early return so the hook below is unconditional.
+  const allRemoved = items.length > 0 && removed.size >= items.length
+
+  useEffect(() => {
+    if (allRemoved && !dismissedRef.current) {
+      dismissedRef.current = true
+      onDismiss()
+    }
+  }, [allRemoved, onDismiss])
 
   // Reset edits when a new card arrives (React "adjust state during render")
   if (prevItems !== items) {
@@ -28,10 +41,12 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
     setQtys(items.map((i) => i.qty_g))
     setSwaps({})
     setRemoved(new Set())
+    dismissedRef.current = false
     return null
   }
 
   if (qtys.length !== items.length) return null
+  if (allRemoved) return null
 
   const visibleIndices = items.map((_, i) => i).filter((i) => !removed.has(i))
 
@@ -67,12 +82,6 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
     setRemoved((prev) => new Set([...prev, i]))
     if (openCandidates === i) setOpenCandidates(null)
   }
-
-  const allRemoved = visibleIndices.length === 0
-
-  useEffect(() => {
-    if (allRemoved) onAction('cancel')
-  }, [allRemoved, onAction])
 
   return (
     <div className="w-full max-w-xl card-sand p-4 md:p-5 flex flex-col gap-3 mt-1 rise-in">
@@ -194,22 +203,20 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
       </div>
 
       {/* Totals */}
-      {!allRemoved && (
-        <div className="grid grid-cols-5 text-center bg-container rounded-xl py-2.5">
-          {[
-            { label: 'kcal', value: Math.round(total('kcal')).toString() },
-            { label: 'protein', value: `${total('protein_g').toFixed(0)}g` },
-            { label: 'carbs', value: `${total('carbs_g').toFixed(0)}g` },
-            { label: 'fat', value: `${total('fat_g').toFixed(0)}g` },
-            { label: 'fiber', value: `${total('fiber_g').toFixed(0)}g` },
-          ].map((t) => (
-            <div key={t.label}>
-              <span className="label-caps block text-[9px]">{t.label}</span>
-              <span className="text-[13px] font-semibold text-ink">{t.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-5 text-center bg-container rounded-xl py-2.5">
+        {[
+          { label: 'kcal', value: Math.round(total('kcal')).toString() },
+          { label: 'protein', value: `${total('protein_g').toFixed(0)}g` },
+          { label: 'carbs', value: `${total('carbs_g').toFixed(0)}g` },
+          { label: 'fat', value: `${total('fat_g').toFixed(0)}g` },
+          { label: 'fiber', value: `${total('fiber_g').toFixed(0)}g` },
+        ].map((t) => (
+          <div key={t.label}>
+            <span className="label-caps block text-[9px]">{t.label}</span>
+            <span className="text-[13px] font-semibold text-ink">{t.value}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2.5 pt-1">
@@ -224,10 +231,10 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
         <button
           type="button"
           onClick={() => onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes')}
-          disabled={isLoading || allRemoved}
+          disabled={isLoading}
           className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
         >
-          {allRemoved ? 'Nothing to log' : corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
+          {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
         </button>
       </div>
     </div>
