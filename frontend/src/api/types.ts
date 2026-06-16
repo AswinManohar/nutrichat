@@ -40,6 +40,19 @@ export interface LogMealResponse {
   items: MealItem[];
 }
 
+export interface CategoryStat {
+  meal_type: MealCategory;
+  n_meals: number;
+  days_logged: number;
+  avg_kcal: number;
+  avg_protein_g: number;
+  avg_carbs_g: number;
+  avg_fat_g: number;
+  avg_fiber_g: number;
+  total_kcal: number;
+  share_kcal_pct: number;
+}
+
 export interface TodayTotals {
   kcal: number;
   protein_g: number;

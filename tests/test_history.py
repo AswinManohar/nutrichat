@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agent.tools.history import (
+    get_category_breakdown,
     get_food_breakdown_for_range,
     get_history,
     get_macros_for_range,
@@ -20,6 +21,63 @@ def _mock_session_factory(session: MagicMock) -> MagicMock:
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
     return MagicMock(return_value=session)
+
+
+@pytest.mark.asyncio
+async def test_get_category_breakdown_computes_share():
+    rows = [
+        MagicMock(
+            meal_type="dinner",
+            n_meals=10,
+            days_logged=8,
+            avg_kcal=700.0,
+            avg_protein_g=35.0,
+            avg_carbs_g=60.0,
+            avg_fat_g=25.0,
+            avg_fiber_g=8.0,
+            total_kcal=7000.0,
+        ),
+        MagicMock(
+            meal_type="breakfast",
+            n_meals=10,
+            days_logged=9,
+            avg_kcal=300.0,
+            avg_protein_g=15.0,
+            avg_carbs_g=40.0,
+            avg_fat_g=8.0,
+            avg_fiber_g=5.0,
+            total_kcal=3000.0,
+        ),
+    ]
+    session = MagicMock()
+    exec_result = MagicMock()
+    exec_result.all.return_value = rows
+    session.execute = AsyncMock(return_value=exec_result)
+    factory = _mock_session_factory(session)
+
+    with patch("backend.agent.tools.history.get_session", return_value=factory):
+        out = await get_category_breakdown("user-1", days=30)
+
+    assert [c["meal_type"] for c in out] == ["dinner", "breakfast"]
+    # 7000 / (7000+3000) = 70%, 3000/10000 = 30%
+    assert out[0]["share_kcal_pct"] == 70.0
+    assert out[1]["share_kcal_pct"] == 30.0
+    assert out[0]["n_meals"] == 10
+    assert out[0]["days_logged"] == 8
+
+
+@pytest.mark.asyncio
+async def test_get_category_breakdown_empty_no_div_zero():
+    session = MagicMock()
+    exec_result = MagicMock()
+    exec_result.all.return_value = []
+    session.execute = AsyncMock(return_value=exec_result)
+    factory = _mock_session_factory(session)
+
+    with patch("backend.agent.tools.history.get_session", return_value=factory):
+        out = await get_category_breakdown("user-1", days=30)
+
+    assert out == []
 
 
 @pytest.mark.asyncio
