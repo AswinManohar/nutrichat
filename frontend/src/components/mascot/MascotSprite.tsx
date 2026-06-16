@@ -6,13 +6,17 @@ interface MascotSpriteProps {
 export function MascotSprite({ size = 10, className }: MascotSpriteProps) {
   const px = size * 4
   return (
-    <img
-      src="/favicon.svg"
+    <video
+      src="/mascot.webm"
       width={px}
       height={px}
+      autoPlay
+      loop
+      muted
+      playsInline
       aria-hidden="true"
       className={className}
-      style={{ display: 'block' }}
+      style={{ display: 'block', objectFit: 'contain' }}
     />
   )
 }
