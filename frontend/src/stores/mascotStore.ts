@@ -1,25 +1,27 @@
-// frontend/src/stores/mascotStore.ts
 import { create } from 'zustand'
 
 function loadEnabled(): boolean {
   try {
     return localStorage.getItem('nutrichat-mascot-enabled') !== 'false'
-  } catch {
+  } catch (error: unknown) {
+    console.error('Failed to load mascot preference:', error)
     return true
   }
 }
 
 interface MascotState {
   enabled: boolean
-  setEnabled: (v: boolean) => void
+  setEnabled: (enabled: boolean) => void
 }
 
 export const useMascotStore = create<MascotState>((set) => ({
   enabled: loadEnabled(),
-  setEnabled: (enabled) => {
+  setEnabled: (enabled: boolean) => {
     try {
       localStorage.setItem('nutrichat-mascot-enabled', String(enabled))
-    } catch {}
+    } catch (error: unknown) {
+      console.error('Failed to save mascot preference:', error)
+    }
     set({ enabled })
   },
 }))
