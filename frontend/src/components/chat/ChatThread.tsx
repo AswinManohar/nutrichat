@@ -4,6 +4,7 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { ChatMessage } from '../../stores/mealStore'
+import type { MealCategory } from '../../api/types'
 import { ConfirmationCard } from './ConfirmationCard'
 import { MascotSprite } from '../mascot/MascotSprite'
 
@@ -30,7 +31,7 @@ const MARKDOWN_COMPONENTS: Components = {
 
 interface ChatThreadProps {
   messages: ChatMessage[]
-  onAction: (text: string) => void
+  onAction: (text: string, mealType?: MealCategory) => void
   onDismissCard: () => void
   isLoading: boolean
 }
@@ -44,13 +45,8 @@ const SUGGESTIONS = [
 
 function TypingIndicator() {
   return (
-    <div className="self-start rise-in">
-      <div
-        className="card-sand rounded-2xl overflow-hidden flex items-end justify-center"
-        style={{ width: 80, height: 96, padding: '8px' }}
-      >
-        <MascotSprite size={14} variant="jump" />
-      </div>
+    <div className="self-start rise-in pl-1">
+      <MascotSprite size={14} variant="jump" />
     </div>
   )
 }
