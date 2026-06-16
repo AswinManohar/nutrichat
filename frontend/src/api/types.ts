@@ -60,12 +60,37 @@ export interface TodayTotals {
   n_meals: number;
 }
 
+export type TrackingMode = 'goals' | 'mindful';
+
 export interface GoalData {
-  kcal_goal: number;
-  protein_goal: number;
-  fiber_goal: number;
+  tracking_mode?: TrackingMode;
+  kcal_goal: number | null;
+  protein_goal: number | null;
+  fiber_goal: number | null;
   dietary_prefs: Record<string, unknown>;
   streak_days?: number;
+}
+
+export interface MindfulNutrient {
+  name: string;
+  amount: number;
+  unit: string;
+}
+
+export interface MindfulAlert {
+  nutrient: string;
+  amount: number;
+  limit: number;
+  unit: string;
+  source: string;
+  url: string;
+}
+
+export interface MindfulDay {
+  tracking_mode: string;
+  date: string;
+  nutrients: MindfulNutrient[];
+  alerts: MindfulAlert[];
 }
 
 export interface TelegramLinkCode {

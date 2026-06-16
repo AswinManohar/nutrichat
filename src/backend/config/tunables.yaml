@@ -719,3 +719,63 @@ prompts:
     (e.g. "prefers oat milk", "avoids red meat", "usually skips breakfast").
     Return an empty list if nothing lasting is mentioned. Do not extract
     one-off facts about a single meal.
+
+# Tolerable Upper Intake Levels for Mindful Eating safety alerts. An alert
+# fires when a day's intake of the nutrient reaches or exceeds `ul`. Values are
+# conservative adult defaults; `usda_name` is the key used to sum the nutrient
+# from meal_log.entities. Single threshold, no age/sex stratification in V1.
+upper_limits:
+  Sodium:
+    usda_name: "Sodium, Na"
+    unit: mg
+    ul: 2300
+    source: "WHO — Sodium intake for adults (2012)"
+    url: "https://www.who.int/publications/i/item/9789241504836"
+  "Total Sugars":
+    usda_name: "Total Sugars"
+    unit: g
+    ul: 50
+    source: "WHO — Sugars intake for adults and children (2015)"
+    url: "https://www.who.int/publications/i/item/9789241549028"
+  "Saturated Fat":
+    usda_name: "Fatty acids, total saturated"
+    unit: g
+    ul: 22
+    source: "FDA Dietary Guidelines for Americans 2020-2025"
+    url: "https://www.dietaryguidelines.gov"
+  "Vitamin A":
+    usda_name: "Vitamin A, RAE"
+    unit: mcg
+    ul: 3000
+    source: "NASEM DRI — Vitamin A (2001)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK222318/"
+  "Vitamin D":
+    usda_name: "Vitamin D (D2 + D3)"
+    unit: mcg
+    ul: 100
+    source: "NASEM DRI — Vitamin D (2011)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK56070/"
+  Iron:
+    usda_name: "Iron, Fe"
+    unit: mg
+    ul: 45
+    source: "NASEM DRI — Iron (2001)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK222309/"
+  Zinc:
+    usda_name: "Zinc, Zn"
+    unit: mg
+    ul: 40
+    source: "NASEM DRI — Zinc (2001)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK222317/"
+  Niacin:
+    usda_name: "Niacin"
+    unit: mg
+    ul: 35
+    source: "NASEM DRI — Niacin (1998)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK114304/"
+  Calcium:
+    usda_name: "Calcium, Ca"
+    unit: mg
+    ul: 2500
+    source: "NASEM DRI — Calcium (2011)"
+    url: "https://www.ncbi.nlm.nih.gov/books/NBK56070/"

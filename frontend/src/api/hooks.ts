@@ -5,6 +5,7 @@ import type {
   DayTrend,
   LogMealRequest,
   LogMealResponse,
+  MindfulDay,
   TodayTotals,
   GoalData,
   NutrientCheckupResponse,
@@ -12,6 +13,14 @@ import type {
   TelegramLinkCode,
   TelegramLinkStatus,
 } from './types'
+
+export const useMindfulToday = () => {
+  return useQuery<MindfulDay, Error>({
+    queryKey: ['mindful-today'],
+    queryFn: () => apiClient.get<MindfulDay>('/mindful/today'),
+    staleTime: 30_000,
+  })
+}
 
 export const useTrends = (days = 91) => {
   return useQuery<DayTrend[], Error>({

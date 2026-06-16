@@ -1,6 +1,7 @@
 import { useDashboard, useGoals } from '../../api/hooks'
 import { MacroRings } from './MacroRings'
 import { MealCategoryCard } from './MealCategoryCard'
+import { MindfulPanel } from './MindfulPanel'
 import { NutrientCheckupCard } from './NutrientCheckupCard'
 import { TrendsSection } from './TrendsSection'
 
@@ -14,6 +15,7 @@ export function DashboardPanel() {
   const { data: totals } = useDashboard()
   const { data: goals } = useGoals()
 
+  const isMindful = goals?.tracking_mode === 'mindful'
   const kcal = totals?.kcal ?? 0
   const remaining = Math.max(0, (goals?.kcal_goal ?? 2000) - kcal)
   const streakDays = goals?.streak_days ?? 0
@@ -28,14 +30,18 @@ export function DashboardPanel() {
           <h2 className="text-2xl font-semibold text-ink mt-0.5">Daily Summary</h2>
         </div>
         <div className="text-right">
-          <span className="label-caps">Remaining</span>
-          <p className="text-xl font-medium text-sage">{Math.round(remaining).toLocaleString()} kcal</p>
+          <span className="label-caps">{isMindful ? 'Logged today' : 'Remaining'}</span>
+          <p className="text-xl font-medium text-sage">
+            {isMindful
+              ? `${Math.round(kcal).toLocaleString()} kcal`
+              : `${Math.round(remaining).toLocaleString()} kcal`}
+          </p>
         </div>
       </section>
 
-      {/* Rings */}
+      {/* Rings (goal mode) or absolute amounts + safety alerts (mindful mode) */}
       <section style={{ '--i': 1 } as React.CSSProperties}>
-        <MacroRings totals={totals} goals={goals} />
+        {isMindful ? <MindfulPanel /> : <MacroRings totals={totals} goals={goals} />}
       </section>
 
       {/* Insight banner */}
@@ -48,9 +54,11 @@ export function DashboardPanel() {
           <p className="text-[16px] leading-relaxed opacity-95">
             {nMeals === 0
               ? 'Nothing logged yet. Tell the chat what you ate — it takes one sentence.'
-              : `${nMeals} meal${nMeals === 1 ? '' : 's'} logged${
-                  streakDays > 0 ? ` · ${streakDays}-day streak` : ''
-                }. ${remaining > 0 ? `${Math.round(remaining)} kcal left toward your goal.` : 'Daily goal reached.'}`}
+              : isMindful
+                ? `${nMeals} meal${nMeals === 1 ? '' : 's'} logged. Tracking amounts, no targets.`
+                : `${nMeals} meal${nMeals === 1 ? '' : 's'} logged${
+                    streakDays > 0 ? ` · ${streakDays}-day streak` : ''
+                  }. ${remaining > 0 ? `${Math.round(remaining)} kcal left toward your goal.` : 'Daily goal reached.'}`}
           </p>
         </div>
         {/* Quiet geometric accent */}
