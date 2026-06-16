@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMealStore } from '../stores/mealStore'
 import { useDashboard, useLogMeal, usePendingNudge, useAckPendingNudge } from '../api/hooks'
 import { useResizablePanel } from '../hooks/use-resizable-panel'
@@ -8,7 +8,14 @@ import { DashboardPanel } from '../components/dashboard/DashboardPanel'
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 
 export function ChatPage() {
-  const { messages, conversationId, addMessage, setConversationId, clearMessages } = useMealStore()
+  const {
+    messages,
+    conversationId,
+    addMessage,
+    updateLastAgentMessage,
+    setConversationId,
+    clearMessages,
+  } = useMealStore()
   const { data: totals } = useDashboard()
   const logMealMutation = useLogMeal()
   const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false)
@@ -66,6 +73,14 @@ export function ChatPage() {
       }
     )
   }
+
+  // All food items removed from the confirmation card → drop the card silently.
+  // No backend call: resetting conversationId orphans the paused thread, so the
+  // next message starts a fresh one. (Stable store actions; safe as a callback.)
+  const handleDismissCard = useCallback(() => {
+    updateLastAgentMessage({ paused: false, items: [], text: 'Discarded — nothing logged.' })
+    setConversationId(null)
+  }, [updateLastAgentMessage, setConversationId])
 
   const handleClearChat = () => {
     if (window.confirm('Start a new conversation? This resets your active meal logging thread.')) {
@@ -125,7 +140,12 @@ export function ChatPage() {
           )}
         </div>
 
-        <ChatThread messages={messages} onAction={handleSend} isLoading={logMealMutation.isPending} />
+        <ChatThread
+          messages={messages}
+          onAction={handleSend}
+          onDismissCard={handleDismissCard}
+          isLoading={logMealMutation.isPending}
+        />
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />
       </div>
 
