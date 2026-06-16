@@ -277,6 +277,7 @@ async def test_thread_rotates_after_non_paused_reply(fake_redis):
     message = _mock_message(text="2 eggs", chat_id=chat_id)
     bot = MagicMock()
     bot.checkpointer = MagicMock()
+    bot.send_chat_action = AsyncMock()
 
     result = {"status": "success", "message": "Logged!", "paused": False, "items": []}
     with patch(
@@ -303,6 +304,7 @@ async def test_thread_not_rotated_when_paused(fake_redis):
     message = _mock_message(text="2 eggs", chat_id=chat_id)
     bot = MagicMock()
     bot.checkpointer = MagicMock()
+    bot.send_chat_action = AsyncMock()
 
     result = {
         "status": "success",
@@ -406,6 +408,7 @@ async def test_photo_routes_image_b64(fake_redis):
 
     bot = MagicMock()
     bot.checkpointer = MagicMock()
+    bot.send_chat_action = AsyncMock()
     bot.get_file = AsyncMock(return_value=MagicMock(file_path="path/to/file"))
 
     import io
@@ -544,6 +547,7 @@ async def test_paused_card_stores_edit_state_and_keyboard(fake_redis):
     message = _mock_message(text="2 eggs and toast", chat_id=chat_id)
     bot = MagicMock()
     bot.checkpointer = MagicMock()
+    bot.send_chat_action = AsyncMock()
 
     result = {
         "status": "success",
