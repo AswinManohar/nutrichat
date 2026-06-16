@@ -4,15 +4,23 @@ import { useAuthStore } from '../../stores/authStore'
 import { useGoals } from '../../api/hooks'
 import { Sidebar } from './Sidebar'
 import { MobileNav } from './MobileNav'
+import { MascotSprite } from '../mascot/MascotSprite'
+import { MascotPeek } from '../mascot/MascotPeek'
+import { useMascotStore } from '../../stores/mascotStore'
 
 function LoadingScreen({ message }: { message: string }) {
+  const mascotEnabled = useMascotStore((s) => s.enabled)
   return (
     <div className="fixed inset-0 bg-surface flex flex-col items-center justify-center gap-5 z-50">
-      <div className="flex gap-1.5">
-        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '0ms' }} />
-        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '150ms' }} />
-        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '300ms' }} />
-      </div>
+      {mascotEnabled ? (
+        <MascotSprite size={12} state="walk" />
+      ) : (
+        <div className="flex gap-1.5">
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '0ms' }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '150ms' }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '300ms' }} />
+        </div>
+      )}
       <span className="text-[13px] text-muted">{message}</span>
     </div>
   )
@@ -60,6 +68,7 @@ export function ProtectedLayout() {
         <Outlet />
       </main>
       <MobileNav />
+      <MascotPeek />
     </div>
   )
 }
