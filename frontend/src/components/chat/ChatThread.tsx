@@ -45,10 +45,10 @@ function TypingIndicator() {
   return (
     <div className="self-start rise-in">
       <div
-        className="card-sand rounded-2xl overflow-hidden flex items-end"
-        style={{ width: 200, height: 68, padding: '8px 12px' }}
+        className="card-sand rounded-2xl overflow-hidden flex items-end justify-center"
+        style={{ width: 80, height: 96, padding: '8px' }}
       >
-        <MascotSprite size={14} variant="run" />
+        <MascotSprite size={14} variant="jump" />
       </div>
     </div>
   )

@@ -122,16 +122,18 @@
 
 /* ── Mascot animations ───────────────────────────────────────────────── */
 
-/* Typing indicator: character runs back and forth across the bubble */
-@keyframes mascot-run {
-  0%   { transform: translateX(0px)    scaleX(1);  }
-  45%  { transform: translateX(120px)  scaleX(1);  }
-  50%  { transform: translateX(120px)  scaleX(-1); }
-  95%  { transform: translateX(0px)    scaleX(-1); }
-  100% { transform: translateX(0px)    scaleX(1);  }
+/* Typing indicator: character jumps with squash-and-stretch */
+@keyframes mascot-jump {
+  0%,  100% { transform: translateY(0)     scaleX(1)    scaleY(1);    }
+  8%         { transform: translateY(0)     scaleX(1.25) scaleY(0.75); } /* squash before launch */
+  30%        { transform: translateY(-32px) scaleX(0.88) scaleY(1.15); } /* peak */
+  55%        { transform: translateY(-32px) scaleX(0.88) scaleY(1.15); } /* hang */
+  80%        { transform: translateY(0)     scaleX(1.2)  scaleY(0.8);  } /* squash on land */
+  92%        { transform: translateY(-6px)  scaleX(0.97) scaleY(1.03); } /* tiny bounce */
 }
-.mascot-run {
-  animation: mascot-run 2.6s linear infinite;
+.mascot-jump {
+  transform-origin: bottom center;
+  animation: mascot-jump 1.4s ease-in-out infinite;
 }
 
 /* Loading screen: bouncy wobble */
