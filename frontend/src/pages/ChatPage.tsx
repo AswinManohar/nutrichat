@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMealStore } from '../stores/mealStore'
 import { useDashboard, useLogMeal, usePendingNudge, useAckPendingNudge } from '../api/hooks'
+import type { MealCategory } from '../api/types'
 import { useResizablePanel } from '../hooks/use-resizable-panel'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
@@ -31,7 +32,7 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNudge?.summary_text])
 
-  const handleSend = (text: string, imageB64?: string | null) => {
+  const handleSend = (text: string, imageB64?: string | null, mealType?: MealCategory) => {
     addMessage({
       sender: 'user',
       text: text || (imageB64 ? 'Uploaded an image' : ''),
@@ -49,6 +50,7 @@ export function ChatPage() {
         user_input: text,
         conversation_id: activeThreadId,
         image_b64: imageB64 || null,
+        meal_type: mealType ?? null,
       },
       {
         onSuccess: (data) => {
@@ -141,7 +143,7 @@ export function ChatPage() {
 
         <ChatThread
           messages={messages}
-          onAction={handleSend}
+          onAction={(text, mealType) => handleSend(text, null, mealType)}
           onDismissCard={handleDismissCard}
           isLoading={logMealMutation.isPending}
         />

@@ -16,10 +16,21 @@ export interface MealItem {
   estimated: boolean;
 }
 
+export type MealCategory = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'snack';
+
+export const MEAL_CATEGORIES: MealCategory[] = [
+  'breakfast',
+  'brunch',
+  'lunch',
+  'dinner',
+  'snack',
+];
+
 export interface LogMealRequest {
   user_input: string;
   conversation_id?: string | null;
   image_b64?: string | null;
+  meal_type?: MealCategory | null;
 }
 
 export interface LogMealResponse {

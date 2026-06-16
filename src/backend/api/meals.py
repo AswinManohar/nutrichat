@@ -18,6 +18,7 @@ class LogMealRequest(BaseModel):
     user_input: str
     conversation_id: str | None = None
     image_b64: str | None = None
+    meal_type: str | None = None
 
 
 @router.post("/log")
@@ -35,6 +36,7 @@ async def log_meal(
         thread_id=thread_id,
         checkpointer=checkpointer,
         image_b64=req.image_b64,
+        meal_type=req.meal_type,
     )
 
 

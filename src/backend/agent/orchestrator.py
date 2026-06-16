@@ -75,6 +75,7 @@ async def handle_message(
     thread_id: str,
     checkpointer: Any,
     image_b64: str | None = None,
+    meal_type: str | None = None,
 ) -> dict[str, Any]:
     """Route a user message to the meal-logging graph or the coaching agent.
 
@@ -88,6 +89,9 @@ async def handle_message(
         thread_id: LangGraph thread ID (defaults to user_id in Phase 1).
         checkpointer: AsyncPostgresSaver instance from app.state.
         image_b64: Optional base64-encoded image string.
+        meal_type: User-picked meal category sent with a confirm/correct
+            action. Injected into graph state on resume so the logged meal
+            is filed under the right category.
 
     Returns:
         Dict with status, message, paused, and items.
@@ -113,7 +117,7 @@ async def handle_message(
             result = await _handle_coaching(user_id, user_input)
         else:
             result = await _handle_meal_logging(
-                graph, config, user_input, user_id, image_b64, is_paused
+                graph, config, user_input, user_id, image_b64, is_paused, meal_type
             )
 
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
@@ -145,6 +149,7 @@ async def _handle_meal_logging(
     user_id: str,
     image_b64: str | None,
     is_paused: bool,
+    meal_type: str | None = None,
 ) -> dict[str, Any]:
     """Run (or resume) the meal-logging graph and shape its response.
 
@@ -155,17 +160,19 @@ async def _handle_meal_logging(
         user_id: Supabase Auth UUID.
         image_b64: Optional base64-encoded image string.
         is_paused: Whether the graph was paused at the confirmation interrupt.
+        meal_type: User-picked meal category, injected into state on resume.
 
     Returns:
         Dict with status, message, paused, and items.
     """
     with logfire.span("meal_logging"):
         if is_paused:
-            # Resume: inject new message into checkpoint state, then resume with None
-            await graph.aupdate_state(
-                config,
-                {"messages": [HumanMessage(content=user_input)]},
-            )
+            # Resume: inject new message (and the user-picked category) into
+            # checkpoint state, then resume with None.
+            update: dict[str, Any] = {"messages": [HumanMessage(content=user_input)]}
+            if meal_type is not None:
+                update["meal_type"] = meal_type
+            await graph.aupdate_state(config, update)
             result = await graph.ainvoke(None, config=config)
         else:
             # Fresh start: supply full initial state

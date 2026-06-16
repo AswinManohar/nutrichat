@@ -129,8 +129,10 @@ async def log_node(state: AgentState) -> dict:
     """Persist confirmed meal to Postgres and Redis."""
     from backend.agent.tools.usda import USDAResult
 
+    from backend.agent.tools.meals import normalize_meal_type
+
     results = [USDAResult(**r) for r in state["usda_results"]]
-    meal_type = state.get("meal_type") or "unspecified"
+    meal_type = normalize_meal_type(state.get("meal_type"))
     result = await log_meal(state["user_id"], results, meal_type)
     return {"messages": [AIMessage(content=result.message)]}
 

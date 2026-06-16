@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import datetime
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +18,64 @@ from backend.db.session import get_session
 from backend.workers.tasks import embed_meal_summary
 
 _TUNABLES = get_tunables()
+
+# ---------------------------------------------------------------------------
+# Meal categories
+# ---------------------------------------------------------------------------
+
+MealCategory = Literal["breakfast", "brunch", "lunch", "dinner", "snack"]
+MEAL_CATEGORIES: tuple[str, ...] = (
+    "breakfast",
+    "brunch",
+    "lunch",
+    "dinner",
+    "snack",
+)
+
+_CATEGORY_TZ = ZoneInfo(_TUNABLES.day.timezone)
+
+
+def _meal_type_from_hour(hour: int) -> str:
+    """Map a 24h clock hour to a meal category (deterministic fallback).
+
+    Mirrors the browser-side default used to pre-select the confirmation
+    card so server-inferred categories agree with the UI.
+
+    Args:
+        hour: Hour of day in 0-23.
+
+    Returns:
+        One of MEAL_CATEGORIES.
+    """
+    if 5 <= hour < 11:
+        return "breakfast"
+    if hour == 11:
+        return "brunch"
+    if 12 <= hour < 15:
+        return "lunch"
+    if 15 <= hour < 17:
+        return "snack"
+    if 17 <= hour < 22:
+        return "dinner"
+    return "snack"
+
+
+def normalize_meal_type(value: str | None) -> str:
+    """Return a valid meal category, falling back to the server clock.
+
+    The web UI always sends an explicit, user-picked category. This guards
+    other entry points (e.g. Telegram) and rejects junk values by inferring
+    from the current hour in the configured timezone.
+
+    Args:
+        value: Candidate category (any case) or None.
+
+    Returns:
+        One of MEAL_CATEGORIES.
+    """
+    if value and value.strip().lower() in MEAL_CATEGORIES:
+        return value.strip().lower()
+    return _meal_type_from_hour(datetime.now(_CATEGORY_TZ).hour)
 
 # ---------------------------------------------------------------------------
 # Pydantic models
