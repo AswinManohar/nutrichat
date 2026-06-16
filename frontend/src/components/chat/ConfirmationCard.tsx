@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { MealItem } from '../../api/types'
 import { ChevronDown, Plus, Minus, X } from 'lucide-react'
 
@@ -69,6 +69,10 @@ export function ConfirmationCard({ items, onAction, isLoading }: ConfirmationCar
   }
 
   const allRemoved = visibleIndices.length === 0
+
+  useEffect(() => {
+    if (allRemoved) onAction('cancel')
+  }, [allRemoved, onAction])
 
   return (
     <div className="w-full max-w-xl card-sand p-4 md:p-5 flex flex-col gap-3 mt-1 rise-in">
