@@ -14,6 +14,7 @@ from typing import Any
 
 import logfire
 from aiogram import Bot, F, Router
+from aiogram.enums import ChatAction
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     CallbackQuery,
@@ -591,6 +592,8 @@ async def on_photo(message: Message, bot: Bot) -> None:
         await message.answer(_NOT_LINKED_MSG)
         return
 
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+
     largest = message.photo[-1]
     file = await bot.get_file(largest.file_id)
     buffer = await bot.download_file(file.file_path)
@@ -625,6 +628,8 @@ async def on_text(message: Message, bot: Bot) -> None:
     if not user_id:
         await message.answer(_NOT_LINKED_MSG)
         return
+
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
     checkpointer = bot.checkpointer  # type: ignore[attr-defined]
     thread_id = await get_thread_id(message.chat.id)
