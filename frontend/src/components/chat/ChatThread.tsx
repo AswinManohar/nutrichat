@@ -47,8 +47,11 @@ function TypingIndicator() {
   if (mascotEnabled) {
     return (
       <div className="self-start rise-in">
-        <div className="card-sand rounded-2xl px-3 py-2 flex items-end">
-          <MascotSprite size={8} />
+        <div
+          className="card-sand rounded-2xl overflow-hidden flex items-end"
+          style={{ width: 200, height: 68, padding: '8px 12px' }}
+        >
+          <MascotSprite size={14} variant="run" />
         </div>
       </div>
     )
