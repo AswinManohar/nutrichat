@@ -13,7 +13,7 @@ function LoadingScreen({ message }: { message: string }) {
   return (
     <div className="fixed inset-0 bg-surface flex flex-col items-center justify-center gap-5 z-50">
       {mascotEnabled ? (
-        <MascotSprite size={12} state="walk" />
+        <MascotSprite size={12} />
       ) : (
         <div className="flex gap-1.5">
           <span className="typing-dot w-1.5 h-1.5 rounded-full bg-sage" style={{ animationDelay: '0ms' }} />

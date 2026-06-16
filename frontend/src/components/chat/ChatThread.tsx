@@ -48,7 +48,7 @@ function TypingIndicator() {
     return (
       <div className="self-start rise-in">
         <div className="card-sand rounded-2xl px-3 py-2 flex items-end">
-          <MascotSprite size={8} state="walk" />
+          <MascotSprite size={8} />
         </div>
       </div>
     )

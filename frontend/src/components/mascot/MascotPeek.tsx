@@ -37,7 +37,7 @@ export function MascotPeek() {
       className="fixed bottom-0 right-8 z-40 mascot-peek-wrapper"
       aria-hidden="true"
     >
-      <MascotSprite size={10} state="idle" />
+      <MascotSprite size={10} />
     </div>
   )
 }
