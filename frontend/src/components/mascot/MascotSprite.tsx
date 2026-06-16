@@ -1,10 +1,12 @@
 interface MascotSpriteProps {
   size?: number
+  variant?: 'run' | 'bounce' | 'sway'
   className?: string
 }
 
-export function MascotSprite({ size = 10, className }: MascotSpriteProps) {
+export function MascotSprite({ size = 10, variant, className }: MascotSpriteProps) {
   const px = size * 4
+  const variantClass = variant ? `mascot-${variant}` : ''
   return (
     <video
       src="/mascot.webm"
@@ -15,7 +17,7 @@ export function MascotSprite({ size = 10, className }: MascotSpriteProps) {
       muted
       playsInline
       aria-hidden="true"
-      className={className}
+      className={[variantClass, className].filter(Boolean).join(' ') || undefined}
       style={{ display: 'block', objectFit: 'contain' }}
     />
   )
