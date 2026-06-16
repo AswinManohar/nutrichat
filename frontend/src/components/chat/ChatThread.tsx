@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm'
 
 import type { ChatMessage } from '../../stores/mealStore'
 import { ConfirmationCard } from './ConfirmationCard'
+import { MascotSprite } from '../mascot/MascotSprite'
+import { useMascotStore } from '../../stores/mascotStore'
 
 const MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
@@ -41,6 +43,16 @@ const SUGGESTIONS = [
 ]
 
 function TypingIndicator() {
+  const mascotEnabled = useMascotStore((s) => s.enabled)
+  if (mascotEnabled) {
+    return (
+      <div className="self-start rise-in">
+        <div className="card-sand rounded-2xl px-3 py-2 flex items-end">
+          <MascotSprite size={8} state="walk" />
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="self-start rise-in">
       <div className="card-sand rounded-2xl px-4 py-3.5 flex items-center gap-1.5">
