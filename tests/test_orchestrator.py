@@ -36,6 +36,29 @@ async def test_classify_intent_query_signal_no_llm():
 
 
 @pytest.mark.asyncio
+async def test_classify_intent_meal_plan_suggestion_is_coaching():
+    # Regression: "suggest a meal plan for dinner" used to match the "for dinner"
+    # log signal and short-circuit to the meal logger ("I didn't catch any food
+    # items"). It must route to coaching, deterministically (no LLM).
+    mock_llm = MagicMock()
+    with patch("backend.agent.orchestrator._intent_llm", mock_llm):
+        intent = await _classify_intent("suggest a meal plan for dinner")
+
+    assert intent == "coaching"
+    mock_llm.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_what_should_i_eat_is_coaching():
+    mock_llm = MagicMock()
+    with patch("backend.agent.orchestrator._intent_llm", mock_llm):
+        intent = await _classify_intent("what should I eat for dinner?")
+
+    assert intent == "coaching"
+    mock_llm.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_classify_intent_ambiguous_uses_llm_fallback():
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=_IntentResult(type="log_meal"))

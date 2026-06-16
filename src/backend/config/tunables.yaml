@@ -237,13 +237,14 @@ routing:
   # otherwise the LLM fallback decides. Substring match on the lowercased
   # message. Query signals win over log signals.
   log_signals:
+    # High-confidence "I'm reporting food" phrases only. Bare meal markers like
+    # "for dinner" are intentionally NOT here — they also appear in coaching
+    # requests ("suggest a meal plan for dinner") and would wrongly short-circuit
+    # to the logger. Pure logs like "chicken for dinner" fall through to the LLM.
     - "i ate"
     - "i had"
     - "just had"
     - "just ate"
-    - "for breakfast"
-    - "for lunch"
-    - "for dinner"
     - "logged"
   query_signals:
     - "how much"
@@ -255,7 +256,14 @@ routing:
     - "what's"
     - "what do i"
     - "what did i"
+    - "what should"
+    - "should i"
     - "show me"
+    - "suggest"
+    - "recommend"
+    - "meal plan"
+    - "plan my"
+    - "idea"
     - "vitamin"
     - "mineral"
     - "protein"
