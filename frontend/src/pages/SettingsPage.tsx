@@ -271,13 +271,13 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => setMascotEnabled(!mascotEnabled)}
                 role="switch"
                 aria-checked={mascotEnabled}
-                className={`relative w-10 h-6 rounded-full transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sage ${
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sage ${
                   mascotEnabled ? 'bg-sage' : 'bg-sand-border'
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    mascotEnabled ? 'translate-x-5' : 'translate-x-1'
+                  className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    mascotEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
