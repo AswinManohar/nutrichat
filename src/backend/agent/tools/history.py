@@ -464,7 +464,67 @@ async def get_history(
     ]
 
 
+async def get_category_breakdown(user_id: str, days: int) -> list[dict]:
+    """Aggregate logged meals by category over the last `days` days.
+
+    One indexed GROUP BY over `ix_meal_log_user_logged_at` — cheap at
+    personal scale, no precomputed rollups (avoids write amplification and
+    staleness). Covers both the macro-breakdown and frequency/pattern views:
+    average macros per category plus how often each category is logged and
+    its share of total calories.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        days: Trailing window size in days (includes today's partial day).
+
+    Returns:
+        One dict per category that has at least one meal in the window,
+        ordered by total_kcal desc, each with: meal_type, n_meals,
+        days_logged, avg_kcal, avg_protein_g, avg_carbs_g, avg_fat_g,
+        avg_fiber_g, total_kcal, share_kcal_pct.
+    """
+    date_from = date.today() - timedelta(days=days - 1)
+    async with get_session()() as session:
+        result = await session.execute(
+            sa_text(
+                "SELECT meal_type, "
+                "COUNT(*) AS n_meals, "
+                "COUNT(DISTINCT logged_at::date) AS days_logged, "
+                "COALESCE(AVG(kcal), 0) AS avg_kcal, "
+                "COALESCE(AVG(protein_g), 0) AS avg_protein_g, "
+                "COALESCE(AVG(carbs_g), 0) AS avg_carbs_g, "
+                "COALESCE(AVG(fat_g), 0) AS avg_fat_g, "
+                "COALESCE(AVG(fiber_g), 0) AS avg_fiber_g, "
+                "COALESCE(SUM(kcal), 0) AS total_kcal "
+                "FROM meal_log "
+                "WHERE user_id = :user_id AND logged_at::date >= :date_from "
+                "AND deleted_at IS NULL "
+                "GROUP BY meal_type ORDER BY total_kcal DESC"
+            ),
+            {"user_id": user_id, "date_from": date_from},
+        )
+        rows = result.all()
+
+    grand_total = sum(float(r.total_kcal) for r in rows) or 1.0
+    return [
+        {
+            "meal_type": row.meal_type,
+            "n_meals": int(row.n_meals),
+            "days_logged": int(row.days_logged),
+            "avg_kcal": float(row.avg_kcal),
+            "avg_protein_g": float(row.avg_protein_g),
+            "avg_carbs_g": float(row.avg_carbs_g),
+            "avg_fat_g": float(row.avg_fat_g),
+            "avg_fiber_g": float(row.avg_fiber_g),
+            "total_kcal": float(row.total_kcal),
+            "share_kcal_pct": round(float(row.total_kcal) / grand_total * 100, 1),
+        }
+        for row in rows
+    ]
+
+
 __all__ = [
+    "get_category_breakdown",
     "get_food_breakdown_for_range",
     "get_history",
     "get_macros_for_range",

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text as sa_text
 
 from backend.agent.orchestrator import handle_message
+from backend.agent.tools.history import get_category_breakdown
 from backend.auth.supabase import get_current_user_id
 from backend.db.redis_client import TodayTotals, get_today_totals
 from backend.db.session import get_session
@@ -56,6 +57,37 @@ class DayTrend(BaseModel):
     junk_meals: int
 
     model_config = ConfigDict(extra="forbid")
+
+
+class CategoryStat(BaseModel):
+    """Per-category aggregate for the meal-category breakdown panel."""
+
+    meal_type: str
+    n_meals: int
+    days_logged: int
+    avg_kcal: float
+    avg_protein_g: float
+    avg_carbs_g: float
+    avg_fat_g: float
+    avg_fiber_g: float
+    total_kcal: float
+    share_kcal_pct: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.get("/categories")
+async def get_categories(
+    days: int = Query(default=30, ge=1, le=366),
+    user_id: str = Depends(get_current_user_id),
+) -> list[CategoryStat]:
+    """Per-category macro averages + frequency over the last `days` days.
+
+    One indexed GROUP BY (see get_category_breakdown); fine at personal
+    scale. Categories with no meals in the window are omitted.
+    """
+    rows = await get_category_breakdown(user_id, days)
+    return [CategoryStat(**row) for row in rows]
 
 
 @router.get("/trends")
