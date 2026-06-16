@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
 from backend.agent.llm import EMBEDDING_DIM, EMBEDDING_MODEL
+from backend.agent.tools.mindful import (
+    SafetyAlert,
+    evaluate_safety,
+    get_daily_intake,
+)
 from backend.config import get_tunables
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
 from backend.db.redis_client import TodayTotals, get_today_totals
@@ -18,13 +24,19 @@ _TOP_K_PREFERENCES = _TUNABLES.memory.top_k_preferences
 
 
 class GoalSummary(BaseModel):
-    """User's nutrition goals, as read from `user_goal`."""
+    """User's nutrition goals/mode, as read from `user_goal`.
 
-    kcal_goal: float
-    protein_goal: float
-    fiber_goal: float
+    In mindful mode the three target fields are None and `active_alerts`
+    carries any UL safety breaches for today.
+    """
+
+    tracking_mode: str = "goals"
+    kcal_goal: float | None = None
+    protein_goal: float | None = None
+    fiber_goal: float | None = None
     dietary_prefs: dict
     streak_days: int
+    active_alerts: list[SafetyAlert] = []
 
     model_config = ConfigDict(extra="forbid")
 
@@ -107,6 +119,7 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
         goal_row = await session.get(UserGoal, user_id)
         goals = (
             GoalSummary(
+                tracking_mode=goal_row.tracking_mode or "goals",
                 kcal_goal=goal_row.kcal_goal,
                 protein_goal=goal_row.protein_goal,
                 fiber_goal=goal_row.fiber_goal,
@@ -134,6 +147,12 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
             if weekly_row
             else None
         )
+
+    # Mindful-mode users have no goals to reference; surface UL safety
+    # breaches to the coaching agent instead.
+    if goals is not None and goals.tracking_mode == "mindful":
+        intake = await get_daily_intake(user_id, date.today())
+        goals.active_alerts = evaluate_safety(intake)
 
     preferences: list[str] = []
     if user_message:
@@ -176,7 +195,13 @@ def build_system_prompt(ctx: ContextBundle) -> str:
         f"Today so far: {totals.kcal:.0f} kcal, {totals.protein_g:.0f}g protein, "
         f"{totals.fiber_g:.0f}g fiber, across {totals.n_meals} meal(s)."
     )
-    if ctx.goals:
+    if (
+        ctx.goals
+        and ctx.goals.tracking_mode == "goals"
+        and ctx.goals.kcal_goal is not None
+        and ctx.goals.protein_goal is not None
+        and ctx.goals.fiber_goal is not None
+    ):
         today_block += (
             f" Goals: {ctx.goals.kcal_goal:.0f} kcal, "
             f"{ctx.goals.protein_goal:.0f}g protein, "
@@ -184,6 +209,20 @@ def build_system_prompt(ctx: ContextBundle) -> str:
             f"Current streak: {ctx.goals.streak_days} day(s)."
         )
     blocks.append(today_block)
+
+    # Mindful mode: no goals, but surface any safety breaches.
+    if ctx.goals and ctx.goals.tracking_mode == "mindful":
+        blocks.append(
+            "This user is in Mindful Eating mode — no calorie/macro targets. "
+            "Do not frame advice around hitting goals."
+        )
+        if ctx.goals.active_alerts:
+            alert_lines = "; ".join(
+                f"{a.nutrient} {a.amount:.0f}{a.unit} (limit {a.limit:.0f}{a.unit}, "
+                f"{a.source})"
+                for a in ctx.goals.active_alerts
+            )
+            blocks.append(f"Safety alerts (intake at/above UL today): {alert_lines}.")
 
     if ctx.weekly_pattern:
         wp = ctx.weekly_pattern
@@ -204,7 +243,11 @@ def build_system_prompt(ctx: ContextBundle) -> str:
         "Accountability rules:",
         "- Reference today's actual progress toward goals when relevant.",
     ]
-    if ctx.goals and totals.protein_g < 0.6 * ctx.goals.protein_goal:
+    if (
+        ctx.goals
+        and ctx.goals.protein_goal is not None
+        and totals.protein_g < 0.6 * ctx.goals.protein_goal
+    ):
         accountability_rules.append(
             "- Protein is below 60% of today's goal — gently flag this if "
             "the conversation allows."

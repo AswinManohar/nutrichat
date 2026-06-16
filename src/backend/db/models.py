@@ -36,9 +36,12 @@ class UserGoal(Base):
     __tablename__ = "user_goal"
 
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
-    kcal_goal: Mapped[float] = mapped_column(Float, nullable=False)
-    protein_goal: Mapped[float] = mapped_column(Float, nullable=False)
-    fiber_goal: Mapped[float] = mapped_column(Float, nullable=False)
+    tracking_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default="goals", server_default="goals"
+    )
+    kcal_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    protein_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fiber_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     dietary_prefs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     streak_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

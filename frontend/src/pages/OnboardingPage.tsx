@@ -7,12 +7,14 @@ import { GoalSlider } from '../components/onboarding/GoalSlider'
 import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
-import { Flame, Heart, Dumbbell } from 'lucide-react'
+import type { TrackingMode } from '../api/types'
+import { Flame, Target, Heart, Dumbbell, Leaf } from 'lucide-react'
 
 export const OnboardingPage: React.FC = () => {
   const navigate = useNavigate()
   const createGoalsMutation = useCreateGoals()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(0)
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>('goals')
 
   // Step 1: Profile State
   const [weight, setWeight] = useState(70)
@@ -58,9 +60,17 @@ export const OnboardingPage: React.FC = () => {
   }
 
   const handlePrevStep = () => {
-    if (step > 1) {
+    // Mindful flow is Step 0 → Step 3; goal flow is 0 → 1 → 2 → 3.
+    if (trackingMode === 'mindful' && step === 3) {
+      setStep(0)
+    } else if (step > 0) {
       setStep((s) => s - 1)
     }
+  }
+
+  const chooseMode = (mode: TrackingMode) => {
+    setTrackingMode(mode)
+    setStep(mode === 'mindful' ? 3 : 1)
   }
 
   const handleSubmit = () => {
@@ -71,9 +81,10 @@ export const OnboardingPage: React.FC = () => {
 
     createGoalsMutation.mutate(
       {
-        kcal_goal: kcalGoal,
-        protein_goal: proteinGoal,
-        fiber_goal: fiberGoal,
+        tracking_mode: trackingMode,
+        kcal_goal: trackingMode === 'mindful' ? null : kcalGoal,
+        protein_goal: trackingMode === 'mindful' ? null : proteinGoal,
+        fiber_goal: trackingMode === 'mindful' ? null : fiberGoal,
         dietary_prefs: prefsObject,
       },
       {
@@ -120,7 +131,8 @@ export const OnboardingPage: React.FC = () => {
           <p className="text-sm text-muted mt-1">Let's calculate your custom nutrition goals</p>
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress Bar (goal-setting flow only) */}
+        {step >= 1 && (
         <div className="flex items-center justify-between mb-8 px-4">
           <div className="flex-1 flex items-center">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold border transition-colors duration-200 ${
@@ -140,7 +152,43 @@ export const OnboardingPage: React.FC = () => {
             }`}>3</div>
           </div>
         </div>
+        )}
 
+        {/* STEP 0: TRACKING MODE CHOICE */}
+        {step === 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => chooseMode('goals')}
+              className="press text-left p-6 rounded-2xl border border-sand-border bg-sand hover:border-sage shadow-lg flex flex-col gap-3"
+            >
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-sage to-sage-deep flex items-center justify-center">
+                <Target className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="font-display text-lg text-ink">Set goals</h3>
+              <p className="text-[13px] text-muted leading-relaxed">
+                I want daily targets for calories, protein & fiber, with progress
+                rings and streaks.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => chooseMode('mindful')}
+              className="press text-left p-6 rounded-2xl border border-sand-border bg-sand hover:border-sage shadow-lg flex flex-col gap-3"
+            >
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-fiber to-warn flex items-center justify-center">
+                <Leaf className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="font-display text-lg text-ink">Mindful eating</h3>
+              <p className="text-[13px] text-muted leading-relaxed">
+                I want to track what I eat with no targets — just the amounts, plus
+                safety alerts if I go over a healthy limit.
+              </p>
+            </button>
+          </div>
+        )}
+
+        {step >= 1 && (
         <Card className="border border-sand-border shadow-2xl overflow-hidden bg-sand backdrop-blur-md">
           {/* STEP 1: PHYSICAL PROFILE */}
           {step === 1 && (
@@ -359,6 +407,7 @@ export const OnboardingPage: React.FC = () => {
             </Button>
           </div>
         </Card>
+        )}
       </div>
     </div>
   )

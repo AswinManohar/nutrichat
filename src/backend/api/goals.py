@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import UserGoal
@@ -9,11 +11,14 @@ from backend.db.session import get_session
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
+TrackingMode = Literal["goals", "mindful"]
+
 
 class GoalResponse(BaseModel):
-    kcal_goal: float
-    protein_goal: float
-    fiber_goal: float
+    tracking_mode: str
+    kcal_goal: float | None
+    protein_goal: float | None
+    fiber_goal: float | None
     dietary_prefs: dict
     streak_days: int
 
@@ -21,25 +26,54 @@ class GoalResponse(BaseModel):
 
 
 class GoalCreate(BaseModel):
-    kcal_goal: float = Field(gt=0)
-    protein_goal: float = Field(gt=0)
-    fiber_goal: float = Field(gt=0)
+    tracking_mode: TrackingMode = "goals"
+    kcal_goal: float | None = Field(default=None, gt=0)
+    protein_goal: float | None = Field(default=None, gt=0)
+    fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _require_targets_in_goal_mode(self) -> "GoalCreate":
+        if self.tracking_mode == "goals" and (
+            self.kcal_goal is None
+            or self.protein_goal is None
+            or self.fiber_goal is None
+        ):
+            raise ValueError(
+                "kcal_goal, protein_goal and fiber_goal are required "
+                "when tracking_mode is 'goals'"
+            )
+        return self
 
 
 class GoalUpdate(BaseModel):
-    kcal_goal: float = Field(gt=0)
-    protein_goal: float = Field(gt=0)
-    fiber_goal: float = Field(gt=0)
+    tracking_mode: TrackingMode = "goals"
+    kcal_goal: float | None = Field(default=None, gt=0)
+    protein_goal: float | None = Field(default=None, gt=0)
+    fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _require_targets_in_goal_mode(self) -> "GoalUpdate":
+        if self.tracking_mode == "goals" and (
+            self.kcal_goal is None
+            or self.protein_goal is None
+            or self.fiber_goal is None
+        ):
+            raise ValueError(
+                "kcal_goal, protein_goal and fiber_goal are required "
+                "when tracking_mode is 'goals'"
+            )
+        return self
 
 
 def _to_response(goal: UserGoal) -> GoalResponse:
     return GoalResponse(
+        tracking_mode=goal.tracking_mode or "goals",
         kcal_goal=goal.kcal_goal,
         protein_goal=goal.protein_goal,
         fiber_goal=goal.fiber_goal,
@@ -70,6 +104,7 @@ async def create_goals(
 
         goal = UserGoal(
             user_id=user_id,
+            tracking_mode=req.tracking_mode,
             kcal_goal=req.kcal_goal,
             protein_goal=req.protein_goal,
             fiber_goal=req.fiber_goal,
@@ -92,6 +127,7 @@ async def update_goals(
         if goal is None:
             raise HTTPException(status_code=404, detail="User has not been onboarded")
 
+        goal.tracking_mode = req.tracking_mode
         goal.kcal_goal = req.kcal_goal
         goal.protein_goal = req.protein_goal
         goal.fiber_goal = req.fiber_goal

@@ -106,6 +106,18 @@ class NutrientCheckupConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class UpperLimitEntry(BaseModel):
+    """One Tolerable Upper Intake Level for a Mindful Eating safety alert."""
+
+    usda_name: str
+    unit: str
+    ul: float = Field(gt=0)
+    source: str
+    url: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RoutingConfig(BaseModel):
     log_signals: list[str]
     query_signals: list[str]
@@ -144,6 +156,7 @@ class Tunables(BaseModel):
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
     prompts: PromptsConfig
+    upper_limits: dict[str, UpperLimitEntry]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -169,4 +182,4 @@ def get_tunables() -> Tunables:
     return Tunables.model_validate(raw)
 
 
-__all__ = ["Tunables", "get_tunables"]
+__all__ = ["Tunables", "UpperLimitEntry", "get_tunables"]

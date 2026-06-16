@@ -43,29 +43,46 @@ export const SettingsPage: React.FC = () => {
   const [seededFrom, setSeededFrom] = useState<typeof goals | null>(null)
   if (goals && seededFrom !== goals) {
     setSeededFrom(goals)
-    setKcalGoal(goals.kcal_goal)
-    setProteinGoal(goals.protein_goal)
-    setFiberGoal(goals.fiber_goal)
+    setKcalGoal(goals.kcal_goal ?? 2000)
+    setProteinGoal(goals.protein_goal ?? 120)
+    setFiberGoal(goals.fiber_goal ?? 30)
     setDietaryPrefs(
       Object.keys(goals.dietary_prefs || {}).filter((key) => goals.dietary_prefs[key] === true)
     )
+  }
+
+  const currentMode = goals?.tracking_mode ?? 'goals'
+
+  const prefsObject = (): Record<string, boolean> => {
+    const obj: Record<string, boolean> = {}
+    dietaryPrefs.forEach((p) => {
+      obj[p] = true
+    })
+    return obj
+  }
+
+  const switchMode = () => {
+    const toMindful = currentMode === 'goals'
+    updateGoalsMutation.mutate({
+      tracking_mode: toMindful ? 'mindful' : 'goals',
+      kcal_goal: toMindful ? null : kcalGoal,
+      protein_goal: toMindful ? null : proteinGoal,
+      fiber_goal: toMindful ? null : fiberGoal,
+      dietary_prefs: prefsObject(),
+    })
   }
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
     setSaveSuccess(false)
 
-    const prefsObject: Record<string, boolean> = {}
-    dietaryPrefs.forEach((p) => {
-      prefsObject[p] = true
-    })
-
     updateGoalsMutation.mutate(
       {
-        kcal_goal: kcalGoal,
-        protein_goal: proteinGoal,
-        fiber_goal: fiberGoal,
-        dietary_prefs: prefsObject,
+        tracking_mode: currentMode,
+        kcal_goal: currentMode === 'mindful' ? null : kcalGoal,
+        protein_goal: currentMode === 'mindful' ? null : proteinGoal,
+        fiber_goal: currentMode === 'mindful' ? null : fiberGoal,
+        dietary_prefs: prefsObject(),
       },
       {
         onSuccess: () => {
@@ -124,7 +141,32 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Caloric & Macronutrient Targets Card */}
+          {/* Tracking Mode Card */}
+          <Card className="border border-sand-border bg-sand backdrop-blur-md">
+            <CardHeader>
+              <CardTitle>Tracking mode</CardTitle>
+              <CardDescription>
+                {currentMode === 'mindful'
+                  ? 'Mindful Eating — you see amounts consumed with no targets, plus safety alerts.'
+                  : 'Goal tracking — daily calorie, protein and fiber targets with progress rings.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={switchMode}
+                isLoading={updateGoalsMutation.isPending}
+              >
+                {currentMode === 'mindful'
+                  ? 'Switch to Goal Tracking'
+                  : 'Switch to Mindful Eating'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Caloric & Macronutrient Targets Card (goal mode only) */}
+          {currentMode === 'goals' && (
           <Card className="border border-sand-border bg-sand backdrop-blur-md">
             <CardHeader>
               <CardTitle>Daily Nutrient Goals</CardTitle>
@@ -162,6 +204,7 @@ export const SettingsPage: React.FC = () => {
               />
             </CardContent>
           </Card>
+          )}
 
           {/* Dietary Preferences Card */}
           <Card className="border border-sand-border bg-sand backdrop-blur-md">
