@@ -12,6 +12,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
 import { Sparkles, Save, LogOut, Heart, Target, Send } from 'lucide-react'
+import { useMascotStore } from '../stores/mascotStore'
 
 export const SettingsPage: React.FC = () => {
   const { user, signOut } = useAuthStore()
@@ -36,6 +37,7 @@ export const SettingsPage: React.FC = () => {
   const [fiberGoal, setFiberGoal] = useState(30)
   const [dietaryPrefs, setDietaryPrefs] = useState<string[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const { enabled: mascotEnabled, setEnabled: setMascotEnabled } = useMascotStore()
 
   // Seed form from fetched goals (React "adjust state during render")
   const [seededFrom, setSeededFrom] = useState<typeof goals | null>(null)
@@ -244,6 +246,42 @@ export const SettingsPage: React.FC = () => {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Appearance Card */}
+        <Card className="border border-sand-border bg-sand backdrop-blur-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-sage-deep" />
+              Appearance
+            </CardTitle>
+            <CardDescription>Customise visual flair.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm font-medium text-ink">Pixel companion</p>
+                <p className="text-xs text-muted mt-0.5">
+                  A small creature appears while things load
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMascotEnabled(!mascotEnabled)}
+                role="switch"
+                aria-checked={mascotEnabled}
+                className={`relative w-10 h-6 rounded-full transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sage ${
+                  mascotEnabled ? 'bg-sage' : 'bg-sand-border'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    mascotEnabled ? 'translate-x-5' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </CardContent>
         </Card>
 
