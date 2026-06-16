@@ -1,6 +1,6 @@
 interface MascotSpriteProps {
   size?: number
-  variant?: 'run' | 'bounce' | 'sway'
+  variant?: 'jump' | 'bounce' | 'sway'
   className?: string
 }
 
