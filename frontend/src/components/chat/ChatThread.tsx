@@ -6,7 +6,6 @@ import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '../../stores/mealStore'
 import { ConfirmationCard } from './ConfirmationCard'
 import { MascotSprite } from '../mascot/MascotSprite'
-import { useMascotStore } from '../../stores/mascotStore'
 
 const MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
@@ -43,25 +42,13 @@ const SUGGESTIONS = [
 ]
 
 function TypingIndicator() {
-  const mascotEnabled = useMascotStore((s) => s.enabled)
-  if (mascotEnabled) {
-    return (
-      <div className="self-start rise-in">
-        <div
-          className="card-sand rounded-2xl overflow-hidden flex items-end"
-          style={{ width: 200, height: 68, padding: '8px 12px' }}
-        >
-          <MascotSprite size={14} variant="run" />
-        </div>
-      </div>
-    )
-  }
   return (
     <div className="self-start rise-in">
-      <div className="card-sand rounded-2xl px-4 py-3.5 flex items-center gap-1.5">
-        <span className="typing-dot w-1.5 h-1.5 bg-sage rounded-full" style={{ animationDelay: '0ms' }} />
-        <span className="typing-dot w-1.5 h-1.5 bg-sage rounded-full" style={{ animationDelay: '150ms' }} />
-        <span className="typing-dot w-1.5 h-1.5 bg-sage rounded-full" style={{ animationDelay: '300ms' }} />
+      <div
+        className="card-sand rounded-2xl overflow-hidden flex items-end"
+        style={{ width: 200, height: 68, padding: '8px 12px' }}
+      >
+        <MascotSprite size={14} variant="run" />
       </div>
     </div>
   )
