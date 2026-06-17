@@ -30,7 +30,11 @@ number and editing a prompt are different activities living in one file.
 ## 3. Design
 
 ### 3.1 File layout
-One file per existing `PromptsConfig` field, named `<field>.md`:
+One file per prompt, named `<field>.md` — **except the coaching prompts, which
+are kept together in a single `coaching.md`** (user requirement: "keep the
+coaching prompt in one md file"). The three coaching-related fields
+(`coaching_response_system`, `coaching_role_and_tone`, `coaching_hard_constraints`)
+live as delimited sections inside that one file:
 ```
 src/backend/config/prompts/
   extraction_system.md
@@ -38,33 +42,62 @@ src/backend/config/prompts/
   correction_system.md
   intent_system.md
   query_parse_system.md
-  coaching_response_system.md
-  coaching_role_and_tone.md
-  coaching_hard_constraints.md
+  coaching.md            # contains all 3 coaching_* fields, section-delimited
   fact_extraction_system.md
   nutrition_estimate_system.md
 ```
-File contents are the raw prompt text (the current YAML block-scalar body,
-verbatim). Any leading comments currently above each YAML key move into the spec
-or a short HTML comment at the top of each file — not into the prompt text.
+`coaching.md` uses an HTML-comment section marker per field, e.g.:
+```markdown
+<!-- field: coaching_response_system -->
+…the full coaching response prompt…
+
+<!-- field: coaching_role_and_tone -->
+…role/tone block…
+
+<!-- field: coaching_hard_constraints -->
+…hard constraints block…
+```
+Other files contain the raw prompt text verbatim. Leading YAML comments move into
+this spec or a short HTML comment at the top of each file — not into prompt text.
 
 ### 3.2 Loader change (`src/backend/config/__init__.py`)
 - Remove the `prompts:` block from `tunables.yaml`.
 - Keep the `PromptsConfig` Pydantic model **unchanged** (same field names).
 - After loading+validating `tunables.yaml` (now without `prompts`), construct
-  `PromptsConfig` by reading each `<field>.md` from the prompts dir:
+  `PromptsConfig` from files. Most fields map to `<field>.md`; the three
+  `coaching_*` fields are parsed out of the single `coaching.md` by their
+  `<!-- field: NAME -->` markers:
   ```python
   _PROMPTS_DIR = Path(__file__).parent / "prompts"
+  _COACHING_FIELDS = {
+      "coaching_response_system",
+      "coaching_role_and_tone",
+      "coaching_hard_constraints",
+  }
+  _SECTION_RE = re.compile(r"<!--\s*field:\s*(\w+)\s*-->")
+
+  def _parse_sections(text: str) -> dict[str, str]:
+      """Split a section-delimited prompt file into {field: body}."""
+      parts = _SECTION_RE.split(text)  # [pre, name1, body1, name2, body2, ...]
+      return {parts[i].strip(): parts[i + 1].strip()
+              for i in range(1, len(parts), 2)}
 
   def _load_prompts() -> PromptsConfig:
-      fields = PromptsConfig.model_fields.keys()
-      data = {}
-      for name in fields:
+      data: dict[str, str] = {}
+      # coaching.md → the three coaching_* fields
+      coaching_path = _PROMPTS_DIR / "coaching.md"
+      if not coaching_path.exists():
+          raise FileNotFoundError(f"Missing prompt file: {coaching_path}")
+      data.update(_parse_sections(coaching_path.read_text(encoding="utf-8")))
+      # one file per remaining field
+      for name in PromptsConfig.model_fields:
+          if name in _COACHING_FIELDS:
+              continue
           path = _PROMPTS_DIR / f"{name}.md"
           if not path.exists():
               raise FileNotFoundError(f"Missing prompt file: {path}")
           data[name] = path.read_text(encoding="utf-8").strip()
-      return PromptsConfig(**data)
+      return PromptsConfig(**data)  # validation catches any missing field
   ```
 - `Tunables` no longer has `prompts` sourced from YAML. Two clean options
   (pick at implementation): (a) drop `prompts` from the `Tunables` model and
@@ -105,7 +138,7 @@ follow-up the eval harness enables); moving non-prompt constants.
 ## 7. File map
 | File | Change |
 |---|---|
-| `src/backend/config/prompts/*.md` (10 files) | New — prompt bodies, verbatim |
+| `src/backend/config/prompts/*.md` (8 files; coaching.md holds the 3 coaching_* sections) | New — prompt bodies, verbatim |
 | `src/backend/config/tunables.yaml` | Remove `prompts:` block |
 | `src/backend/config/__init__.py` | `_load_prompts()`, merge into `get_tunables()` |
 | `tests/test_config.py` | Prompt-loading assertions |
