@@ -142,6 +142,60 @@ class UserMemory(Base):
     __table_args__ = (Index("ix_user_memory_user_id", "user_id"),)
 
 
+class UserMeal(Base):
+    """A user's saved composite meal ("My Meals").
+
+    Written by POST /my-meals from a confirmed, decomposed meal. `ingredients`
+    uses the same JSONB shape as `meal_log.entities`, so logging from a saved
+    meal reuses the whole downstream path. Macro totals are denormalized for
+    quick listing; `embedding` powers later semantic match (V2).
+    """
+
+    __tablename__ = "user_meal"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name_normalized: Mapped[str] = mapped_column(Text, nullable=False)
+    ingredients: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    kcal: Mapped[float] = mapped_column(Float, nullable=False)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_g: Mapped[float] = mapped_column(Float, nullable=False)
+    fat_g: Mapped[float] = mapped_column(Float, nullable=False)
+    fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
+    embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_user_meal_user_normalized",
+            "user_id",
+            "name_normalized",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
 class FoodSource(Base):
     """USDA FoodData Central cache.
 
