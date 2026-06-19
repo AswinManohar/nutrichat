@@ -1,19 +1,74 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import text as sa_text
+from sqlalchemy import select, text as sa_text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.orchestrator import handle_message
 from backend.agent.tools.history import get_category_breakdown
 from backend.agent.tools.meals import soft_delete_meal
 from backend.auth.supabase import get_current_user_id
-from backend.db.redis_client import TodayTotals, get_today_totals
+from backend.db.models import MealLog
+from backend.db.redis_client import TodayTotals, current_day_bounds, get_today_totals
 from backend.db.session import get_session
 
 router = APIRouter(prefix="/meals", tags=["meals"])
+
+
+async def _get_today_by_type(
+    user_id: str,
+    db: AsyncSession,
+) -> list[dict]:
+    """Return today's kcal total and item-name summary per meal_type.
+
+    Uses the same nutrition-day window as get_today_totals so that the
+    day boundary honours the configured reset hour.
+
+    Args:
+        user_id: The authenticated user's ID.
+        db: Active async DB session.
+
+    Returns:
+        List of dicts with keys meal_type, kcal (float), summary (str).
+    """
+    today_start, today_end = current_day_bounds()
+
+    result = await db.execute(
+        select(MealLog.meal_type, MealLog.entities, MealLog.kcal)
+        .where(
+            MealLog.user_id == user_id,
+            MealLog.logged_at >= today_start,
+            MealLog.logged_at < today_end,
+            MealLog.deleted_at.is_(None),
+        )
+        .order_by(MealLog.logged_at)
+    )
+    rows = result.all()
+
+    by_type: dict[str, dict] = {}
+    for meal_type, entities_raw, meal_kcal in rows:
+        entities = (
+            entities_raw
+            if isinstance(entities_raw, list)
+            else json.loads(entities_raw or "[]")
+        )
+        names = [item.get("food_name", "") for item in entities[:3]]
+        summary = ", ".join(n for n in names if n)
+        if len(entities) > 3:
+            summary += f" +{len(entities) - 3} more"
+        if meal_type not in by_type:
+            by_type[meal_type] = {
+                "meal_type": meal_type,
+                "kcal": 0.0,
+                "summary": summary,
+            }
+        by_type[meal_type]["kcal"] += float(meal_kcal or 0)
+
+    return list(by_type.values())
 
 
 class LogMealRequest(BaseModel):
@@ -63,8 +118,24 @@ async def delete_meal_log(
 
 
 @router.get("/today")
-async def get_today(user_id: str = Depends(get_current_user_id)) -> TodayTotals:
-    return await get_today_totals(user_id)
+async def get_today(user_id: str = Depends(get_current_user_id)) -> dict:
+    """Return today's macro totals plus a per-meal-type breakdown.
+
+    Combines the Redis-backed totals from get_today_totals with a live
+    per-meal-type breakdown built from meal_log rows in the current
+    nutrition-day window.
+
+    Args:
+        user_id: Injected by the Supabase auth dependency.
+
+    Returns:
+        Dict with kcal, protein_g, fiber_g, n_meals, and by_type list.
+    """
+    totals = await get_today_totals(user_id)
+    session_factory = get_session()
+    async with session_factory() as db:
+        by_type = await _get_today_by_type(user_id=user_id, db=db)
+    return {**totals.model_dump(), "by_type": by_type}
 
 
 class DayTrend(BaseModel):
