@@ -106,31 +106,36 @@ export function ChatThread({
                 isUser ? 'self-end items-end' : 'self-start items-start'
               }`}
             >
-              <div
-                className={
-                  isUser
-                    ? 'bg-sage text-white rounded-2xl rounded-br-md px-4 py-3'
-                    : 'card-sand rounded-2xl rounded-bl-md px-4 py-3.5'
-                }
-              >
-                {isUser && msg.imageB64 && (
-                  <div className="w-48 max-w-full rounded-lg overflow-hidden mb-2.5">
-                    <img
-                      src={`data:image/jpeg;base64,${msg.imageB64}`}
-                      alt="Submitted food"
-                      className="w-full h-auto object-cover max-h-48"
-                    />
-                  </div>
+              <div className={isUser ? '' : 'flex items-start gap-2.5 w-full'}>
+                {!isUser && (
+                  <div className="w-5 h-5 rounded-full bg-sage-forest flex-shrink-0 mt-1" aria-hidden="true" />
                 )}
-                {isUser ? (
-                  <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                ) : (
-                  <div className="text-[14px] leading-relaxed text-ink-soft">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                      {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
-                    </ReactMarkdown>
-                  </div>
-                )}
+                <div
+                  className={
+                    isUser
+                      ? 'bg-sage-forest text-white rounded-2xl rounded-br-md px-4 py-3'
+                      : 'card-sand rounded-2xl rounded-bl-md px-4 py-3.5'
+                  }
+                >
+                  {isUser && msg.imageB64 && (
+                    <div className="w-48 max-w-full rounded-lg overflow-hidden mb-2.5">
+                      <img
+                        src={`data:image/jpeg;base64,${msg.imageB64}`}
+                        alt="Submitted food"
+                        className="w-full h-auto object-cover max-h-48"
+                      />
+                    </div>
+                  )}
+                  {isUser ? (
+                    <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  ) : (
+                    <div className="text-[14px] leading-relaxed text-ink-soft">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                        {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {hasCard && (
