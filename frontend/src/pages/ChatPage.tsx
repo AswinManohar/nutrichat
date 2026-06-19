@@ -234,7 +234,7 @@ export function ChatPage() {
                 { label: 'Meals', value: `${totals?.n_meals || 0}` },
               ].map((s) => (
                 <div key={s.label} className="card-sand px-2 py-2 text-center">
-                  <span className="label-caps block text-[9px]">{s.label}</span>
+                  <span className="label-caps block text-[11px]">{s.label}</span>
                   <span className="text-[13px] font-semibold text-ink-soft">{s.value}</span>
                 </div>
               ))}
