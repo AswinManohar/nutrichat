@@ -5,6 +5,8 @@ import type {
   DayTrend,
   LogMealRequest,
   LogMealResponse,
+  LogMyMealRequest,
+  LogMyMealResponse,
   MindfulDay,
   MyMealDetail,
   MyMealSummary,
@@ -38,6 +40,30 @@ export const useDeleteMeal = () => {
   return useMutation<void, Error, string>({
     mutationFn: (id) => apiClient.delete<void>(`/my-meals/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
+
+/** Fetch a saved meal's full ingredient breakdown (for the Customize editor). */
+export const useMyMeal = (id: string, enabled: boolean) => {
+  return useQuery<MyMealDetail, Error>({
+    queryKey: ['my-meals', id],
+    queryFn: () => apiClient.get<MyMealDetail>(`/my-meals/${id}`),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/** Log a saved meal directly (quick-log at 1x, or customized). */
+export const useLogMyMeal = (mealId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation<LogMyMealResponse, ApiError, LogMyMealRequest>({
+    mutationFn: (req) =>
+      apiClient.post<LogMyMealResponse>(`/my-meals/${mealId}/log`, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['trends'] })
+      queryClient.invalidateQueries({ queryKey: ['meal-categories'] })
+    },
   })
 }
 

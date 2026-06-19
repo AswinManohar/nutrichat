@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { MealCategory, MealItem } from '../../api/types'
-import { MEAL_CATEGORIES } from '../../api/types'
 import { useSaveMeal } from '../../api/hooks'
 import { ChevronDown, Plus, Minus, X, UtensilsCrossed, Sparkles, Bookmark, Check } from 'lucide-react'
+import { MealTypePicker } from './MealTypePicker'
+import { defaultMealCategory } from './meal-categories'
 
 interface ConfirmationCardProps {
   items: MealItem[]
@@ -17,25 +18,6 @@ interface ConfirmationCardProps {
 const PORTION_STEPS = [0.5, 1, 1.5, 2]
 
 const LOW_CONFIDENCE = 0.6
-
-const CATEGORY_LABELS: Record<MealCategory, string> = {
-  breakfast: 'Breakfast',
-  brunch: 'Brunch',
-  lunch: 'Lunch',
-  dinner: 'Dinner',
-  snack: 'Snack',
-}
-
-/** Pre-select a category from the browser's local clock (user can override). */
-function defaultMealCategory(date = new Date()): MealCategory {
-  const h = date.getHours()
-  if (h >= 5 && h < 11) return 'breakfast'
-  if (h === 11) return 'brunch'
-  if (h >= 12 && h < 15) return 'lunch'
-  if (h >= 15 && h < 17) return 'snack'
-  if (h >= 17 && h < 22) return 'dinner'
-  return 'snack'
-}
 
 interface ItemGroup {
   dish: string | null // source_dish; null = a standalone atomic item
@@ -82,7 +64,6 @@ export function ConfirmationCard({
   const [removed, setRemoved] = useState<Set<number>>(new Set())
   const [prevItems, setPrevItems] = useState(items)
   const [mealType, setMealType] = useState<MealCategory>(() => defaultMealCategory())
-  const [mealOpen, setMealOpen] = useState(false)
   const [portion, setPortion] = useState(1)
   const [mealName, setMealName] = useState('')
   const [openDish, setOpenDish] = useState<string | null>(null)
@@ -100,6 +81,11 @@ export function ConfirmationCard({
     }
   }, [allRemoved, onDismiss])
 
+  // A new card arrived → allow onDismiss to fire again for it.
+  useEffect(() => {
+    dismissedRef.current = false
+  }, [items])
+
   // Reset edits when a new card arrives (React "adjust state during render")
   if (prevItems !== items) {
     setPrevItems(items)
@@ -109,7 +95,6 @@ export function ConfirmationCard({
     setPortion(1)
     setMealName('')
     setOpenDish(null)
-    dismissedRef.current = false
     return null
   }
 
@@ -287,43 +272,9 @@ export function ConfirmationCard({
       </div>
 
       {/* Meal category — pre-filled from local time, tap to change */}
-      <div className="relative flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <span className="text-[12px] text-muted">Meal</span>
-        <button
-          type="button"
-          onClick={() => setMealOpen((o) => !o)}
-          aria-haspopup="listbox"
-          aria-expanded={mealOpen}
-          className="press cursor-pointer flex items-center gap-1.5 bg-container rounded-full pl-3 pr-2 py-1 text-[13px] font-medium text-ink hover:bg-container-high"
-        >
-          <UtensilsCrossed className="w-3.5 h-3.5 text-sage-deep" />
-          {CATEGORY_LABELS[mealType]}
-          <ChevronDown className="w-3.5 h-3.5 text-muted" />
-        </button>
-        {mealOpen && (
-          <div
-            role="listbox"
-            className="absolute left-10 top-full mt-1.5 w-40 bg-paper border border-sand-border rounded-xl shadow-lg z-30 max-h-44 overflow-y-auto rise-in"
-          >
-            {MEAL_CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                role="option"
-                aria-selected={mealType === cat}
-                onClick={() => {
-                  setMealType(cat)
-                  setMealOpen(false)
-                }}
-                className={`cursor-pointer w-full text-left px-3.5 py-2.5 text-[13px] hover:bg-sand transition-colors ${
-                  mealType === cat ? 'text-sage-deep font-medium' : 'text-ink-soft'
-                }`}
-              >
-                {CATEGORY_LABELS[cat]}
-              </button>
-            ))}
-          </div>
-        )}
+        <MealTypePicker value={mealType} onChange={setMealType} />
       </div>
 
       {/* Items — atomic rows inline; composite dishes collapsed with a per-dish popup */}

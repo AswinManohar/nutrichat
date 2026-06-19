@@ -42,6 +42,29 @@ export interface SaveMealRequest {
   ingredients: MealItem[];
 }
 
+export interface IngredientOverride {
+  index: number;
+  qty_g: number;
+}
+
+export interface LogMyMealRequest {
+  meal_type: MealCategory;
+  portion?: number;
+  ingredients?: IngredientOverride[];
+}
+
+export interface LogMyMealResponse {
+  meal_id: string;
+  meal_type: string;
+  n_items: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  message: string;
+}
+
 export type MealCategory = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'snack';
 
 export const MEAL_CATEGORIES: MealCategory[] = [
