@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useMealStore } from '../stores/mealStore'
 import { useDashboard, useLogMeal, usePendingNudge, useAckPendingNudge } from '../api/hooks'
 import type { MealCategory } from '../api/types'
@@ -23,6 +24,9 @@ export function ChatPage() {
   const { width: dashboardWidth, onPointerDown: onResizerPointerDown } = useResizablePanel()
   const { data: pendingNudge } = usePendingNudge()
   const ackNudgeMutation = useAckPendingNudge()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const loggedFromNavRef = useRef(false)
 
   useEffect(() => {
     if (!pendingNudge?.summary_text || conversationId !== null) return
@@ -83,6 +87,38 @@ export function ChatPage() {
     updateLastAgentMessage({ paused: false, items: [], text: 'Discarded — nothing logged.' })
     setConversationId(null)
   }, [updateLastAgentMessage, setConversationId])
+
+  // "Break into ingredients" → resume the paused thread with action=decompose.
+  // No user bubble; the re-presented card replaces the message in place.
+  const handleDecompose = () => {
+    if (!conversationId) return
+    logMealMutation.mutate(
+      { user_input: 'break into ingredients', conversation_id: conversationId, action: 'decompose' },
+      {
+        onSuccess: (data) => {
+          addMessage({
+            sender: 'agent',
+            text: data.message,
+            paused: data.paused,
+            items: data.items,
+          })
+          if (!data.paused) setConversationId(null)
+        },
+      }
+    )
+  }
+
+  // Explicit "Log" from the My Meals page navigates here with the meal name;
+  // send it once so the backend auto-detects the saved meal and prefills.
+  useEffect(() => {
+    const name = (location.state as { logMeal?: string } | null)?.logMeal
+    if (name && !loggedFromNavRef.current) {
+      loggedFromNavRef.current = true
+      navigate('.', { replace: true, state: null })
+      handleSend(name)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state])
 
   const handleClearChat = () => {
     if (window.confirm('Start a new conversation? This resets your active meal logging thread.')) {
@@ -146,6 +182,7 @@ export function ChatPage() {
           messages={messages}
           onAction={(text, mealType) => handleSend(text, null, mealType)}
           onDismissCard={handleDismissCard}
+          onDecompose={handleDecompose}
           isLoading={logMealMutation.isPending}
         />
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />

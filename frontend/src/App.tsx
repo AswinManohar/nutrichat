@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LoginPage } from './pages/LoginPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ChatPage } from './pages/ChatPage'
+import { MyMealsPage } from './pages/MyMealsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ProtectedLayout } from './components/layout/ProtectedLayout'
 
@@ -27,6 +28,7 @@ function App() {
           <Route element={<ProtectedLayout />}>
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/my-meals" element={<MyMealsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* Standard landing redirects */}
             <Route path="/" element={<Navigate to="/chat" replace />} />

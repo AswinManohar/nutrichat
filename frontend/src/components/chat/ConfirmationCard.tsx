@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MealCategory, MealItem } from '../../api/types'
 import { MEAL_CATEGORIES } from '../../api/types'
-import { ChevronDown, Plus, Minus, X, UtensilsCrossed } from 'lucide-react'
+import { useSaveMeal } from '../../api/hooks'
+import { ChevronDown, Plus, Minus, X, UtensilsCrossed, Sparkles, Bookmark, Check } from 'lucide-react'
 
 interface ConfirmationCardProps {
   items: MealItem[]
   onAction: (text: string, mealType?: MealCategory) => void
   onDismiss: () => void
+  onDecompose: () => void
   isLoading: boolean
 }
+
+const PORTION_STEPS = [0.5, 1, 1.5, 2]
 
 const LOW_CONFIDENCE = 0.6
 
@@ -36,7 +40,13 @@ function defaultMealCategory(date = new Date()): MealCategory {
  * Quantity edits, candidate switches, and removals are sent back as
  * plain-text corrections — the backend re-resolves and re-presents.
  */
-export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: ConfirmationCardProps) {
+export function ConfirmationCard({
+  items,
+  onAction,
+  onDismiss,
+  onDecompose,
+  isLoading,
+}: ConfirmationCardProps) {
   const [qtys, setQtys] = useState<number[]>(() => items.map((i) => i.qty_g))
   const [openCandidates, setOpenCandidates] = useState<number | null>(null)
   const [swaps, setSwaps] = useState<Record<number, string>>({})
@@ -44,7 +54,10 @@ export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: Conf
   const [prevItems, setPrevItems] = useState(items)
   const [mealType, setMealType] = useState<MealCategory>(() => defaultMealCategory())
   const [mealOpen, setMealOpen] = useState(false)
+  const [portion, setPortion] = useState(1)
+  const [mealName, setMealName] = useState('')
   const dismissedRef = useRef(false)
+  const saveMeal = useSaveMeal()
 
   // Every visible item removed → drop the card from the chat (no backend call).
   // Computed before any early return so the hook below is unconditional.
@@ -63,6 +76,8 @@ export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: Conf
     setQtys(items.map((i) => i.qty_g))
     setSwaps({})
     setRemoved(new Set())
+    setPortion(1)
+    setMealName('')
     dismissedRef.current = false
     return null
   }
@@ -72,9 +87,9 @@ export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: Conf
 
   const visibleIndices = items.map((_, i) => i).filter((i) => !removed.has(i))
 
-  // Live totals scale linearly with qty edits (nutrients are per-gram linear)
+  // Live totals scale linearly with qty edits × the portion multiplier.
   const scaled = items.map((item, i) => {
-    const scale = qtys[i] / item.qty_g
+    const scale = (qtys[i] * portion) / item.qty_g
     return {
       kcal: item.kcal * scale,
       protein_g: item.protein_g * scale,
@@ -91,9 +106,19 @@ export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: Conf
   items.forEach((item, i) => {
     if (removed.has(i)) return
     if (swaps[i]) corrections.push(`use ${swaps[i]} instead of ${item.food_name}`)
-    if (Math.round(qtys[i]) !== Math.round(item.qty_g))
-      corrections.push(`change ${item.food_name} to ${Math.round(qtys[i])}g`)
+    // Effective grams fold in the portion multiplier.
+    const effective = Math.round(qtys[i] * portion)
+    if (effective !== Math.round(item.qty_g))
+      corrections.push(`change ${item.food_name} to ${effective}g`)
   })
+
+  const handleSaveMeal = () => {
+    const name = mealName.trim()
+    if (!name || saveMeal.isSuccess) return
+    // Save the resolved base meal (full nutrients preserved); portion/edits
+    // affect logging, not the saved template.
+    saveMeal.mutate({ name, ingredients: items })
+  }
 
   const setQty = (i: number, v: number) => {
     if (v <= 0 || Number.isNaN(v)) return
@@ -278,6 +303,71 @@ export function ConfirmationCard({ items, onAction, onDismiss, isLoading }: Conf
             <span className="text-[13px] font-semibold text-ink">{t.value}</span>
           </div>
         ))}
+      </div>
+
+      {/* Portion multiplier */}
+      <div className="flex items-center gap-2">
+        <span className="text-[12px] text-muted">Portion</span>
+        <div className="flex items-center gap-1 bg-container rounded-full p-0.5">
+          {PORTION_STEPS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPortion(p)}
+              className={`cursor-pointer px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${
+                portion === p ? 'bg-sage text-white' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {p}×
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Break into ingredients + Save to My Meals */}
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onDecompose}
+          disabled={isLoading}
+          className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Break into ingredients
+        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={mealName}
+            onChange={(e) => setMealName(e.target.value)}
+            placeholder="Name this meal to save it…"
+            disabled={saveMeal.isSuccess}
+            className="flex-1 bg-paper border border-sand-border rounded-full px-3.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={handleSaveMeal}
+            disabled={!mealName.trim() || saveMeal.isPending || saveMeal.isSuccess}
+            className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
+          >
+            {saveMeal.isSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5" /> Saved
+              </>
+            ) : (
+              <>
+                <Bookmark className="w-3.5 h-3.5" /> Save
+              </>
+            )}
+          </button>
+        </div>
+        {saveMeal.isError && (
+          <span className="text-[11px] text-danger">
+            {saveMeal.error?.status === 409
+              ? 'You already have a meal with that name.'
+              : 'Could not save — try again.'}
+          </span>
+        )}
       </div>
 
       {/* Actions */}

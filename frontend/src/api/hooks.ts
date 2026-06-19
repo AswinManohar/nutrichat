@@ -6,6 +6,9 @@ import type {
   LogMealRequest,
   LogMealResponse,
   MindfulDay,
+  MyMealDetail,
+  MyMealSummary,
+  SaveMealRequest,
   TodayTotals,
   GoalData,
   NutrientCheckupResponse,
@@ -13,6 +16,30 @@ import type {
   TelegramLinkCode,
   TelegramLinkStatus,
 } from './types'
+
+export const useMyMeals = () => {
+  return useQuery<MyMealSummary[], Error>({
+    queryKey: ['my-meals'],
+    queryFn: () => apiClient.get<MyMealSummary[]>('/my-meals'),
+    staleTime: 30_000,
+  })
+}
+
+export const useSaveMeal = () => {
+  const queryClient = useQueryClient()
+  return useMutation<MyMealDetail, ApiError, SaveMealRequest>({
+    mutationFn: (req) => apiClient.post<MyMealDetail>('/my-meals', req),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
+
+export const useDeleteMeal = () => {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => apiClient.delete<void>(`/my-meals/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
 
 export const useMindfulToday = () => {
   return useQuery<MindfulDay, Error>({

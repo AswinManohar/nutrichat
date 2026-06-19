@@ -33,6 +33,7 @@ interface ChatThreadProps {
   messages: ChatMessage[]
   onAction: (text: string, mealType?: MealCategory) => void
   onDismissCard: () => void
+  onDecompose: () => void
   isLoading: boolean
 }
 
@@ -51,7 +52,13 @@ function TypingIndicator() {
   )
 }
 
-export function ChatThread({ messages, onAction, onDismissCard, isLoading }: ChatThreadProps) {
+export function ChatThread({
+  messages,
+  onAction,
+  onDismissCard,
+  onDecompose,
+  isLoading,
+}: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -126,6 +133,7 @@ export function ChatThread({ messages, onAction, onDismissCard, isLoading }: Cha
                   items={msg.items!}
                   onAction={onAction}
                   onDismiss={onDismissCard}
+                  onDecompose={onDecompose}
                   isLoading={isLoading}
                 />
               )}

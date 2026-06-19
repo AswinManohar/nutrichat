@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { MessageSquare, Settings } from 'lucide-react'
+import { MessageSquare, Settings, BookMarked } from 'lucide-react'
 
 export function MobileNav() {
   const navItems = [
     { label: 'Chat', path: '/chat', icon: MessageSquare },
+    { label: 'My Meals', path: '/my-meals', icon: BookMarked },
     { label: 'Settings', path: '/settings', icon: Settings },
   ]
 

@@ -14,6 +14,30 @@ export interface MealItem {
   source: string;
   /** True when nutrition was estimated by the LLM (no confident USDA match) */
   estimated: boolean;
+  sugar_g?: number;
+  sat_fat_g?: number;
+  /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */
+  nutrients?: Record<string, { amount: number; unit: string }>;
+}
+
+export interface MyMealSummary {
+  id: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  n_ingredients: number;
+}
+
+export interface MyMealDetail extends MyMealSummary {
+  ingredients: MealItem[];
+}
+
+export interface SaveMealRequest {
+  name: string;
+  ingredients: MealItem[];
 }
 
 export type MealCategory = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'snack';
@@ -31,6 +55,7 @@ export interface LogMealRequest {
   conversation_id?: string | null;
   image_b64?: string | null;
   meal_type?: MealCategory | null;
+  action?: string | null;
 }
 
 export interface LogMealResponse {
