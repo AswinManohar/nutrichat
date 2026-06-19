@@ -7,9 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from backend.agent.tools.decompose import normalize_meal_name
+from backend.agent.tools.saved_meals import find_saved_meal  # re-exported for callers
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import UserMeal
 from backend.db.session import get_session
+
+__all__ = ["router", "find_saved_meal"]
 
 router = APIRouter(prefix="/my-meals", tags=["my-meals"])
 
@@ -152,22 +155,3 @@ async def delete_meal(
             raise HTTPException(status_code=404, detail="Meal not found")
         meal.deleted_at = datetime.now(timezone.utc)
         await session.commit()
-
-
-async def find_saved_meal(user_id: str, text: str) -> UserMeal | None:
-    """Return the user's saved meal whose normalized name matches `text`.
-
-    Normalized-exact match (V1). Returns None on no match or empty text.
-    """
-    normalized = normalize_meal_name(text)
-    if not normalized:
-        return None
-    async with get_session()() as session:
-        result = await session.execute(
-            select(UserMeal).where(
-                UserMeal.user_id == user_id,
-                UserMeal.name_normalized == normalized,
-                UserMeal.deleted_at.is_(None),
-            )
-        )
-        return result.scalars().first()

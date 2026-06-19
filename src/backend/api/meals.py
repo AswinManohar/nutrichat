@@ -20,6 +20,7 @@ class LogMealRequest(BaseModel):
     conversation_id: str | None = None
     image_b64: str | None = None
     meal_type: str | None = None
+    action: str | None = None  # "decompose" → break the paused meal into ingredients
 
 
 @router.post("/log")
@@ -38,6 +39,7 @@ async def log_meal(
         checkpointer=checkpointer,
         image_b64=req.image_b64,
         meal_type=req.meal_type,
+        action=req.action,
     )
 
 

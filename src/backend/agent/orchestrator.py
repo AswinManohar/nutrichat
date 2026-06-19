@@ -76,6 +76,7 @@ async def handle_message(
     checkpointer: Any,
     image_b64: str | None = None,
     meal_type: str | None = None,
+    action: str | None = None,
 ) -> dict[str, Any]:
     """Route a user message to the meal-logging graph or the coaching agent.
 
@@ -117,7 +118,7 @@ async def handle_message(
             result = await _handle_coaching(user_id, user_input)
         else:
             result = await _handle_meal_logging(
-                graph, config, user_input, user_id, image_b64, is_paused, meal_type
+                graph, config, user_input, user_id, image_b64, is_paused, meal_type, action
             )
 
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
@@ -150,6 +151,7 @@ async def _handle_meal_logging(
     image_b64: str | None,
     is_paused: bool,
     meal_type: str | None = None,
+    action: str | None = None,
 ) -> dict[str, Any]:
     """Run (or resume) the meal-logging graph and shape its response.
 
@@ -167,9 +169,14 @@ async def _handle_meal_logging(
     """
     with logfire.span("meal_logging"):
         if is_paused:
-            # Resume: inject new message (and the user-picked category) into
-            # checkpoint state, then resume with None.
-            update: dict[str, Any] = {"messages": [HumanMessage(content=user_input)]}
+            # Resume: inject new message (+ picked category + any card action)
+            # into checkpoint state, then resume with None. `action` is set
+            # every resume (None unless decomposing) so a stale value can't
+            # re-trigger the decompose branch on the next confirm.
+            update: dict[str, Any] = {
+                "messages": [HumanMessage(content=user_input)],
+                "action": action,
+            }
             if meal_type is not None:
                 update["meal_type"] = meal_type
             await graph.aupdate_state(config, update)
@@ -184,6 +191,8 @@ async def _handle_meal_logging(
                     "entities": [],
                     "usda_results": [],
                     "meal_type": None,
+                    "action": None,
+                    "from_saved": False,
                 },
                 config=config,
             )
