@@ -20,6 +20,7 @@
   --color-sage-deep: #516050;
   --color-sage-soft: #9db0a0;
   --color-sage-container: #6a7868;
+  --color-sage-forest: oklch(0.19 0.042 143);
 
   /* Ink */
   --color-ink: #1b1c1a;
