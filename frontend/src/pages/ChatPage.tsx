@@ -66,9 +66,12 @@ export function ChatPage() {
 
   const handleUndo = useCallback(() => {
     if (!undoMealId) return
-    deleteMealLogMutation.mutate(undoMealId)
     dismissUndo()
-  }, [undoMealId, deleteMealLogMutation, dismissUndo])
+    deleteMealLogMutation.mutate(undoMealId, {
+      onSuccess: () => addMessage({ sender: 'agent', text: 'Done — meal removed.' }),
+      onError: () => addMessage({ sender: 'agent', text: "Couldn't undo — check your connection and try again." }),
+    })
+  }, [undoMealId, deleteMealLogMutation, dismissUndo, addMessage])
 
   const handleSend = (text: string, imageB64?: string | null, mealType?: MealCategory) => {
     addMessage({
