@@ -183,7 +183,7 @@ export function ConfirmationCard({
     return (
       <div
         key={`${item.fdc_id}-${i}`}
-        className="bg-paper rounded-xl border-l-4 border border-sand-border border-l-sage p-3.5 flex flex-col gap-2"
+        className="bg-paper rounded-xl border border-sand-border p-3.5 flex flex-col gap-2"
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -319,7 +319,7 @@ export function ConfirmationCard({
           return (
             <div
               key={`dish-${group.dish}`}
-              className="bg-paper rounded-xl border-l-4 border border-sand-border border-l-sage p-3.5 flex items-center justify-between gap-2"
+              className="bg-paper rounded-xl border border-sand-border p-3.5 flex items-center justify-between gap-2"
             >
               <div className="min-w-0 flex-1">
                 <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
