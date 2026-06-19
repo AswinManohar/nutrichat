@@ -126,8 +126,12 @@ async def _embed_meal_summary(meal_id: str) -> None:
         if meal is None:
             return
 
-        food_names = [item["food_name"] for item in meal.entities]
-        summary = f"{meal.meal_type}: " + ", ".join(food_names)
+        label = getattr(meal, "label", None)
+        if label:
+            body = label
+        else:
+            body = ", ".join(item["food_name"] for item in meal.entities)
+        summary = f"{meal.meal_type}: {body}"
         embedding = await embed_text(summary)
 
         meal.embedding = embedding
