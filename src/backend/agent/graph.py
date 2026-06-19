@@ -10,6 +10,7 @@ from typing_extensions import TypedDict
 
 from backend.agent.tools.decompose import decompose_to_ingredients
 from backend.agent.tools.meals import (
+    FoodEntity,
     apply_correction,
     classify_food_image,
     classify_intent,
@@ -19,6 +20,7 @@ from backend.agent.tools.meals import (
 )
 from backend.agent.tools.saved_meals import find_saved_meal, saved_meal_to_results
 from backend.agent.tools.usda import usda_lookup_batch
+from backend.config import get_tunables
 
 # ---------------------------------------------------------------------------
 # State
@@ -127,10 +129,50 @@ async def extract_node(state: AgentState) -> dict:
     return {"entities": [e.model_dump() for e in valid]}
 
 
+def _auto_decompose_enabled() -> bool:
+    """Feature flag for automatic composite-dish decomposition."""
+    return get_tunables().features.auto_decompose_enabled
+
+
+async def auto_decompose_node(state: AgentState) -> dict:
+    """Break only is_composite entities into ingredients, per food, in order.
+
+    Composite entities are decomposed via the shared primitive (portion-aware:
+    the entity's gram weight is included so ingredients scale), re-parsed into
+    ingredient entities tagged with source_dish provenance, and spliced in place.
+    Atomic entities pass through untouched. Any failure (empty decompose, empty
+    re-extract) degrades to keeping the original dish as a single entity.
+    """
+    if not _auto_decompose_enabled():
+        return {"entities": state["entities"]}
+
+    out: list[dict] = []
+    for raw in state["entities"]:
+        entity = FoodEntity(**raw)
+        if not entity.is_composite:
+            out.append(entity.model_dump())
+            continue
+        desc = f"{entity.qty_g:g} g {entity.food_name}"
+        lines = decompose_to_ingredients(desc)
+        if not lines:
+            out.append(entity.model_dump())
+            continue
+        try:
+            parsed = extract_entities(", ".join(lines)).entities
+            sub = [e for e in parsed if e.qty_g > 0]
+        except Exception:
+            sub = []
+        if not sub:
+            out.append(entity.model_dump())
+            continue
+        for ing in sub:
+            ing.source_dish = entity.food_name
+            out.append(ing.model_dump())
+    return {"entities": out}
+
+
 async def usda_batch_node(state: AgentState) -> dict:
     """Resolve all food entities against USDA FoodData Central (cache-first)."""
-    from backend.agent.tools.meals import FoodEntity
-
     entities = [FoodEntity(**e) for e in state["entities"]]
     results = await usda_lookup_batch(entities)
     for entity, result in zip(entities, results):
@@ -245,6 +287,7 @@ def build_graph(checkpointer=None):
     workflow.add_node("classify", classify_node)
     workflow.add_node("saved_lookup", saved_lookup_node)
     workflow.add_node("extract", extract_node)
+    workflow.add_node("auto_decompose", auto_decompose_node)
     workflow.add_node("decompose", decompose_node)
     workflow.add_node("usda_batch", usda_batch_node)
     workflow.add_node("present", present_node)
@@ -271,7 +314,8 @@ def build_graph(checkpointer=None):
         _route_after_classify,
         {"extract": "extract", END: END},
     )
-    workflow.add_edge("extract", "usda_batch")
+    workflow.add_edge("extract", "auto_decompose")
+    workflow.add_edge("auto_decompose", "usda_batch")
     workflow.add_edge("decompose", "usda_batch")
     workflow.add_edge("usda_batch", "present")
     # present → interrupt → intent_router (on resume)

@@ -143,6 +143,12 @@ class PromptsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class FeaturesConfig(BaseModel):
+    auto_decompose_enabled: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class Tunables(BaseModel):
     """Validated view of tunables.yaml."""
 
@@ -157,6 +163,7 @@ class Tunables(BaseModel):
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
     prompts: PromptsConfig
+    features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]
 
     model_config = ConfigDict(extra="forbid")

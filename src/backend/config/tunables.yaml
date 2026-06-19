@@ -230,6 +230,9 @@ nutrient_checkup:
     Calcium: 1300         # mg
     "Vitamin B-12": 2.4   # mcg
 
+features:
+  auto_decompose_enabled: true
+
 routing:
   # Keyword pre-filter for the orchestrator's log_meal/coaching intent
   # router (agent/orchestrator.py). Matching any query signal routes to
