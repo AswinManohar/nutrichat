@@ -36,6 +36,32 @@ function defaultMealCategory(date = new Date()): MealCategory {
   return 'snack'
 }
 
+interface ItemGroup {
+  dish: string | null // source_dish; null = a standalone atomic item
+  indices: number[] // original indices into the flat `items` array
+}
+
+/** Group consecutive items by source_dish, preserving first-seen order. */
+function groupByDish(items: MealItem[]): ItemGroup[] {
+  const groups: ItemGroup[] = []
+  const pos = new Map<string, number>()
+  items.forEach((item, i) => {
+    const dish = item.source_dish ?? null
+    if (dish === null) {
+      groups.push({ dish: null, indices: [i] })
+      return
+    }
+    const at = pos.get(dish)
+    if (at === undefined) {
+      pos.set(dish, groups.length)
+      groups.push({ dish, indices: [i] })
+    } else {
+      groups[at].indices.push(i)
+    }
+  })
+  return groups
+}
+
 /**
  * Editable confirmation card for the paused meal-logging graph.
  * Quantity edits, candidate switches, and removals are sent back as
@@ -58,6 +84,7 @@ export function ConfirmationCard({
   const [mealOpen, setMealOpen] = useState(false)
   const [portion, setPortion] = useState(1)
   const [mealName, setMealName] = useState('')
+  const [openDish, setOpenDish] = useState<string | null>(null)
   const dismissedRef = useRef(false)
   const saveMeal = useSaveMeal()
 
@@ -132,6 +159,114 @@ export function ConfirmationCard({
     if (openCandidates === i) setOpenCandidates(null)
   }
 
+  const renderItemRow = (i: number) => {
+    const item = items[i]
+    if (removed.has(i)) return null
+    return (
+      <div
+        key={`${item.fdc_id}-${i}`}
+        className="bg-paper rounded-xl border-l-4 border border-sand-border border-l-sage p-3.5 flex flex-col gap-2"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
+              {swaps[i] ?? item.food_name}
+            </h4>
+            <p className="text-[11px] text-muted mt-0.5">
+              {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein ·{' '}
+              {scaled[i].fiber_g.toFixed(0)}g fiber
+              {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
+                <span className="ml-1.5 text-warn font-semibold">· check match</span>
+              )}
+              {(item.estimated || item.source === 'LLM_ESTIMATE') && (
+                <span className="ml-1.5 text-muted font-semibold">
+                  · ≈ estimated (not in USDA)
+                </span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Quantity stepper */}
+            <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
+              <button
+                type="button"
+                onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
+                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <input
+                type="number"
+                value={Math.round(qtys[i])}
+                onChange={(e) => setQty(i, Number(e.target.value))}
+                className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="text-[11px] text-muted pr-1">g</span>
+              <button
+                type="button"
+                onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
+                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Remove item */}
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              aria-label={`Remove ${swaps[i] ?? item.food_name}`}
+              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Candidate switcher */}
+        {item.candidates.length > 1 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenCandidates(openCandidates === i ? null : i)}
+              className="press cursor-pointer flex items-center gap-1 text-[11px] font-medium text-sage-deep hover:underline"
+            >
+              Not the right food? <ChevronDown className="w-3 h-3" />
+            </button>
+            {openCandidates === i && (
+              <div className="absolute left-0 right-0 mt-1.5 bg-paper border border-sand-border rounded-xl shadow-lg z-20 max-h-44 overflow-y-auto rise-in">
+                {item.candidates.map((cand) => (
+                  <button
+                    key={cand}
+                    type="button"
+                    onClick={() => {
+                      setSwaps((prev) =>
+                        cand === item.food_name
+                          ? Object.fromEntries(
+                              Object.entries(prev).filter(([k]) => Number(k) !== i)
+                            )
+                          : { ...prev, [i]: cand }
+                      )
+                      setOpenCandidates(null)
+                    }}
+                    className={`cursor-pointer w-full text-left px-3.5 py-2.5 text-[13px] hover:bg-sand transition-colors ${
+                      (swaps[i] ?? item.food_name) === cand
+                        ? 'text-sage-deep font-medium'
+                        : 'text-ink-soft'
+                    }`}
+                  >
+                    {cand}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="w-full max-w-xl card-sand p-4 md:p-5 flex flex-col gap-3 mt-1 rise-in">
       <div className="flex items-center justify-between pb-2 border-b border-sand-border">
@@ -181,111 +316,37 @@ export function ConfirmationCard({
         )}
       </div>
 
-      {/* Items */}
+      {/* Items — atomic rows inline; composite dishes collapsed with a per-dish popup */}
       <div className="flex flex-col gap-2.5">
-        {items.map((item, i) => {
-          if (removed.has(i)) return null
+        {groupByDish(items).map((group) => {
+          if (group.dish === null) return renderItemRow(group.indices[0])
+          const visible = group.indices.filter((i) => !removed.has(i))
+          if (visible.length === 0) return null
+          const sum = (key: 'kcal' | 'protein_g' | 'fiber_g') =>
+            visible.reduce((acc, i) => acc + scaled[i][key], 0)
           return (
             <div
-              key={`${item.fdc_id}-${i}`}
-              className="bg-paper rounded-xl border-l-4 border border-sand-border border-l-sage p-3.5 flex flex-col gap-2"
+              key={`dish-${group.dish}`}
+              className="bg-paper rounded-xl border-l-4 border border-sand-border border-l-sage p-3.5 flex items-center justify-between gap-2"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
-                    {swaps[i] ?? item.food_name}
-                  </h4>
-                  <p className="text-[11px] text-muted mt-0.5">
-                    {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein ·{' '}
-                    {scaled[i].fiber_g.toFixed(0)}g fiber
-                    {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
-                      <span className="ml-1.5 text-warn font-semibold">· check match</span>
-                    )}
-                    {(item.estimated || item.source === 'LLM_ESTIMATE') && (
-                      <span className="ml-1.5 text-muted font-semibold">
-                        · ≈ estimated (not in USDA)
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {/* Quantity stepper */}
-                  <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
-                      className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input
-                      type="number"
-                      value={Math.round(qtys[i])}
-                      onChange={(e) => setQty(i, Number(e.target.value))}
-                      className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="text-[11px] text-muted pr-1">g</span>
-                    <button
-                      type="button"
-                      onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
-                      className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* Remove item */}
-                  <button
-                    type="button"
-                    onClick={() => removeItem(i)}
-                    aria-label={`Remove ${swaps[i] ?? item.food_name}`}
-                    className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
+                  {group.dish}
+                </h4>
+                <p className="text-[11px] text-muted mt-0.5">
+                  {Math.round(sum('kcal'))} kcal · {sum('protein_g').toFixed(0)}g protein ·{' '}
+                  {sum('fiber_g').toFixed(0)}g fiber · {visible.length} ingredient
+                  {visible.length === 1 ? '' : 's'}
+                </p>
               </div>
-
-              {/* Candidate switcher */}
-              {item.candidates.length > 1 && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenCandidates(openCandidates === i ? null : i)}
-                    className="press cursor-pointer flex items-center gap-1 text-[11px] font-medium text-sage-deep hover:underline"
-                  >
-                    Not the right food? <ChevronDown className="w-3 h-3" />
-                  </button>
-                  {openCandidates === i && (
-                    <div className="absolute left-0 right-0 mt-1.5 bg-paper border border-sand-border rounded-xl shadow-lg z-20 max-h-44 overflow-y-auto rise-in">
-                      {item.candidates.map((cand) => (
-                        <button
-                          key={cand}
-                          type="button"
-                          onClick={() => {
-                            setSwaps((prev) =>
-                              cand === item.food_name
-                                ? Object.fromEntries(
-                                    Object.entries(prev).filter(([k]) => Number(k) !== i)
-                                  )
-                                : { ...prev, [i]: cand }
-                            )
-                            setOpenCandidates(null)
-                          }}
-                          className={`cursor-pointer w-full text-left px-3.5 py-2.5 text-[13px] hover:bg-sand transition-colors ${
-                            (swaps[i] ?? item.food_name) === cand
-                              ? 'text-sage-deep font-medium'
-                              : 'text-ink-soft'
-                          }`}
-                        >
-                          {cand}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => setOpenDish(group.dish)}
+                className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-sand-border hover:border-sage"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Break into ingredients
+              </button>
             </div>
           )
         })}
@@ -404,6 +465,37 @@ export function ConfirmationCard({
           {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
         </button>
       </div>
+
+      {openDish !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4"
+          onClick={() => setOpenDish(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-sand-border">
+              <h3 className="label-caps !text-sage-deep truncate">{openDish}</h3>
+              <button
+                type="button"
+                onClick={() => setOpenDish(null)}
+                aria-label="Close"
+                className="press cursor-pointer w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-container"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {groupByDish(items)
+                .find((g) => g.dish === openDish)
+                ?.indices.map((i) => renderItemRow(i))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
