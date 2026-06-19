@@ -83,6 +83,9 @@ class USDAResult(BaseModel):
     # found and the model estimated macros instead.
     source: str = "USDA"
     estimated: bool = False
+    # Set by usda_batch_node from the originating FoodEntity when this result
+    # came from auto-decomposing a composite dish; None otherwise.
+    source_dish: str | None = None
 
 
 class NutritionEstimate(BaseModel):

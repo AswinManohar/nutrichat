@@ -133,6 +133,8 @@ async def usda_batch_node(state: AgentState) -> dict:
 
     entities = [FoodEntity(**e) for e in state["entities"]]
     results = await usda_lookup_batch(entities)
+    for entity, result in zip(entities, results):
+        result.source_dish = entity.source_dish
     return {"usda_results": [r.model_dump() for r in results]}
 
 
