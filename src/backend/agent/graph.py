@@ -113,6 +113,32 @@ async def decompose_node(state: AgentState) -> dict:
     return {"action": None, "entities": [e.model_dump() for e in valid]}
 
 
+async def combine_node(state: AgentState) -> dict:
+    """Collapse every auto-decomposed ingredient group back to its source dish.
+
+    Triggered by the card's "Log as single item" action. Each source_dish group
+    becomes a single entity named after the dish (default 1g placeholder qty so
+    usda_batch re-resolves it); entities without provenance are kept as-is.
+    Falls through to usda_batch → present.
+    """
+    rebuilt: list[dict] = []
+    seen: set[str] = set()
+    for raw in state["entities"]:
+        dish = raw.get("source_dish")
+        if dish is None:
+            keep = dict(raw)
+            keep["source_dish"] = None
+            rebuilt.append(keep)
+            continue
+        if dish in seen:
+            continue
+        seen.add(dish)
+        rebuilt.append(
+            FoodEntity(food_name=dish, qty_g=1, unit="g").model_dump()
+        )
+    return {"action": None, "entities": rebuilt}
+
+
 async def extract_node(state: AgentState) -> dict:
     """Parse the last human message into structured FoodEntity list."""
     last_human = next(
@@ -254,6 +280,8 @@ def _route_response(state: AgentState) -> str:
     # "Break into ingredients" takes priority over confirm/correct/reject.
     if state.get("action") == "decompose":
         return "decompose"
+    if state.get("action") == "combine":
+        return "combine"
     last_human = next(
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
@@ -289,6 +317,7 @@ def build_graph(checkpointer=None):
     workflow.add_node("extract", extract_node)
     workflow.add_node("auto_decompose", auto_decompose_node)
     workflow.add_node("decompose", decompose_node)
+    workflow.add_node("combine", combine_node)
     workflow.add_node("usda_batch", usda_batch_node)
     workflow.add_node("present", present_node)
     workflow.add_node("intent_router", intent_router_node)
@@ -317,6 +346,7 @@ def build_graph(checkpointer=None):
     workflow.add_edge("extract", "auto_decompose")
     workflow.add_edge("auto_decompose", "usda_batch")
     workflow.add_edge("decompose", "usda_batch")
+    workflow.add_edge("combine", "usda_batch")
     workflow.add_edge("usda_batch", "present")
     # present → interrupt → intent_router (on resume)
     workflow.add_edge("present", "intent_router")
@@ -327,6 +357,7 @@ def build_graph(checkpointer=None):
             "log": "log",
             "apply_correction": "apply_correction",
             "decompose": "decompose",
+            "combine": "combine",
             "cancel": "cancel",
         },
     )
