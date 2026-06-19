@@ -372,6 +372,9 @@ prompts:
     - Removal ("remove the toast") → drop matching entity
     - Substitution ("almond milk not oat") → replace food_name, keep qty_g
     - Multiple corrections → apply all
+    Preserve each existing entity's source_dish value unchanged. When the user
+    adds an ingredient "to <dish>", set the new entity's source_dish to that
+    dish (so it stays grouped with that dish's other ingredients).
     Return the complete updated entity list.
 
   # System prompt for estimate_nutrition_llm() (agent/tools/usda.py) — the

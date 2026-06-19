@@ -67,8 +67,28 @@ export function ConfirmationCard({
   const [portion, setPortion] = useState(1)
   const [mealName, setMealName] = useState('')
   const [openDish, setOpenDish] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addGrams, setAddGrams] = useState('')
   const dismissedRef = useRef(false)
   const saveMeal = useSaveMeal()
+
+  const closeDish = () => {
+    setOpenDish(null)
+    setAddOpen(false)
+    setAddName('')
+    setAddGrams('')
+  }
+
+  // Add a not-yet-listed ingredient to the open dish via the correction path.
+  // The backend nests it under the dish (source_dish) and re-presents the card.
+  const addIngredient = () => {
+    const name = addName.trim()
+    const grams = Math.round(Number(addGrams))
+    if (!name || !grams || grams <= 0 || openDish === null) return
+    onAction(`add ${grams}g ${name} to ${openDish}`, mealType)
+    closeDish()
+  }
 
   // Every visible item removed → drop the card from the chat (no backend call).
   // Computed before any early return so the hook below is unconditional.
@@ -95,6 +115,9 @@ export function ConfirmationCard({
     setPortion(1)
     setMealName('')
     setOpenDish(null)
+    setAddOpen(false)
+    setAddName('')
+    setAddGrams('')
     return null
   }
 
@@ -437,7 +460,7 @@ export function ConfirmationCard({
         createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4"
-            onClick={() => setOpenDish(null)}
+            onClick={closeDish}
             role="dialog"
             aria-modal="true"
           >
@@ -450,7 +473,7 @@ export function ConfirmationCard({
                 <h3 className="label-caps !text-sage-deep truncate">{openDish}</h3>
                 <button
                   type="button"
-                  onClick={() => setOpenDish(null)}
+                  onClick={closeDish}
                   aria-label="Close"
                   className="press cursor-pointer w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-container"
                 >
@@ -463,13 +486,56 @@ export function ConfirmationCard({
                   .find((g) => g.dish === openDish)
                   ?.indices.map((i) => renderItemRow(i))}
               </div>
+
+              {/* Add an ingredient missing from the breakdown */}
+              <div className="shrink-0">
+                {addOpen ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={addName}
+                      onChange={(e) => setAddName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addIngredient()}
+                      placeholder="Ingredient (e.g. cashews)"
+                      className="flex-1 min-w-0 bg-paper border border-sand-border rounded-full px-3.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
+                    />
+                    <input
+                      type="number"
+                      value={addGrams}
+                      onChange={(e) => setAddGrams(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addIngredient()}
+                      placeholder="g"
+                      className="w-16 bg-paper border border-sand-border rounded-full px-3 py-2 text-[13px] text-center text-ink focus:outline-none focus:ring-1 focus:ring-sage/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={addIngredient}
+                      disabled={isLoading || !addName.trim() || !Number(addGrams)}
+                      className="press cursor-pointer shrink-0 px-3.5 py-2 rounded-full text-[13px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen(true)}
+                    className="press cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-dashed border-sand-border hover:border-sage"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add ingredient
+                  </button>
+                )}
+              </div>
+
               {/* Pinned footer — apply edits made in this popup */}
               <button
                 type="button"
                 onClick={() => {
                   if (corrections.length > 0)
                     onAction(corrections.join(' and '), mealType)
-                  setOpenDish(null)
+                  closeDish()
                 }}
                 disabled={isLoading}
                 className="shrink-0 press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
