@@ -387,17 +387,19 @@ export function ConfirmationCard({
           type="button"
           onClick={() => onAction('cancel')}
           disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-muted border border-sand-border hover:text-danger hover:border-danger/30 disabled:opacity-50"
+          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-muted border border-sand-border hover:text-danger hover:border-danger/30 focus-visible:outline-2 focus-visible:outline-sage/50 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus
           type="button"
           onClick={() =>
             onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
           }
           disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
+          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep focus-visible:outline-2 focus-visible:outline-sage/50 disabled:opacity-50"
         >
           {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
         </button>
