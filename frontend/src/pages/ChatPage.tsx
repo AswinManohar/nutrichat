@@ -142,6 +142,9 @@ export function ChatPage() {
           })
           if (!data.paused) setConversationId(null)
         },
+        onError: () => {
+          addMessage({ sender: 'agent', text: "Couldn't break this down — try again." })
+        },
       }
     )
   }
@@ -162,6 +165,9 @@ export function ChatPage() {
           })
           if (!data.paused) setConversationId(null)
         },
+        onError: () => {
+          addMessage({ sender: 'agent', text: "Couldn't combine — try again." })
+        },
       }
     )
   }
@@ -179,7 +185,7 @@ export function ChatPage() {
   }, [location.state])
 
   const handleClearChat = () => {
-    if (window.confirm('Start a new conversation? This resets your active meal logging thread.')) {
+    if (window.confirm('Start fresh? Your current conversation will be cleared.')) {
       clearMessages()
     }
   }
