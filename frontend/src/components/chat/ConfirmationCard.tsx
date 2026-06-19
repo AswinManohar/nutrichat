@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { MealCategory, MealItem } from '../../api/types'
 import { MEAL_CATEGORIES } from '../../api/types'
 import { useSaveMeal } from '../../api/hooks'
@@ -466,36 +467,38 @@ export function ConfirmationCard({
         </button>
       </div>
 
-      {openDish !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4"
-          onClick={() => setOpenDish(null)}
-          role="dialog"
-          aria-modal="true"
-        >
+      {openDish !== null &&
+        createPortal(
           <div
-            className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4"
+            onClick={() => setOpenDish(null)}
+            role="dialog"
+            aria-modal="true"
           >
-            <div className="flex items-center justify-between pb-2 border-b border-sand-border">
-              <h3 className="label-caps !text-sage-deep truncate">{openDish}</h3>
-              <button
-                type="button"
-                onClick={() => setOpenDish(null)}
-                aria-label="Close"
-                className="press cursor-pointer w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-container"
-              >
-                <X className="w-4 h-4" />
-              </button>
+            <div
+              className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-sand-border">
+                <h3 className="label-caps !text-sage-deep truncate">{openDish}</h3>
+                <button
+                  type="button"
+                  onClick={() => setOpenDish(null)}
+                  aria-label="Close"
+                  className="press cursor-pointer w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-container"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {groupByDish(items)
+                  .find((g) => g.dish === openDish)
+                  ?.indices.map((i) => renderItemRow(i))}
+              </div>
             </div>
-            <div className="flex flex-col gap-2.5">
-              {groupByDish(items)
-                .find((g) => g.dish === openDish)
-                ?.indices.map((i) => renderItemRow(i))}
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
