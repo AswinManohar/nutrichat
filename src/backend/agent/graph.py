@@ -8,6 +8,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from backend.agent.tools.decompose import decompose_to_ingredients
 from backend.agent.tools.meals import (
     apply_correction,
     classify_food_image,
@@ -16,6 +17,7 @@ from backend.agent.tools.meals import (
     format_confirmation_card,
     log_meal,
 )
+from backend.agent.tools.saved_meals import find_saved_meal, saved_meal_to_results
 from backend.agent.tools.usda import usda_lookup_batch
 
 # ---------------------------------------------------------------------------
@@ -30,6 +32,10 @@ class AgentState(TypedDict):
     entities: list[dict]
     usda_results: list[dict]
     meal_type: str | None
+    # My Meals: action="decompose" triggers the break-into-ingredients branch;
+    # from_saved is set when the card was prefilled from a saved meal.
+    action: str | None
+    from_saved: bool
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +67,48 @@ async def classify_node(state: AgentState) -> dict:
     combined = ", ".join(result.food_items + result.ingredients)
     # Inject as HumanMessage so extract_node reads it as the meal description
     return {"messages": [HumanMessage(content=combined)]}
+
+
+async def saved_lookup_node(state: AgentState) -> dict:
+    """Check if the typed meal matches a saved My Meal; prefill if so.
+
+    On a hit, loads the saved ingredients into usda_results (verbatim, so a
+    straight confirm logs exactly what was saved) and entities (so a correction
+    can still re-resolve), and flags from_saved to skip extraction/USDA.
+    """
+    first_human = next(
+        (m for m in state["messages"] if isinstance(m, HumanMessage)), None
+    )
+    text = first_human.content if first_human else ""
+    meal = await find_saved_meal(state["user_id"], text)
+    if meal is None:
+        return {"from_saved": False}
+    usda_results, entities = saved_meal_to_results(meal)
+    return {"from_saved": True, "usda_results": usda_results, "entities": entities}
+
+
+async def decompose_node(state: AgentState) -> dict:
+    """Break the original dish into ingredients (the "Break into ingredients" toggle).
+
+    Decomposes the user's first description into ingredient lines, re-parses them
+    into entities, and falls through to usda_batch → present. On failure, keeps
+    the current entities (graceful no-op → re-presents the same single item).
+    """
+    first_human = next(
+        (m for m in state["messages"] if isinstance(m, HumanMessage)), None
+    )
+    description = first_human.content if first_human else ""
+    lines = decompose_to_ingredients(description)
+    if not lines:
+        return {"action": None}
+    try:
+        result = extract_entities(", ".join(lines))
+        valid = [e for e in result.entities if e.qty_g > 0]
+    except Exception:
+        valid = []
+    if not valid:
+        return {"action": None}
+    return {"action": None, "entities": [e.model_dump() for e in valid]}
 
 
 async def extract_node(state: AgentState) -> dict:
@@ -143,7 +191,12 @@ async def log_node(state: AgentState) -> dict:
 
 
 def _route_input(state: AgentState) -> str:
-    return "classify" if state.get("image_b64") else "extract"
+    return "classify" if state.get("image_b64") else "saved_lookup"
+
+
+def _route_after_saved_lookup(state: AgentState) -> str:
+    # Saved meal matched → straight to the card; otherwise extract as usual.
+    return "present" if state.get("from_saved") else "extract"
 
 
 def _route_after_classify(state: AgentState) -> str:
@@ -154,6 +207,9 @@ def _route_after_classify(state: AgentState) -> str:
 
 
 def _route_response(state: AgentState) -> str:
+    # "Break into ingredients" takes priority over confirm/correct/reject.
+    if state.get("action") == "decompose":
+        return "decompose"
     last_human = next(
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
@@ -185,7 +241,9 @@ def build_graph(checkpointer=None):
 
     workflow.add_node("router", router_node)
     workflow.add_node("classify", classify_node)
+    workflow.add_node("saved_lookup", saved_lookup_node)
     workflow.add_node("extract", extract_node)
+    workflow.add_node("decompose", decompose_node)
     workflow.add_node("usda_batch", usda_batch_node)
     workflow.add_node("present", present_node)
     workflow.add_node("intent_router", intent_router_node)
@@ -198,7 +256,13 @@ def build_graph(checkpointer=None):
     workflow.add_conditional_edges(
         "router",
         _route_input,
-        {"classify": "classify", "extract": "extract"},
+        {"classify": "classify", "saved_lookup": "saved_lookup"},
+    )
+    # Text input first checks for a saved My Meal; hit → present, miss → extract.
+    workflow.add_conditional_edges(
+        "saved_lookup",
+        _route_after_saved_lookup,
+        {"present": "present", "extract": "extract"},
     )
     workflow.add_conditional_edges(
         "classify",
@@ -206,13 +270,19 @@ def build_graph(checkpointer=None):
         {"extract": "extract", END: END},
     )
     workflow.add_edge("extract", "usda_batch")
+    workflow.add_edge("decompose", "usda_batch")
     workflow.add_edge("usda_batch", "present")
     # present → interrupt → intent_router (on resume)
     workflow.add_edge("present", "intent_router")
     workflow.add_conditional_edges(
         "intent_router",
         _route_response,
-        {"log": "log", "apply_correction": "apply_correction", "cancel": "cancel"},
+        {
+            "log": "log",
+            "apply_correction": "apply_correction",
+            "decompose": "decompose",
+            "cancel": "cancel",
+        },
     )
     workflow.add_edge("apply_correction", "usda_batch")
     workflow.add_edge("log", END)

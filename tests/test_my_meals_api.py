@@ -88,7 +88,7 @@ async def test_find_saved_meal_normalizes_and_matches() -> None:
     session.execute = AsyncMock(return_value=_exec_returning(meal))
     factory = _mock_session_factory(session)
 
-    with patch("backend.api.my_meals.get_session", return_value=factory):
+    with patch("backend.agent.tools.saved_meals.get_session", return_value=factory):
         found = await find_saved_meal("user-1", "  Chicken  Biryani! ")
     assert found is meal
 
