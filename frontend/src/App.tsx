@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ChatPage } from './pages/ChatPage'
 import { MyMealsPage } from './pages/MyMealsPage'
+import { TrendsPage } from './pages/TrendsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ProtectedLayout } from './components/layout/ProtectedLayout'
 
@@ -29,6 +30,7 @@ function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/my-meals" element={<MyMealsPage />} />
+            <Route path="/trends" element={<TrendsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* Standard landing redirects */}
             <Route path="/" element={<Navigate to="/chat" replace />} />

@@ -1,10 +1,11 @@
 import { Link, useLocation } from 'react-router-dom'
-import { MessageSquare, Clock, BarChart2 } from 'lucide-react'
+import { MessageSquare, Clock, BarChart2, BookMarked } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { icon: MessageSquare, label: 'Chat',      to: '/chat'   },
-  { icon: Clock,         label: 'History',   to: '/chat'   },  // placeholder until /history exists
-  { icon: BarChart2,     label: 'Analytics', to: '/trends' },
+  { icon: MessageSquare, label: 'Chat',      to: '/chat'    },
+  { icon: Clock,         label: 'History',   to: '/chat'    },  // placeholder until /history exists
+  { icon: BarChart2,     label: 'Trends',    to: '/trends'  },
+  { icon: BookMarked,    label: 'My Meals',  to: '/my-meals' },
 ] as const
 
 export function AppSidebar() {
@@ -20,7 +21,9 @@ export function AppSidebar() {
       {/* Nav icons */}
       <nav className="flex-1 flex flex-col items-center gap-1">
         {NAV_ITEMS.map(({ icon: Icon, label, to }) => {
-          const active = pathname === to || (to === '/chat' && (pathname === '/' || pathname === '/chat'))
+          const active = pathname === to || (to === '/chat' && (pathname === '/' || pathname === '/chat')) ||
+            (to === '/trends' && pathname === '/trends') ||
+            (to === '/my-meals' && pathname === '/my-meals')
           return (
             <Link
               key={label}

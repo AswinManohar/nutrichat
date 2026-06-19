@@ -144,6 +144,7 @@ class DayTrend(BaseModel):
     date: date
     kcal: float
     protein_g: float
+    carbs_g: float
     fiber_g: float
     n_meals: int
     junk_meals: int
@@ -201,6 +202,7 @@ async def get_trends(
                 "SELECT logged_at::date AS day, "
                 "COALESCE(SUM(kcal), 0) AS kcal, "
                 "COALESCE(SUM(protein_g), 0) AS protein_g, "
+                "COALESCE(SUM(carbs_g), 0) AS carbs_g, "
                 "COALESCE(SUM(fiber_g), 0) AS fiber_g, "
                 "COUNT(*) AS n_meals, "
                 "COUNT(*) FILTER (WHERE (flags->>'has_junk')::boolean) AS junk_meals "
@@ -216,6 +218,7 @@ async def get_trends(
                 date=row.day,
                 kcal=float(row.kcal),
                 protein_g=float(row.protein_g),
+                carbs_g=float(row.carbs_g),
                 fiber_g=float(row.fiber_g),
                 n_meals=int(row.n_meals),
                 junk_meals=int(row.junk_meals),

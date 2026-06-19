@@ -165,6 +165,7 @@ export interface DayTrend {
   date: string; // ISO date
   kcal: number;
   protein_g: number;
+  carbs_g: number;
   fiber_g: number;
   n_meals: number;
   junk_meals: number;
