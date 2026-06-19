@@ -108,6 +108,7 @@ export function ConfirmationCard({
     setRemoved(new Set())
     setPortion(1)
     setMealName('')
+    setOpenDish(null)
     dismissedRef.current = false
     return null
   }
@@ -490,10 +491,11 @@ export function ConfirmationCard({
             aria-modal="true"
           >
             <div
-              className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh] overflow-y-auto"
+              className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between pb-2 border-b border-sand-border">
+              {/* Pinned header — dish name stays in place */}
+              <div className="shrink-0 flex items-center justify-between pb-2 border-b border-sand-border">
                 <h3 className="label-caps !text-sage-deep truncate">{openDish}</h3>
                 <button
                   type="button"
@@ -504,11 +506,25 @@ export function ConfirmationCard({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="flex flex-col gap-2.5">
+              {/* Only the ingredients scroll */}
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2.5 -mr-1 pr-1">
                 {groupByDish(items)
                   .find((g) => g.dish === openDish)
                   ?.indices.map((i) => renderItemRow(i))}
               </div>
+              {/* Pinned footer — apply edits made in this popup */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (corrections.length > 0)
+                    onAction(corrections.join(' and '), mealType)
+                  setOpenDish(null)
+                }}
+                disabled={isLoading}
+                className="shrink-0 press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
+              >
+                {corrections.length > 0 ? 'Apply changes' : 'Done'}
+              </button>
             </div>
           </div>,
           document.body,
