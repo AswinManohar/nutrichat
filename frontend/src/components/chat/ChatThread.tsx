@@ -41,8 +41,8 @@ interface ChatThreadProps {
 const SUGGESTIONS = [
   { label: 'Eggs & toast', text: 'breakfast was 2 scrambled eggs and a slice of whole wheat toast' },
   { label: 'Chicken salad', text: 'lunch was a grilled chicken salad with vinaigrette' },
-  { label: 'Oatmeal & coffee', text: 'breakfast was black coffee and a bowl of oatmeal' },
-  { label: 'How much protein today?', text: 'how much protein have I had today?' },
+  { label: 'How much protein?', text: 'how much protein have I had today?' },
+  { label: 'What to eat tonight?', text: 'what should I eat for dinner to hit my fiber goal?' },
 ]
 
 function TypingIndicator() {
@@ -91,6 +91,9 @@ export function ChatThread({
               </button>
             ))}
           </div>
+          <p className="text-[11px] text-muted/60" style={{ '--i': 2 } as React.CSSProperties}>
+            Describe a meal to log it, or ask anything about your nutrition.
+          </p>
         </div>
       ) : (
         messages.map((msg) => {
