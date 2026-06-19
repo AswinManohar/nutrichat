@@ -12,7 +12,6 @@ Create Date: 2026-06-19
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "008"
@@ -22,12 +21,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("meal_log", sa.Column("label", sa.Text(), nullable=True))
-    op.create_index(
-        "ix_meal_log_user_label", "meal_log", ["user_id", "label"]
+    # Idempotent (Postgres IF NOT EXISTS) so it is safe to run against a DB
+    # where the additive column/index were already applied out-of-band.
+    op.execute("ALTER TABLE meal_log ADD COLUMN IF NOT EXISTS label text")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_meal_log_user_label "
+        "ON meal_log (user_id, label)"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_meal_log_user_label", table_name="meal_log")
-    op.drop_column("meal_log", "label")
+    op.execute("DROP INDEX IF EXISTS ix_meal_log_user_label")
+    op.execute("ALTER TABLE meal_log DROP COLUMN IF EXISTS label")
