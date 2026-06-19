@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMealStore } from '../stores/mealStore'
-import { useDashboard, useLogMeal, useDeleteMealLog, usePendingNudge, useAckPendingNudge } from '../api/hooks'
+import { useDashboard, useLogMeal, useDeleteMealLog, usePendingNudge, useAckPendingNudge, useGoals } from '../api/hooks'
 import type { MealCategory } from '../api/types'
-import { useResizablePanel } from '../hooks/use-resizable-panel'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
-import { DashboardPanel } from '../components/dashboard/DashboardPanel'
-import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { AppSidebar } from '../components/nav/AppSidebar'
+import { ChatTodayPanel } from '../components/dashboard/ChatTodayPanel'
 
 const UNDO_WINDOW_S = 30
 
@@ -21,13 +20,12 @@ export function ChatPage() {
     clearMessages,
   } = useMealStore()
   const { data: totals } = useDashboard()
+  const { data: goals } = useGoals()
   const logMealMutation = useLogMeal()
   const deleteMealLogMutation = useDeleteMealLog()
-  const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false)
   const [undoMealId, setUndoMealId] = useState<string | null>(null)
   const [undoSecondsLeft, setUndoSecondsLeft] = useState(UNDO_WINDOW_S)
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const { width: dashboardWidth, onPointerDown: onResizerPointerDown } = useResizablePanel()
   const { data: pendingNudge } = usePendingNudge()
   const ackNudgeMutation = useAckPendingNudge()
   const location = useLocation()
@@ -191,56 +189,40 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-screen overflow-hidden bg-surface">
-      {/* Chat column */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        {/* Header */}
-        <header className="px-5 md:px-6 h-16 flex items-center justify-between glass-header sticky top-0 z-10 border-b border-sand-border">
-          <div>
-            <h1 className="font-display text-lg text-sage-deep leading-tight">Næring</h1>
-            <p className="text-[11px] text-muted">Log meals or ask about your nutrition</p>
-          </div>
-          <button
-            onClick={handleClearChat}
-            disabled={messages.length === 0}
-            className="press flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-muted hover:text-danger hover:bg-container disabled:opacity-30"
-          >
-            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
-            New chat
-          </button>
-        </header>
+    <div className="flex h-screen overflow-hidden bg-surface">
+      <AppSidebar />
 
-        {/* Mobile totals strip */}
-        <div className="md:hidden border-b border-sand-border bg-surface z-10">
-          <button
-            onClick={() => setMobileTotalsOpen(!mobileTotalsOpen)}
-            className="w-full px-5 py-2.5 flex items-center justify-between"
-          >
-            <span className="label-caps">Today</span>
-            <span className="flex items-center gap-2 text-[13px] font-semibold text-sage-deep">
-              {Math.round(totals?.kcal || 0)} kcal
-              {mobileTotalsOpen ? (
-                <ChevronUp className="w-3.5 h-3.5 text-muted" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 text-muted" />
-              )}
+      {/* Chat column */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0">
+        {/* Header */}
+        <header className="px-5 h-14 flex items-center justify-between border-b border-sand-border flex-shrink-0 bg-surface">
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-[17px] font-bold text-ink leading-tight">Today</span>
+            <span className="text-[13px] text-muted">
+              {'· '}
+              {new Intl.DateTimeFormat('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              }).format(new Date())}
             </span>
-          </button>
-          {mobileTotalsOpen && (
-            <div className="px-5 pb-3 grid grid-cols-3 gap-2 rise-in">
-              {[
-                { label: 'Protein', value: `${Math.round(totals?.protein_g || 0)}g` },
-                { label: 'Fiber', value: `${Math.round(totals?.fiber_g || 0)}g` },
-                { label: 'Meals', value: `${totals?.n_meals || 0}` },
-              ].map((s) => (
-                <div key={s.label} className="card-sand px-2 py-2 text-center">
-                  <span className="label-caps block text-[11px]">{s.label}</span>
-                  <span className="text-[13px] font-semibold text-ink-soft">{s.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {totals && (
+              <span className="text-[13px] font-medium text-sage-deep border border-sage-deep/40 rounded-full px-3 py-1 tabular-nums">
+                {Math.round(totals.kcal).toLocaleString()} / {(goals?.kcal_goal ?? 2000).toLocaleString()} kcal
+              </span>
+            )}
+            <button
+              onClick={handleClearChat}
+              disabled={messages.length === 0}
+              className="press text-[12px] font-medium text-muted/60 hover:text-danger disabled:opacity-30 transition-colors"
+              title="New chat"
+            >
+              New chat
+            </button>
+          </div>
+        </header>
 
         <ChatThread
           messages={messages}
@@ -271,21 +253,9 @@ export function ChatPage() {
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />
       </div>
 
-      {/* Drag handle (desktop) */}
-      <div
-        onPointerDown={onResizerPointerDown}
-        className="hidden md:block w-1.5 flex-shrink-0 cursor-col-resize group relative z-10"
-        title="Drag to resize"
-      >
-        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-sand-border group-hover:bg-sage group-active:bg-sage transition-colors" />
-      </div>
-
-      {/* Dashboard column (desktop) */}
-      <div
-        className="hidden md:block h-full overflow-hidden flex-shrink-0 bg-surface"
-        style={{ width: dashboardWidth }}
-      >
-        <DashboardPanel />
+      {/* Right panel (desktop only) */}
+      <div className="hidden md:block w-[320px] flex-shrink-0 h-full border-l border-sand-border overflow-hidden bg-surface">
+        <ChatTodayPanel />
       </div>
     </div>
   )
