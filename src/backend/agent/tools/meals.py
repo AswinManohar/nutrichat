@@ -93,6 +93,18 @@ class FoodEntity(BaseModel):
     qty_g: float = Field(gt=0, description="Gram weight of the portion")
     unit: str = Field(description="Original unit: cup, tablespoon, piece, etc.")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    is_composite: bool = Field(
+        default=False,
+        description=(
+            "True for a prepared/multi-ingredient dish that should be broken "
+            "into ingredients (biryani, pasta dishes, curries, sandwiches, "
+            "smoothies, stir-fries); false for a whole/standard single food "
+            "(apple, chicken breast, cooked rice, milk)."
+        ),
+    )
+    # Set by auto_decompose_node, NOT emitted by the LLM: the composite dish
+    # this ingredient was broken out of. Drives the Combine action + label.
+    source_dish: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

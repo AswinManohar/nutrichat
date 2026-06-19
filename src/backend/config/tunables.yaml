@@ -333,6 +333,16 @@ prompts:
     Return food_name (USDA-style, specific), qty_g (gram weight), unit (original unit mentioned),
     confidence (0-1, lower for vague quantities like 'some' or 'a bit').
 
+    Also return is_composite (true/false) per item:
+      true  — a prepared or multi-ingredient dish with no faithful single USDA
+              entry: biryani, fried rice, spaghetti bolognese, curries, stews,
+              casseroles, sandwiches/burgers, smoothies, stir-fries, mixed
+              salads with dressing.
+      false — a whole or standard single item / recognizable USDA staple:
+              apple, banana, chicken breast, cooked rice, milk, scrambled eggs,
+              a slice of bread.
+    When unsure, prefer false (log as a single item).
+
     CRITICAL — explicit gram values:
     If the user states a gram weight directly (e.g. "200g chicken", "150 grams of rice",
     "300g pasta"), use that EXACT number for qty_g and set confidence=1.0.
