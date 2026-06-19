@@ -9,7 +9,7 @@ import { ChatInput } from '../components/chat/ChatInput'
 import { DashboardPanel } from '../components/dashboard/DashboardPanel'
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 
-const UNDO_WINDOW_S = 25
+const UNDO_WINDOW_S = 30
 
 export function ChatPage() {
   const {
