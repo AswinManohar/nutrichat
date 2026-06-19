@@ -381,38 +381,37 @@ export function ConfirmationCard({
         </div>
       </div>
 
-      {/* Break into ingredients + Save to My Meals */}
-      <div className="flex flex-col gap-2">
-        {/* With 2+ composite dishes the per-row buttons cover it; otherwise show
-            one bottom button — opens the sole dish's popup, or force-decomposes. */}
-        {visibleDishGroups.length < 2 && (
-          <button
-            type="button"
-            onClick={soleDish ? () => setOpenDish(soleDish) : onDecompose}
-            disabled={isLoading}
-            className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Break into ingredients
-          </button>
-        )}
-        {items.some((i) => i.source_dish) && (
-          <button
-            type="button"
-            onClick={onCombine}
-            disabled={isLoading}
-            className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
-          >
-            <UtensilsCrossed className="w-3.5 h-3.5" />
-            Log as single item
-          </button>
-        )}
+      {/* Primary actions — prominent, first */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <button
+          type="button"
+          onClick={() => onAction('cancel')}
+          disabled={isLoading}
+          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-muted border border-sand-border hover:text-danger hover:border-danger/30 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
+          }
+          disabled={isLoading}
+          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
+        >
+          {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
+        </button>
+      </div>
+
+      {/* Secondary actions — below the fold, unobtrusive */}
+      <div className="flex flex-col gap-2 pt-1 border-t border-sand-border">
+        {/* Save to My Meals */}
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={mealName}
             onChange={(e) => setMealName(e.target.value)}
-            placeholder="Name this meal to save it…"
+            placeholder="Save this meal for later…"
             disabled={saveMeal.isSuccess}
             className="flex-1 bg-paper border border-sand-border rounded-full px-3.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30 disabled:opacity-60"
           />
@@ -420,7 +419,7 @@ export function ConfirmationCard({
             type="button"
             onClick={handleSaveMeal}
             disabled={!mealName.trim() || saveMeal.isPending || saveMeal.isSuccess}
-            className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
+            className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium text-ink-soft border border-sand-border hover:border-sage hover:text-sage-deep disabled:opacity-50"
           >
             {saveMeal.isSuccess ? (
               <>
@@ -440,28 +439,34 @@ export function ConfirmationCard({
               : 'Could not save — try again.'}
           </span>
         )}
-      </div>
 
-      {/* Actions */}
-      <div className="grid grid-cols-2 gap-2.5 pt-1">
-        <button
-          type="button"
-          onClick={() => onAction('cancel')}
-          disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-muted border border-sand-border hover:text-danger hover:border-danger/30 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
-          }
-          disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
-        >
-          {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
-        </button>
+        {/* Break / Combine — text-weight, only when relevant */}
+        {(visibleDishGroups.length < 2 || items.some((i) => i.source_dish)) && (
+          <div className="flex items-center gap-3 flex-wrap">
+            {visibleDishGroups.length < 2 && (
+              <button
+                type="button"
+                onClick={soleDish ? () => setOpenDish(soleDish) : onDecompose}
+                disabled={isLoading}
+                className="press cursor-pointer flex items-center gap-1 text-[12px] font-medium text-sage-deep hover:underline disabled:opacity-50"
+              >
+                <Sparkles className="w-3 h-3" />
+                Break into ingredients
+              </button>
+            )}
+            {items.some((i) => i.source_dish) && (
+              <button
+                type="button"
+                onClick={onCombine}
+                disabled={isLoading}
+                className="press cursor-pointer flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink-soft hover:underline disabled:opacity-50"
+              >
+                <UtensilsCrossed className="w-3 h-3" />
+                Log as single item
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {openDish !== null &&
