@@ -12,6 +12,7 @@ from backend.api import (
     integrations,
     meals,
     mindful,
+    my_meals,
     nutrient_checkup,
     telegram_link,
 )
@@ -61,6 +62,7 @@ app.include_router(integrations.router)
 app.include_router(telegram_link.router)
 app.include_router(nutrient_checkup.router)
 app.include_router(mindful.router)
+app.include_router(my_meals.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook

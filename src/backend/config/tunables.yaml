@@ -710,6 +710,33 @@ prompts:
     - Keep responses under 4 sentences unless the user asks for detail.
     - Use the user's units (grams, kcal) — do not convert to other systems.
 
+  # System prompt for decompose_to_ingredients() (agent/tools/decompose.py) —
+  # the "Break into ingredients" action and the recipe-import LLM-parse path.
+  # Output lines feed straight into extraction, so they must look like things a
+  # user would type: "<qty> <unit> <food>".
+  decompose_system: |
+    Break the described dish into its individual constituent ingredients with
+    realistic gram (or common-unit) amounts for the portion described.
+
+    Return an `ingredients` list where each entry is a single ingredient line a
+    person could have typed, formatted "<quantity> <food>", e.g.:
+      - "150 g basmati rice"
+      - "120 g chicken thigh"
+      - "1 tbsp ghee"
+      - "60 g onion"
+      - "1 tsp garam masala"
+
+    Rules:
+    - Estimate amounts for ONE portion unless the description says otherwise
+      (e.g. "biryani for two" → double).
+    - Include cooking fats/oils and notable condiments — they carry real
+      calories.
+    - Use specific, USDA-searchable food names (e.g. "chicken thigh" not
+      "chicken"; "basmati rice cooked" not "rice dish").
+    - If the input is already a single simple food (e.g. "an apple"), return it
+      as the sole ingredient.
+    - Return an empty list only if the input is not food.
+
   # --- Background workers (workers/tasks.py) -----------------------------
 
   # Preference-fact extraction from a conversation turn (Celery task).
