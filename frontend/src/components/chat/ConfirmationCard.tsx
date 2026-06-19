@@ -75,6 +75,7 @@ export function ConfirmationCard({
   const [savedDishes, setSavedDishes] = useState<Set<string>>(new Set())
   const dismissedRef = useRef(false)
   const saveMeal = useSaveMeal()
+  const dishSaveMutation = useSaveMeal()
 
   const closeDish = () => {
     setOpenDish(null)
@@ -174,7 +175,7 @@ export function ConfirmationCard({
     const name = dishSaveName.trim()
     if (!name) return
     const dishIndices = groupByDish(items).find((g) => g.dish === dish)?.indices ?? []
-    saveMeal.mutate(
+    dishSaveMutation.mutate(
       { name, ingredients: dishIndices.map((i) => items[i]) },
       {
         onSuccess: () => {
@@ -389,24 +390,33 @@ export function ConfirmationCard({
 
               {/* Inline save input — expands when bookmark tapped */}
               {dishSaveOpen === group.dish && (
-                <div className="flex items-center gap-2 rise-in">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={dishSaveName}
-                    onChange={(e) => setDishSaveName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveDish(group.dish!)}
-                    placeholder={group.dish ?? 'Name this dish…'}
-                    className="flex-1 min-w-0 bg-surface border border-sand-border rounded-full px-3.5 py-1.5 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSaveDish(group.dish!)}
-                    disabled={!dishSaveName.trim() || saveMeal.isPending}
-                    className="press cursor-pointer shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
-                  >
-                    Save
-                  </button>
+                <div className="flex flex-col gap-1.5 rise-in">
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={dishSaveName}
+                      onChange={(e) => setDishSaveName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveDish(group.dish!)}
+                      placeholder={group.dish ?? 'Name this dish…'}
+                      className="flex-1 min-w-0 bg-surface border border-sand-border rounded-full px-3.5 py-1.5 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDish(group.dish!)}
+                      disabled={!dishSaveName.trim() || dishSaveMutation.isPending}
+                      className="press cursor-pointer shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {dishSaveMutation.isError && (
+                    <span className="text-[11px] text-danger pl-1">
+                      {(dishSaveMutation.error as { status?: number })?.status === 409
+                        ? 'You already have a meal with that name.'
+                        : 'Could not save — try again.'}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -439,8 +449,10 @@ export function ConfirmationCard({
               key={p}
               type="button"
               onClick={() => setPortion(p)}
-              className={`cursor-pointer px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${
-                portion === p ? 'bg-sage text-white' : 'text-muted hover:text-ink'
+              className={`cursor-pointer px-2.5 py-1 rounded-full text-[12px] font-medium transition-all ${
+                portion === p
+                  ? 'bg-sage text-white shadow-sm'
+                  : 'text-muted hover:text-ink hover:bg-paper/60'
               }`}
             >
               {p}×
