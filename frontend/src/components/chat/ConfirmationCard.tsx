@@ -117,6 +117,14 @@ export function ConfirmationCard({
 
   const visibleIndices = items.map((_, i) => i).filter((i) => !removed.has(i))
 
+  // Composite dish groups that still have at least one visible ingredient.
+  // One dish → drop the per-row "Break into ingredients" and keep only the
+  // bottom button (which opens that dish's popup); 2+ → per-row buttons.
+  const visibleDishGroups = groupByDish(items).filter(
+    (g) => g.dish !== null && g.indices.some((i) => !removed.has(i))
+  )
+  const soleDish = visibleDishGroups.length === 1 ? visibleDishGroups[0].dish : null
+
   // Live totals scale linearly with qty edits × the portion multiplier.
   const scaled = items.map((item, i) => {
     const scale = (qtys[i] * portion) / item.qty_g
@@ -340,14 +348,16 @@ export function ConfirmationCard({
                   {visible.length === 1 ? '' : 's'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpenDish(group.dish)}
-                className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-sand-border hover:border-sage"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Break into ingredients
-              </button>
+              {visibleDishGroups.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setOpenDish(group.dish)}
+                  className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-sand-border hover:border-sage"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Break into ingredients
+                </button>
+              )}
             </div>
           )
         })}
@@ -390,15 +400,19 @@ export function ConfirmationCard({
 
       {/* Break into ingredients + Save to My Meals */}
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onDecompose}
-          disabled={isLoading}
-          className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          Break into ingredients
-        </button>
+        {/* With 2+ composite dishes the per-row buttons cover it; otherwise show
+            one bottom button — opens the sole dish's popup, or force-decomposes. */}
+        {visibleDishGroups.length < 2 && (
+          <button
+            type="button"
+            onClick={soleDish ? () => setOpenDish(soleDish) : onDecompose}
+            disabled={isLoading}
+            className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Break into ingredients
+          </button>
+        )}
         {items.some((i) => i.source_dish) && (
           <button
             type="button"
