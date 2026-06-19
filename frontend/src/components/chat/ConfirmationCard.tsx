@@ -202,75 +202,77 @@ export function ConfirmationCard({
     return (
       <div
         key={`${item.fdc_id}-${i}`}
-        className="flex items-center gap-3 px-4 py-3 border-b border-sand-border last:border-b-0"
+        className="flex flex-col border-b border-sand-border last:border-b-0"
       >
-        {/* Left: name + macro summary */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold text-ink truncate">
-            {swaps[i] ?? item.food_name}
-          </p>
-          <p className="text-[12px] text-muted mt-0.5">
-            {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein
-            {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
-              <span className="ml-1.5 text-warn font-semibold">· check match</span>
-            )}
-            {(item.estimated || item.source === 'LLM_ESTIMATE') && (
-              <span className="ml-1.5 text-muted font-semibold">
-                · ≈ estimated (not in USDA)
-              </span>
-            )}
-          </p>
-        </div>
-
-        {/* Right: gram stepper + remove */}
-        <div className="flex items-center gap-1 shrink-0">
-          {/* Quantity stepper */}
-          <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
-            <button
-              type="button"
-              onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
-              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-            >
-              <Minus className="w-3 h-3" />
-            </button>
-            <input
-              type="number"
-              value={qtys[i] ? Math.round(qtys[i]) : ''}
-              onChange={(e) => {
-                const n = Number(e.target.value)
-                setQtys((prev) =>
-                  prev.map((q, idx) => (idx === i ? (Number.isNaN(n) ? 0 : n) : q)),
-                )
-              }}
-              onBlur={() => {
-                if (!qtys[i] || qtys[i] <= 0) setQty(i, Math.round(items[i].qty_g))
-              }}
-              className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            <span className="text-[11px] text-muted pr-1">g</span>
-            <button
-              type="button"
-              onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
-              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-            >
-              <Plus className="w-3 h-3" />
-            </button>
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Left: name + macro summary */}
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] font-semibold text-ink truncate">
+              {swaps[i] ?? item.food_name}
+            </p>
+            <p className="text-[12px] text-muted mt-0.5">
+              {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein
+              {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
+                <span className="ml-1.5 text-warn font-semibold">· check match</span>
+              )}
+              {(item.estimated || item.source === 'LLM_ESTIMATE') && (
+                <span className="ml-1.5 text-muted font-semibold">
+                  · ≈ estimated (not in USDA)
+                </span>
+              )}
+            </p>
           </div>
 
-          {/* Remove item */}
-          <button
-            type="button"
-            onClick={() => removeItem(i)}
-            aria-label={`Remove ${swaps[i] ?? item.food_name}`}
-            className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          {/* Right: gram stepper + remove */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Quantity stepper */}
+            <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
+              <button
+                type="button"
+                onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
+                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <input
+                type="number"
+                value={qtys[i] ? Math.round(qtys[i]) : ''}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setQtys((prev) =>
+                    prev.map((q, idx) => (idx === i ? (Number.isNaN(n) ? 0 : n) : q)),
+                  )
+                }}
+                onBlur={() => {
+                  if (!qtys[i] || qtys[i] <= 0) setQty(i, Math.round(items[i].qty_g))
+                }}
+                className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="text-[11px] text-muted pr-1">g</span>
+              <button
+                type="button"
+                onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
+                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Remove item */}
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              aria-label={`Remove ${swaps[i] ?? item.food_name}`}
+              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* Candidate switcher */}
+        {/* Candidate switcher — below the name+stepper row */}
         {item.candidates.length > 1 && (
-          <div className="relative w-full">
+          <div className="px-4 pb-3 relative w-full">
             <button
               type="button"
               onClick={() => setOpenCandidates(openCandidates === i ? null : i)}
