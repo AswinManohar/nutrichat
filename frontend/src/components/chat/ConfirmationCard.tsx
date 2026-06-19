@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import type { MealCategory, MealItem } from '../../api/types'
 import { useSaveMeal } from '../../api/hooks'
 import { ChevronDown, Plus, Minus, X, UtensilsCrossed, Sparkles, Bookmark, Check } from 'lucide-react'
-import { MealTypePicker } from './MealTypePicker'
 import { defaultMealCategory } from './meal-categories'
 
 interface ConfirmationCardProps {
@@ -203,76 +202,75 @@ export function ConfirmationCard({
     return (
       <div
         key={`${item.fdc_id}-${i}`}
-        className="bg-paper rounded-xl border border-sand-border p-3.5 flex flex-col gap-2"
+        className="flex items-center gap-3 px-4 py-3 border-b border-sand-border last:border-b-0"
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
-              {swaps[i] ?? item.food_name}
-            </h4>
-            <p className="text-[11px] text-muted mt-0.5">
-              {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein ·{' '}
-              {scaled[i].fiber_g.toFixed(0)}g fiber
-              {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
-                <span className="ml-1.5 text-warn font-semibold">· check match</span>
-              )}
-              {(item.estimated || item.source === 'LLM_ESTIMATE') && (
-                <span className="ml-1.5 text-muted font-semibold">
-                  · ≈ estimated (not in USDA)
-                </span>
-              )}
-            </p>
-          </div>
+        {/* Left: name + macro summary */}
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-semibold text-ink truncate">
+            {swaps[i] ?? item.food_name}
+          </p>
+          <p className="text-[12px] text-muted mt-0.5">
+            {Math.round(scaled[i].kcal)} kcal · {scaled[i].protein_g.toFixed(0)}g protein
+            {item.confidence < LOW_CONFIDENCE && !swaps[i] && !item.estimated && (
+              <span className="ml-1.5 text-warn font-semibold">· check match</span>
+            )}
+            {(item.estimated || item.source === 'LLM_ESTIMATE') && (
+              <span className="ml-1.5 text-muted font-semibold">
+                · ≈ estimated (not in USDA)
+              </span>
+            )}
+          </p>
+        </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            {/* Quantity stepper */}
-            <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
-              <button
-                type="button"
-                onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
-                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <input
-                type="number"
-                value={qtys[i] ? Math.round(qtys[i]) : ''}
-                onChange={(e) => {
-                  const n = Number(e.target.value)
-                  setQtys((prev) =>
-                    prev.map((q, idx) => (idx === i ? (Number.isNaN(n) ? 0 : n) : q)),
-                  )
-                }}
-                onBlur={() => {
-                  if (!qtys[i] || qtys[i] <= 0) setQty(i, Math.round(items[i].qty_g))
-                }}
-                className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <span className="text-[11px] text-muted pr-1">g</span>
-              <button
-                type="button"
-                onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
-                className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
-              >
-                <Plus className="w-3 h-3" />
-              </button>
-            </div>
-
-            {/* Remove item */}
+        {/* Right: gram stepper + remove */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Quantity stepper */}
+          <div className="flex items-center gap-1 bg-container rounded-full px-1 py-0.5">
             <button
               type="button"
-              onClick={() => removeItem(i)}
-              aria-label={`Remove ${swaps[i] ?? item.food_name}`}
-              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+              onClick={() => setQty(i, Math.max(5, Math.round(qtys[i]) - 25))}
+              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
             >
-              <X className="w-3.5 h-3.5" />
+              <Minus className="w-3 h-3" />
+            </button>
+            <input
+              type="number"
+              value={qtys[i] ? Math.round(qtys[i]) : ''}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                setQtys((prev) =>
+                  prev.map((q, idx) => (idx === i ? (Number.isNaN(n) ? 0 : n) : q)),
+                )
+              }}
+              onBlur={() => {
+                if (!qtys[i] || qtys[i] <= 0) setQty(i, Math.round(items[i].qty_g))
+              }}
+              className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="text-[11px] text-muted pr-1">g</span>
+            <button
+              type="button"
+              onClick={() => setQty(i, Math.round(qtys[i]) + 25)}
+              className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink"
+            >
+              <Plus className="w-3 h-3" />
             </button>
           </div>
+
+          {/* Remove item */}
+          <button
+            type="button"
+            onClick={() => removeItem(i)}
+            aria-label={`Remove ${swaps[i] ?? item.food_name}`}
+            className="press cursor-pointer w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* Candidate switcher */}
         {item.candidates.length > 1 && (
-          <div className="relative">
+          <div className="relative w-full">
             <button
               type="button"
               onClick={() => setOpenCandidates(openCandidates === i ? null : i)}
@@ -314,22 +312,38 @@ export function ConfirmationCard({
   }
 
   return (
-    <div className="w-full max-w-xl card-sand p-4 md:p-5 flex flex-col gap-3 mt-1 rise-in">
-      <div className="flex items-center justify-between pb-2 border-b border-sand-border">
-        <h3 className="label-caps !text-sage-deep">Confirm meal</h3>
-        <span className="text-[11px] text-muted">
-          {visibleIndices.length} item{visibleIndices.length === 1 ? '' : 's'}
+    <div className="bg-paper border border-sand-border rounded-2xl shadow-[0_4px_16px_rgba(0,0,0,0.06)] overflow-hidden w-full mt-1 rise-in">
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <span className="label-caps text-sage-deep">Confirm Meal</span>
+        <span className="text-[12px] text-muted">
+          {visibleIndices.length} item{visibleIndices.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Meal category — pre-filled from local time, tap to change */}
-      <div className="flex items-center gap-2">
-        <span className="text-[12px] text-muted">Meal</span>
-        <MealTypePicker value={mealType} onChange={setMealType} />
+      {/* Meal type — inline tab row */}
+      <div className="flex items-center gap-3 px-4 pb-3 border-b border-sand-border">
+        <span className="text-[12px] text-muted font-medium w-9 flex-shrink-0">Meal</span>
+        <div className="flex items-center gap-1 flex-wrap">
+          {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setMealType(type)}
+              className={`px-3 py-1 rounded-full text-[13px] capitalize transition-colors ${
+                mealType === type
+                  ? 'bg-white border border-sand-border font-semibold text-ink shadow-sm'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Items — atomic rows inline; composite dishes collapsed with a per-dish popup */}
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col">
         {groupByDish(items).map((group) => {
           if (group.dish === null) return renderItemRow(group.indices[0])
           const visible = group.indices.filter((i) => !removed.has(i))
@@ -339,16 +353,16 @@ export function ConfirmationCard({
           return (
             <div
               key={`dish-${group.dish}`}
-              className="bg-paper rounded-xl border border-sand-border p-3.5 flex flex-col gap-2"
+              className="flex flex-col gap-2 px-4 py-3 border-b border-sand-border last:border-b-0"
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
+                  <p className="text-[14px] font-semibold text-ink leading-snug truncate">
                     {group.dish}
-                  </h4>
-                  <p className="text-[11px] text-muted mt-0.5">
+                  </p>
+                  <p className="text-[12px] text-muted mt-0.5">
                     {Math.round(sum('kcal'))} kcal · {sum('protein_g').toFixed(0)}g protein ·{' '}
-                    {sum('fiber_g').toFixed(0)}g fiber · {visible.length} ingredient
+                    {visible.length} ingredient
                     {visible.length === 1 ? '' : 's'}
                   </p>
                 </div>
@@ -424,24 +438,24 @@ export function ConfirmationCard({
         })}
       </div>
 
-      {/* Totals */}
-      <div className="grid grid-cols-5 text-center bg-container rounded-xl py-2.5">
+      {/* Totals bar */}
+      <div className="grid grid-cols-5 border-t border-sand-border bg-sand/50">
         {[
-          { label: 'kcal', value: Math.round(total('kcal')).toString() },
-          { label: 'protein', value: `${total('protein_g').toFixed(0)}g` },
-          { label: 'carbs', value: `${total('carbs_g').toFixed(0)}g` },
-          { label: 'fat', value: `${total('fat_g').toFixed(0)}g` },
-          { label: 'fiber', value: `${total('fiber_g').toFixed(0)}g` },
+          { label: 'KCAL', value: Math.round(total('kcal')).toString() },
+          { label: 'PROTEIN', value: `${total('protein_g').toFixed(0)}g` },
+          { label: 'CARBS', value: `${total('carbs_g').toFixed(0)}g` },
+          { label: 'FAT', value: `${total('fat_g').toFixed(0)}g` },
+          { label: 'FIBER', value: `${total('fiber_g').toFixed(0)}g` },
         ].map((t) => (
-          <div key={t.label}>
-            <span className="label-caps block text-[9px]">{t.label}</span>
-            <span className="text-[13px] font-semibold text-ink">{t.value}</span>
+          <div key={t.label} className="flex flex-col items-center py-3 gap-0.5">
+            <span className="label-caps text-[9px]">{t.label}</span>
+            <span className="text-[15px] font-semibold text-ink tabular-nums">{t.value}</span>
           </div>
         ))}
       </div>
 
       {/* Portion multiplier */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-sand-border">
         <span className="text-[12px] text-muted">Portion</span>
         <div className="flex items-center gap-1 bg-container rounded-full p-0.5">
           {PORTION_STEPS.map((p) => (
@@ -461,13 +475,13 @@ export function ConfirmationCard({
         </div>
       </div>
 
-      {/* Primary actions — prominent, first */}
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* Primary action buttons */}
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-sand-border">
         <button
           type="button"
           onClick={() => onAction('cancel')}
           disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-muted border border-sand-border hover:text-danger hover:border-danger/30 focus-visible:outline-2 focus-visible:outline-sage/50 disabled:opacity-50"
+          className="px-4 py-2.5 text-[14px] text-muted hover:text-danger transition-colors flex-shrink-0 disabled:opacity-50"
         >
           Cancel
         </button>
@@ -478,15 +492,15 @@ export function ConfirmationCard({
           onClick={() =>
             onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
           }
-          disabled={isLoading}
-          className="press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep focus-visible:outline-2 focus-visible:outline-sage/50 disabled:opacity-50"
+          disabled={isLoading || visibleIndices.length === 0}
+          className="press flex-1 bg-sage-deep hover:bg-sage-forest text-white rounded-full py-2.5 text-[14px] font-semibold disabled:opacity-40 transition-colors focus-visible:outline-2 focus-visible:outline-sage/50"
         >
           {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
         </button>
       </div>
 
       {/* Secondary actions — below the fold, unobtrusive */}
-      <div className="flex flex-col gap-2 pt-1 border-t border-sand-border">
+      <div className="border-t border-sand-border px-4 py-2.5 flex flex-col gap-2">
         {/* Save to My Meals */}
         <div className="flex items-center gap-2">
           <input
@@ -501,7 +515,7 @@ export function ConfirmationCard({
             type="button"
             onClick={handleSaveMeal}
             disabled={!mealName.trim() || saveMeal.isPending || saveMeal.isSuccess}
-            className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium text-ink-soft border border-sand-border hover:border-sage hover:text-sage-deep disabled:opacity-50"
+            className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] text-muted hover:text-ink border border-sand-border hover:border-sage transition-colors disabled:opacity-50"
           >
             {saveMeal.isSuccess ? (
               <>
@@ -530,7 +544,7 @@ export function ConfirmationCard({
                 type="button"
                 onClick={soleDish ? () => setOpenDish(soleDish) : onDecompose}
                 disabled={isLoading}
-                className="press cursor-pointer flex items-center gap-1 text-[12px] font-medium text-sage-deep hover:underline disabled:opacity-50"
+                className="press cursor-pointer flex items-center gap-1 text-[12px] text-muted hover:text-ink transition-colors disabled:opacity-50"
               >
                 <Sparkles className="w-3 h-3" />
                 Break into ingredients
@@ -541,7 +555,7 @@ export function ConfirmationCard({
                 type="button"
                 onClick={onCombine}
                 disabled={isLoading}
-                className="press cursor-pointer flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink-soft hover:underline disabled:opacity-50"
+                className="press cursor-pointer flex items-center gap-1 text-[12px] text-muted hover:text-ink transition-colors disabled:opacity-50"
               >
                 <UtensilsCrossed className="w-3 h-3" />
                 Log as single item
