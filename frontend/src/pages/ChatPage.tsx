@@ -197,10 +197,10 @@ export function ChatPage() {
           <button
             onClick={handleClearChat}
             disabled={messages.length === 0}
-            className="press w-9 h-9 rounded-full text-muted hover:text-danger hover:bg-container flex items-center justify-center disabled:opacity-30"
-            title="Clear chat thread"
+            className="press flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-muted hover:text-danger hover:bg-container disabled:opacity-30"
           >
-            <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+            New chat
           </button>
         </header>
 
