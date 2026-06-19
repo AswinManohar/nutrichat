@@ -38,6 +38,7 @@ class AgentState(TypedDict):
     # from_saved is set when the card was prefilled from a saved meal.
     action: str | None
     from_saved: bool
+    meal_id: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +254,7 @@ async def log_node(state: AgentState) -> dict:
     meal_type = normalize_meal_type(state.get("meal_type"))
     label = _meal_label(state["entities"])
     result = await log_meal(state["user_id"], results, meal_type, label=label)
-    return {"messages": [AIMessage(content=result.message)]}
+    return {"meal_id": result.meal_id, "messages": [AIMessage(content=result.message)]}
 
 
 # ---------------------------------------------------------------------------

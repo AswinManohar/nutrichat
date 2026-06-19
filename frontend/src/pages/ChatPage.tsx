@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMealStore } from '../stores/mealStore'
-import { useDashboard, useLogMeal, usePendingNudge, useAckPendingNudge } from '../api/hooks'
+import { useDashboard, useLogMeal, useDeleteMealLog, usePendingNudge, useAckPendingNudge } from '../api/hooks'
 import type { MealCategory } from '../api/types'
 import { useResizablePanel } from '../hooks/use-resizable-panel'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
 import { DashboardPanel } from '../components/dashboard/DashboardPanel'
 import { Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+
+const UNDO_WINDOW_S = 25
 
 export function ChatPage() {
   const {
@@ -20,7 +22,11 @@ export function ChatPage() {
   } = useMealStore()
   const { data: totals } = useDashboard()
   const logMealMutation = useLogMeal()
+  const deleteMealLogMutation = useDeleteMealLog()
   const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false)
+  const [undoMealId, setUndoMealId] = useState<string | null>(null)
+  const [undoSecondsLeft, setUndoSecondsLeft] = useState(UNDO_WINDOW_S)
+  const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { width: dashboardWidth, onPointerDown: onResizerPointerDown } = useResizablePanel()
   const { data: pendingNudge } = usePendingNudge()
   const ackNudgeMutation = useAckPendingNudge()
@@ -35,6 +41,34 @@ export function ChatPage() {
     // Only fire once per pending summary; ack makes subsequent fetches return null.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNudge?.summary_text])
+
+  const startUndoWindow = useCallback((mealId: string) => {
+    if (undoTimerRef.current) clearInterval(undoTimerRef.current)
+    setUndoMealId(mealId)
+    setUndoSecondsLeft(UNDO_WINDOW_S)
+    undoTimerRef.current = setInterval(() => {
+      setUndoSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(undoTimerRef.current!)
+          setUndoMealId(null)
+          return UNDO_WINDOW_S
+        }
+        return s - 1
+      })
+    }, 1000)
+  }, [])
+
+  const dismissUndo = useCallback(() => {
+    if (undoTimerRef.current) clearInterval(undoTimerRef.current)
+    setUndoMealId(null)
+    setUndoSecondsLeft(UNDO_WINDOW_S)
+  }, [])
+
+  const handleUndo = useCallback(() => {
+    if (!undoMealId) return
+    deleteMealLogMutation.mutate(undoMealId)
+    dismissUndo()
+  }, [undoMealId, deleteMealLogMutation, dismissUndo])
 
   const handleSend = (text: string, imageB64?: string | null, mealType?: MealCategory) => {
     addMessage({
@@ -67,6 +101,7 @@ export function ChatPage() {
           // Not paused → meal logged/cancelled/coaching answer. New thread next time.
           if (!data.paused) {
             setConversationId(null)
+            if (data.meal_id) startUndoWindow(data.meal_id)
           }
         },
         onError: (err) => {
@@ -206,6 +241,24 @@ export function ChatPage() {
           onCombine={handleCombine}
           isLoading={logMealMutation.isPending}
         />
+
+        {undoMealId && (
+          <div className="px-4 pb-2 flex justify-center">
+            <div className="flex items-center gap-2.5 bg-ink text-paper rounded-full px-4 py-2 text-[13px] shadow-md rise-in">
+              <span className="text-paper/60">Meal logged</span>
+              <span className="text-paper/30">·</span>
+              <button
+                type="button"
+                onClick={handleUndo}
+                className="font-semibold underline underline-offset-2 hover:text-sage-soft"
+              >
+                Undo
+              </button>
+              <span className="text-paper/40 tabular-nums w-5 text-right">{undoSecondsLeft}s</span>
+            </div>
+          </div>
+        )}
+
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />
       </div>
 

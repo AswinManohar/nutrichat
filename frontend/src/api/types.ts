@@ -88,6 +88,7 @@ export interface LogMealResponse {
   message: string;
   paused: boolean;
   items: MealItem[];
+  meal_id?: string | null;
 }
 
 export interface CategoryStat {

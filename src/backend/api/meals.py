@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text as sa_text
 
 from backend.agent.orchestrator import handle_message
 from backend.agent.tools.history import get_category_breakdown
+from backend.agent.tools.meals import soft_delete_meal
 from backend.auth.supabase import get_current_user_id
 from backend.db.redis_client import TodayTotals, get_today_totals
 from backend.db.session import get_session
@@ -41,6 +42,24 @@ async def log_meal(
         meal_type=req.meal_type,
         action=req.action,
     )
+
+
+@router.delete("/log/{meal_id}", status_code=204)
+async def delete_meal_log(
+    meal_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> None:
+    """Soft-delete a meal log entry (undo within the undo window).
+
+    Marks the row deleted_at so it disappears from today's totals and history
+    queries. The row is retained for audit purposes.
+
+    Raises:
+        HTTPException 404: If no matching undeleted meal is found for this user.
+    """
+    deleted = await soft_delete_meal(meal_id, user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Meal not found")
 
 
 @router.get("/today")

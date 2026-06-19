@@ -193,6 +193,7 @@ async def _handle_meal_logging(
                     "meal_type": None,
                     "action": None,
                     "from_saved": False,
+                    "meal_id": None,
                 },
                 config=config,
             )
@@ -234,12 +235,15 @@ async def _handle_meal_logging(
                     }
                 )
 
-        return {
+        response: dict[str, Any] = {
             "status": "success",
             "message": last_ai.content if last_ai else "",
             "paused": still_paused,
             "items": items,
         }
+        if not still_paused:
+            response["meal_id"] = result.get("meal_id")
+        return response
 
 
 async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:

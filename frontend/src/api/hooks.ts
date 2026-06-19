@@ -189,6 +189,18 @@ export const useDisconnectTelegram = () => {
   })
 }
 
+export const useDeleteMealLog = () => {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (mealId) => apiClient.delete<void>(`/meals/log/${mealId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['trends'] })
+      queryClient.invalidateQueries({ queryKey: ['meal-categories'] })
+    },
+  })
+}
+
 export const useLogMeal = () => {
   const queryClient = useQueryClient()
   return useMutation<LogMealResponse, Error, LogMealRequest>({
