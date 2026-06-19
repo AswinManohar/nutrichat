@@ -34,6 +34,7 @@ interface ChatThreadProps {
   onAction: (text: string, mealType?: MealCategory) => void
   onDismissCard: () => void
   onDecompose: () => void
+  onCombine: () => void
   isLoading: boolean
 }
 
@@ -57,6 +58,7 @@ export function ChatThread({
   onAction,
   onDismissCard,
   onDecompose,
+  onCombine,
   isLoading,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -134,6 +136,7 @@ export function ChatThread({
                   onAction={onAction}
                   onDismiss={onDismissCard}
                   onDecompose={onDecompose}
+                  onCombine={onCombine}
                   isLoading={isLoading}
                 />
               )}

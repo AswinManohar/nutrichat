@@ -108,6 +108,26 @@ export function ChatPage() {
     )
   }
 
+  // "Log as single item" → resume the paused thread with action=combine.
+  // Collapses auto-decomposed ingredients back to their source dish.
+  const handleCombine = () => {
+    if (!conversationId) return
+    logMealMutation.mutate(
+      { user_input: 'log as single item', conversation_id: conversationId, action: 'combine' },
+      {
+        onSuccess: (data) => {
+          addMessage({
+            sender: 'agent',
+            text: data.message,
+            paused: data.paused,
+            items: data.items,
+          })
+          if (!data.paused) setConversationId(null)
+        },
+      }
+    )
+  }
+
   // Explicit "Log" from the My Meals page navigates here with the meal name;
   // send it once so the backend auto-detects the saved meal and prefills.
   useEffect(() => {
@@ -183,6 +203,7 @@ export function ChatPage() {
           onAction={(text, mealType) => handleSend(text, null, mealType)}
           onDismissCard={handleDismissCard}
           onDecompose={handleDecompose}
+          onCombine={handleCombine}
           isLoading={logMealMutation.isPending}
         />
         <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />

@@ -9,6 +9,7 @@ interface ConfirmationCardProps {
   onAction: (text: string, mealType?: MealCategory) => void
   onDismiss: () => void
   onDecompose: () => void
+  onCombine: () => void
   isLoading: boolean
 }
 
@@ -45,6 +46,7 @@ export function ConfirmationCard({
   onAction,
   onDismiss,
   onDecompose,
+  onCombine,
   isLoading,
 }: ConfirmationCardProps) {
   const [qtys, setQtys] = useState<number[]>(() => items.map((i) => i.qty_g))
@@ -335,6 +337,17 @@ export function ConfirmationCard({
           <Sparkles className="w-3.5 h-3.5" />
           Break into ingredients
         </button>
+        {items.some((i) => i.source_dish) && (
+          <button
+            type="button"
+            onClick={onCombine}
+            disabled={isLoading}
+            className="press cursor-pointer flex items-center justify-center gap-1.5 py-2 rounded-full text-[13px] font-medium text-sage-deep border border-sand-border hover:border-sage disabled:opacity-50"
+          >
+            <UtensilsCrossed className="w-3.5 h-3.5" />
+            Log as single item
+          </button>
+        )}
         <div className="flex items-center gap-2">
           <input
             type="text"

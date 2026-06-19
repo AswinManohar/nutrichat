@@ -14,6 +14,8 @@ export interface MealItem {
   source: string;
   /** True when nutrition was estimated by the LLM (no confident USDA match) */
   estimated: boolean;
+  /** Composite dish this ingredient was auto-decomposed from; null if atomic */
+  source_dish?: string | null;
   sugar_g?: number;
   sat_fat_g?: number;
   /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */

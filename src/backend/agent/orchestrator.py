@@ -226,6 +226,7 @@ async def _handle_meal_logging(
                         "candidates": r.get("candidates", []),
                         "source": r.get("source", "USDA"),
                         "estimated": r.get("estimated", False),
+                        "source_dish": r.get("source_dish"),
                         # Full breakdown so "Save to My Meals" preserves micros.
                         "sugar_g": r.get("sugar_g", 0.0),
                         "sat_fat_g": r.get("sat_fat_g", 0.0),
