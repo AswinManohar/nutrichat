@@ -87,6 +87,41 @@ def test_get_nutrient_checkup_returns_latest_row(client: TestClient) -> None:
     assert body["summary_text"] == row.summary_text
 
 
+def test_get_nutrient_checkup_tolerates_legacy_row_without_rda_pct(
+    client: TestClient,
+) -> None:
+    # Regression: rows persisted before rda_pct existed omit the key entirely;
+    # the endpoint must still return 200 with rda_pct=null, not 500.
+    row = NutrientCheckup(
+        id="ck-old",
+        user_id="user-1",
+        date=date(2026, 6, 10),
+        nutrients={
+            "Iron": {
+                "avg": 0.0,
+                "prev_avg": 0.0,
+                "unit": "mg",
+                "trend_pct": None,
+                "direction": "flat",
+            }
+        },
+        notable_nutrients=[],
+        summary_text=None,
+        generated_at=datetime(2026, 6, 10, 1, 30, tzinfo=timezone.utc),
+    )
+    session = MagicMock()
+    exec_result = MagicMock()
+    exec_result.scalar_one_or_none.return_value = row
+    session.execute = AsyncMock(return_value=exec_result)
+    factory = _mock_session_factory(session)
+
+    with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
+        resp = client.get("/nutrient-checkup", headers=_auth_headers("user-1"))
+
+    assert resp.status_code == 200
+    assert resp.json()["nutrients"][0]["rda_pct"] is None
+
+
 def test_get_nutrient_checkup_404_when_none_yet(client: TestClient) -> None:
     session = MagicMock()
     exec_result = MagicMock()
