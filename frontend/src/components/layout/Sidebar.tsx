@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { MessageSquare, Settings, LogOut, ShieldAlert, BookMarked } from 'lucide-react'
+import { MessageSquare, Settings, LogOut, ShieldAlert, BookMarked, BarChart2 } from 'lucide-react'
 
 export function Sidebar() {
   const { user, signOut, isBypassed, disableBypass } = useAuthStore()
@@ -8,6 +8,7 @@ export function Sidebar() {
   const navItems = [
     { label: 'Chat & Log', path: '/chat', icon: MessageSquare },
     { label: 'My Meals', path: '/my-meals', icon: BookMarked },
+    { label: 'Trends', path: '/trends', icon: BarChart2 },
     { label: 'Settings', path: '/settings', icon: Settings },
   ]
 

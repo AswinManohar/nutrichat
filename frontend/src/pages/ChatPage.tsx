@@ -5,7 +5,6 @@ import { useDashboard, useLogMeal, useDeleteMealLog, usePendingNudge, useAckPend
 import type { MealCategory } from '../api/types'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
-import { AppSidebar } from '../components/nav/AppSidebar'
 import { ChatTodayPanel } from '../components/dashboard/ChatTodayPanel'
 
 const UNDO_WINDOW_S = 30
@@ -190,8 +189,6 @@ export function ChatPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
-      <AppSidebar />
-
       {/* Chat column */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0">
         {/* Header */}

@@ -3,7 +3,6 @@ import { BookMarked, SlidersHorizontal, Trash2, Plus, ChevronDown, Check } from 
 import { useTrends, useGoals, useMyMeals, useDeleteMeal, useLogMyMeal } from '../api/hooks'
 import type { DayTrend, MealCategory, MyMealSummary } from '../api/types'
 import { MEAL_CATEGORIES } from '../api/types'
-import { AppSidebar } from '../components/nav/AppSidebar'
 import { TrendsSection } from '../components/dashboard/TrendsSection'
 import { CATEGORY_LABELS } from '../components/chat/meal-categories'
 import { MyMealCustomizer } from '../components/chat/MyMealCustomizer'
@@ -326,8 +325,6 @@ export function TrendsPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
-      <AppSidebar />
-
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
 
