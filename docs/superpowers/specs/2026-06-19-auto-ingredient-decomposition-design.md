@@ -189,14 +189,23 @@ entry to the `_route_response` edge map. Insert `auto_decompose` between
 `extract` and `usda_batch`: `extract → auto_decompose → usda_batch` (replacing
 the current `extract → usda_batch` edge).
 
-### 4.5 Frontend — "Log as single item" (`frontend/`)
+### 4.5 Frontend — per-dish popup + "Log as single item" (`frontend/`)
 
-The confirmation card renders a **"Log as single item"** action whenever any
-visible line has `source_dish` set. Clicking posts the existing meal-action
-shape with `action: "combine"` (same channel the "Break into ingredients" and
-"Save to My Meals" buttons already use). Optional, low-priority affordance: a
-subtle group label ("Broke *chicken biryani* into ingredients"). The manual
-"Break into ingredients" button is unchanged.
+**Per-dish collapsed rows + focused popup.** Items are grouped by `source_dish`.
+Each composite dish renders **collapsed** as a single row (dish name + summed
+macros) with its own **"Break into ingredients"** button; clicking opens a
+**focused modal** that lists only that dish's ingredient lines with an **✕**
+close button. This matters when a query has multiple composite dishes (biryani +
+pasta + curry) — each gets its own button and its own popup. Atomic items (no
+`source_dish`) render as normal inline rows. Per-ingredient edits stay keyed by
+the original flat item index, so editing inside the modal flows through the
+existing correction logic. This is presentation of the `source_dish` grouping
+the backend already produces — no backend change.
+
+**"Log as single item".** A global action, shown whenever any line has
+`source_dish` set, posts the meal-action shape with `action: "combine"` (same
+channel as "Break into ingredients"/"Save to My Meals") to collapse every
+decomposed group back to its dish.
 
 ---
 
