@@ -72,7 +72,7 @@ export function ChatPage() {
         onError: (err) => {
           addMessage({
             sender: 'agent',
-            text: `Connection error: ${err.message}. Make sure the backend is running, then try again.`,
+            text: "Couldn't reach the server — check your connection and try again.",
           })
           setConversationId(null)
         },
