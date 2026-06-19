@@ -104,11 +104,18 @@ export interface CategoryStat {
   share_kcal_pct: number;
 }
 
+export interface MealTypeEntry {
+  meal_type: string; // 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'brunch'
+  kcal: number;
+  summary: string; // e.g. "Scrambled eggs, Sourdough toast, Flat white"
+}
+
 export interface TodayTotals {
   kcal: number;
   protein_g: number;
   fiber_g: number;
   n_meals: number;
+  by_type?: MealTypeEntry[];
 }
 
 export type TrackingMode = 'goals' | 'mindful';
