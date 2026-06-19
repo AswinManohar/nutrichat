@@ -346,11 +346,32 @@ def _junk_flags(usda_results: list) -> dict:
     return {"has_junk": bool(junk_items), "junk_items": junk_items}
 
 
+def _meal_label(entities: list[dict]) -> str:
+    """Human-facing dish-name snapshot for meal_log.label.
+
+    Uses source_dish where an entity came from decomposing a composite dish,
+    else its food_name; deduplicates while preserving first-seen order.
+
+    Args:
+        entities: Logged entity dicts (FoodEntity/USDAResult shape).
+
+    Returns:
+        Comma-joined dish/food names, e.g. "chicken biryani, apple".
+    """
+    names: list[str] = []
+    for e in entities:
+        name = e.get("source_dish") or e.get("food_name")
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names)
+
+
 async def _insert_meal_log(
     user_id: str,
     meal_type: str,
     usda_results: list,
     totals: dict,
+    label: str | None = None,
 ) -> str:
     """Insert a meal_log row and return the generated meal_id."""
     meal_id = str(uuid.uuid4())
@@ -361,9 +382,10 @@ async def _insert_meal_log(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities, flags) "
-                "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, :carbs_g, "
-                ":fat_g, :fiber_g, CAST(:entities AS jsonb), CAST(:flags AS jsonb))"
+                "fat_g, fiber_g, entities, flags, label) "
+                "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, "
+                ":carbs_g, :fat_g, :fiber_g, CAST(:entities AS jsonb), "
+                "CAST(:flags AS jsonb), :label)"
             ),
             {
                 "meal_id": meal_id,
@@ -376,6 +398,7 @@ async def _insert_meal_log(
                 "fiber_g": totals["fiber_g"],
                 "entities": json.dumps(entities),
                 "flags": json.dumps(flags),
+                "label": label,
             },
         )
         await session.commit()
@@ -386,6 +409,7 @@ async def log_meal(
     user_id: str,
     usda_results: list,
     meal_type: str = "unspecified",
+    label: str | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 
@@ -407,7 +431,7 @@ async def log_meal(
         "fat_g": round(sum(r.fat_g for r in resolved), 1),
         "fiber_g": round(sum(r.fiber_g for r in resolved), 1),
     }
-    meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals)
+    meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals, label)
     await increment_today(
         user_id,
         kcal=totals["kcal"],
