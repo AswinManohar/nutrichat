@@ -85,6 +85,7 @@ class MealLog(Base):
     fat_g: Mapped[float] = mapped_column(Float, nullable=False)
     fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
     entities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    label: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
@@ -104,6 +105,7 @@ class MealLog(Base):
         Index("ix_meal_log_hybrid", "user_id", "meal_type", "protein_g", "logged_at"),
         # Keyset pagination cursor for the integration API
         Index("ix_meal_log_cursor", "user_id", "updated_at", "meal_id"),
+        Index("ix_meal_log_user_label", "user_id", "label"),
         # IVFFlat index created via raw DDL in the Alembic migration
         # because SQLAlchemy Index() does not support operator classes.
     )
