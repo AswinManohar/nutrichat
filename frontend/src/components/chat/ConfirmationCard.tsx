@@ -70,6 +70,9 @@ export function ConfirmationCard({
   const [addOpen, setAddOpen] = useState(false)
   const [addName, setAddName] = useState('')
   const [addGrams, setAddGrams] = useState('')
+  const [dishSaveOpen, setDishSaveOpen] = useState<string | null>(null)
+  const [dishSaveName, setDishSaveName] = useState('')
+  const [savedDishes, setSavedDishes] = useState<Set<string>>(new Set())
   const dismissedRef = useRef(false)
   const saveMeal = useSaveMeal()
 
@@ -165,6 +168,22 @@ export function ConfirmationCard({
     // Save the resolved base meal (full nutrients preserved); portion/edits
     // affect logging, not the saved template.
     saveMeal.mutate({ name, ingredients: items })
+  }
+
+  const handleSaveDish = (dish: string) => {
+    const name = dishSaveName.trim()
+    if (!name) return
+    const dishIndices = groupByDish(items).find((g) => g.dish === dish)?.indices ?? []
+    saveMeal.mutate(
+      { name, ingredients: dishIndices.map((i) => items[i]) },
+      {
+        onSuccess: () => {
+          setSavedDishes((prev) => new Set([...prev, dish]))
+          setDishSaveOpen(null)
+          setDishSaveName('')
+        },
+      }
+    )
   }
 
   const setQty = (i: number, v: number) => {
@@ -319,27 +338,76 @@ export function ConfirmationCard({
           return (
             <div
               key={`dish-${group.dish}`}
-              className="bg-paper rounded-xl border border-sand-border p-3.5 flex items-center justify-between gap-2"
+              className="bg-paper rounded-xl border border-sand-border p-3.5 flex flex-col gap-2"
             >
-              <div className="min-w-0 flex-1">
-                <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
-                  {group.dish}
-                </h4>
-                <p className="text-[11px] text-muted mt-0.5">
-                  {Math.round(sum('kcal'))} kcal · {sum('protein_g').toFixed(0)}g protein ·{' '}
-                  {sum('fiber_g').toFixed(0)}g fiber · {visible.length} ingredient
-                  {visible.length === 1 ? '' : 's'}
-                </p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-[14px] font-medium text-ink leading-snug truncate">
+                    {group.dish}
+                  </h4>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    {Math.round(sum('kcal'))} kcal · {sum('protein_g').toFixed(0)}g protein ·{' '}
+                    {sum('fiber_g').toFixed(0)}g fiber · {visible.length} ingredient
+                    {visible.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Per-dish save */}
+                  {savedDishes.has(group.dish!) ? (
+                    <span className="flex items-center gap-1 text-[12px] font-medium text-sage-deep">
+                      <Check className="w-3 h-3" /> Saved
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDishSaveOpen(dishSaveOpen === group.dish ? null : group.dish)
+                        setDishSaveName(group.dish ?? '')
+                      }}
+                      title="Save this dish to My Meals"
+                      className={`press cursor-pointer w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                        dishSaveOpen === group.dish
+                          ? 'text-sage-deep bg-container'
+                          : 'text-muted hover:text-sage-deep hover:bg-container'
+                      }`}
+                    >
+                      <Bookmark className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {visibleDishGroups.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenDish(group.dish)}
+                      className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-sand-border hover:border-sage"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Break
+                    </button>
+                  )}
+                </div>
               </div>
-              {visibleDishGroups.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setOpenDish(group.dish)}
-                  className="press cursor-pointer shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium text-sage-deep border border-sand-border hover:border-sage"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Break into ingredients
-                </button>
+
+              {/* Inline save input — expands when bookmark tapped */}
+              {dishSaveOpen === group.dish && (
+                <div className="flex items-center gap-2 rise-in">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={dishSaveName}
+                    onChange={(e) => setDishSaveName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveDish(group.dish!)}
+                    placeholder={group.dish ?? 'Name this dish…'}
+                    className="flex-1 min-w-0 bg-surface border border-sand-border rounded-full px-3.5 py-1.5 text-[12px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDish(group.dish!)}
+                    disabled={!dishSaveName.trim() || saveMeal.isPending}
+                    className="press cursor-pointer shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium text-white bg-sage-deep hover:bg-sage disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
               )}
             </div>
           )
@@ -413,7 +481,7 @@ export function ConfirmationCard({
             type="text"
             value={mealName}
             onChange={(e) => setMealName(e.target.value)}
-            placeholder="Save this meal for later…"
+            placeholder={visibleDishGroups.length > 1 ? 'Save all dishes together…' : 'Save this meal for later…'}
             disabled={saveMeal.isSuccess}
             className="flex-1 bg-paper border border-sand-border rounded-full px-3.5 py-2 text-[13px] text-ink focus:outline-none focus:ring-1 focus:ring-sage/30 disabled:opacity-60"
           />
