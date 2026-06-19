@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { compressAndEncodeImage } from '../../lib/image'
-import { Camera, ArrowUp, X } from 'lucide-react'
+import { Plus, ArrowUp, X } from 'lucide-react'
 
 interface ChatInputProps {
   onSend: (text: string, imageB64?: string | null) => void
@@ -84,14 +84,14 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
           className="press w-10 h-10 shrink-0 flex items-center justify-center text-muted hover:text-sage-deep hover:bg-container rounded-full disabled:opacity-30"
           title="Add a food photo"
         >
-          <Camera className="w-5 h-5" strokeWidth={1.75} />
+          <Plus className="w-5 h-5" strokeWidth={1.75} />
         </button>
 
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={imageB64 ? 'Add a note, or just send…' : 'A bowl of oatmeal with blueberries…'}
+          placeholder={imageB64 ? 'Add a note, or just send…' : 'Describe a meal, snack or drink...'}
           rows={1}
           disabled={isLoading}
           className="flex-1 bg-transparent text-ink placeholder-muted focus:outline-none resize-none max-h-32 min-h-10 py-2.5 text-[15px] leading-normal"
