@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from kombu.exceptions import OperationalError
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text as sa_text
@@ -16,6 +18,8 @@ from backend.config import get_tunables
 from backend.db.redis_client import increment_today
 from backend.db.session import get_session
 from backend.workers.tasks import embed_meal_summary
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
@@ -398,7 +402,12 @@ async def log_meal(
         protein_g=totals["protein_g"],
         fiber_g=totals["fiber_g"],
     )
-    embed_meal_summary.delay(meal_id)
+    # Best-effort embedding for history search; a broker outage (e.g. Redis
+    # down) must never fail the meal log the user just confirmed.
+    try:
+        embed_meal_summary.delay(meal_id)
+    except (OperationalError, OSError) as exc:
+        logger.warning("Could not enqueue meal embedding: %s", exc)
     return MealLogResult(
         meal_id=meal_id,
         meal_type=meal_type,
