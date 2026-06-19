@@ -70,15 +70,11 @@ export const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-surface flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Gradients for aesthetic depth */}
-      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-container blur-[100px] pointer-events-none"></div>
-      <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-[350px] h-[350px] rounded-full bg-sage/10 blur-[100px] pointer-events-none"></div>
-
-      <div className="w-full max-w-md relative z-10">
+    <div className="min-h-screen w-full bg-surface flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md">
         {/* Branding header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-gradient-to-tr from-sage to-sage-deep rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 mb-3">
+          <div className="w-12 h-12 bg-sage rounded-xl flex items-center justify-center mb-3">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <h1 className="font-display text-3xl text-sage-deep">
