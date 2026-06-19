@@ -238,7 +238,7 @@ export const OnboardingPage: React.FC = () => {
                       type="number"
                       min="10"
                       max="100"
-                      value={age}
+                      value={age || ''}
                       onChange={(e) => setAge(Number(e.target.value))}
                       className="w-full bg-sand border border-sand-border rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
                     />
@@ -252,7 +252,7 @@ export const OnboardingPage: React.FC = () => {
                       type="number"
                       min="30"
                       max="250"
-                      value={weight}
+                      value={weight || ''}
                       onChange={(e) => setWeight(Number(e.target.value))}
                       className="w-full bg-sand border border-sand-border rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
                     />
@@ -263,7 +263,7 @@ export const OnboardingPage: React.FC = () => {
                       type="number"
                       min="100"
                       max="250"
-                      value={height}
+                      value={height || ''}
                       onChange={(e) => setHeight(Number(e.target.value))}
                       className="w-full bg-sand border border-sand-border rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-sage/30"
                     />

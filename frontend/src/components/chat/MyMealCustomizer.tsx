@@ -89,8 +89,16 @@ export function MyMealCustomizer({ mealId, onLogged }: MyMealCustomizerProps) {
                   </button>
                   <input
                     type="number"
-                    value={Math.round(qtys[i])}
-                    onChange={(e) => setQty(i, Number(e.target.value))}
+                    value={qtys[i] ? Math.round(qtys[i]) : ''}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      setQtys((prev) =>
+                        prev.map((q, idx) => (idx === i ? (Number.isNaN(n) ? 0 : n) : q)),
+                      )
+                    }}
+                    onBlur={() => {
+                      if (!qtys[i] || qtys[i] <= 0) setQty(i, Math.round(items[i].qty_g))
+                    }}
                     className="w-12 bg-transparent text-center text-[13px] font-semibold text-ink focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span className="text-[11px] text-muted pr-1">g</span>
