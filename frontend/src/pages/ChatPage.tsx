@@ -6,6 +6,7 @@ import type { MealCategory } from '../api/types'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
 import { ChatTodayPanel } from '../components/dashboard/ChatTodayPanel'
+import { MascotGreeting } from '../components/mascot/MascotGreeting'
 
 const UNDO_WINDOW_S = 30
 
@@ -104,7 +105,7 @@ export function ChatPage() {
             if (data.meal_id) startUndoWindow(data.meal_id)
           }
         },
-        onError: (err) => {
+        onError: (_err) => {
           addMessage({
             sender: 'agent',
             text: "Couldn't reach the server — check your connection and try again.",
@@ -221,6 +222,7 @@ export function ChatPage() {
           </div>
         </header>
 
+        <MascotGreeting show={messages.length === 0} />
         <ChatThread
           messages={messages}
           onAction={(text, mealType) => handleSend(text, null, mealType)}
