@@ -14,6 +14,7 @@ from backend.api import (
     mindful,
     my_meals,
     nutrient_checkup,
+    quota,
     telegram_link,
 )
 from backend.observability import configure_observability
@@ -58,6 +59,7 @@ app.add_middleware(
 
 app.include_router(meals.router)
 app.include_router(goals.router)
+app.include_router(quota.router)
 app.include_router(integrations.router)
 app.include_router(telegram_link.router)
 app.include_router(nutrient_checkup.router)

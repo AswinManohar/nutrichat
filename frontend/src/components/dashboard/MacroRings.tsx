@@ -67,31 +67,37 @@ export function MacroRings({ totals, goals }: MacroRingsProps) {
   const fiberGoal = goals?.fiber_goal ?? 30
 
   return (
-    <div className="card-sand p-6 flex items-center justify-around gap-6">
+    <div className="card-sand p-4 flex items-center gap-4 min-w-0">
       {/* Primary kcal ring */}
-      <Ring pct={(kcal / kcalGoal) * 100} size={136} stroke={8} trackWidth={4} colorVar="--color-sage">
-        <span className="font-display text-[32px] leading-none text-ink">
-          {Math.round(kcal).toLocaleString()}
-        </span>
-        <span className="label-caps mt-1 text-[10px]">kcal</span>
-      </Ring>
+      <div className="flex-shrink-0">
+        <Ring pct={(kcal / kcalGoal) * 100} size={120} stroke={7} trackWidth={4} colorVar="--color-sage">
+          <span className="font-display text-[26px] leading-none text-ink">
+            {Math.round(kcal).toLocaleString()}
+          </span>
+          <span className="label-caps mt-1 text-[9px]">kcal</span>
+        </Ring>
+      </div>
 
       {/* Mini rings */}
-      <div className="flex flex-col gap-5">
-        <div className="flex items-center gap-3">
-          <Ring pct={(protein / proteinGoal) * 100} size={44} stroke={4} trackWidth={2} colorVar="--color-protein" />
-          <div>
+      <div className="flex flex-col gap-4 min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex-shrink-0">
+            <Ring pct={(protein / proteinGoal) * 100} size={40} stroke={4} trackWidth={2} colorVar="--color-protein" />
+          </div>
+          <div className="min-w-0">
             <p className="label-caps">Protein</p>
-            <p className="text-[16px] font-semibold text-ink-soft">
+            <p className="text-[14px] font-semibold text-ink-soft truncate">
               {Math.round(protein)}g <span className="font-normal text-muted">/ {Math.round(proteinGoal)}g</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Ring pct={(fiber / fiberGoal) * 100} size={44} stroke={4} trackWidth={2} colorVar="--color-fiber" />
-          <div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex-shrink-0">
+            <Ring pct={(fiber / fiberGoal) * 100} size={40} stroke={4} trackWidth={2} colorVar="--color-fiber" />
+          </div>
+          <div className="min-w-0">
             <p className="label-caps">Fiber</p>
-            <p className="text-[16px] font-semibold text-ink-soft">
+            <p className="text-[14px] font-semibold text-ink-soft truncate">
               {Math.round(fiber)}g <span className="font-normal text-muted">/ {Math.round(fiberGoal)}g</span>
             </p>
           </div>
