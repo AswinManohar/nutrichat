@@ -17,6 +17,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 _DEFAULT_PATH = Path(__file__).parent / "tunables.yaml"
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
 class ModelsConfig(BaseModel):
@@ -128,6 +129,14 @@ class RoutingConfig(BaseModel):
 
 
 class PromptsConfig(BaseModel):
+    """System prompts, one per field.
+
+    Each field's text lives in ``prompts/<field_name>.md`` beside this module
+    (not in tunables.yaml). The loader reads those files and validates that
+    exactly these keys are present, so a missing or misnamed ``.md`` file
+    fails loudly at import time. Edit a prompt by editing its ``.md`` file.
+    """
+
     extraction_system: str
     image_classify_system: str
     correction_system: str
@@ -169,24 +178,56 @@ class Tunables(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _load_prompts(prompts_dir: Path) -> dict[str, str]:
+    """Read every ``<key>.md`` prompt file from ``prompts_dir``.
+
+    The filename stem becomes the prompt key, mirroring the fields on
+    :class:`PromptsConfig`. The file's full text (including its trailing
+    newline) is the prompt — there is no frontmatter or post-processing.
+
+    Args:
+        prompts_dir: Directory holding the per-prompt Markdown files.
+
+    Returns:
+        Mapping of prompt key to prompt text.
+
+    Raises:
+        FileNotFoundError: If ``prompts_dir`` does not exist.
+    """
+    if not prompts_dir.is_dir():
+        raise FileNotFoundError(f"Prompts directory not found: {prompts_dir}")
+    return {
+        path.stem: path.read_text(encoding="utf-8")
+        for path in sorted(prompts_dir.glob("*.md"))
+    }
+
+
 @lru_cache(maxsize=1)
 def get_tunables() -> Tunables:
     """Load and validate the tunables file (cached for the process lifetime).
 
-    The path defaults to ``tunables.yaml`` beside this module; set the
-    NUTRICHAT_TUNABLES_PATH env var to load an alternative file.
+    Non-prompt tunables come from ``tunables.yaml`` beside this module (set
+    the NUTRICHAT_TUNABLES_PATH env var to load an alternative file). Prompts
+    are loaded separately from the ``prompts/`` directory next to that file —
+    one ``.md`` file per prompt — and merged in under the ``prompts`` key
+    before validation.
 
     Returns:
         Validated Tunables instance.
 
     Raises:
-        FileNotFoundError: If the tunables file does not exist.
+        FileNotFoundError: If the tunables file or prompts directory is
+            missing.
         pydantic.ValidationError: If the file has missing/unknown keys or
-            values of the wrong type.
+            values of the wrong type, or a prompt ``.md`` file is missing.
     """
     path = Path(os.environ.get("NUTRICHAT_TUNABLES_PATH", _DEFAULT_PATH))
     with path.open(encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
+    prompts_dir = path.parent / "prompts"
+    if not prompts_dir.is_dir():
+        prompts_dir = _PROMPTS_DIR
+    raw["prompts"] = _load_prompts(prompts_dir)
     return Tunables.model_validate(raw)
 
 
