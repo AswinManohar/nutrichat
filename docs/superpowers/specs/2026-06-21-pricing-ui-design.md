@@ -1,9 +1,13 @@
 # Pricing UI Design
 
 **Date:** 2026-06-21  
+**Revised:** 2026-06-21 (post spec review)  
 **Status:** Approved  
 **Author:** AswinManohar  
 **Related spec:** `2026-06-19-llm-rate-limiting-design.md`
+
+> All file paths below are relative to the repo root. Frontend files live under
+> `frontend/src/`.
 
 ---
 
@@ -45,7 +49,7 @@ properties.
 
 ## Data Layer
 
-### New type — `src/frontend/src/api/types.ts`
+### New types — `frontend/src/api/types.ts`
 
 ```ts
 interface QuotaStatus {
@@ -55,16 +59,26 @@ interface QuotaStatus {
   exhausted: boolean
   tier: 'free' | 'paid'   // literal union — never bare string
 }
+
+interface UpgradeResponse {
+  upgraded: boolean
+  new_quota: number
+}
 ```
 
-### New hooks — `src/frontend/src/api/hooks.ts`
+### New hooks — `frontend/src/api/hooks.ts`
 
 ```ts
-// Reads current quota. staleTime: 30s — acceptable for a settings card.
+// Reads current quota.
+// staleTime: 30 000 ms — acceptable for a settings card.
+// retry: false on 404 — the user is always onboarded inside ProtectedLayout,
+// so a 404 is a genuine error, not a transient miss. Matches the retry pattern
+// used by useGoals / useNutrientCheckup in this codebase.
 export function useQuota(): UseQueryResult<QuotaStatus>
 
-// Calls POST /billing/upgrade. On success: invalidates ['quota'] query key
-// so both the Settings card and any other consumer refresh automatically.
+// Calls POST /billing/upgrade.
+// onSuccess: invalidates ['quota'] query key so Settings card and any other
+// consumer refresh automatically without a page reload.
 export function useUpgradeQuota(): UseMutationResult<UpgradeResponse>
 ```
 
@@ -74,10 +88,16 @@ Query key: `['quota']`.
 
 ## Settings Card ("Plan & Usage")
 
-**File:** `src/frontend/src/pages/SettingsPage.tsx` (modify)
+**File:** `frontend/src/pages/SettingsPage.tsx` (modify)
 
-Positioned between the Telegram card and the Appearance card. Rendered from
-`useQuota()` data.
+Positioned between the Telegram card and the Appearance card. This is a soft
+pointer — if new cards are added later, re-check placement.
+
+`SettingsPage` already has a full-page loading gate on `goalsLoading`. The quota
+card only renders after that resolves, so the card's own loading state only
+matters when `useQuota()` is slower than `useGoals()`. Keep the card hidden
+(`return null`) while `quotaLoading` is true; this avoids a skeleton that users
+would rarely see.
 
 ### Visual states
 
@@ -90,11 +110,11 @@ Positioned between the Telegram card and the Appearance card. Rendered from
 
 Progress bar fill: `(used / limit) * 100%`, capped at 100%.
 
-### Loading state
+### Error state
 
-Skeleton bar and muted placeholder text while `useQuota()` is in the loading
-state. No error UI needed here — if the fetch fails, the card simply stays in
-skeleton state (the user can still use the rest of Settings).
+If `useQuota()` errors (network failure, 5xx), hide the card entirely — return
+`null`. Do not show a persistent skeleton. The user can still use the rest of
+Settings; the card reappears on next successful fetch.
 
 ### Copy
 
@@ -112,14 +132,14 @@ on ambiguous input (see related spec).
 
 ## `/upgrade` Page
 
-**File:** `src/frontend/src/pages/UpgradePage.tsx` (new)  
-**Route:** `/upgrade` inside `ProtectedLayout` in `App.tsx`
+**File:** `frontend/src/pages/UpgradePage.tsx` (new)  
+**Route:** `/upgrade` inside `ProtectedLayout` in `frontend/src/App.tsx`
 
 ### Layout
 
 Two cards side by side (stacks to single column on mobile via Tailwind
 `grid-cols-1 md:grid-cols-2`). Uses the existing `Card` component from
-`src/frontend/src/components/ui/card.tsx`.
+`frontend/src/components/ui/card.tsx`.
 
 ```
 ┌─────────────────────┐  ┌─────────────────────┐
@@ -139,40 +159,43 @@ Two cards side by side (stacks to single column on mobile via Tailwind
 └─────────────────────┘  └─────────────────────┘
 ```
 
+Price display: em-dash `—` (not a hyphen) followed by `/ mo`, with a
+`text-muted` note "Pricing coming soon" below.
+
 ### Tier card states
 
 - **User is on free:** Free card shows "Current plan" (disabled, muted button).
   Pro card shows "Upgrade now" (active CTA).
 - **User is on paid:** Both buttons disabled. Banner above the cards: "You're
-  already on the Pro plan." Pro card has a ★ "Current plan" badge instead.
+  already on the Pro plan." Pro card shows a ★ "Current plan" badge instead.
 - **Mutation loading:** "Upgrade now" button shows spinner, disabled.
-- **Mutation error:** Toast ("Something went wrong. Try again.") — use existing
-  toast pattern if present, otherwise `console.error`.
-- **Mutation success:** Brief success banner ("You're now on Pro!"), then
-  navigate to `/settings` after 1.5 s.
-
-### Price display
-
-Both cards show `— / mo` with a `text-muted` note "Pricing coming soon" below.
-No placeholder dollar amount — avoids anchoring users to a number that will
-change when Stripe lands.
+- **Mutation error:** Inline error banner below the Pro card (same pattern as the
+  save-success banner in `SettingsPage` — local state, no toast library needed).
+  Text: "Something went wrong. Try again." Button re-enables.
+- **Mutation success:** Inline success banner ("You're now on Pro!"). Navigate
+  to `/settings` after 1 500 ms. Use a `useEffect` with a cleanup to clear the
+  timeout if the component unmounts before it fires — avoids a state update on
+  an unmounted component.
 
 ### Navigation
 
-- Back arrow / "← Back to Settings" link at the top navigates to `/settings`.
-- After successful upgrade: `useNavigate()` to `/settings` after 1.5 s delay.
+- "← Back to Settings" link at the top using `useNavigate()`.
+- After successful upgrade: navigate to `/settings` via a `useEffect`-managed
+  timeout (see above).
 
 ---
 
 ## Component Breakdown
 
-| Component / file | Responsibility |
+All paths are relative to the repo root.
+
+| File | Change |
 |---|---|
-| `src/api/types.ts` | Add `QuotaStatus` interface |
-| `src/api/hooks.ts` | Add `useQuota()`, `useUpgradeQuota()` |
-| `src/pages/SettingsPage.tsx` | Add "Plan & Usage" card |
-| `src/pages/UpgradePage.tsx` | New page — tier comparison + upgrade CTA |
-| `src/App.tsx` | Add `/upgrade` route inside `ProtectedLayout` |
+| `frontend/src/api/types.ts` | Add `QuotaStatus`, `UpgradeResponse` |
+| `frontend/src/api/hooks.ts` | Add `useQuota`, `useUpgradeQuota` |
+| `frontend/src/pages/SettingsPage.tsx` | Add "Plan & Usage" card |
+| `frontend/src/pages/UpgradePage.tsx` | New file |
+| `frontend/src/App.tsx` | Add `/upgrade` route inside `ProtectedLayout` |
 
 No new shared components needed — the page uses the existing `Card`, `Button`,
 and `CardHeader`/`CardContent` primitives.
@@ -183,28 +206,31 @@ and `CardHeader`/`CardContent` primitives.
 
 | Scenario | Behaviour |
 |---|---|
-| `useQuota()` fetch fails | Settings card stays in skeleton state silently |
-| `useUpgradeQuota()` mutation fails | Toast error, button re-enables |
-| `POST /billing/upgrade` returns 404 (not onboarded) | Should not occur in practice (user is in the protected app); treat as generic error |
+| `useQuota()` fetch fails | Hide card (`return null`) — user can still use Settings |
+| `useQuota()` returns 404 | `retry: false` — card hides (shouldn't happen inside ProtectedLayout) |
+| `useUpgradeQuota()` mutation fails | Inline error banner on UpgradePage, button re-enables |
+| `POST /billing/upgrade` 404 | Treated as generic mutation error — banner shown |
 
 ---
 
 ## Stripe Integration Path
 
-When Stripe is ready, the only change needed is in `UpgradePage.tsx`: replace
-the `useUpgradeQuota()` mutation call with a redirect to Stripe's hosted
+When Stripe is ready, one change in `frontend/src/pages/UpgradePage.tsx`:
+replace the `useUpgradeQuota()` mutation call with a redirect to Stripe's hosted
 checkout URL. The backend `/billing/upgrade` endpoint becomes a Stripe webhook
-handler instead of a direct mutation. The rest of the UI (card layout, quota
-display, settings card) is unchanged.
+handler. Everything else — the card layout, quota display, settings card,
+`useQuota` hook — is unchanged.
 
 ---
 
 ## Files Touched
 
+All paths are relative to the repo root.
+
 | File | Change |
 |---|---|
-| `src/frontend/src/api/types.ts` | Add `QuotaStatus` interface |
-| `src/frontend/src/api/hooks.ts` | Add `useQuota`, `useUpgradeQuota` |
-| `src/frontend/src/pages/SettingsPage.tsx` | Add "Plan & Usage" card |
-| `src/frontend/src/pages/UpgradePage.tsx` | New file |
-| `src/frontend/src/App.tsx` | Add `/upgrade` route |
+| `frontend/src/api/types.ts` | Add `QuotaStatus`, `UpgradeResponse` interfaces |
+| `frontend/src/api/hooks.ts` | Add `useQuota`, `useUpgradeQuota` hooks |
+| `frontend/src/pages/SettingsPage.tsx` | Add "Plan & Usage" card |
+| `frontend/src/pages/UpgradePage.tsx` | New file |
+| `frontend/src/App.tsx` | Add `/upgrade` route |
