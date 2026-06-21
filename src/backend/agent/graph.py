@@ -152,7 +152,9 @@ async def combine_node(state: AgentState) -> dict:
             continue
         seen.add(dish)
         rebuilt.append(
-            FoodEntity(food_name=dish, qty_g=1, unit="g").model_dump()
+            FoodEntity(
+                food_name=dish, qty_g=1, unit="g", is_composite=True
+            ).model_dump()
         )
     return {"action": None, "entities": rebuilt}
 
@@ -221,6 +223,7 @@ async def usda_batch_node(state: AgentState) -> dict:
     results = await usda_lookup_batch(entities)
     for entity, result in zip(entities, results):
         result.source_dish = entity.source_dish
+        result.is_composite = entity.is_composite
     return {"usda_results": [r.model_dump() for r in results]}
 
 

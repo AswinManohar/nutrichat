@@ -16,6 +16,8 @@ export interface MealItem {
   estimated: boolean;
   /** Composite dish this ingredient was auto-decomposed from; null if atomic */
   source_dish?: string | null;
+  /** True for a prepared/multi-ingredient dish that can be broken into ingredients */
+  is_composite?: boolean;
   sugar_g?: number;
   sat_fat_g?: number;
   /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */

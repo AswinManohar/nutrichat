@@ -137,6 +137,14 @@ export function ConfirmationCard({
   )
   const soleDish = visibleDishGroups.length === 1 ? visibleDishGroups[0].dish : null
 
+  // "Break into ingredients" only makes sense for composite dishes: either an
+  // already-decomposed dish group (open its popup) or a not-yet-broken item the
+  // extractor flagged is_composite. Atomic whole foods (an apple, raw fish) get
+  // no Break button.
+  const anyComposite = visibleIndices.some((i) => items[i].is_composite)
+  const showBreak = visibleDishGroups.length < 2 && (soleDish !== null || anyComposite)
+  const showCombine = items.some((i) => i.source_dish)
+
   // Live totals scale linearly with qty edits × the portion multiplier.
   const scaled = items.map((item, i) => {
     const scale = (qtys[i] * portion) / item.qty_g
@@ -539,9 +547,9 @@ export function ConfirmationCard({
         )}
 
         {/* Break / Combine — text-weight, only when relevant */}
-        {(visibleDishGroups.length < 2 || items.some((i) => i.source_dish)) && (
+        {(showBreak || showCombine) && (
           <div className="flex items-center gap-3 flex-wrap">
-            {visibleDishGroups.length < 2 && (
+            {showBreak && (
               <button
                 type="button"
                 onClick={soleDish ? () => setOpenDish(soleDish) : onDecompose}
@@ -552,7 +560,7 @@ export function ConfirmationCard({
                 Break into ingredients
               </button>
             )}
-            {items.some((i) => i.source_dish) && (
+            {showCombine && (
               <button
                 type="button"
                 onClick={onCombine}

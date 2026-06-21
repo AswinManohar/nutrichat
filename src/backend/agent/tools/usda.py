@@ -86,6 +86,10 @@ class USDAResult(BaseModel):
     # Set by usda_batch_node from the originating FoodEntity when this result
     # came from auto-decomposing a composite dish; None otherwise.
     source_dish: str | None = None
+    # Carried from the originating FoodEntity: True for a prepared/multi-
+    # ingredient dish that can still be broken into ingredients. Lets the
+    # frontend offer "Break into ingredients" only where it makes sense.
+    is_composite: bool = False
 
 
 class NutritionEstimate(BaseModel):
