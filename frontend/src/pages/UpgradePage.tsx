@@ -112,7 +112,11 @@ export const UpgradePage: React.FC = () => {
                   {isPaid ? 'Current plan' : 'Best'}
                 </span>
               </div>
-              <CardDescription>150 AI requests · lifetime</CardDescription>
+              <CardDescription>
+                {quota
+                  ? `${quota.used} of ${quota.limit} used · lifetime`
+                  : '150 AI requests · lifetime'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <ul className="space-y-2">

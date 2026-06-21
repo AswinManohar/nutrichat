@@ -314,7 +314,14 @@ export const SettingsPage: React.FC = () => {
                 <span>{quota.used} / {quota.limit} AI requests</span>
                 <span>{quotaPct}% used</span>
               </div>
-              <div className="w-full h-2 bg-container rounded-full overflow-hidden">
+              <div
+                role="progressbar"
+                aria-valuenow={quotaPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Quota usage: ${quota.used} of ${quota.limit} AI requests`}
+                className="w-full h-2 bg-container rounded-full overflow-hidden"
+              >
                 <div
                   className={`h-full rounded-full transition-all duration-300 ${
                     quota.exhausted
