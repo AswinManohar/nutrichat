@@ -44,6 +44,12 @@ class UserGoal(Base):
     fiber_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     dietary_prefs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     streak_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_requests_used: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    llm_quota: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=50, server_default="50"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
