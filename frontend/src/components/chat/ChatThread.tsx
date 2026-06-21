@@ -7,6 +7,7 @@ import type { ChatMessage } from '../../stores/mealStore'
 import type { MealCategory } from '../../api/types'
 import { ConfirmationCard } from './ConfirmationCard'
 import { MascotSprite } from '../mascot/MascotSprite'
+import { MascotGreeting } from '../mascot/MascotGreeting'
 
 const MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
@@ -71,6 +72,7 @@ export function ChatThread({
     <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 flex flex-col gap-5 scroll-smooth">
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto gap-6 rise-stagger">
+          <MascotGreeting show={messages.length === 0} />
           <div style={{ '--i': 0 } as React.CSSProperties}>
             <h3 className="font-display text-[28px] text-sage-deep">What did you eat?</h3>
             <p className="text-[14px] text-muted mt-2 leading-relaxed">

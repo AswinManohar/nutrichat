@@ -39,14 +39,20 @@ export function MascotGreeting({ show }: MascotGreetingProps) {
 
   return (
     <div
-      className="flex justify-center pb-4 transition-[opacity,transform] duration-200 ease-out"
+      className="flex flex-col items-center gap-3 pb-4 transition-[opacity,transform] duration-200 ease-out"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(8px)',
       }}
       aria-hidden="true"
     >
-      <MascotSprite size={14} variant="wave" />
+      <div
+        className="rounded-full bg-sage-soft flex items-center justify-center overflow-hidden"
+        style={{ width: 140, height: 140 }}
+      >
+        <MascotSprite size={35} variant="wave" />
+      </div>
+      <span className="text-[13px] font-medium text-muted">Nori · your companion</span>
     </div>
   )
 }
