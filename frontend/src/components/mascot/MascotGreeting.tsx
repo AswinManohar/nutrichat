@@ -11,9 +11,11 @@ export function MascotGreeting({ show }: MascotGreetingProps) {
   const [mounted, setMounted] = useState(show && enabled)
   const [visible, setVisible] = useState(show && enabled)
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafHandle = useRef<number | null>(null)
 
   useEffect(() => {
     if (!enabled) {
+      if (exitTimer.current) clearTimeout(exitTimer.current)
       setVisible(false)
       setMounted(false)
       return
@@ -22,12 +24,13 @@ export function MascotGreeting({ show }: MascotGreetingProps) {
       setMounted(true)
       // Tiny delay so the browser registers the initial state before
       // the visible class triggers the enter transition.
-      requestAnimationFrame(() => setVisible(true))
+      rafHandle.current = requestAnimationFrame(() => setVisible(true))
     } else {
       setVisible(false)
       exitTimer.current = setTimeout(() => setMounted(false), 200)
     }
     return () => {
+      if (rafHandle.current) cancelAnimationFrame(rafHandle.current)
       if (exitTimer.current) clearTimeout(exitTimer.current)
     }
   }, [show, enabled])
@@ -36,7 +39,7 @@ export function MascotGreeting({ show }: MascotGreetingProps) {
 
   return (
     <div
-      className="flex justify-center pb-4 transition-all duration-200 ease-out"
+      className="flex justify-center pb-4 transition-[opacity,transform] duration-200 ease-out"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(8px)',
