@@ -70,12 +70,11 @@ def test_upgrade_does_not_reset_usage(monkeypatch):
     assert "llm_requests_used" not in call_kwargs
 
 
-def test_upgrade_new_user_upserts(monkeypatch):
-    """A user with no existing row still gets the paid quota via upsert."""
+def test_upgrade_unboarded_user_returns_404(monkeypatch):
+    """A user with no user_goal row (not yet onboarded) gets a 404."""
     app = _make_app()
     app.dependency_overrides[get_current_user_id] = lambda: "new-user"
-    monkeypatch.setattr(billing_module, "get_session", _mock_session((PAID_QUOTA,)))
+    monkeypatch.setattr(billing_module, "get_session", _mock_session(None))
 
     resp = TestClient(app).post("/billing/upgrade")
-    assert resp.status_code == 200
-    assert resp.json()["new_quota"] == PAID_QUOTA
+    assert resp.status_code == 404
