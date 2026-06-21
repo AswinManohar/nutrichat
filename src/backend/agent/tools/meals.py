@@ -139,10 +139,12 @@ class MealLogResult(BaseModel):
 _extraction_llm = make_llm().with_structured_output(ExtractionResult)
 _classifier_llm = make_llm().with_structured_output(ImageClassification)
 _correction_llm = make_llm().with_structured_output(ExtractionResult)
+_log_reply_llm = make_llm()
 
 _EXTRACTION_SYSTEM = _TUNABLES.prompts.extraction_system
 _CLASSIFY_SYSTEM = _TUNABLES.prompts.image_classify_system
 _CORRECTION_SYSTEM = _TUNABLES.prompts.correction_system
+_LOG_REPLY_SYSTEM = _TUNABLES.prompts.log_reply_system
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +348,47 @@ def _junk_flags(usda_results: list) -> dict:
     return {"has_junk": bool(junk_items), "junk_items": junk_items}
 
 
+async def _generate_log_reply(
+    label: str,
+    totals: dict,
+    junk_items: list[str],
+) -> str:
+    """Generate a short personalized confirmation message via LLM.
+
+    Falls back to a static summary if the LLM call fails so the log
+    response is never blocked by a model error.
+
+    Args:
+        label: Human-facing meal name (e.g. "chicken biryani").
+        totals: Dict with kcal, protein_g, fiber_g.
+        junk_items: List of food names flagged as junk.
+
+    Returns:
+        Two-line confirmation string.
+    """
+    user_msg = (
+        f"Meal: {label}\n"
+        f"Nutrition: {totals['kcal']:.0f} kcal, "
+        f"{totals['protein_g']:.0f}g protein, "
+        f"{totals['fiber_g']:.0f}g fiber\n"
+        f"Junk items: {', '.join(junk_items) if junk_items else 'none'}"
+    )
+    try:
+        result = await _log_reply_llm.ainvoke(
+            [
+                SystemMessage(content=_LOG_REPLY_SYSTEM),
+                HumanMessage(content=user_msg),
+            ]
+        )
+        return result.content.strip()
+    except Exception:
+        return (
+            f"{label} logged. "
+            f"{totals['kcal']:.0f} kcal, "
+            f"{totals['protein_g']:.0f}g protein."
+        )
+
+
 def _meal_label(entities: list[dict]) -> str:
     """Human-facing dish-name snapshot for meal_log.label.
 
@@ -444,16 +487,18 @@ async def log_meal(
         embed_meal_summary.delay(meal_id)
     except (OperationalError, OSError) as exc:
         logger.warning("Could not enqueue meal embedding: %s", exc)
+    flags = _junk_flags(resolved)
+    reply = await _generate_log_reply(
+        label=label or "Meal",
+        totals=totals,
+        junk_items=flags["junk_items"],
+    )
     return MealLogResult(
         meal_id=meal_id,
         meal_type=meal_type,
         n_items=len(resolved),
         **totals,
-        message=(
-            f"Logged {totals['kcal']:.0f} kcal, "
-            f"{totals['protein_g']:.0f}g protein, "
-            f"{totals['fiber_g']:.0f}g fiber"
-        ),
+        message=reply,
     )
 
 
