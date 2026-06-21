@@ -192,3 +192,16 @@ export interface NutrientCheckupResponse {
 export interface PendingNudgeResponse {
   summary_text: string | null;
 }
+
+export interface QuotaStatus {
+  used: number
+  limit: number
+  remaining: number
+  exhausted: boolean
+  tier: 'free' | 'paid'
+}
+
+export interface UpgradeResponse {
+  upgraded: boolean
+  new_quota: number
+}

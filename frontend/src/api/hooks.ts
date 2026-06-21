@@ -17,6 +17,8 @@ import type {
   PendingNudgeResponse,
   TelegramLinkCode,
   TelegramLinkStatus,
+  QuotaStatus,
+  UpgradeResponse,
 } from './types'
 
 export const useMyMeals = () => {
@@ -211,6 +213,28 @@ export const useLogMeal = () => {
       if (!data.paused) {
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
       }
+    },
+  })
+}
+
+export const useQuota = () => {
+  return useQuery<QuotaStatus, ApiError>({
+    queryKey: ['quota'],
+    queryFn: () => apiClient.get<QuotaStatus>('/quota'),
+    staleTime: 30_000,
+    retry: (failureCount, error) => {
+      if (error.status === 404) return false
+      return failureCount < 3
+    },
+  })
+}
+
+export const useUpgradeQuota = () => {
+  const queryClient = useQueryClient()
+  return useMutation<UpgradeResponse, ApiError, void>({
+    mutationFn: () => apiClient.post<UpgradeResponse>('/billing/upgrade'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quota'] })
     },
   })
 }
