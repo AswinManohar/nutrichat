@@ -212,6 +212,7 @@ async def _handle_meal_logging(
                     "action": None,
                     "from_saved": False,
                     "meal_id": None,
+                    "decomposed_entities": [],
                 },
                 config=config,
             )

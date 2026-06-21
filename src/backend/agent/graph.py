@@ -39,6 +39,9 @@ class AgentState(TypedDict):
     action: str | None
     from_saved: bool
     meal_id: str | None
+    # Cache for the "Break into ingredients" decomposition — populated on first
+    # LLM call; subsequent presses read from here and skip the LLM.
+    decomposed_entities: list[dict]
 
 
 # ---------------------------------------------------------------------------
@@ -93,10 +96,14 @@ async def saved_lookup_node(state: AgentState) -> dict:
 async def decompose_node(state: AgentState) -> dict:
     """Break the original dish into ingredients (the "Break into ingredients" toggle).
 
-    Decomposes the current card entities into ingredient lines, re-parses them
-    into entities, and falls through to usda_batch → present. On failure, keeps
-    the current entities (graceful no-op → re-presents the same single item).
+    Returns cached result from decomposed_entities if available, skipping the
+    LLM call. On cache miss, calls decompose_to_ingredients, re-parses, and
+    warms the cache. On failure, returns a graceful no-op (re-presents same card).
     """
+    cached = state.get("decomposed_entities") or []
+    if cached:
+        return {"action": None, "entities": cached}
+
     # Use current entities (what's on the card) rather than the first human
     # message — the first message may belong to an earlier turn on the same
     # thread if the user typed a new meal without confirming the previous card.
@@ -120,7 +127,8 @@ async def decompose_node(state: AgentState) -> dict:
         valid = []
     if not valid:
         return {"action": None}
-    return {"action": None, "entities": [e.model_dump() for e in valid]}
+    serialised = [e.model_dump() for e in valid]
+    return {"action": None, "entities": serialised, "decomposed_entities": serialised}
 
 
 async def combine_node(state: AgentState) -> dict:
