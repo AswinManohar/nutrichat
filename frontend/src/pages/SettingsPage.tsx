@@ -1,17 +1,19 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   useGoals,
   useUpdateGoals,
   useTelegramLinkStatus,
   useGenerateTelegramLinkCode,
   useDisconnectTelegram,
+  useQuota,
 } from '../api/hooks'
 import { GoalSlider } from '../components/onboarding/GoalSlider'
 import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
-import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send } from 'lucide-react'
+import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send, Zap } from 'lucide-react'
 import { useMascotStore } from '../stores/mascotStore'
 
 export const SettingsPage: React.FC = () => {
@@ -38,6 +40,9 @@ export const SettingsPage: React.FC = () => {
   const [dietaryPrefs, setDietaryPrefs] = useState<string[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
   const { enabled: mascotEnabled, setEnabled: setMascotEnabled } = useMascotStore()
+  const navigate = useNavigate()
+  const { data: quota } = useQuota()
+  const quotaPct = quota ? Math.min(100, Math.round((quota.used / quota.limit) * 100)) : 0
 
   // Seed form from fetched goals (React "adjust state during render")
   const [seededFrom, setSeededFrom] = useState<typeof goals | null>(null)
@@ -291,6 +296,54 @@ export const SettingsPage: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Plan & Usage Card */}
+        {quota && (
+          <Card className="border border-sand-border bg-sand backdrop-blur-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-sage-deep" />
+                Plan & Usage
+              </CardTitle>
+              <CardDescription>
+                {quota.tier === 'paid' ? 'Pro plan' : 'Free plan'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-muted">
+                <span>{quota.used} / {quota.limit} AI requests</span>
+                <span>{quotaPct}% used</span>
+              </div>
+              <div className="w-full h-2 bg-container rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    quota.exhausted
+                      ? 'bg-danger'
+                      : quotaPct >= 80
+                      ? 'bg-warn'
+                      : 'bg-sage'
+                  }`}
+                  style={{ width: `${quotaPct}%` }}
+                />
+              </div>
+              {quota.tier === 'paid' ? (
+                <p className="text-xs text-sage-deep font-medium">
+                  You're on the Pro plan
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/upgrade')}
+                  className="w-full mt-1"
+                >
+                  {quota.exhausted ? 'Upgrade to unlock more' : 'Upgrade →'}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Appearance Card */}
         <Card className="border border-sand-border bg-sand backdrop-blur-md">
