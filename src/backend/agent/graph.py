@@ -93,14 +93,23 @@ async def saved_lookup_node(state: AgentState) -> dict:
 async def decompose_node(state: AgentState) -> dict:
     """Break the original dish into ingredients (the "Break into ingredients" toggle).
 
-    Decomposes the user's first description into ingredient lines, re-parses them
+    Decomposes the current card entities into ingredient lines, re-parses them
     into entities, and falls through to usda_batch → present. On failure, keeps
     the current entities (graceful no-op → re-presents the same single item).
     """
-    first_human = next(
-        (m for m in state["messages"] if isinstance(m, HumanMessage)), None
-    )
-    description = first_human.content if first_human else ""
+    # Use current entities (what's on the card) rather than the first human
+    # message — the first message may belong to an earlier turn on the same
+    # thread if the user typed a new meal without confirming the previous card.
+    entities = state.get("entities") or []
+    if entities:
+        description = ", ".join(
+            f"{e['qty_g']:g} g {e['food_name']}" for e in entities
+        )
+    else:
+        first_human = next(
+            (m for m in state["messages"] if isinstance(m, HumanMessage)), None
+        )
+        description = first_human.content if first_human else ""
     lines = decompose_to_ingredients(description)
     if not lines:
         return {"action": None}
