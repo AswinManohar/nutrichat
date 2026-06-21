@@ -12,6 +12,7 @@ from backend.agent.coaching import CoachingAgent
 from backend.agent.graph import build_graph
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.config import get_tunables
+from backend.quota import consume_llm_credit
 from backend.workers.tasks import extract_and_store_facts
 
 logger = logging.getLogger(__name__)
@@ -38,14 +39,16 @@ _intent_llm = make_llm(
 _coaching_agent = CoachingAgent()
 
 
-async def _classify_intent(message: str) -> str:
+async def _classify_intent(message: str, user_id: str) -> str:
     """Classify a fresh user message as log_meal or coaching.
 
-    Two-stage: keyword pre-filter (zero LLM cost), LLM fallback when
-    ambiguous (per coaching agent design spec §3).
+    Two-stage: keyword pre-filter (zero LLM cost and zero quota), LLM
+    fallback when ambiguous. When over quota, skips the LLM and defaults
+    to log_meal.
 
     Args:
         message: Raw user message.
+        user_id: Supabase Auth UUID — used for quota check before LLM call.
 
     Returns:
         "log_meal" or "coaching".
@@ -57,6 +60,10 @@ async def _classify_intent(message: str) -> str:
     if has_query:
         return "coaching"
     if has_log:
+        return "log_meal"
+
+    granted = await consume_llm_credit(user_id)
+    if not granted:
         return "log_meal"
 
     with logfire.span("classify_intent_llm"):
@@ -112,7 +119,7 @@ async def handle_message(
         is_coaching = (
             not is_paused
             and not image_b64
-            and await _classify_intent(user_input) == "coaching"
+            and await _classify_intent(user_input, user_id) == "coaching"
         )
         if is_coaching:
             result = await _handle_coaching(user_id, user_input)
@@ -173,6 +180,9 @@ async def _handle_meal_logging(
             # into checkpoint state, then resume with None. `action` is set
             # every resume (None unless decomposing) so a stale value can't
             # re-trigger the decompose branch on the next confirm.
+            # Paused resumes (correct/decompose/confirm) are exempt from quota —
+            # only apply_correction and decompose_to_ingredients are called, which
+            # are explicitly excluded from the per-inference count.
             update: dict[str, Any] = {
                 "messages": [HumanMessage(content=user_input)],
                 "action": action,
@@ -182,7 +192,15 @@ async def _handle_meal_logging(
             await graph.aupdate_state(config, update)
             result = await graph.ainvoke(None, config=config)
         else:
-            # Fresh start: supply full initial state
+            # Fresh start: consume one credit for the extraction LLM call.
+            granted = await consume_llm_credit(user_id)
+            if not granted:
+                return {
+                    "status": "success",
+                    "message": _UPGRADE_MSG,
+                    "paused": False,
+                    "items": [],
+                }
             result = await graph.ainvoke(
                 {
                     "messages": [HumanMessage(content=user_input)],
@@ -246,8 +264,17 @@ async def _handle_meal_logging(
         return response
 
 
+_UPGRADE_MSG = (
+    "You've used all your free AI requests. "
+    "Visit nutrichat.app/upgrade to continue."
+)
+
+
 async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
+
+    Consumes one quota credit per coaching turn (not per internal LLM call
+    inside CoachingAgent). Returns an upgrade prompt when over quota.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -257,6 +284,9 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
         Dict with status, message, paused=False, and items=[] — same shape
         as meal logging so web and Telegram channels stay uniform.
     """
+    granted = await consume_llm_credit(user_id)
+    if not granted:
+        return {"status": "success", "message": _UPGRADE_MSG, "paused": False, "items": []}
     with logfire.span("coaching"):
         message = await _coaching_agent.handle(user_id, user_input)
     return {"status": "success", "message": message, "paused": False, "items": []}
