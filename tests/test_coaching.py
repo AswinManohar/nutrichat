@@ -369,3 +369,55 @@ async def test_handle_with_data_calls_generate_response():
 
     gen_mock.assert_awaited_once()
     assert response == "You've had 1,240 kcal today."
+
+
+@pytest.mark.asyncio
+async def test_handle_meal_plan_feeds_today_totals_and_goals():
+    """A "what can I eat to hit my goals" query must ground generate_response
+    in BOTH today's totals and the daily goals (incl. dietary_prefs) so the
+    model can compute REMAINING = goal - today and propose a recipe-card plan.
+
+    Meal-suggestion queries are parsed to time_range="today" +
+    include_goals=True (see query_parse_system.md); this test pins the
+    contract that fetch_data then hands both blocks to the response model.
+    """
+    parsed = QueryParsed(time_range="today", nutrients=[], include_goals=True)
+    goal = UserGoal(
+        user_id="user-1",
+        kcal_goal=2000.0,
+        protein_goal=120.0,
+        fiber_goal=30.0,
+        dietary_prefs={"vegan": True},
+        streak_days=0,
+    )
+
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(kcal=1450, protein_g=78, fiber_g=14, n_meals=2),
+        ),
+        patch(
+            "backend.agent.coaching.get_session",
+            return_value=_mock_session_factory(goal),
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="**🥗 Your plan to hit today's goals**\n...",
+        ) as gen_mock,
+    ):
+        await CoachingAgent().handle("user-1", "what can I eat today to hit my goals?")
+
+    gen_mock.assert_awaited_once()
+    _, data = gen_mock.await_args.args
+    # Both blocks present so REMAINING can be computed per macro.
+    assert data["today_totals"]["protein_g"] == 78
+    assert data["goals"]["protein_goal"] == 120.0
+    # Dietary prefs must reach the model so suggestions can respect them.
+    assert data["goals"]["dietary_prefs"] == {"vegan": True}
