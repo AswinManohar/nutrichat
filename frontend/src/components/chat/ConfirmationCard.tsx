@@ -332,7 +332,7 @@ export function ConfirmationCard({
               key={type}
               type="button"
               onClick={() => setMealType(type)}
-              className={`px-3 py-1 rounded-full text-[13px] capitalize transition-colors ${
+              className={`cursor-pointer px-3 py-1 rounded-full text-[13px] capitalize transition-colors ${
                 mealType === type
                   ? 'bg-white border border-sand-border font-semibold text-ink shadow-sm'
                   : 'text-muted hover:text-ink'
@@ -483,7 +483,7 @@ export function ConfirmationCard({
           type="button"
           onClick={() => onAction('cancel')}
           disabled={isLoading}
-          className="px-4 py-2.5 text-[14px] text-muted hover:text-danger transition-colors flex-shrink-0 disabled:opacity-50"
+          className="cursor-pointer px-4 py-2.5 text-[14px] text-ink-soft hover:text-danger transition-colors flex-shrink-0 disabled:opacity-50"
         >
           Cancel
         </button>
@@ -495,7 +495,7 @@ export function ConfirmationCard({
             onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
           }
           disabled={isLoading || visibleIndices.length === 0}
-          className="press flex-1 bg-sage-deep hover:bg-sage-forest text-white rounded-full py-2.5 text-[14px] font-semibold disabled:opacity-40 transition-colors focus-visible:outline-2 focus-visible:outline-sage/50"
+          className="press cursor-pointer flex-1 bg-sage-deep hover:bg-sage-forest text-white rounded-full py-2.5 text-[14px] font-semibold disabled:opacity-40 transition-colors focus-visible:outline-2 focus-visible:outline-sage/50"
         >
           {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
         </button>
@@ -576,7 +576,7 @@ export function ConfirmationCard({
             aria-modal="true"
           >
             <div
-              className="w-full max-w-md card-sand p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh]"
+              className="w-full max-w-md bg-paper rounded-xl border border-sand-border shadow-[0_4px_16px_rgba(0,0,0,0.06)] p-4 md:p-5 flex flex-col gap-3 rise-in max-h-[80vh]"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Pinned header — dish name stays in place */}

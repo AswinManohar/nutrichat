@@ -113,7 +113,7 @@ export function ChatThread({
                 <div
                   className={
                     isUser
-                      ? 'bg-sage-forest text-white rounded-2xl rounded-br-md px-4 py-3'
+                      ? 'bg-sage text-white rounded-2xl rounded-br-md px-4 py-3'
                       : 'card-sand rounded-2xl rounded-bl-md px-4 py-3.5'
                   }
                 >
