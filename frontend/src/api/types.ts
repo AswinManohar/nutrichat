@@ -126,6 +126,8 @@ export interface GoalData {
   protein_goal: number | null;
   fiber_goal: number | null;
   dietary_prefs: Record<string, unknown>;
+  /** Typical first-meal time as "HH:MM" (24h), captured during onboarding. */
+  first_meal_time?: string | null;
   streak_days?: number;
 }
 
