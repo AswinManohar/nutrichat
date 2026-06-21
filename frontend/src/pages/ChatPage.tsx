@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useMealStore } from '../stores/mealStore'
-import { useDashboard, useLogMeal, useDeleteMealLog, usePendingNudge, useAckPendingNudge, useGoals } from '../api/hooks'
+import { useDashboard, useDeleteMealLog, usePendingNudge, useAckPendingNudge, useGoals } from '../api/hooks'
 import type { MealCategory } from '../api/types'
 import { ChatThread } from '../components/chat/ChatThread'
 import { ChatInput } from '../components/chat/ChatInput'
 import { ChatTodayPanel } from '../components/dashboard/ChatTodayPanel'
-import { MascotGreeting } from '../components/mascot/MascotGreeting'
 
 const UNDO_WINDOW_S = 30
 
@@ -14,14 +13,17 @@ export function ChatPage() {
   const {
     messages,
     conversationId,
+    isProcessing,
+    lastLoggedMealId,
     addMessage,
     updateLastAgentMessage,
     setConversationId,
     clearMessages,
+    logToApi,
+    consumeLastLoggedMealId,
   } = useMealStore()
   const { data: totals } = useDashboard()
   const { data: goals } = useGoals()
-  const logMealMutation = useLogMeal()
   const deleteMealLogMutation = useDeleteMealLog()
   const [undoMealId, setUndoMealId] = useState<string | null>(null)
   const [undoSecondsLeft, setUndoSecondsLeft] = useState(UNDO_WINDOW_S)
@@ -56,6 +58,13 @@ export function ChatPage() {
     }, 1000)
   }, [])
 
+  // Pick up the meal_id left by logToApi even if the user navigated away mid-flight.
+  useEffect(() => {
+    if (!lastLoggedMealId) return
+    const id = consumeLastLoggedMealId()
+    if (id) startUndoWindow(id)
+  }, [lastLoggedMealId, consumeLastLoggedMealId, startUndoWindow])
+
   const dismissUndo = useCallback(() => {
     if (undoTimerRef.current) clearInterval(undoTimerRef.current)
     setUndoMealId(null)
@@ -84,36 +93,12 @@ export function ChatPage() {
       setConversationId(activeThreadId)
     }
 
-    logMealMutation.mutate(
-      {
-        user_input: text,
-        conversation_id: activeThreadId,
-        image_b64: imageB64 || null,
-        meal_type: mealType ?? null,
-      },
-      {
-        onSuccess: (data) => {
-          addMessage({
-            sender: 'agent',
-            text: data.message,
-            paused: data.paused,
-            items: data.items,
-          })
-          // Not paused → meal logged/cancelled/coaching answer. New thread next time.
-          if (!data.paused) {
-            setConversationId(null)
-            if (data.meal_id) startUndoWindow(data.meal_id)
-          }
-        },
-        onError: (_err) => {
-          addMessage({
-            sender: 'agent',
-            text: "Couldn't reach the server — check your connection and try again.",
-          })
-          setConversationId(null)
-        },
-      }
-    )
+    logToApi({
+      user_input: text,
+      conversation_id: activeThreadId,
+      image_b64: imageB64 || null,
+      meal_type: mealType ?? null,
+    })
   }
 
   // All food items removed from the confirmation card → drop the card silently.
@@ -124,50 +109,14 @@ export function ChatPage() {
     setConversationId(null)
   }, [updateLastAgentMessage, setConversationId])
 
-  // "Break into ingredients" → resume the paused thread with action=decompose.
-  // No user bubble; the re-presented card replaces the message in place.
   const handleDecompose = () => {
     if (!conversationId) return
-    logMealMutation.mutate(
-      { user_input: 'break into ingredients', conversation_id: conversationId, action: 'decompose' },
-      {
-        onSuccess: (data) => {
-          addMessage({
-            sender: 'agent',
-            text: data.message,
-            paused: data.paused,
-            items: data.items,
-          })
-          if (!data.paused) setConversationId(null)
-        },
-        onError: () => {
-          addMessage({ sender: 'agent', text: "Couldn't break this down — try again." })
-        },
-      }
-    )
+    logToApi({ user_input: 'break into ingredients', conversation_id: conversationId, action: 'decompose' })
   }
 
-  // "Log as single item" → resume the paused thread with action=combine.
-  // Collapses auto-decomposed ingredients back to their source dish.
   const handleCombine = () => {
     if (!conversationId) return
-    logMealMutation.mutate(
-      { user_input: 'log as single item', conversation_id: conversationId, action: 'combine' },
-      {
-        onSuccess: (data) => {
-          addMessage({
-            sender: 'agent',
-            text: data.message,
-            paused: data.paused,
-            items: data.items,
-          })
-          if (!data.paused) setConversationId(null)
-        },
-        onError: () => {
-          addMessage({ sender: 'agent', text: "Couldn't combine — try again." })
-        },
-      }
-    )
+    logToApi({ user_input: 'log as single item', conversation_id: conversationId, action: 'combine' })
   }
 
   // Explicit "Log" from the My Meals page navigates here with the meal name;
@@ -222,14 +171,13 @@ export function ChatPage() {
           </div>
         </header>
 
-        <MascotGreeting show={messages.length === 0} />
         <ChatThread
           messages={messages}
           onAction={(text, mealType) => handleSend(text, null, mealType)}
           onDismissCard={handleDismissCard}
           onDecompose={handleDecompose}
           onCombine={handleCombine}
-          isLoading={logMealMutation.isPending}
+          isLoading={isProcessing}
         />
 
         {undoMealId && (
@@ -249,7 +197,7 @@ export function ChatPage() {
           </div>
         )}
 
-        <ChatInput onSend={handleSend} isLoading={logMealMutation.isPending} />
+        <ChatInput onSend={handleSend} isLoading={isProcessing} />
       </div>
 
       {/* Right panel (desktop only) */}

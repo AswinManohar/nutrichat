@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { MealItem } from '../api/types'
+import { apiClient } from '../api/client'
+import { queryClient } from '../api/queryClient'
+import type { LogMealRequest, LogMealResponse, MealItem } from '../api/types'
 
 export interface ChatMessage {
   id: string;
@@ -8,21 +10,32 @@ export interface ChatMessage {
   timestamp: string;
   paused?: boolean;
   items?: MealItem[];
-  imageB64?: string; // stored to display in the bubble if desired
+  imageB64?: string;
 }
 
 interface MealStoreState {
   messages: ChatMessage[];
   conversationId: string | null;
+  isProcessing: boolean;
+  // Set to the meal_id on a successful log; cleared by calling consumeLastLoggedMealId().
+  lastLoggedMealId: string | null;
+
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => ChatMessage;
   updateLastAgentMessage: (updates: Partial<ChatMessage>) => void;
   setConversationId: (id: string | null) => void;
   clearMessages: () => void;
+  // Fires the /meals/log request and handles the response in the store so the
+  // result is never lost when the user navigates away from ChatPage mid-flight.
+  logToApi: (payload: LogMealRequest) => Promise<void>;
+  // Returns and clears lastLoggedMealId atomically (for the undo timer).
+  consumeLastLoggedMealId: () => string | null;
 }
 
-export const useMealStore = create<MealStoreState>((set) => ({
+export const useMealStore = create<MealStoreState>((set, get) => ({
   messages: [],
   conversationId: null,
+  isProcessing: false,
+  lastLoggedMealId: null,
 
   addMessage: (msg) => {
     const newMsg: ChatMessage = {
@@ -30,9 +43,7 @@ export const useMealStore = create<MealStoreState>((set) => ({
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
     }
-    set((state) => ({
-      messages: [...state.messages, newMsg],
-    }))
+    set((state) => ({ messages: [...state.messages, newMsg] }))
     return newMsg
   },
 
@@ -43,10 +54,7 @@ export const useMealStore = create<MealStoreState>((set) => ({
       if (lastAgentIdx !== -1) {
         const actualIdx = state.messages.length - 1 - lastAgentIdx
         const updatedMessages = [...state.messages]
-        updatedMessages[actualIdx] = {
-          ...updatedMessages[actualIdx],
-          ...updates,
-        }
+        updatedMessages[actualIdx] = { ...updatedMessages[actualIdx], ...updates }
         return { messages: updatedMessages }
       }
       return {}
@@ -56,4 +64,36 @@ export const useMealStore = create<MealStoreState>((set) => ({
   setConversationId: (id) => set({ conversationId: id }),
 
   clearMessages: () => set({ messages: [], conversationId: null }),
+
+  logToApi: async (payload) => {
+    set({ isProcessing: true })
+    try {
+      const data: LogMealResponse = await apiClient.post<LogMealResponse>('/meals/log', payload)
+      get().addMessage({
+        sender: 'agent',
+        text: data.message,
+        paused: data.paused,
+        items: data.items,
+      })
+      if (!data.paused) {
+        set({ conversationId: null })
+        if (data.meal_id) set({ lastLoggedMealId: data.meal_id })
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
+      }
+    } catch {
+      get().addMessage({
+        sender: 'agent',
+        text: "Couldn't reach the server — check your connection and try again.",
+      })
+      set({ conversationId: null })
+    } finally {
+      set({ isProcessing: false })
+    }
+  },
+
+  consumeLastLoggedMealId: () => {
+    const id = get().lastLoggedMealId
+    set({ lastLoggedMealId: null })
+    return id
+  },
 }))
