@@ -160,6 +160,19 @@
   animation: mascot-sway 1.4s ease-in-out infinite;
 }
 
+/* Empty-state greeting: double wave then hold */
+@keyframes mascot-wave {
+  0%        { transform: rotate(0deg)  translateY(0);    }
+  10%       { transform: rotate(15deg) translateY(-4px); }
+  20%       { transform: rotate(-8deg) translateY(0);    }
+  30%       { transform: rotate(15deg) translateY(-4px); }
+  40%, 100% { transform: rotate(0deg)  translateY(0);    }
+}
+.mascot-wave {
+  transform-origin: bottom center;
+  animation: mascot-wave 2.8s ease-in-out infinite;
+}
+
 /* Peek entrance: slide up from bottom edge */
 @keyframes mascot-peek {
   0%   { transform: translateY(100%); }
