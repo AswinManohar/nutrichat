@@ -1,8 +1,8 @@
 # LLM Rate Limiting Design
 
 **Date:** 2026-06-19  
-**Revised:** 2026-06-21 (post code-review)  
-**Status:** Approved  
+**Revised:** 2026-06-21 (post code-review, post-implementation corrections)  
+**Status:** Implemented — branch `feat/llm-quota`  
 **Author:** AswinManohar
 
 ---
@@ -152,9 +152,10 @@ rate to paid).
    calling `_coaching_agent.handle()`. One credit per turn regardless of how
    many internal LLM calls `CoachingAgent.handle()` makes.
 
-3. **Meal-extraction node** — in `graph.py`, before the extraction LLM node.
-   Over-quota: short-circuit the node and return the upgrade-prompt message via
-   the standard graph response shape.
+3. **Meal-extraction graph** — in `_handle_meal_logging()` (`orchestrator.py`),
+   before `graph.ainvoke()`. Over-quota: short-circuit before the graph runs and
+   return the upgrade-prompt message in the standard response envelope. The guard
+   lives in the orchestrator, **not** inside `graph.py`.
 
 The keyword pre-filter (`_LOG_SIGNALS` / `_QUERY_SIGNALS`, lines 54–60 of
 `orchestrator.py`) always runs before any LLM call and is never gated.
@@ -179,8 +180,9 @@ based on this at the call site.
 
 ## Upgrade Path
 
-When a user pays, `billing.py` sets `llm_quota = PAID_QUOTA` (150) on the
-`user_goal` row. `llm_requests_used` is left untouched.
+When a user pays, `POST /billing/upgrade` issues a plain `UPDATE user_goal SET llm_quota = :paid_quota WHERE user_id = :user_id` and returns 404 if no row exists (the user has not completed onboarding, so billing is not applicable). `llm_requests_used` is left untouched — a free user who consumed 30 credits has 120 remaining after upgrading to the paid tier.
+
+> **Why UPDATE instead of upsert:** The upsert design in the original spec was revised after code review. An `INSERT … ON CONFLICT` that omits `dietary_prefs` and `streak_days` would fail at the DB level for any user without an existing row, because those columns have ORM-level defaults only, not server-side `DEFAULT` clauses in the DDL. A pure `UPDATE` is both simpler and correct — billing only makes sense after onboarding.
 
 The `tier` field on `GET /quota` is derived at read time using the named
 constants:
@@ -254,10 +256,16 @@ Reads directly from `user_goal`; no cache.
 | `src/backend/db/migrations/versions/*.py` | Alembic migration for the two columns |
 | `src/backend/quota.py` | New — `FREE_QUOTA`, `PAID_QUOTA`, `consume_llm_credit()` |
 | `src/backend/agent/orchestrator.py` | Call `consume_llm_credit()` in `_classify_intent()` and `_handle_coaching()` |
-| `src/backend/agent/graph.py` | Call `consume_llm_credit()` before extraction node |
 | `src/backend/api/quota.py` | New router — `GET /quota` endpoint with auth dependency |
-| `src/backend/main.py` | `app.include_router(quota.router)` alongside existing routers |
-| `src/backend/api/billing.py` | Set `llm_quota = PAID_QUOTA` on upgrade |
+| `src/backend/main.py` | `app.include_router(quota.router)` and `app.include_router(billing.router)` |
+| `src/backend/api/billing.py` | `POST /billing/upgrade` — pure UPDATE, 404 if not onboarded |
 
-Note: `src/backend/agent/coaching.py` is **not** in this list — the coaching
-guard lives in `orchestrator.py` (`_handle_coaching`), not inside the agent.
+Notes:
+- `src/backend/agent/graph.py` is **not** in this list — the meal-extraction guard is in `orchestrator.py:_handle_meal_logging`, not inside the graph.
+- `src/backend/agent/coaching.py` is **not** in this list — the coaching guard is in `orchestrator.py:_handle_coaching`, not inside the agent.
+
+### Double-credit on ambiguous turns (by design)
+
+An ambiguous message (one that matches neither `_LOG_SIGNALS` nor `_QUERY_SIGNALS`) triggers the LLM intent classifier, consuming 1 credit. If the classifier returns `"log_meal"`, the extraction graph then consumes a second credit — **2 credits total for that turn**. This is intentional: the spec counts per LLM inference, not per user turn, and an ambiguous message genuinely requires two separate LLM calls.
+
+User-facing copy should say "AI requests" (= LLM inferences) not "messages" to avoid confusion.
