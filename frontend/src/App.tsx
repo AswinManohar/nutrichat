@@ -6,6 +6,7 @@ import { ChatPage } from './pages/ChatPage'
 import { MyMealsPage } from './pages/MyMealsPage'
 import { TrendsPage } from './pages/TrendsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { UpgradePage } from './pages/UpgradePage'
 import { ProtectedLayout } from './components/layout/ProtectedLayout'
 
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ function App() {
             <Route path="/my-meals" element={<MyMealsPage />} />
             <Route path="/trends" element={<TrendsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/upgrade" element={<UpgradePage />} />
             {/* Standard landing redirects */}
             <Route path="/" element={<Navigate to="/chat" replace />} />
           </Route>
