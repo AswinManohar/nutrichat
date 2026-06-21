@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Star, Check } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -36,14 +36,13 @@ export const UpgradePage: React.FC = () => {
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-sand-border pb-5">
-          <button
-            type="button"
-            onClick={() => navigate('/settings')}
+          <Link
+            to="/settings"
             className="text-muted hover:text-ink transition-colors flex items-center gap-1.5 text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Settings
-          </button>
+          </Link>
         </div>
 
         <div>
@@ -134,9 +133,9 @@ export const UpgradePage: React.FC = () => {
                 type="button"
                 variant="primary"
                 className="w-full"
-                disabled={isPaid || upgradeMutation.isPending}
+                disabled={!quota || isPaid || upgradeMutation.isPending}
                 isLoading={upgradeMutation.isPending}
-                onClick={isPaid ? undefined : handleUpgrade}
+                onClick={handleUpgrade}
               >
                 {isPaid ? 'Current plan' : 'Upgrade now'}
               </Button>
