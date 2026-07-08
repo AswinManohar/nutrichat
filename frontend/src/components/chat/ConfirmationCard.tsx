@@ -562,6 +562,11 @@ export function ConfirmationCard({
               : 'Could not save — try again.'}
           </span>
         )}
+        {saveMeal.isSuccess && (
+          <span className="text-[11px] text-muted">
+            Saved to My Meals — not logged yet. Confirm &amp; log to count it today.
+          </span>
+        )}
 
         {/* Break / Combine — text-weight, only when relevant */}
         {(showBreak || showCombine) && (

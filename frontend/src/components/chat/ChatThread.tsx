@@ -52,22 +52,37 @@ function CollapsedCard({ msg }: { msg: ChatMessage }) {
       </div>
     )
   }
-  const logged = msg.resolved === 'logged'
   const names =
     msg.resolvedLabel ??
     [...new Set((msg.items ?? []).map((i) => i.source_dish || i.food_name))].join(', ')
   const kcal =
     msg.resolvedKcal ?? Math.round((msg.items ?? []).reduce((a, i) => a + i.kcal, 0))
+
+  // Superseded card: the user moved on without ever confirming, so nothing was
+  // logged. Stamp it "Not logged" with muted, struck-through text so it can't
+  // be mistaken for a logged meal's summary.
+  if (msg.resolved !== 'logged') {
+    return (
+      <div className="self-start flex items-center gap-2 text-[12px] text-muted/70 rise-in">
+        <span className="flex-shrink-0 rounded-full border border-sand-border bg-sand px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+          Not logged
+        </span>
+        <span className="truncate max-w-[55vw] md:max-w-md line-through decoration-muted/40">
+          {names}
+          {kcal > 0 ? ` · ${kcal.toLocaleString()} kcal` : ''}
+        </span>
+      </div>
+    )
+  }
+
+  // Logged — keep the confirmed look with the sage check.
   return (
     <div className="self-start flex items-center gap-2 text-[12px] text-muted rise-in">
-      {logged && (
-        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-sage/15 text-sage-deep">
-          <Check className="w-2.5 h-2.5" strokeWidth={3} />
-        </span>
-      )}
+      <span className="flex items-center justify-center w-4 h-4 rounded-full bg-sage/15 text-sage-deep">
+        <Check className="w-2.5 h-2.5" strokeWidth={3} />
+      </span>
       <span className="truncate max-w-[60vw] md:max-w-md">
-        {logged ? 'Logged: ' : ''}
-        <span className="text-ink-soft font-medium">{names}</span>
+        Logged: <span className="text-ink-soft font-medium">{names}</span>
         {kcal > 0 ? ` · ${kcal.toLocaleString()} kcal` : ''}
       </span>
     </div>
