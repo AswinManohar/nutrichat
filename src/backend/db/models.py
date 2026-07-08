@@ -255,7 +255,13 @@ class FoodSource(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("ix_food_source_food_name", "food_name"),)
+    __table_args__ = (
+        # B-tree: serves the exact-match LLM-estimate lookup (food_name = :name).
+        Index("ix_food_source_food_name", "food_name"),
+        # pg_trgm GIN index ix_food_source_food_name_trgm is created via raw DDL
+        # in the Alembic migration (SQLAlchemy Index() has no operator-class
+        # support); it serves the ILIKE '%name%' cache probe in usda.py.
+    )
 
 
 class DailySummary(Base):
@@ -364,9 +370,7 @@ class NutrientCheckup(Base):
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     nutrients: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    notable_nutrients: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    notable_nutrients: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -441,6 +445,4 @@ class IntegrationToken(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    __table_args__ = (
-        Index("ix_integration_token_token_hash", "token_hash"),
-    )
+    __table_args__ = (Index("ix_integration_token_token_hash", "token_hash"),)
