@@ -82,6 +82,7 @@ def normalize_meal_type(value: str | None) -> str:
         return value.strip().lower()
     return _meal_type_from_hour(datetime.now(_CATEGORY_TZ).hour)
 
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -225,6 +226,8 @@ def apply_correction(entities: list[dict], correction: str) -> ExtractionResult:
 
 _CONFIRM_KEYWORDS = frozenset(_TUNABLES.routing.confirm_keywords)
 _REJECT_KEYWORDS = frozenset(_TUNABLES.routing.reject_keywords)
+_NEW_MEAL_LEADINS = tuple(_TUNABLES.routing.new_meal_leadins)
+_NEW_MEAL_EXCLUSIONS = frozenset(_TUNABLES.routing.new_meal_exclusions)
 
 
 def format_confirmation_card(usda_results: list) -> str:
@@ -295,13 +298,21 @@ def format_confirmation_card(usda_results: list) -> str:
 
 
 def classify_intent(message: str) -> str:
-    """Classify user response as confirm / correct / reject — no LLM.
+    """Classify user response as confirm / reject / new_meal / correct — no LLM.
+
+    Confirm and reject keywords take precedence. A "new_meal" is a fresh meal
+    statement typed while a confirmation card is still pending (e.g. "i had
+    mutton curry"): the message starts with a lead-in from ``new_meal_leadins``
+    and carries no additive qualifier from ``new_meal_exclusions`` ("also",
+    "too", "as well", "plus"). Additive lead-ins ("i had some rice too") stay a
+    correction so they merge into the pending card. Anything else is a
+    correction.
 
     Args:
         message: User's reply to the confirmation card.
 
     Returns:
-        "confirm", "reject", or "correct".
+        "confirm", "reject", "new_meal", or "correct".
     """
     lowered = message.lower().strip()
     # Strip punctuation for word-level matching
@@ -318,6 +329,14 @@ def classify_intent(message: str) -> str:
             return "reject"
         if kw in words:
             return "reject"
+    # A fresh meal statement supersedes the pending card unless an additive
+    # qualifier marks it as an edit ("as well" is multi-word → substring match).
+    if any(lowered.startswith(leadin) for leadin in _NEW_MEAL_LEADINS):
+        has_exclusion = any(
+            (kw in lowered if " " in kw else kw in words) for kw in _NEW_MEAL_EXCLUSIONS
+        )
+        if not has_exclusion:
+            return "new_meal"
     return "correct"
 
 

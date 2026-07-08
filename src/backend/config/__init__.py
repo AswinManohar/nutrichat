@@ -125,6 +125,8 @@ class RoutingConfig(BaseModel):
     query_signals: list[str]
     confirm_keywords: list[str]
     reject_keywords: list[str]
+    new_meal_leadins: list[str]
+    new_meal_exclusions: list[str]
 
     model_config = ConfigDict(extra="forbid")
 

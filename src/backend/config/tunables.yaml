@@ -344,6 +344,29 @@ routing:
     - "stop"
     - "quit"
 
+  # Lead-ins that mark a *fresh* meal statement typed while a confirmation card
+  # is still pending (e.g. "i had mutton curry"). classify_intent returns
+  # "new_meal" when the lowered/stripped message starts with one of these AND
+  # carries no additive qualifier from new_meal_exclusions below — so the new
+  # meal supersedes the pending card instead of merging into it. Prefix match
+  # on the whole message.
+  new_meal_leadins:
+    - "i had"
+    - "i ate"
+    - "i just had"
+    - "i just ate"
+    - "just had"
+    - "just ate"
+  # Additive qualifiers that keep a lead-in message a *correction* (merge into
+  # the pending card) rather than a new meal — "i had some rice too" extends the
+  # card, it does not replace it. Word-level match, except "as well" which is
+  # multi-word and matched as a substring.
+  new_meal_exclusions:
+    - "also"
+    - "too"
+    - "as well"
+    - "plus"
+
 # Prompts live as individual Markdown files in the prompts/ directory
 # beside this file (one <key>.md per prompt), loaded by get_tunables().
 # Edit a prompt by editing its .md file; add one by adding a field to

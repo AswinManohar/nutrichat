@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from langchain_core.messages import HumanMessage
+
 from backend.agent.graph import (
     _route_after_saved_lookup,
     _route_input,
     _route_response,
+    saved_lookup_node,
 )
 from backend.agent.tools.saved_meals import saved_meal_to_results
 
@@ -27,6 +30,69 @@ def test_route_response_decompose_takes_priority() -> None:
     # action=decompose routes to the decompose branch regardless of message text.
     state = {"action": "decompose", "messages": []}
     assert _route_response(state) == "decompose"
+
+
+def test_route_response_new_meal_goes_to_saved_lookup() -> None:
+    # A fresh meal statement typed over the pending card supersedes it.
+    state = {"messages": [HumanMessage(content="i had mutton curry")]}
+    assert _route_response(state) == "saved_lookup"
+
+
+def test_route_response_correction_still_applies() -> None:
+    # A genuine correction still routes to the correction branch.
+    state = {"messages": [HumanMessage(content="actually 3 eggs")]}
+    assert _route_response(state) == "apply_correction"
+
+
+async def test_saved_lookup_node_uses_last_human_message(monkeypatch) -> None:
+    # On a resumed thread the first human message belongs to the earlier turn;
+    # saved_lookup_node must key off the LAST human message.
+    captured: dict[str, str] = {}
+
+    async def fake_find_saved_meal(user_id: str, text: str):
+        captured["text"] = text
+        return None
+
+    monkeypatch.setattr("backend.agent.graph.find_saved_meal", fake_find_saved_meal)
+    state = {
+        "user_id": "u1",
+        "messages": [
+            HumanMessage(content="biryani and coffee"),
+            HumanMessage(content="i had mutton curry"),
+        ],
+    }
+    out = await saved_lookup_node(state)
+    assert captured["text"] == "i had mutton curry"
+    assert out["from_saved"] is False
+    assert out["decomposed_entities"] == []
+
+
+async def test_saved_lookup_node_hit_clears_decomposed(monkeypatch) -> None:
+    meal = SimpleNamespace(
+        ingredients=[
+            {
+                "food_name": "rice",
+                "qty_g": 150,
+                "kcal": 195,
+                "protein_g": 4,
+                "carbs_g": 44,
+                "fat_g": 0.4,
+                "fiber_g": 1.2,
+                "fdc_id": 123,
+                "nutrients": {},
+            }
+        ]
+    )
+
+    async def fake_find_saved_meal(user_id: str, text: str):
+        return meal
+
+    monkeypatch.setattr("backend.agent.graph.find_saved_meal", fake_find_saved_meal)
+    state = {"user_id": "u1", "messages": [HumanMessage(content="my usual")]}
+    out = await saved_lookup_node(state)
+    assert out["from_saved"] is True
+    assert out["decomposed_entities"] == []
+    assert len(out["usda_results"]) == 1
 
 
 def test_saved_meal_to_results_rebuilds_state() -> None:

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agent.tools.meals import (
     FoodEntity,
-    ExtractionResult,
     ImageClassification,
-    MealLogResult,
     classify_intent,
     format_confirmation_card,
 )
@@ -79,6 +78,27 @@ def test_classify_intent_reject():
 def test_classify_intent_correct():
     assert classify_intent("actually 3 eggs") == "correct"
     assert classify_intent("swap oat milk for almond milk") == "correct"
+
+
+def test_classify_intent_new_meal():
+    assert classify_intent("i had mutton curry") == "new_meal"
+    assert classify_intent("I ate a banana") == "new_meal"
+    assert classify_intent("just had a protein shake") == "new_meal"
+
+
+def test_classify_intent_new_meal_exclusions_stay_correct():
+    # Additive qualifiers keep a lead-in message a correction (merge), not a
+    # replacement — so it extends the pending card instead of superseding it.
+    assert classify_intent("i had some rice too") == "correct"
+    assert classify_intent("i also had a coke") == "correct"
+    assert classify_intent("actually i had 200g") == "correct"
+    assert classify_intent("i had it as well") == "correct"
+
+
+def test_classify_intent_confirm_reject_precedence():
+    # Confirm/reject still win over a new-meal lead-in.
+    assert classify_intent("ok log it") == "confirm"
+    assert classify_intent("no") == "reject"
 
 
 # ---------------------------------------------------------------------------

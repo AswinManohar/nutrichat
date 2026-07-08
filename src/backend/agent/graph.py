@@ -81,19 +81,32 @@ async def classify_node(state: AgentState) -> dict:
 async def saved_lookup_node(state: AgentState) -> dict:
     """Check if the typed meal matches a saved My Meal; prefill if so.
 
+    Reads the LAST human message: on a resumed thread (a new meal typed over a
+    still-pending card) the first human message belongs to the earlier turn, so
+    the most recent one is the meal to look up. On a fresh thread first == last,
+    so this is safe.
+
     On a hit, loads the saved ingredients into usda_results (verbatim, so a
     straight confirm logs exactly what was saved) and entities (so a correction
-    can still re-resolve), and flags from_saved to skip extraction/USDA.
+    can still re-resolve), and flags from_saved to skip extraction/USDA. Clears
+    decomposed_entities in both branches so a superseded card's cached
+    "break into ingredients" result can't leak into the new card (decompose_node
+    returns the cache verbatim when present).
     """
-    first_human = next(
-        (m for m in state["messages"] if isinstance(m, HumanMessage)), None
+    last_human = next(
+        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
-    text = first_human.content if first_human else ""
+    text = last_human.content if last_human else ""
     meal = await find_saved_meal(state["user_id"], text)
     if meal is None:
-        return {"from_saved": False}
+        return {"from_saved": False, "decomposed_entities": []}
     usda_results, entities = saved_meal_to_results(meal)
-    return {"from_saved": True, "usda_results": usda_results, "entities": entities}
+    return {
+        "from_saved": True,
+        "usda_results": usda_results,
+        "entities": entities,
+        "decomposed_entities": [],
+    }
 
 
 async def decompose_node(state: AgentState) -> dict:
@@ -312,6 +325,13 @@ def _route_response(state: AgentState) -> str:
         return "log"
     if intent == "correct":
         return "apply_correction"
+    if intent == "new_meal":
+        # A fresh meal statement typed over the pending card supersedes it: the
+        # old card is neither logged nor merged into — re-enter saved_lookup so
+        # the replacement message gets the same saved-My-Meal prefill path as a
+        # fresh message. Like corrections, this resume-path extraction does not
+        # consume an LLM quota credit.
+        return "saved_lookup"
     return "cancel"  # reject
 
 
@@ -376,6 +396,7 @@ def build_graph(checkpointer=None):
         {
             "log": "log",
             "apply_correction": "apply_correction",
+            "saved_lookup": "saved_lookup",
             "decompose": "decompose",
             "combine": "combine",
             "cancel": "cancel",
