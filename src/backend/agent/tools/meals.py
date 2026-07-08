@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -474,24 +475,33 @@ async def log_meal(
         "fat_g": round(sum(r.fat_g for r in resolved), 1),
         "fiber_g": round(sum(r.fiber_g for r in resolved), 1),
     }
-    meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals, label)
-    await increment_today(
-        user_id,
-        kcal=totals["kcal"],
-        protein_g=totals["protein_g"],
-        fiber_g=totals["fiber_g"],
-    )
-    # Best-effort embedding for history search; a broker outage (e.g. Redis
-    # down) must never fail the meal log the user just confirmed.
-    try:
-        embed_meal_summary.delay(meal_id)
-    except (OperationalError, OSError) as exc:
-        logger.warning("Could not enqueue meal embedding: %s", exc)
-    flags = _junk_flags(resolved)
-    reply = await _generate_log_reply(
-        label=label or "Meal",
-        totals=totals,
-        junk_items=flags["junk_items"],
+    junk_items = _junk_flags(resolved)["junk_items"]
+
+    async def _persist() -> str:
+        """Insert the row, bump Redis, enqueue the embedding; return meal_id."""
+        meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals, label)
+        await increment_today(
+            user_id,
+            kcal=totals["kcal"],
+            protein_g=totals["protein_g"],
+            fiber_g=totals["fiber_g"],
+        )
+        # Best-effort embedding for history search; a broker outage (e.g. Redis
+        # down) must never fail the meal log the user just confirmed.
+        try:
+            embed_meal_summary.delay(meal_id)
+        except (OperationalError, OSError) as exc:
+            logger.warning("Could not enqueue meal embedding: %s", exc)
+        return meal_id
+
+    # The confirmation reply depends only on label/totals/junk (not meal_id), so
+    # generate it concurrently with the writes — confirm latency is then
+    # max(write, llm) instead of their sum.
+    meal_id, reply = await asyncio.gather(
+        _persist(),
+        _generate_log_reply(
+            label=label or "Meal", totals=totals, junk_items=junk_items
+        ),
     )
     return MealLogResult(
         meal_id=meal_id,
