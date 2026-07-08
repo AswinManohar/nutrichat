@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from backend.agent.tools.decompose import decompose_to_ingredients
+from backend.agent.tools.decompose import decompose_to_entities
 from backend.agent.tools.meals import (
     FoodEntity,
     apply_correction,
@@ -100,8 +100,9 @@ async def decompose_node(state: AgentState) -> dict:
     """Break the original dish into ingredients (the "Break into ingredients" toggle).
 
     Returns cached result from decomposed_entities if available, skipping the
-    LLM call. On cache miss, calls decompose_to_ingredients, re-parses, and
-    warms the cache. On failure, returns a graceful no-op (re-presents same card).
+    LLM call. On cache miss, calls decompose_to_entities (one structured LLM
+    call — no separate re-extract) and warms the cache. On failure, returns a
+    graceful no-op (re-presents same card).
     """
     cached = state.get("decomposed_entities") or []
     if cached:
@@ -118,14 +119,8 @@ async def decompose_node(state: AgentState) -> dict:
             (m for m in state["messages"] if isinstance(m, HumanMessage)), None
         )
         description = first_human.content if first_human else ""
-    lines = await asyncio.to_thread(decompose_to_ingredients, description)
-    if not lines:
-        return {"action": None}
-    try:
-        result = await asyncio.to_thread(extract_entities, ", ".join(lines))
-        valid = [e for e in result.entities if e.qty_g > 0]
-    except Exception:
-        valid = []
+    parsed = await asyncio.to_thread(decompose_to_entities, description)
+    valid = [e for e in parsed if e.qty_g > 0]
     if not valid:
         return {"action": None}
     serialised = [e.model_dump() for e in valid]
@@ -181,42 +176,41 @@ def _auto_decompose_enabled() -> bool:
     return get_tunables().features.auto_decompose_enabled
 
 
-async def auto_decompose_node(state: AgentState) -> dict:
-    """Break only is_composite entities into ingredients, per food, in order.
+async def _decompose_one(entity: FoodEntity) -> list[FoodEntity]:
+    """Decompose a single entity into its ingredients (one LLM call, or none).
 
-    Composite entities are decomposed via the shared primitive (portion-aware:
-    the entity's gram weight is included so ingredients scale), re-parsed into
-    ingredient entities tagged with source_dish provenance, and spliced in place.
-    Atomic entities pass through untouched. Any failure (empty decompose, empty
-    re-extract) degrades to keeping the original dish as a single entity.
+    Composite entities are broken via the shared primitive (portion-aware: the
+    entity's gram weight is included so ingredients scale) and each ingredient
+    is tagged with source_dish provenance. Atomic entities and any failure
+    (empty decompose) degrade to keeping the original entity as-is.
+    """
+    if not entity.is_composite:
+        return [entity]
+    desc = f"{entity.qty_g:g} g {entity.food_name}"
+    sub = await asyncio.to_thread(decompose_to_entities, desc)
+    sub = [e for e in sub if e.qty_g > 0]
+    if not sub:
+        return [entity]
+    for ing in sub:
+        ing.source_dish = entity.food_name
+    return sub
+
+
+async def auto_decompose_node(state: AgentState) -> dict:
+    """Break only is_composite entities into ingredients, all dishes in parallel.
+
+    Each entity is decomposed by _decompose_one; the calls run concurrently
+    (asyncio.gather) so a multi-dish meal costs one round-trip of wall-clock,
+    not one per dish. Order is preserved: gather returns per-entity groups in
+    input order and they are spliced back in place. Atomic entities pass
+    through untouched.
     """
     if not _auto_decompose_enabled():
         return {"entities": state["entities"]}
 
-    out: list[dict] = []
-    for raw in state["entities"]:
-        entity = FoodEntity(**raw)
-        if not entity.is_composite:
-            out.append(entity.model_dump())
-            continue
-        desc = f"{entity.qty_g:g} g {entity.food_name}"
-        lines = await asyncio.to_thread(decompose_to_ingredients, desc)
-        if not lines:
-            out.append(entity.model_dump())
-            continue
-        try:
-            parsed = (
-                await asyncio.to_thread(extract_entities, ", ".join(lines))
-            ).entities
-            sub = [e for e in parsed if e.qty_g > 0]
-        except Exception:
-            sub = []
-        if not sub:
-            out.append(entity.model_dump())
-            continue
-        for ing in sub:
-            ing.source_dish = entity.food_name
-            out.append(ing.model_dump())
+    entities = [FoodEntity(**raw) for raw in state["entities"]]
+    groups = await asyncio.gather(*(_decompose_one(e) for e in entities))
+    out = [ing.model_dump() for group in groups for ing in group]
     return {"entities": out}
 
 
@@ -271,9 +265,8 @@ async def cancel_node(state: AgentState) -> dict:
 
 async def log_node(state: AgentState) -> dict:
     """Persist confirmed meal to Postgres and Redis."""
+    from backend.agent.tools.meals import _meal_label, normalize_meal_type
     from backend.agent.tools.usda import USDAResult
-
-    from backend.agent.tools.meals import normalize_meal_type, _meal_label
 
     results = [USDAResult(**r) for r in state["usda_results"]]
     meal_type = normalize_meal_type(state.get("meal_type"))

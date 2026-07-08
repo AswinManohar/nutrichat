@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from backend.agent.graph import decompose_node
-from backend.agent.tools.meals import ExtractionResult, FoodEntity
+from backend.agent.tools.meals import FoodEntity
 
 
 def _entity(name: str, qty: float = 200) -> dict:
@@ -31,18 +31,15 @@ def _state(entities: list[dict], decomposed_entities: list[dict] | None = None) 
 
 _RICE = FoodEntity(food_name="basmati rice", qty_g=150, unit="g")
 _CHICKEN = FoodEntity(food_name="chicken thigh", qty_g=120, unit="g")
-_EXTRACTION = ExtractionResult(entities=[_RICE, _CHICKEN])
 
 
 async def test_cache_miss_calls_llm_and_warms_cache() -> None:
     """First decompose: LLM is called, result stored in decomposed_entities."""
     state = _state([_entity("chicken biryani")])
     with patch(
-        "backend.agent.graph.decompose_to_ingredients",
-        return_value=["150 g basmati rice", "120 g chicken thigh"],
-    ) as mock_decompose, patch(
-        "backend.agent.graph.extract_entities", return_value=_EXTRACTION
-    ):
+        "backend.agent.graph.decompose_to_entities",
+        return_value=[_RICE, _CHICKEN],
+    ) as mock_decompose:
         out = await decompose_node(state)
 
     mock_decompose.assert_called_once()
@@ -59,15 +56,10 @@ async def test_cache_hit_skips_llm() -> None:
     cached = [_RICE.model_dump(), _CHICKEN.model_dump()]
     state = _state([_entity("chicken biryani")], decomposed_entities=cached)
 
-    with patch(
-        "backend.agent.graph.decompose_to_ingredients"
-    ) as mock_decompose, patch(
-        "backend.agent.graph.extract_entities"
-    ) as mock_extract:
+    with patch("backend.agent.graph.decompose_to_entities") as mock_decompose:
         out = await decompose_node(state)
 
     mock_decompose.assert_not_called()
-    mock_extract.assert_not_called()
     assert [e["food_name"] for e in out["entities"]] == ["basmati rice", "chicken thigh"]
     assert out["action"] is None
 
@@ -75,7 +67,7 @@ async def test_cache_hit_skips_llm() -> None:
 async def test_failed_decompose_does_not_populate_cache() -> None:
     """If LLM returns empty, decomposed_entities stays unset (next press retries)."""
     state = _state([_entity("mystery stew")])
-    with patch("backend.agent.graph.decompose_to_ingredients", return_value=[]):
+    with patch("backend.agent.graph.decompose_to_entities", return_value=[]):
         out = await decompose_node(state)
 
     assert out == {"action": None}
