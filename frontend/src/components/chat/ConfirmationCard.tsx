@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { MealCategory, MealItem } from '../../api/types'
+import type { LogItemInput, MealCategory, MealItem } from '../../api/types'
 import { useSaveMeal } from '../../api/hooks'
 import { ChevronDown, Plus, Minus, X, UtensilsCrossed, Sparkles, BookmarkPlus, Check } from 'lucide-react'
 import { defaultMealCategory } from './meal-categories'
@@ -8,6 +8,8 @@ import { defaultMealCategory } from './meal-categories'
 interface ConfirmationCardProps {
   items: MealItem[]
   onAction: (text: string, mealType?: MealCategory) => void
+  onConfirmLog: (items: LogItemInput[], mealType: MealCategory, portion: number) => void
+  onCancel: () => void
   onDismiss: () => void
   onDecompose: () => void
   onCombine: () => void
@@ -52,6 +54,8 @@ function groupByDish(items: MealItem[]): ItemGroup[] {
 export function ConfirmationCard({
   items,
   onAction,
+  onConfirmLog,
+  onCancel,
   onDismiss,
   onDecompose,
   onCombine,
@@ -159,16 +163,31 @@ export function ConfirmationCard({
   const total = (key: keyof (typeof scaled)[0]) =>
     visibleIndices.reduce((acc, i) => acc + scaled[i][key], 0)
 
-  const corrections: string[] = []
-  removed.forEach((i) => corrections.push(`remove ${items[i].food_name}`))
+  // Only food swaps still need the LLM (they resolve a different food). Removals
+  // and quantity/portion edits are applied locally and logged directly.
+  const swapCorrections: string[] = []
   items.forEach((item, i) => {
     if (removed.has(i)) return
-    if (swaps[i]) corrections.push(`use ${swaps[i]} instead of ${item.food_name}`)
-    // Effective grams fold in the portion multiplier.
-    const effective = Math.round(qtys[i] * portion)
-    if (effective !== Math.round(item.qty_g))
-      corrections.push(`change ${item.food_name} to ${effective}g`)
+    if (swaps[i]) swapCorrections.push(`use ${swaps[i]} instead of ${item.food_name}`)
   })
+  const hasSwaps = swapCorrections.length > 0
+
+  // Final kept items for a direct (no-LLM) log: edited grams ride in
+  // target_qty_g; the original qty_g stays as the server-side scaling base.
+  const finalItems: LogItemInput[] = visibleIndices.map((i) => ({
+    ...items[i],
+    target_qty_g: Math.round(qtys[i]),
+  }))
+
+  const handlePrimary = () => {
+    if (hasSwaps) {
+      // Food swaps still need LLM re-resolution — keep the chat correction path.
+      onAction(swapCorrections.join(' and '), mealType)
+    } else {
+      // Everything else (plain or locally edited) logs directly, no chat bubble.
+      onConfirmLog(finalItems, mealType, portion)
+    }
+  }
 
   const handleSaveMeal = () => {
     const name = mealName.trim()
@@ -489,7 +508,7 @@ export function ConfirmationCard({
       <div className="flex items-center gap-2 px-4 py-3 border-t border-sand-border">
         <button
           type="button"
-          onClick={() => onAction('cancel')}
+          onClick={onCancel}
           disabled={isLoading}
           className="cursor-pointer px-4 py-2.5 text-[14px] text-ink-soft hover:text-danger transition-colors flex-shrink-0 disabled:opacity-50"
         >
@@ -499,13 +518,11 @@ export function ConfirmationCard({
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           type="button"
-          onClick={() =>
-            onAction(corrections.length > 0 ? corrections.join(' and ') : 'yes', mealType)
-          }
+          onClick={handlePrimary}
           disabled={isLoading || visibleIndices.length === 0}
           className="press cursor-pointer flex-1 bg-sage-deep hover:bg-sage-forest text-white rounded-full py-2.5 text-[14px] font-semibold disabled:opacity-40 transition-colors focus-visible:outline-2 focus-visible:outline-sage/50"
         >
-          {corrections.length > 0 ? 'Apply changes' : 'Confirm & log'}
+          {hasSwaps ? 'Apply changes' : 'Confirm & log'}
         </button>
       </div>
 
@@ -652,14 +669,13 @@ export function ConfirmationCard({
               <button
                 type="button"
                 onClick={() => {
-                  if (corrections.length > 0)
-                    onAction(corrections.join(' and '), mealType)
+                  if (hasSwaps) onAction(swapCorrections.join(' and '), mealType)
                   closeDish()
                 }}
                 disabled={isLoading}
                 className="shrink-0 press cursor-pointer py-2.5 rounded-full text-[14px] font-medium text-white bg-sage hover:bg-sage-deep disabled:opacity-50"
               >
-                {corrections.length > 0 ? 'Apply changes' : 'Done'}
+                {hasSwaps ? 'Apply changes' : 'Done'}
               </button>
             </div>
           </div>,

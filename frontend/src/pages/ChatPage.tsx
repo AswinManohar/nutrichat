@@ -16,10 +16,12 @@ export function ChatPage() {
     isProcessing,
     lastLoggedMealId,
     addMessage,
-    updateLastAgentMessage,
     setConversationId,
     clearMessages,
     logToApi,
+    logItemsDirect,
+    discardCard,
+    cancelCard,
     consumeLastLoggedMealId,
   } = useMealStore()
   const { data: totals } = useDashboard()
@@ -102,12 +104,11 @@ export function ChatPage() {
   }
 
   // All food items removed from the confirmation card → drop the card silently.
-  // No backend call: resetting conversationId orphans the paused thread, so the
-  // next message starts a fresh one. (Stable store actions; safe as a callback.)
+  // Stamps the card discarded and orphans the paused thread (no backend call),
+  // so the next message starts a fresh one.
   const handleDismissCard = useCallback(() => {
-    updateLastAgentMessage({ paused: false, items: [], text: 'Discarded — nothing logged.' })
-    setConversationId(null)
-  }, [updateLastAgentMessage, setConversationId])
+    discardCard()
+  }, [discardCard])
 
   const handleDecompose = () => {
     if (!conversationId) return
@@ -174,6 +175,8 @@ export function ChatPage() {
         <ChatThread
           messages={messages}
           onAction={(text, mealType) => handleSend(text, null, mealType)}
+          onConfirmLog={logItemsDirect}
+          onCancel={cancelCard}
           onDismissCard={handleDismissCard}
           onDecompose={handleDecompose}
           onCombine={handleCombine}

@@ -4,7 +4,8 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { ChatMessage } from '../../stores/mealStore'
-import type { MealCategory } from '../../api/types'
+import type { LogItemInput, MealCategory } from '../../api/types'
+import { Check } from 'lucide-react'
 import { ConfirmationCard } from './ConfirmationCard'
 import { MascotSprite } from '../mascot/MascotSprite'
 import { MascotGreeting } from '../mascot/MascotGreeting'
@@ -33,10 +34,44 @@ const MARKDOWN_COMPONENTS: Components = {
 interface ChatThreadProps {
   messages: ChatMessage[]
   onAction: (text: string, mealType?: MealCategory) => void
+  onConfirmLog: (items: LogItemInput[], mealType: MealCategory, portion: number) => void
+  onCancel: () => void
   onDismissCard: () => void
   onDecompose: () => void
   onCombine: () => void
   isLoading: boolean
+}
+
+/** Compact one-line stand-in for a confirmation card whose turn has ended. */
+function CollapsedCard({ msg }: { msg: ChatMessage }) {
+  if (msg.resolved === 'discarded') {
+    // Cancelled / all-items-removed card — no check icon, no names/kcal.
+    return (
+      <div className="self-start flex items-center gap-2 text-[12px] text-muted/70 italic rise-in">
+        <span className="truncate max-w-[60vw] md:max-w-md">Discarded — nothing logged.</span>
+      </div>
+    )
+  }
+  const logged = msg.resolved === 'logged'
+  const names =
+    msg.resolvedLabel ??
+    [...new Set((msg.items ?? []).map((i) => i.source_dish || i.food_name))].join(', ')
+  const kcal =
+    msg.resolvedKcal ?? Math.round((msg.items ?? []).reduce((a, i) => a + i.kcal, 0))
+  return (
+    <div className="self-start flex items-center gap-2 text-[12px] text-muted rise-in">
+      {logged && (
+        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-sage/15 text-sage-deep">
+          <Check className="w-2.5 h-2.5" strokeWidth={3} />
+        </span>
+      )}
+      <span className="truncate max-w-[60vw] md:max-w-md">
+        {logged ? 'Logged: ' : ''}
+        <span className="text-ink-soft font-medium">{names}</span>
+        {kcal > 0 ? ` · ${kcal.toLocaleString()} kcal` : ''}
+      </span>
+    </div>
+  )
 }
 
 const SUGGESTIONS = [
@@ -57,6 +92,8 @@ function TypingIndicator() {
 export function ChatThread({
   messages,
   onAction,
+  onConfirmLog,
+  onCancel,
   onDismissCard,
   onDecompose,
   onCombine,
@@ -98,9 +135,18 @@ export function ChatThread({
           </p>
         </div>
       ) : (
-        messages.map((msg) => {
+        messages.map((msg, idx) => {
           const isUser = msg.sender === 'user'
-          const hasCard = !isUser && msg.paused && msg.items && msg.items.length > 0
+          const hasItems = !isUser && !!msg.items && msg.items.length > 0
+          const isLast = idx === messages.length - 1
+          // A card is only interactive while it's the live turn: paused, last,
+          // and not yet logged. Otherwise it collapses to a one-line summary,
+          // so a stale card can't fire edits into a closed conversation.
+          const interactive = hasItems && !!msg.paused && isLast && !msg.resolved
+          if (hasItems && !interactive) {
+            return <CollapsedCard key={msg.id} msg={msg} />
+          }
+          const hasCard = interactive
           return (
             <div
               key={msg.id}
@@ -144,6 +190,8 @@ export function ChatThread({
                 <ConfirmationCard
                   items={msg.items!}
                   onAction={onAction}
+                  onConfirmLog={onConfirmLog}
+                  onCancel={onCancel}
                   onDismiss={onDismissCard}
                   onDecompose={onDecompose}
                   onCombine={onCombine}

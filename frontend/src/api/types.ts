@@ -67,6 +67,18 @@ export interface LogMyMealResponse {
   message: string;
 }
 
+/** A confirmation-card item plus its user-edited gram weight, for direct logging. */
+export interface LogItemInput extends MealItem {
+  /** User-edited grams (before the portion multiplier); qty_g stays the base. */
+  target_qty_g: number;
+}
+
+export interface LogItemsRequest {
+  meal_type: MealCategory;
+  portion: number;
+  items: LogItemInput[];
+}
+
 export type MealCategory = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'snack';
 
 export const MEAL_CATEGORIES: MealCategory[] = [
