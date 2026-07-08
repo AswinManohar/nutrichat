@@ -92,15 +92,22 @@ usda:
   # hit is FDC's relevance #1; raising this only widens the alternatives.)
   page_size: 5
 
-  # Per-request timeout (seconds) for the FDC API.
-  request_timeout_s: 8
+  # Per-request timeout (seconds) for the FDC API. FDC search normally answers
+  # well under 1s, so a tight timeout keeps a slow/hung request from stalling
+  # the whole confirmation card (which can't render until the slowest entity
+  # resolves). Lowered from 8s: at 8s a single flaky item gated the card for
+  # ~20s (8 + backoff + 8 + LLM-estimate); 4s bounds that to ~4s + estimate.
+  request_timeout_s: 4
 
-  # Total attempts per lookup (1 initial + retries). On final failure the
-  # item is returned as a miss (fdc_id=-1) and excluded from logging.
-  max_attempts: 2
+  # Total attempts per lookup (1 initial + retries). usda_lookup_batch runs on
+  # the interactive card-render path, so retries are disabled (1 attempt): a
+  # transient FDC miss falls straight to the LLM estimate rather than making
+  # the user wait out a backoff + second request. Raise to 2 to trade latency
+  # for resilience if FDC blips start pushing real foods to estimates.
+  max_attempts: 1
 
-  # Seconds to sleep between retry attempts.
-  retry_backoff_s: 1.0
+  # Seconds to sleep between retry attempts (only used when max_attempts > 1).
+  retry_backoff_s: 0.5
 
   # Confidence assigned to Postgres cache hits (skips coverage scoring —
   # a cached row was already accepted once).
