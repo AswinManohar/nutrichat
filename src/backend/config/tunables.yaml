@@ -13,7 +13,7 @@ models:
   # message touches this model at least once.
   # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/tools/meals.py,
   #          agent/orchestrator.py, agent/coaching.py, workers/tasks.py
-  extraction: "gemini-3.1-flash-lite-preview"
+  extraction: "gemini-2.5-flash"
 
   # Conversational coaching responses (grounded answers to nutrition
   # questions). Mid tier — better prose quality than flash-lite.
@@ -39,6 +39,18 @@ token_limits:
   # below ~100 cause truncated/empty output and OutputParserException.
   # 200 is safe; raise if you see intent-classification parse errors.
   intent_classifier_max_output: 200
+
+  # Reasoning ("thinking") token budget for the extraction-tier Gemini calls:
+  # entity extraction, correction, image classification, decomposition, intent
+  # classification, log-reply, nutrition estimate, and query parsing. All are
+  # simple structured-output tasks, but gemini-2.5-flash enables *dynamic*
+  # thinking by default and spends ~1-3s of latency per call reasoning before
+  # emitting the JSON. 0 disables thinking entirely (applied in agent/llm.py
+  # make_llm for LangChain calls and via GoogleModelSettings for the pydantic-ai
+  # estimate/parse agents). Raise only if you see a structured-output quality
+  # regression on complex meals. The coaching *prose* agent is intentionally
+  # exempt — it keeps thinking on for answer quality.
+  extraction_thinking_budget: 0
 
 usda:
   # ── How food matching works (read before tuning) ────────────────────────

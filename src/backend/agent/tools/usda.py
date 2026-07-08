@@ -10,7 +10,7 @@ import re
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -391,10 +391,18 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
 
 _ESTIMATE_SYSTEM = _TUNABLES.prompts.nutrition_estimate_system
 
+# Thinking off (extraction-tier): estimation is a single structured-output
+# call on the interactive card-render path — don't pay the dynamic-thinking
+# latency (see token_limits.extraction_thinking_budget).
 _estimate_agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
     output_type=NutritionEstimate,
     system_prompt=_ESTIMATE_SYSTEM,
+    model_settings=GoogleModelSettings(
+        google_thinking_config={
+            "thinking_budget": _TUNABLES.token_limits.extraction_thinking_budget
+        }
+    ),
 )
 
 

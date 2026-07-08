@@ -14,19 +14,31 @@ EMBEDDING_MODEL = _TUNABLES.models.embedding
 EMBEDDING_DIM = _TUNABLES.models.embedding_dim
 
 
-def make_llm(model: str = FLASH_LITE_MODEL, **kwargs: object) -> ChatGoogleGenerativeAI:
+def make_llm(
+    model: str = FLASH_LITE_MODEL,
+    *,
+    thinking_budget: int | None = None,
+    **kwargs: object,
+) -> ChatGoogleGenerativeAI:
     """Construct a Gemini chat model with the project's API key.
 
     Args:
         model: Gemini model name.
+        thinking_budget: Reasoning-token budget. Defaults to
+            token_limits.extraction_thinking_budget (0 = thinking off) so every
+            extraction-tier caller skips the ~1-3s dynamic-thinking phase on
+            these structured-output tasks. Pass an explicit value to override.
         **kwargs: Extra constructor args, e.g. max_output_tokens.
 
     Returns:
         Configured ChatGoogleGenerativeAI instance.
     """
+    if thinking_budget is None:
+        thinking_budget = _TUNABLES.token_limits.extraction_thinking_budget
     return ChatGoogleGenerativeAI(
         model=model,
         google_api_key=os.environ.get("GOOGLE_API_KEY", ""),
+        thinking_budget=thinking_budget,
         **kwargs,
     )
 

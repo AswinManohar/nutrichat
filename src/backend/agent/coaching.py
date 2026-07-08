@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from redis.exceptions import RedisError
 
 from backend.agent.cost import record_run_cost
@@ -79,10 +79,18 @@ _QUERY_PARSE_SYSTEM = _TUNABLES.prompts.query_parse_system
 
 _RESPONSE_SYSTEM = _TUNABLES.prompts.coaching_response_system
 
+# Thinking off (extraction-tier): query parsing is a structured-output call
+# that gates every coaching turn — skip the dynamic-thinking latency. The
+# response agent below keeps thinking ON for answer quality.
 _parse_agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
     output_type=QueryParsed,
     system_prompt=_QUERY_PARSE_SYSTEM,
+    model_settings=GoogleModelSettings(
+        google_thinking_config={
+            "thinking_budget": _TUNABLES.token_limits.extraction_thinking_budget
+        }
+    ),
 )
 
 _response_agent = Agent(

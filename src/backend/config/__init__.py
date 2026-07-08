@@ -31,6 +31,7 @@ class ModelsConfig(BaseModel):
 
 class TokenLimitsConfig(BaseModel):
     intent_classifier_max_output: int = Field(gt=0)
+    extraction_thinking_budget: int = Field(ge=0)
 
     model_config = ConfigDict(extra="forbid")
 
