@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Annotated
 
@@ -57,7 +58,9 @@ async def router_node(state: AgentState) -> dict:
 async def classify_node(state: AgentState) -> dict:
     """Identify food items in the image. Routes to END if no food found."""
     image_b64 = state.get("image_b64") or ""
-    result = classify_food_image(image_b64)
+    # Offload the blocking LLM round-trip so the event loop isn't frozen
+    # while one request is classifying an image (see decompose/extract below).
+    result = await asyncio.to_thread(classify_food_image, image_b64)
     if not result.is_food:
         reason = result.reason or "No food visible."
         return {
@@ -109,19 +112,17 @@ async def decompose_node(state: AgentState) -> dict:
     # thread if the user typed a new meal without confirming the previous card.
     entities = state.get("entities") or []
     if entities:
-        description = ", ".join(
-            f"{e['qty_g']:g} g {e['food_name']}" for e in entities
-        )
+        description = ", ".join(f"{e['qty_g']:g} g {e['food_name']}" for e in entities)
     else:
         first_human = next(
             (m for m in state["messages"] if isinstance(m, HumanMessage)), None
         )
         description = first_human.content if first_human else ""
-    lines = decompose_to_ingredients(description)
+    lines = await asyncio.to_thread(decompose_to_ingredients, description)
     if not lines:
         return {"action": None}
     try:
-        result = extract_entities(", ".join(lines))
+        result = await asyncio.to_thread(extract_entities, ", ".join(lines))
         valid = [e for e in result.entities if e.qty_g > 0]
     except Exception:
         valid = []
@@ -167,7 +168,7 @@ async def extract_node(state: AgentState) -> dict:
     if last_human is None:
         return {"entities": []}
     try:
-        result = extract_entities(last_human.content)
+        result = await asyncio.to_thread(extract_entities, last_human.content)
         # Filter out any entity the LLM returned with qty_g <= 0 (can't be logged)
         valid = [e for e in result.entities if e.qty_g > 0]
     except Exception:
@@ -199,12 +200,14 @@ async def auto_decompose_node(state: AgentState) -> dict:
             out.append(entity.model_dump())
             continue
         desc = f"{entity.qty_g:g} g {entity.food_name}"
-        lines = decompose_to_ingredients(desc)
+        lines = await asyncio.to_thread(decompose_to_ingredients, desc)
         if not lines:
             out.append(entity.model_dump())
             continue
         try:
-            parsed = extract_entities(", ".join(lines)).entities
+            parsed = (
+                await asyncio.to_thread(extract_entities, ", ".join(lines))
+            ).entities
             sub = [e for e in parsed if e.qty_g > 0]
         except Exception:
             sub = []
@@ -255,7 +258,9 @@ async def apply_correction_node(state: AgentState) -> dict:
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
     correction_text = last_human.content if last_human else ""
-    result = apply_correction(state["entities"], correction_text)
+    result = await asyncio.to_thread(
+        apply_correction, state["entities"], correction_text
+    )
     return {"entities": [e.model_dump() for e in result.entities]}
 
 

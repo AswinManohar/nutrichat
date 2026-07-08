@@ -38,6 +38,26 @@ _intent_llm = make_llm(
 ).with_structured_output(_IntentResult)
 _coaching_agent = CoachingAgent()
 
+# Compiling the StateGraph is pure CPU work with no per-message state, so do it
+# once per checkpointer instead of on every turn. Keyed by checkpointer identity:
+# in production the checkpointer is a process-lifetime singleton (held by
+# app.state), so this compiles the graph exactly once. A None checkpointer (unit
+# tests, no-persistence callers) always rebuilds, keeping patched build_graph
+# isolated per test.
+_compiled_graphs: dict[int, Any] = {}
+
+
+def _graph_for(checkpointer: Any) -> Any:
+    """Return a compiled graph for this checkpointer, building it at most once."""
+    if checkpointer is None:
+        return build_graph(checkpointer)
+    key = id(checkpointer)
+    graph = _compiled_graphs.get(key)
+    if graph is None:
+        graph = build_graph(checkpointer)
+        _compiled_graphs[key] = graph
+    return graph
+
 
 async def _classify_intent(message: str, user_id: str) -> str:
     """Classify a fresh user message as log_meal or coaching.
@@ -110,7 +130,7 @@ async def handle_message(
         thread_id=thread_id,
         has_image=bool(image_b64),
     ) as span:
-        graph = build_graph(checkpointer)
+        graph = _graph_for(checkpointer)
         config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
 
         current_state = await graph.aget_state(config)
@@ -125,7 +145,14 @@ async def handle_message(
             result = await _handle_coaching(user_id, user_input)
         else:
             result = await _handle_meal_logging(
-                graph, config, user_input, user_id, image_b64, is_paused, meal_type, action
+                graph,
+                config,
+                user_input,
+                user_id,
+                image_b64,
+                is_paused,
+                meal_type,
+                action,
             )
 
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
@@ -267,8 +294,7 @@ async def _handle_meal_logging(
 
 
 _UPGRADE_MSG = (
-    "You've used all your free AI requests. "
-    "Visit nutrichat.app/upgrade to continue."
+    "You've used all your free AI requests. " "Visit nutrichat.app/upgrade to continue."
 )
 
 
@@ -288,7 +314,12 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
     """
     granted = await consume_llm_credit(user_id)
     if not granted:
-        return {"status": "success", "message": _UPGRADE_MSG, "paused": False, "items": []}
+        return {
+            "status": "success",
+            "message": _UPGRADE_MSG,
+            "paused": False,
+            "items": [],
+        }
     with logfire.span("coaching"):
         message = await _coaching_agent.handle(user_id, user_input)
     return {"status": "success", "message": message, "paused": False, "items": []}
