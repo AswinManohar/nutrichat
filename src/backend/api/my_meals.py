@@ -12,7 +12,8 @@ from backend.agent.tools.meals import MEAL_CATEGORIES, MealLogResult, log_meal
 from backend.agent.tools.saved_meals import find_saved_meal  # re-exported for callers
 from backend.agent.tools.usda import USDAResult
 from backend.auth.supabase import get_current_user_id
-from backend.db.models import UserMeal
+from backend.db.models import MealLog, UserMeal
+from backend.db.redis_client import current_day_bounds
 from backend.db.session import get_session
 
 __all__ = ["router", "find_saved_meal"]
@@ -68,6 +69,7 @@ class MyMealSummary(BaseModel):
     fat_g: float
     fiber_g: float
     n_ingredients: int
+    logged_today: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -81,7 +83,7 @@ def _totals(ingredients: list[IngredientIn]) -> dict[str, float]:
     return {f: round(sum(getattr(i, f) for i in ingredients), 2) for f in _MACRO_FIELDS}
 
 
-def _summary(meal: UserMeal) -> MyMealSummary:
+def _summary(meal: UserMeal, logged_today: bool = False) -> MyMealSummary:
     return MyMealSummary(
         id=meal.id,
         name=meal.name,
@@ -91,6 +93,7 @@ def _summary(meal: UserMeal) -> MyMealSummary:
         fat_g=meal.fat_g,
         fiber_g=meal.fiber_g,
         n_ingredients=len(meal.ingredients),
+        logged_today=logged_today,
     )
 
 
@@ -166,7 +169,20 @@ async def list_meals(
             .order_by(UserMeal.created_at.desc())
         )
         rows = (await session.execute(stmt)).scalars().all()
-        return [_summary(m) for m in rows]
+
+        today_start, today_end = current_day_bounds()
+        label_result = await session.execute(
+            select(MealLog.label).where(
+                MealLog.user_id == user_id,
+                MealLog.logged_at >= today_start,
+                MealLog.logged_at < today_end,
+                MealLog.deleted_at.is_(None),
+                MealLog.label.isnot(None),
+            )
+        )
+        logged_labels: set[str] = {row.label for row in label_result.all()}
+
+        return [_summary(m, logged_today=m.name in logged_labels) for m in rows]
 
 
 @router.get("/{meal_id}")
