@@ -1,6 +1,6 @@
-# 🥗 NutriChat
+# 🥗 Mealsy
 
-NutriChat is an agentic nutrition tracking platform that lets users log meals in natural language, automatically lookup nutrients from the USDA database with AI fallbacks, and get personalized, data-grounded coaching.
+Mealsy is an agentic nutrition tracking platform that lets users log meals in natural language, automatically lookup nutrients from the USDA database with AI fallbacks, and get personalized, data-grounded coaching.
 
 ---
 

@@ -389,7 +389,7 @@ class NutrientCheckup(Base):
 
 
 class TelegramLink(Base):
-    """Binds a Telegram chat to a NutriChat user.
+    """Binds a Telegram chat to a Mealsy user.
 
     Written by the bot process after a `/link <code>` command validates a
     short-lived Redis code. RLS is enabled with no policies — service-role

@@ -1,4 +1,4 @@
-/* NutriChat Web Push service worker.
+/* Mealsy Web Push service worker.
  *
  * Handles incoming push messages and notification clicks. The recurring sender
  * that delivers these messages is a separate backend task; this worker is the
@@ -13,7 +13,7 @@ self.addEventListener('push', (event) => {
     payload = { body: event.data ? event.data.text() : '' }
   }
 
-  const title = payload.title || 'NutriChat'
+  const title = payload.title || 'Mealsy'
   const options = {
     body: payload.body || 'Time to log your meal 🍽️',
     icon: payload.icon || '/favicon.svg',

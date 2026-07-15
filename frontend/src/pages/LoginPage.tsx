@@ -78,7 +78,7 @@ export const LoginPage: React.FC = () => {
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <h1 className="font-display text-3xl text-sage-deep">
-            NutriChat
+            Mealsy
           </h1>
           <p className="text-xs text-muted mt-1">AI-Powered Macro Coaching & Meal Logging</p>
         </div>

@@ -66,7 +66,7 @@ def build_bot() -> Bot:
 
 
 def build_dispatcher() -> Dispatcher:
-    """Construct the aiogram Dispatcher with the NutriChat router attached."""
+    """Construct the aiogram Dispatcher with the Mealsy router attached."""
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     return dispatcher

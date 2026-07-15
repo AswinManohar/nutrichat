@@ -17,7 +17,7 @@ export function Sidebar() {
       <div className="flex flex-col gap-10">
         {/* Wordmark */}
         <div className="px-1">
-          <h2 className="font-display text-[22px] text-sage-deep leading-tight">Næring</h2>
+          <h2 className="font-display text-[22px] text-sage-deep leading-tight">Mealsy</h2>
           <span className="label-caps text-[10px]">Nutrition, plainly</span>
         </div>
 

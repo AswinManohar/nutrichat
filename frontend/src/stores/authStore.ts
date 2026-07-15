@@ -42,7 +42,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         user: {
           id: get().debugUserId,
-          email: 'developer@nutrichat.local',
+          email: 'developer@mealsy.local',
           name: 'Developer Mode',
         },
         token: 'dev-bypass-token',
@@ -121,7 +121,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       token: 'dev-bypass-token',
       user: {
         id: targetId,
-        email: 'developer@nutrichat.local',
+        email: 'developer@mealsy.local',
         name: 'Developer Mode',
       },
     })

@@ -3,7 +3,7 @@
 @import 'tailwindcss';
 
 @theme {
-  /* ——— Næring design tokens — minimal Scandinavian, light ——— */
+  /* ——— Mealsy design tokens — minimal Scandinavian, light ——— */
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-display: 'Fraunces', Georgia, serif;
 

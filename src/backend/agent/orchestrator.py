@@ -294,7 +294,7 @@ async def _handle_meal_logging(
 
 
 _UPGRADE_MSG = (
-    "You've used all your free AI requests. " "Visit nutrichat.app/upgrade to continue."
+    "You've used all your free AI requests. " "Visit mealsy.app/upgrade to continue."
 )
 
 

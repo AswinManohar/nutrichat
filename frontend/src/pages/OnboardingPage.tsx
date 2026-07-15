@@ -200,7 +200,7 @@ export const OnboardingPage: React.FC = () => {
           <div className="w-12 h-12 bg-gradient-to-tr from-sage to-sage-deep rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 mb-3">
             <Target className="w-6 h-6 text-white" />
           </div>
-          <h1 className="font-display text-3xl text-sage-deep">Welcome to NutriChat</h1>
+          <h1 className="font-display text-3xl text-sage-deep">Welcome to Mealsy</h1>
           <p className="text-sm text-muted mt-1">Let's set you up in a few quick steps</p>
         </div>
 

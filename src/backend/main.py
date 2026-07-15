@@ -36,7 +36,7 @@ async def lifespan(app_instance: FastAPI):
         yield
 
 
-app = FastAPI(title="NutriChat", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Mealsy", version="0.1.0", lifespan=lifespan)
 
 configure_observability(app)
 

@@ -1,5 +1,5 @@
 # ============================================================================
-# NutriChat tunables — every prompt, model name, token limit, and threshold
+# Mealsy tunables — every prompt, model name, token limit, and threshold
 # that you may want to tune lives here. Code reads this file once at import
 # via backend.config.get_tunables(); restart uvicorn / celery after editing.
 #
