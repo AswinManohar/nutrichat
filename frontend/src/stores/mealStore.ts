@@ -8,6 +8,7 @@ import type {
   LogMyMealResponse,
   MealCategory,
   MealItem,
+  TodayTotals,
 } from '../api/types'
 
 export interface ChatMessage {
@@ -154,6 +155,31 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
 
   logItemsDirect: async (items, mealType, portion) => {
     set({ isProcessing: true })
+    // Optimistic macro-ring update: the card's totals are already on screen, so
+    // bump today's dashboard totals immediately rather than waiting on the
+    // round-trip. Mirrors the card's linear scaling exactly. The server response
+    // then invalidates and reconciles to the authoritative value; on failure we
+    // restore this snapshot.
+    const prevTotals = queryClient.getQueryData<TodayTotals>(['dashboard', 'today'])
+    if (prevTotals) {
+      const delta = items.reduce(
+        (acc, it) => {
+          const scale = it.qty_g > 0 ? (it.target_qty_g * portion) / it.qty_g : 0
+          acc.kcal += it.kcal * scale
+          acc.protein_g += it.protein_g * scale
+          acc.fiber_g += it.fiber_g * scale
+          return acc
+        },
+        { kcal: 0, protein_g: 0, fiber_g: 0 },
+      )
+      queryClient.setQueryData<TodayTotals>(['dashboard', 'today'], {
+        ...prevTotals,
+        kcal: prevTotals.kcal + delta.kcal,
+        protein_g: prevTotals.protein_g + delta.protein_g,
+        fiber_g: prevTotals.fiber_g + delta.fiber_g,
+        n_meals: prevTotals.n_meals + 1,
+      })
+    }
     try {
       const data = await apiClient.post<LogMyMealResponse>('/meals/log-items', {
         meal_type: mealType,
@@ -174,6 +200,10 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
       set({ conversationId: null, lastLoggedMealId: data.meal_id })
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
     } catch {
+      // The meal never logged — roll the rings back to the pre-confirm snapshot.
+      if (prevTotals) {
+        queryClient.setQueryData(['dashboard', 'today'], prevTotals)
+      }
       get().addMessage({
         sender: 'agent',
         text: "Couldn't log that — check your connection and try again.",

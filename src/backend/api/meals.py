@@ -4,16 +4,24 @@ import json
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, text as sa_text
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.orchestrator import handle_message
 from backend.agent.tools.history import get_category_breakdown
-from backend.agent.tools.meals import soft_delete_meal
+from backend.agent.tools.meals import (
+    MEAL_CATEGORIES,
+    MealLogResult,
+    _meal_label,
+    soft_delete_meal,
+)
+from backend.agent.tools.meals import log_meal as persist_meal
+from backend.api.my_meals import _scaled_result
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog
-from backend.db.redis_client import TodayTotals, current_day_bounds, get_today_totals
+from backend.db.redis_client import current_day_bounds, get_today_totals
 from backend.db.session import get_session
 
 router = APIRouter(prefix="/meals", tags=["meals"])
@@ -97,6 +105,64 @@ async def log_meal(
         meal_type=req.meal_type,
         action=req.action,
     )
+
+
+class LogItemIn(BaseModel):
+    """One resolved confirmation-card item to log directly (no LLM).
+
+    `qty_g` is the originally resolved gram weight (the scaling base);
+    `target_qty_g` is the user-edited weight before the portion multiplier.
+    Extra fields (nutrients, fdc_id, macros, source, estimated, source_dish)
+    are kept verbatim so the logged row carries full nutrition.
+    """
+
+    food_name: str
+    qty_g: float = Field(gt=0)
+    target_qty_g: float = Field(gt=0)
+
+    model_config = ConfigDict(extra="allow")
+
+
+class LogItemsRequest(BaseModel):
+    """Log a confirmation card's final item set directly.
+
+    The frontend applies removals and quantity edits locally and sends only
+    the kept items; removing or re-weighing an ingredient never calls the LLM.
+    Food swaps still go through the chat correction path (they need
+    re-resolution) before the card is logged this way.
+    """
+
+    meal_type: str
+    portion: float = Field(default=1.0, gt=0)
+    items: list[LogItemIn] = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/log-items")
+async def log_items(
+    req: LogItemsRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> MealLogResult:
+    """Log a client-provided resolved item set without any LLM round-trip.
+
+    Each item is re-scaled server-side from its own nutrients (never trusting
+    client macros beyond the provided gram weight + portion), then persisted
+    via the same log_meal path as chat/My-Meals logging so flags, Redis
+    today-totals, and the embedding enqueue all match.
+
+    Raises:
+        HTTPException 422: Invalid meal_type.
+    """
+    if req.meal_type not in MEAL_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Invalid meal_type")
+
+    item_dicts = [it.model_dump() for it in req.items]
+    results = [
+        _scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts
+    ]
+    label = _meal_label(item_dicts) or None
+    return await persist_meal(user_id, results, req.meal_type, label=label)
 
 
 @router.delete("/log/{meal_id}", status_code=204)

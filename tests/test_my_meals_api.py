@@ -101,7 +101,7 @@ def test_save_meal_empty_name_422() -> None:
 async def test_find_saved_meal_normalizes_and_matches() -> None:
     meal = MagicMock(name_normalized="chicken biryani")
     session = MagicMock()
-    session.execute = AsyncMock(return_value=_exec_returning(meal))
+    session.execute = AsyncMock(return_value=_exec_returning_all([meal]))
     factory = _mock_session_factory(session)
 
     with patch("backend.agent.tools.saved_meals.get_session", return_value=factory):
