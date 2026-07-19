@@ -23,8 +23,14 @@ from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog
 from backend.db.redis_client import current_day_bounds, get_today_totals
 from backend.db.session import get_session
+from backend.ratelimit import user_rate_limiter
 
 router = APIRouter(prefix="/meals", tags=["meals"])
+
+# Burst limit for the LLM chat endpoint, per user per minute. Complements
+# the lifetime credit quota (backend.quota): the quota caps spend, this
+# caps how fast a single user can burn it / hammer the LLM.
+CHAT_RATE_LIMIT = 20
 
 
 async def _get_today_by_type(
@@ -87,7 +93,12 @@ class LogMealRequest(BaseModel):
     action: str | None = None  # "decompose" → break the paused meal into ingredients
 
 
-@router.post("/log")
+@router.post(
+    "/log",
+    dependencies=[
+        Depends(user_rate_limiter("chat", limit=CHAT_RATE_LIMIT, window_s=60))
+    ],
+)
 async def log_meal(
     req: LogMealRequest,
     request: Request,
@@ -158,9 +169,7 @@ async def log_items(
         raise HTTPException(status_code=422, detail="Invalid meal_type")
 
     item_dicts = [it.model_dump() for it in req.items]
-    results = [
-        _scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts
-    ]
+    results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
     return await persist_meal(user_id, results, req.meal_type, label=label)
 

@@ -20,6 +20,7 @@ from backend.api import (
     telegram_link,
 )
 from backend.observability import configure_observability
+from backend.ratelimit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -49,6 +50,15 @@ _frontend_origins = [
     for origin in os.environ.get("FRONTEND_ORIGIN", "").split(",")
     if origin.strip()
 ]
+
+# Coarse per-IP flood protection; per-user limits live on the routers.
+# Middleware runs outermost-added-last, so CORS (added after) still wraps
+# 429 responses with the proper CORS headers.
+app.add_middleware(
+    RateLimitMiddleware,
+    limit=int(os.environ.get("RATE_LIMIT_IP_PER_MIN", "120")),
+    window_s=60,
+)
 
 app.add_middleware(
     CORSMiddleware,
