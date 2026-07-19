@@ -253,11 +253,18 @@ features:
   auto_decompose_enabled: true
 
 routing:
-  # Keyword pre-filter for the orchestrator's log_meal/coaching intent
-  # router (agent/orchestrator.py). Matching any query signal routes to
-  # coaching; otherwise matching any log signal routes to meal logging;
-  # otherwise the LLM fallback decides. Substring match on the lowercased
-  # message. Query signals win over log signals.
+  # Keyword pre-filter for the orchestrator's log_meal/coaching intent router
+  # (agent/orchestrator.py). Substring match on the lowercased message.
+  # Precedence (first match wins):
+  #   1. strong query signal  -> coaching   (unambiguous question/request phrasing)
+  #   2. log signal           -> log_meal   (explicit "I'm reporting food")
+  #   3. weak query signal    -> coaching   (bare nutrient/time nouns)
+  #   4. otherwise            -> LLM fallback
+  # Log signals beat WEAK query signals so a food report that merely NAMES a
+  # macro/ingredient ("half a glass of 3.8% fat milk", "a high protein yogurt")
+  # still logs — the bug where "fat"/"protein" hijacked such messages to coaching.
+  # Strong query signals still beat log signals so "how much protein have I had
+  # today?" (which contains "i had") stays a question.
   log_signals:
     # High-confidence "I'm reporting food" phrases only. Bare meal markers like
     # "for dinner" are intentionally NOT here — they also appear in coaching
@@ -269,6 +276,7 @@ routing:
     - "just ate"
     - "logged"
   query_signals:
+    # STRONG — question/request phrasing that does not occur in a food report.
     - "how much"
     - "how many"
     - "did i"
@@ -286,6 +294,20 @@ routing:
     - "meal plan"
     - "plan my"
     - "idea"
+    - "average"
+    - "trend"
+    - "healthiest"
+    - "unhealthiest"
+    - "should i eat"
+    - "what should i eat"
+    - "how am i"
+    - "how am i doing"
+    - "how am i tracking"
+    - "tracking toward"
+  weak_query_signals:
+    # WEAK — nutrient/time/adjective nouns that ALSO appear in food descriptions
+    # ("protein bar", "fat milk", "eggs today"). These route to coaching only
+    # when NO log signal is present, so an explicit "i had"/"i ate" wins.
     - "vitamin"
     - "mineral"
     - "protein"
@@ -301,20 +323,9 @@ routing:
     - "last month"
     - "months"
     - "weeks"
-    - "average"
-    - "trend"
-    - "healthiest"
-    - "unhealthiest"
     - "junk"
     - "balanced"
     - "most"
-    - "should i eat"
-    - "plan my"
-    - "what should i eat"
-    - "how am i"
-    - "how am i doing"
-    - "how am i tracking"
-    - "tracking toward"
     - "goal"
 
   # Keyword sets for the confirmation-card reply classifier in

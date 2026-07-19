@@ -21,6 +21,7 @@ _TUNABLES = get_tunables()
 
 _LOG_SIGNALS = frozenset(_TUNABLES.routing.log_signals)
 _QUERY_SIGNALS = frozenset(_TUNABLES.routing.query_signals)
+_WEAK_QUERY_SIGNALS = frozenset(_TUNABLES.routing.weak_query_signals)
 _INTENT_SYSTEM = _TUNABLES.prompts.intent_system
 
 
@@ -74,13 +75,18 @@ async def _classify_intent(message: str, user_id: str) -> str:
         "log_meal" or "coaching".
     """
     lowered = message.lower()
-    has_log = any(sig in lowered for sig in _LOG_SIGNALS)
-    has_query = any(sig in lowered for sig in _QUERY_SIGNALS)
 
-    if has_query:
+    # Precedence: a strong query phrase ("how much …") is always a question;
+    # an explicit food report ("i had …") then wins over a *weak* query signal
+    # (a bare macro/time noun like "fat" or "today") that also occurs in food
+    # descriptions, so "I had … 3.8% fat milk" logs instead of misrouting to
+    # coaching.
+    if any(sig in lowered for sig in _QUERY_SIGNALS):
         return "coaching"
-    if has_log:
+    if any(sig in lowered for sig in _LOG_SIGNALS):
         return "log_meal"
+    if any(sig in lowered for sig in _WEAK_QUERY_SIGNALS):
+        return "coaching"
 
     granted = await consume_llm_credit(user_id)
     if not granted:

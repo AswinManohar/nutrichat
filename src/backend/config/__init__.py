@@ -123,6 +123,7 @@ class UpperLimitEntry(BaseModel):
 class RoutingConfig(BaseModel):
     log_signals: list[str]
     query_signals: list[str]
+    weak_query_signals: list[str]
     confirm_keywords: list[str]
     reject_keywords: list[str]
     new_meal_leadins: list[str]

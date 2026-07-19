@@ -36,6 +36,25 @@ async def test_classify_intent_query_signal_no_llm():
 
 
 @pytest.mark.asyncio
+async def test_classify_intent_food_report_naming_a_macro_is_log():
+    # Regression: a food report that happens to name a macro/ingredient
+    # ("3.8% fat milk", "high protein yogurt") used to match the bare "fat"/
+    # "protein" query signal and misroute to coaching, so the meal never logged.
+    # An explicit "i had"/"i ate" report must win over a bare macro noun (no LLM).
+    mock_llm = MagicMock()
+    with patch("backend.agent.orchestrator._intent_llm", mock_llm):
+        for msg in (
+            "I had a bannana smoothie, with 4 almonds, 4 walnuts and half a "
+            "glass of 3.8% fat milk",
+            "I had a high protein yogurt",
+            "i ate low carbs bread",
+            "I had eggs today",
+        ):
+            assert await _classify_intent(msg, "user-1") == "log_meal", msg
+    mock_llm.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_classify_intent_meal_plan_suggestion_is_coaching():
     # Regression: "suggest a meal plan for dinner" used to match the "for dinner"
     # log signal and short-circuit to the meal logger ("I didn't catch any food
