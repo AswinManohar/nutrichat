@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from backend.api import (
     billing,
@@ -19,20 +18,14 @@ from backend.api import (
     quota,
     telegram_link,
 )
+from backend.db.checkpointer import pooled_checkpointer
 from backend.observability import configure_observability
 from backend.ratelimit import RateLimitMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
-    db_url = os.environ.get(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
-    )
-    # AsyncPostgresSaver uses psycopg (v3) which needs plain postgresql:// not +asyncpg
-    psycopg_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
-
-    async with AsyncPostgresSaver.from_conn_string(psycopg_url) as checkpointer:
-        await checkpointer.setup()
+    async with pooled_checkpointer() as checkpointer:
         app_instance.state.checkpointer = checkpointer
         yield
 

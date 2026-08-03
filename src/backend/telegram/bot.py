@@ -15,8 +15,8 @@ import os
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from fastapi import FastAPI, Request, Response
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
+from backend.db.checkpointer import pooled_checkpointer
 from backend.observability import configure_observability
 from backend.telegram.handlers import router
 
@@ -41,14 +41,6 @@ async def _register_commands(bot: Bot) -> None:
         bot: The aiogram Bot to register commands on.
     """
     await bot.set_my_commands(_BOT_COMMANDS)
-
-
-def _psycopg_url() -> str:
-    """Return DATABASE_URL with the asyncpg driver stripped for psycopg."""
-    db_url = os.environ.get(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
-    )
-    return db_url.replace("postgresql+asyncpg://", "postgresql://")
 
 
 def build_bot() -> Bot:
@@ -82,8 +74,7 @@ async def run_polling() -> None:
     bot = build_bot()
     dispatcher = build_dispatcher()
 
-    async with AsyncPostgresSaver.from_conn_string(_psycopg_url()) as checkpointer:
-        await checkpointer.setup()
+    async with pooled_checkpointer() as checkpointer:
         bot.checkpointer = checkpointer  # type: ignore[attr-defined]
         await bot.delete_webhook(drop_pending_updates=True)
         await _register_commands(bot)

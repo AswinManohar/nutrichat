@@ -20,6 +20,7 @@ dependencies = [
     "asyncpg>=0.30.0",
     "psycopg2-binary>=2.9.0", # Alembic sync driver
     "psycopg[binary]>=3.0.0", # LangGraph checkpointer async driver (binary bundles libpq for Railway)
+    "psycopg-pool>=3.2.0", # Self-healing connection pool for the checkpointer
     "pgvector>=0.3.0",
     "alembic>=1.13.0",
     "langgraph-checkpoint-postgres>=2.0.0", # Persistent chat history
