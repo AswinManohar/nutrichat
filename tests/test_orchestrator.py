@@ -19,7 +19,7 @@ def _mock_fact_task():
 async def test_classify_intent_log_signal_no_llm():
     mock_llm = MagicMock()
     with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("I had 2 scrambled eggs for breakfast")
+        intent = await _classify_intent("I had 2 scrambled eggs for breakfast", "user-1")
 
     assert intent == "log_meal"
     mock_llm.ainvoke.assert_not_called()
@@ -29,9 +29,28 @@ async def test_classify_intent_log_signal_no_llm():
 async def test_classify_intent_query_signal_no_llm():
     mock_llm = MagicMock()
     with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("how much protein have I had today?")
+        intent = await _classify_intent("how much protein have I had today?", "user-1")
 
     assert intent == "coaching"
+    mock_llm.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_food_report_naming_a_macro_is_log():
+    # Regression: a food report that happens to name a macro/ingredient
+    # ("3.8% fat milk", "high protein yogurt") used to match the bare "fat"/
+    # "protein" query signal and misroute to coaching, so the meal never logged.
+    # An explicit "i had"/"i ate" report must win over a bare macro noun (no LLM).
+    mock_llm = MagicMock()
+    with patch("backend.agent.orchestrator._intent_llm", mock_llm):
+        for msg in (
+            "I had a bannana smoothie, with 4 almonds, 4 walnuts and half a "
+            "glass of 3.8% fat milk",
+            "I had a high protein yogurt",
+            "i ate low carbs bread",
+            "I had eggs today",
+        ):
+            assert await _classify_intent(msg, "user-1") == "log_meal", msg
     mock_llm.ainvoke.assert_not_called()
 
 
@@ -42,7 +61,7 @@ async def test_classify_intent_meal_plan_suggestion_is_coaching():
     # items"). It must route to coaching, deterministically (no LLM).
     mock_llm = MagicMock()
     with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("suggest a meal plan for dinner")
+        intent = await _classify_intent("suggest a meal plan for dinner", "user-1")
 
     assert intent == "coaching"
     mock_llm.ainvoke.assert_not_called()
@@ -52,7 +71,7 @@ async def test_classify_intent_meal_plan_suggestion_is_coaching():
 async def test_classify_intent_what_should_i_eat_is_coaching():
     mock_llm = MagicMock()
     with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("what should I eat for dinner?")
+        intent = await _classify_intent("what should I eat for dinner?", "user-1")
 
     assert intent == "coaching"
     mock_llm.ainvoke.assert_not_called()
@@ -62,8 +81,13 @@ async def test_classify_intent_what_should_i_eat_is_coaching():
 async def test_classify_intent_ambiguous_uses_llm_fallback():
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=_IntentResult(type="log_meal"))
-    with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("coffee")
+    with (
+        patch("backend.agent.orchestrator._intent_llm", mock_llm),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+        ),
+    ):
+        intent = await _classify_intent("coffee", "user-1")
 
     mock_llm.ainvoke.assert_called_once()
     assert intent == "log_meal"
@@ -116,6 +140,9 @@ async def test_handle_message_image_always_meal_logging():
         patch(
             "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+        ),
     ):
         result = await handle_message(
             "user-1", "what's this?", "thread-1", None, image_b64="abc123"
@@ -137,6 +164,9 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
             "backend.agent.orchestrator._classify_intent",
             new_callable=AsyncMock,
             return_value="coaching",
+        ),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
         ),
         patch(
             "backend.agent.orchestrator._coaching_agent.handle",
@@ -170,6 +200,9 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
             return_value="log_meal",
         ),
         patch(
+            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+        ),
+        patch(
             "backend.agent.orchestrator._coaching_agent.handle", new_callable=AsyncMock
         ) as handle_mock,
     ):
@@ -190,6 +223,9 @@ async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
             "backend.agent.orchestrator._classify_intent",
             new_callable=AsyncMock,
             return_value="log_meal",
+        ),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
         ),
     ):
         await handle_message("user-1", "I had 2 eggs", "thread-1", None)

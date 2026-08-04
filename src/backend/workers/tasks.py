@@ -126,15 +126,19 @@ async def _embed_meal_summary(meal_id: str) -> None:
         if meal is None:
             return
 
-        food_names = [item["food_name"] for item in meal.entities]
-        summary = f"{meal.meal_type}: " + ", ".join(food_names)
+        label = getattr(meal, "label", None)
+        if label:
+            body = label
+        else:
+            body = ", ".join(item["food_name"] for item in meal.entities)
+        summary = f"{meal.meal_type}: {body}"
         embedding = await embed_text(summary)
 
         meal.embedding = embedding
         await session.commit()
 
 
-@celery_app.task(name="backend.workers.tasks.embed_meal_summary")
+@celery_app.task(name="backend.workers.tasks.embed_meal_summary", ignore_result=True)
 def embed_meal_summary(meal_id: str) -> None:
     """Embed a meal's food summary and store it on `meal_log.embedding`.
 
@@ -191,7 +195,9 @@ async def _extract_and_store_facts(
         await session.commit()
 
 
-@celery_app.task(name="backend.workers.tasks.extract_and_store_facts")
+@celery_app.task(
+    name="backend.workers.tasks.extract_and_store_facts", ignore_result=True
+)
 def extract_and_store_facts(user_id: str, user_input: str, agent_reply: str) -> None:
     """Extract lasting preference facts from a conversation turn and store them.
 

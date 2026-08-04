@@ -56,7 +56,7 @@ async def _mint(user_id: str, name: str, scopes: list[str]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Mint a NutriChat integration token")
+    parser = argparse.ArgumentParser(description="Mint a Mealsy integration token")
     parser.add_argument("--user-id", required=True, help="Supabase Auth user UUID")
     parser.add_argument("--name", required=True, help="Label for this token")
     parser.add_argument(

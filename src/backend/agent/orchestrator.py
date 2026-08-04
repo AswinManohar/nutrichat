@@ -12,6 +12,7 @@ from backend.agent.coaching import CoachingAgent
 from backend.agent.graph import build_graph
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.config import get_tunables
+from backend.quota import consume_llm_credit
 from backend.workers.tasks import extract_and_store_facts
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ _TUNABLES = get_tunables()
 
 _LOG_SIGNALS = frozenset(_TUNABLES.routing.log_signals)
 _QUERY_SIGNALS = frozenset(_TUNABLES.routing.query_signals)
+_WEAK_QUERY_SIGNALS = frozenset(_TUNABLES.routing.weak_query_signals)
 _INTENT_SYSTEM = _TUNABLES.prompts.intent_system
 
 
@@ -37,26 +39,57 @@ _intent_llm = make_llm(
 ).with_structured_output(_IntentResult)
 _coaching_agent = CoachingAgent()
 
+# Compiling the StateGraph is pure CPU work with no per-message state, so do it
+# once per checkpointer instead of on every turn. Keyed by checkpointer identity:
+# in production the checkpointer is a process-lifetime singleton (held by
+# app.state), so this compiles the graph exactly once. A None checkpointer (unit
+# tests, no-persistence callers) always rebuilds, keeping patched build_graph
+# isolated per test.
+_compiled_graphs: dict[int, Any] = {}
 
-async def _classify_intent(message: str) -> str:
+
+def _graph_for(checkpointer: Any) -> Any:
+    """Return a compiled graph for this checkpointer, building it at most once."""
+    if checkpointer is None:
+        return build_graph(checkpointer)
+    key = id(checkpointer)
+    graph = _compiled_graphs.get(key)
+    if graph is None:
+        graph = build_graph(checkpointer)
+        _compiled_graphs[key] = graph
+    return graph
+
+
+async def _classify_intent(message: str, user_id: str) -> str:
     """Classify a fresh user message as log_meal or coaching.
 
-    Two-stage: keyword pre-filter (zero LLM cost), LLM fallback when
-    ambiguous (per coaching agent design spec §3).
+    Two-stage: keyword pre-filter (zero LLM cost and zero quota), LLM
+    fallback when ambiguous. When over quota, skips the LLM and defaults
+    to log_meal.
 
     Args:
         message: Raw user message.
+        user_id: Supabase Auth UUID — used for quota check before LLM call.
 
     Returns:
         "log_meal" or "coaching".
     """
     lowered = message.lower()
-    has_log = any(sig in lowered for sig in _LOG_SIGNALS)
-    has_query = any(sig in lowered for sig in _QUERY_SIGNALS)
 
-    if has_query:
+    # Precedence: a strong query phrase ("how much …") is always a question;
+    # an explicit food report ("i had …") then wins over a *weak* query signal
+    # (a bare macro/time noun like "fat" or "today") that also occurs in food
+    # descriptions, so "I had … 3.8% fat milk" logs instead of misrouting to
+    # coaching.
+    if any(sig in lowered for sig in _QUERY_SIGNALS):
         return "coaching"
-    if has_log:
+    if any(sig in lowered for sig in _LOG_SIGNALS):
+        return "log_meal"
+    if any(sig in lowered for sig in _WEAK_QUERY_SIGNALS):
+        return "coaching"
+
+    granted = await consume_llm_credit(user_id)
+    if not granted:
         return "log_meal"
 
     with logfire.span("classify_intent_llm"):
@@ -103,7 +136,7 @@ async def handle_message(
         thread_id=thread_id,
         has_image=bool(image_b64),
     ) as span:
-        graph = build_graph(checkpointer)
+        graph = _graph_for(checkpointer)
         config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
 
         current_state = await graph.aget_state(config)
@@ -112,13 +145,20 @@ async def handle_message(
         is_coaching = (
             not is_paused
             and not image_b64
-            and await _classify_intent(user_input) == "coaching"
+            and await _classify_intent(user_input, user_id) == "coaching"
         )
         if is_coaching:
             result = await _handle_coaching(user_id, user_input)
         else:
             result = await _handle_meal_logging(
-                graph, config, user_input, user_id, image_b64, is_paused, meal_type, action
+                graph,
+                config,
+                user_input,
+                user_id,
+                image_b64,
+                is_paused,
+                meal_type,
+                action,
             )
 
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
@@ -173,6 +213,9 @@ async def _handle_meal_logging(
             # into checkpoint state, then resume with None. `action` is set
             # every resume (None unless decomposing) so a stale value can't
             # re-trigger the decompose branch on the next confirm.
+            # Paused resumes (correct/decompose/confirm) are exempt from quota —
+            # only apply_correction and decompose_to_ingredients are called, which
+            # are explicitly excluded from the per-inference count.
             update: dict[str, Any] = {
                 "messages": [HumanMessage(content=user_input)],
                 "action": action,
@@ -182,7 +225,15 @@ async def _handle_meal_logging(
             await graph.aupdate_state(config, update)
             result = await graph.ainvoke(None, config=config)
         else:
-            # Fresh start: supply full initial state
+            # Fresh start: consume one credit for the extraction LLM call.
+            granted = await consume_llm_credit(user_id)
+            if not granted:
+                return {
+                    "status": "success",
+                    "message": _UPGRADE_MSG,
+                    "paused": False,
+                    "items": [],
+                }
             result = await graph.ainvoke(
                 {
                     "messages": [HumanMessage(content=user_input)],
@@ -193,6 +244,8 @@ async def _handle_meal_logging(
                     "meal_type": None,
                     "action": None,
                     "from_saved": False,
+                    "meal_id": None,
+                    "decomposed_entities": [],
                 },
                 config=config,
             )
@@ -226,19 +279,36 @@ async def _handle_meal_logging(
                         "candidates": r.get("candidates", []),
                         "source": r.get("source", "USDA"),
                         "estimated": r.get("estimated", False),
+                        "source_dish": r.get("source_dish"),
+                        "is_composite": r.get("is_composite", False),
+                        # Full breakdown so "Save to My Meals" preserves micros.
+                        "sugar_g": r.get("sugar_g", 0.0),
+                        "sat_fat_g": r.get("sat_fat_g", 0.0),
+                        "nutrients": r.get("nutrients", {}),
                     }
                 )
 
-        return {
+        response: dict[str, Any] = {
             "status": "success",
             "message": last_ai.content if last_ai else "",
             "paused": still_paused,
             "items": items,
         }
+        if not still_paused:
+            response["meal_id"] = result.get("meal_id")
+        return response
+
+
+_UPGRADE_MSG = (
+    "You've used all your free AI requests. " "Visit mealsy.app/upgrade to continue."
+)
 
 
 async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
+
+    Consumes one quota credit per coaching turn (not per internal LLM call
+    inside CoachingAgent). Returns an upgrade prompt when over quota.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -248,6 +318,14 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
         Dict with status, message, paused=False, and items=[] — same shape
         as meal logging so web and Telegram channels stay uniform.
     """
+    granted = await consume_llm_credit(user_id)
+    if not granted:
+        return {
+            "status": "success",
+            "message": _UPGRADE_MSG,
+            "paused": False,
+            "items": [],
+        }
     with logfire.span("coaching"):
         message = await _coaching_agent.handle(user_id, user_input)
     return {"status": "success", "message": message, "paused": False, "items": []}

@@ -1,6 +1,9 @@
-# CLAUDE.md — NutriChat
+# CLAUDE.md — Mealsy
 
-Learning/pedagogical project for building robust agentic systems. Users describe meals in natural language;
+Learning/pedagogical project for building robust agentic systems (the product
+was renamed from "NutriChat"; the git repo directory is still `nutrichat/` and
+some infra identifiers keep the old name — see docs/deployment/deploy-guide.md).
+Users describe meals in natural language;
 the agent extracts food entities, resolves them against USDA FoodData Central,
 and tracks daily nutrition goals.
 
@@ -13,7 +16,7 @@ and tracks daily nutrition goals.
 | Backend | Python 3.12 · FastAPI · async |
 | Agent | LangGraph (logging) · Pydantic AI (coaching pilot) · tool-use router pattern |
 | Observability | Logfire (OpenTelemetry) |
-| LLM — extraction | Gemini 3.1 Flash-Lite Preview |
+| LLM — extraction | Gemini 2.5 Flash (thinking disabled — see tunables `extraction_thinking_budget`) |
 | LLM — coaching | Gemini 2.5 Flash |
 | LLM — fallback | Claude Haiku 4.5 |
 | Database | PostgreSQL 16 + pgvector |
@@ -24,7 +27,7 @@ and tracks daily nutrition goals.
 | Frontend | React 19 · TypeScript · Vite · Tailwind CSS |
 | Telegram bot | aiogram 3 (polling for dev, webhook for prod) |
 | Food data | USDA FoodData Central (CC0, free) |
-| Hosting | Railway (backend) · Vercel (frontend) |
+| Hosting | Railway (backend: web/worker/bot + Redis) · Netlify (frontend) · Supabase (Postgres) |
 
 ---
 

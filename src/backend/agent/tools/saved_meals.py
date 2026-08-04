@@ -6,33 +6,77 @@ without depending on the FastAPI router.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Sequence
+
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.agent.tools.decompose import normalize_meal_name
 from backend.db.models import UserMeal
 from backend.db.session import get_session
 
+logger = logging.getLogger(__name__)
+
 # USDAResult fields needed to rebuild a card row from a stored ingredient.
 _MACROS = ("kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "sat_fat_g")
 
 
-async def find_saved_meal(user_id: str, text: str) -> UserMeal | None:
-    """Return the user's saved meal whose normalized name matches `text`.
+def _contiguous_sublist(haystack: list[str], needle: list[str]) -> bool:
+    """True if `needle` appears as a contiguous run of tokens in `haystack`."""
+    n = len(needle)
+    if n == 0 or n > len(haystack):
+        return False
+    return any(haystack[i : i + n] == needle for i in range(len(haystack) - n + 1))
 
-    Normalized-exact match (V1). Returns None on no match or empty text.
+
+def _best_saved_match(text: str, meals: Sequence[UserMeal]) -> UserMeal | None:
+    """Pick the saved meal whose name is the longest contiguous phrase in `text`.
+
+    A saved meal matches when its normalized name tokens appear as a contiguous
+    run inside the normalized message tokens, so "chicken biryani" hits inside
+    "I had chicken biryani for lunch". The longest (most specific) match wins —
+    "fried rice" beats "rice". `meals` must be ordered most-recent-first so ties
+    on phrase length resolve to the most recently created meal.
+
+    Returns None when no saved name appears in the message.
     """
-    normalized = normalize_meal_name(text)
-    if not normalized:
+    msg_tokens = normalize_meal_name(text).split()
+    if not msg_tokens:
         return None
-    async with get_session()() as session:
-        result = await session.execute(
-            select(UserMeal).where(
-                UserMeal.user_id == user_id,
-                UserMeal.name_normalized == normalized,
-                UserMeal.deleted_at.is_(None),
+    best: UserMeal | None = None
+    best_len = 0
+    for meal in meals:
+        name_tokens = meal.name_normalized.split()
+        if len(name_tokens) > best_len and _contiguous_sublist(msg_tokens, name_tokens):
+            best, best_len = meal, len(name_tokens)
+    return best
+
+
+async def find_saved_meal(user_id: str, text: str) -> UserMeal | None:
+    """Return the user's saved meal whose name appears as a phrase in `text`.
+
+    Contiguous-phrase match (V1): matches a saved name embedded in a sentence,
+    longest match wins. Returns None on no match, empty text, or DB error (so a
+    lookup failure degrades to the normal extract->USDA path, never blocking).
+    """
+    if not normalize_meal_name(text):
+        return None
+    try:
+        async with get_session()() as session:
+            result = await session.execute(
+                select(UserMeal)
+                .where(
+                    UserMeal.user_id == user_id,
+                    UserMeal.deleted_at.is_(None),
+                )
+                .order_by(UserMeal.created_at.desc())
             )
-        )
-        return result.scalars().first()
+            meals = result.scalars().all()
+    except (SQLAlchemyError, OSError) as exc:
+        logger.warning("Saved-meal lookup failed for %s: %s", user_id, exc)
+        return None
+    return _best_saved_match(text, meals)
 
 
 def saved_meal_to_results(meal: UserMeal) -> tuple[list[dict], list[dict]]:

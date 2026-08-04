@@ -20,6 +20,7 @@ class GoalResponse(BaseModel):
     protein_goal: float | None
     fiber_goal: float | None
     dietary_prefs: dict
+    first_meal_time: str | None
     streak_days: int
 
     model_config = ConfigDict(extra="forbid")
@@ -31,6 +32,9 @@ class GoalCreate(BaseModel):
     protein_goal: float | None = Field(default=None, gt=0)
     fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
+    first_meal_time: str | None = Field(
+        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +58,9 @@ class GoalUpdate(BaseModel):
     protein_goal: float | None = Field(default=None, gt=0)
     fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
+    first_meal_time: str | None = Field(
+        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +85,7 @@ def _to_response(goal: UserGoal) -> GoalResponse:
         protein_goal=goal.protein_goal,
         fiber_goal=goal.fiber_goal,
         dietary_prefs=goal.dietary_prefs,
+        first_meal_time=goal.first_meal_time,
         streak_days=goal.streak_days,
     )
 
@@ -109,6 +117,7 @@ async def create_goals(
             protein_goal=req.protein_goal,
             fiber_goal=req.fiber_goal,
             dietary_prefs=req.dietary_prefs,
+            first_meal_time=req.first_meal_time,
             streak_days=0,
         )
         session.add(goal)
@@ -132,6 +141,7 @@ async def update_goals(
         goal.protein_goal = req.protein_goal
         goal.fiber_goal = req.fiber_goal
         goal.dietary_prefs = req.dietary_prefs
+        goal.first_meal_time = req.first_meal_time
         await session.commit()
         await session.refresh(goal)
         return _to_response(goal)

@@ -10,7 +10,7 @@ import re
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -83,6 +83,13 @@ class USDAResult(BaseModel):
     # found and the model estimated macros instead.
     source: str = "USDA"
     estimated: bool = False
+    # Set by usda_batch_node from the originating FoodEntity when this result
+    # came from auto-decomposing a composite dish; None otherwise.
+    source_dish: str | None = None
+    # Carried from the originating FoodEntity: True for a prepared/multi-
+    # ingredient dish that can still be broken into ingredients. Lets the
+    # frontend offer "Break into ingredients" only where it makes sense.
+    is_composite: bool = False
 
 
 class NutritionEstimate(BaseModel):
@@ -384,10 +391,18 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
 
 _ESTIMATE_SYSTEM = _TUNABLES.prompts.nutrition_estimate_system
 
+# Thinking off (extraction-tier): estimation is a single structured-output
+# call on the interactive card-render path — don't pay the dynamic-thinking
+# latency (see token_limits.extraction_thinking_budget).
 _estimate_agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
     output_type=NutritionEstimate,
     system_prompt=_ESTIMATE_SYSTEM,
+    model_settings=GoogleModelSettings(
+        google_thinking_config={
+            "thinking_budget": _TUNABLES.token_limits.extraction_thinking_budget
+        }
+    ),
 )
 
 

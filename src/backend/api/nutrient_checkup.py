@@ -23,7 +23,9 @@ class NutrientCheckupItem(BaseModel):
     unit: str
     trend_pct: float | None
     direction: str
-    rda_pct: float | None
+    # Defaults to None so rows persisted before rda_pct was added (the field is
+    # simply absent from their stored JSONB) still deserialize instead of 500ing.
+    rda_pct: float | None = None
 
     model_config = ConfigDict(extra="forbid")
 

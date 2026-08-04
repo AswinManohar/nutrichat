@@ -4,9 +4,11 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { ChatMessage } from '../../stores/mealStore'
-import type { MealCategory } from '../../api/types'
+import type { LogItemInput, MealCategory } from '../../api/types'
+import { Check } from 'lucide-react'
 import { ConfirmationCard } from './ConfirmationCard'
 import { MascotSprite } from '../mascot/MascotSprite'
+import { MascotGreeting } from '../mascot/MascotGreeting'
 
 const MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
@@ -32,15 +34,66 @@ const MARKDOWN_COMPONENTS: Components = {
 interface ChatThreadProps {
   messages: ChatMessage[]
   onAction: (text: string, mealType?: MealCategory) => void
+  onConfirmLog: (items: LogItemInput[], mealType: MealCategory, portion: number) => void
+  onCancel: () => void
   onDismissCard: () => void
+  onDecompose: () => void
+  onCombine: () => void
   isLoading: boolean
+}
+
+/** Compact one-line stand-in for a confirmation card whose turn has ended. */
+function CollapsedCard({ msg }: { msg: ChatMessage }) {
+  if (msg.resolved === 'discarded') {
+    // Cancelled / all-items-removed card — no check icon, no names/kcal.
+    return (
+      <div className="self-start flex items-center gap-2 text-[12px] text-muted/70 italic rise-in">
+        <span className="truncate max-w-[60vw] md:max-w-md">Discarded — nothing logged.</span>
+      </div>
+    )
+  }
+  const names =
+    msg.resolvedLabel ??
+    [...new Set((msg.items ?? []).map((i) => i.source_dish || i.food_name))].join(', ')
+  const kcal =
+    msg.resolvedKcal ?? Math.round((msg.items ?? []).reduce((a, i) => a + i.kcal, 0))
+
+  // Superseded card: the user moved on without ever confirming, so nothing was
+  // logged. Stamp it "Not logged" with muted, struck-through text so it can't
+  // be mistaken for a logged meal's summary.
+  if (msg.resolved !== 'logged') {
+    return (
+      <div className="self-start flex items-center gap-2 text-[12px] text-muted/70 rise-in">
+        <span className="flex-shrink-0 rounded-full border border-sand-border bg-sand px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
+          Not logged
+        </span>
+        <span className="truncate max-w-[55vw] md:max-w-md line-through decoration-muted/40">
+          {names}
+          {kcal > 0 ? ` · ${kcal.toLocaleString()} kcal` : ''}
+        </span>
+      </div>
+    )
+  }
+
+  // Logged — keep the confirmed look with the sage check.
+  return (
+    <div className="self-start flex items-center gap-2 text-[12px] text-muted rise-in">
+      <span className="flex items-center justify-center w-4 h-4 rounded-full bg-sage/15 text-sage-deep">
+        <Check className="w-2.5 h-2.5" strokeWidth={3} />
+      </span>
+      <span className="truncate max-w-[60vw] md:max-w-md">
+        Logged: <span className="text-ink-soft font-medium">{names}</span>
+        {kcal > 0 ? ` · ${kcal.toLocaleString()} kcal` : ''}
+      </span>
+    </div>
+  )
 }
 
 const SUGGESTIONS = [
   { label: 'Eggs & toast', text: 'breakfast was 2 scrambled eggs and a slice of whole wheat toast' },
   { label: 'Chicken salad', text: 'lunch was a grilled chicken salad with vinaigrette' },
-  { label: 'Oatmeal & coffee', text: 'breakfast was black coffee and a bowl of oatmeal' },
-  { label: 'How much protein today?', text: 'how much protein have I had today?' },
+  { label: 'How much protein?', text: 'how much protein have I had today?' },
+  { label: 'What to eat tonight?', text: 'what should I eat for dinner to hit my fiber goal?' },
 ]
 
 function TypingIndicator() {
@@ -51,7 +104,16 @@ function TypingIndicator() {
   )
 }
 
-export function ChatThread({ messages, onAction, onDismissCard, isLoading }: ChatThreadProps) {
+export function ChatThread({
+  messages,
+  onAction,
+  onConfirmLog,
+  onCancel,
+  onDismissCard,
+  onDecompose,
+  onCombine,
+  isLoading,
+}: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -62,6 +124,7 @@ export function ChatThread({ messages, onAction, onDismissCard, isLoading }: Cha
     <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 flex flex-col gap-5 scroll-smooth">
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto gap-6 rise-stagger">
+          <MascotGreeting show={messages.length === 0} />
           <div style={{ '--i': 0 } as React.CSSProperties}>
             <h3 className="font-display text-[28px] text-sage-deep">What did you eat?</h3>
             <p className="text-[14px] text-muted mt-2 leading-relaxed">
@@ -82,11 +145,23 @@ export function ChatThread({ messages, onAction, onDismissCard, isLoading }: Cha
               </button>
             ))}
           </div>
+          <p className="text-[11px] text-muted/60" style={{ '--i': 2 } as React.CSSProperties}>
+            Describe a meal to log it, or ask anything about your nutrition.
+          </p>
         </div>
       ) : (
-        messages.map((msg) => {
+        messages.map((msg, idx) => {
           const isUser = msg.sender === 'user'
-          const hasCard = !isUser && msg.paused && msg.items && msg.items.length > 0
+          const hasItems = !isUser && !!msg.items && msg.items.length > 0
+          const isLast = idx === messages.length - 1
+          // A card is only interactive while it's the live turn: paused, last,
+          // and not yet logged. Otherwise it collapses to a one-line summary,
+          // so a stale card can't fire edits into a closed conversation.
+          const interactive = hasItems && !!msg.paused && isLast && !msg.resolved
+          if (hasItems && !interactive) {
+            return <CollapsedCard key={msg.id} msg={msg} />
+          }
+          const hasCard = interactive
           return (
             <div
               key={msg.id}
@@ -94,38 +169,47 @@ export function ChatThread({ messages, onAction, onDismissCard, isLoading }: Cha
                 isUser ? 'self-end items-end' : 'self-start items-start'
               }`}
             >
-              <div
-                className={
-                  isUser
-                    ? 'bg-sage text-white rounded-2xl rounded-br-md px-4 py-3'
-                    : 'card-sand rounded-2xl rounded-bl-md px-4 py-3.5'
-                }
-              >
-                {isUser && msg.imageB64 && (
-                  <div className="w-48 max-w-full rounded-lg overflow-hidden mb-2.5">
-                    <img
-                      src={`data:image/jpeg;base64,${msg.imageB64}`}
-                      alt="Submitted food"
-                      className="w-full h-auto object-cover max-h-48"
-                    />
-                  </div>
+              <div className={isUser ? '' : 'flex items-start gap-2.5 w-full'}>
+                {!isUser && (
+                  <div className="w-5 h-5 rounded-full bg-sage-forest flex-shrink-0 mt-1" aria-hidden="true" />
                 )}
-                {isUser ? (
-                  <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                ) : (
-                  <div className="text-[14px] leading-relaxed text-ink-soft">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                      {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
-                    </ReactMarkdown>
-                  </div>
-                )}
+                <div
+                  className={
+                    isUser
+                      ? 'bg-sage text-white rounded-2xl rounded-br-md px-4 py-3'
+                      : 'card-sand rounded-2xl rounded-bl-md px-4 py-3.5'
+                  }
+                >
+                  {isUser && msg.imageB64 && (
+                    <div className="w-48 max-w-full rounded-lg overflow-hidden mb-2.5">
+                      <img
+                        src={`data:image/jpeg;base64,${msg.imageB64}`}
+                        alt="Submitted food"
+                        className="w-full h-auto object-cover max-h-48"
+                      />
+                    </div>
+                  )}
+                  {isUser ? (
+                    <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  ) : (
+                    <div className="text-[14px] leading-relaxed text-ink-soft">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                        {hasCard ? 'Here is what I found — confirm, edit, or cancel.' : msg.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {hasCard && (
                 <ConfirmationCard
                   items={msg.items!}
                   onAction={onAction}
+                  onConfirmLog={onConfirmLog}
+                  onCancel={onCancel}
                   onDismiss={onDismissCard}
+                  onDecompose={onDecompose}
+                  onCombine={onCombine}
                   isLoading={isLoading}
                 />
               )}

@@ -14,6 +14,69 @@ export interface MealItem {
   source: string;
   /** True when nutrition was estimated by the LLM (no confident USDA match) */
   estimated: boolean;
+  /** Composite dish this ingredient was auto-decomposed from; null if atomic */
+  source_dish?: string | null;
+  /** True for a prepared/multi-ingredient dish that can be broken into ingredients */
+  is_composite?: boolean;
+  sugar_g?: number;
+  sat_fat_g?: number;
+  /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */
+  nutrients?: Record<string, { amount: number; unit: string }>;
+}
+
+export interface MyMealSummary {
+  id: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  n_ingredients: number;
+}
+
+export interface MyMealDetail extends MyMealSummary {
+  ingredients: MealItem[];
+}
+
+export interface SaveMealRequest {
+  name: string;
+  ingredients: MealItem[];
+}
+
+export interface IngredientOverride {
+  index: number;
+  qty_g: number;
+}
+
+export interface LogMyMealRequest {
+  meal_type: MealCategory;
+  portion?: number;
+  ingredients?: IngredientOverride[];
+}
+
+export interface LogMyMealResponse {
+  meal_id: string;
+  meal_type: string;
+  n_items: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  message: string;
+}
+
+/** A confirmation-card item plus its user-edited gram weight, for direct logging. */
+export interface LogItemInput extends MealItem {
+  /** User-edited grams (before the portion multiplier); qty_g stays the base. */
+  target_qty_g: number;
+}
+
+export interface LogItemsRequest {
+  meal_type: MealCategory;
+  portion: number;
+  items: LogItemInput[];
 }
 
 export type MealCategory = 'breakfast' | 'brunch' | 'lunch' | 'dinner' | 'snack';
@@ -31,6 +94,7 @@ export interface LogMealRequest {
   conversation_id?: string | null;
   image_b64?: string | null;
   meal_type?: MealCategory | null;
+  action?: string | null;
 }
 
 export interface LogMealResponse {
@@ -38,6 +102,7 @@ export interface LogMealResponse {
   message: string;
   paused: boolean;
   items: MealItem[];
+  meal_id?: string | null;
 }
 
 export interface CategoryStat {
@@ -53,11 +118,18 @@ export interface CategoryStat {
   share_kcal_pct: number;
 }
 
+export interface MealTypeEntry {
+  meal_type: string; // 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'brunch'
+  kcal: number;
+  summary: string; // e.g. "Scrambled eggs, Sourdough toast, Flat white"
+}
+
 export interface TodayTotals {
   kcal: number;
   protein_g: number;
   fiber_g: number;
   n_meals: number;
+  by_type?: MealTypeEntry[];
 }
 
 export type TrackingMode = 'goals' | 'mindful';
@@ -68,6 +140,8 @@ export interface GoalData {
   protein_goal: number | null;
   fiber_goal: number | null;
   dietary_prefs: Record<string, unknown>;
+  /** Typical first-meal time as "HH:MM" (24h), captured during onboarding. */
+  first_meal_time?: string | null;
   streak_days?: number;
 }
 
@@ -107,6 +181,7 @@ export interface DayTrend {
   date: string; // ISO date
   kcal: number;
   protein_g: number;
+  carbs_g: number;
   fiber_g: number;
   n_meals: number;
   junk_meals: number;
@@ -132,4 +207,17 @@ export interface NutrientCheckupResponse {
 
 export interface PendingNudgeResponse {
   summary_text: string | null;
+}
+
+export interface QuotaStatus {
+  used: number
+  limit: number
+  remaining: number
+  exhausted: boolean
+  tier: 'free' | 'paid'
+}
+
+export interface UpgradeResponse {
+  upgraded: boolean
+  new_quota: number
 }

@@ -43,7 +43,16 @@ class UserGoal(Base):
     protein_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     fiber_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     dietary_prefs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Typical first-meal time ("HH:MM", 24h) captured during onboarding as a
+    # behavioral implementation intention. Drives future reminder scheduling.
+    first_meal_time: Mapped[str | None] = mapped_column(Text, nullable=True)
     streak_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_requests_used: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    llm_quota: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=50, server_default="50"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -52,6 +61,33 @@ class UserGoal(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+
+class PushSubscription(Base):
+    """A browser Web Push subscription for a user.
+
+    Written by POST /push/subscribe during onboarding (or later). The recurring
+    sender that delivers reminders to these endpoints is out of scope here.
+    One user may have multiple subscriptions (one per browser/device); endpoint
+    is unique so re-subscribing the same browser upserts rather than duplicates.
+    """
+
+    __tablename__ = "push_subscription"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), nullable=False, index=True
+    )
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text, nullable=False)
+    auth: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -85,6 +121,7 @@ class MealLog(Base):
     fat_g: Mapped[float] = mapped_column(Float, nullable=False)
     fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
     entities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    label: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
@@ -104,6 +141,7 @@ class MealLog(Base):
         Index("ix_meal_log_hybrid", "user_id", "meal_type", "protein_g", "logged_at"),
         # Keyset pagination cursor for the integration API
         Index("ix_meal_log_cursor", "user_id", "updated_at", "meal_id"),
+        Index("ix_meal_log_user_label", "user_id", "label"),
         # IVFFlat index created via raw DDL in the Alembic migration
         # because SQLAlchemy Index() does not support operator classes.
     )
@@ -217,7 +255,13 @@ class FoodSource(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("ix_food_source_food_name", "food_name"),)
+    __table_args__ = (
+        # B-tree: serves the exact-match LLM-estimate lookup (food_name = :name).
+        Index("ix_food_source_food_name", "food_name"),
+        # pg_trgm GIN index ix_food_source_food_name_trgm is created via raw DDL
+        # in the Alembic migration (SQLAlchemy Index() has no operator-class
+        # support); it serves the ILIKE '%name%' cache probe in usda.py.
+    )
 
 
 class DailySummary(Base):
@@ -326,9 +370,7 @@ class NutrientCheckup(Base):
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     nutrients: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    notable_nutrients: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    notable_nutrients: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -347,7 +389,7 @@ class NutrientCheckup(Base):
 
 
 class TelegramLink(Base):
-    """Binds a Telegram chat to a NutriChat user.
+    """Binds a Telegram chat to a Mealsy user.
 
     Written by the bot process after a `/link <code>` command validates a
     short-lived Redis code. RLS is enabled with no policies — service-role
@@ -403,6 +445,4 @@ class IntegrationToken(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    __table_args__ = (
-        Index("ix_integration_token_token_hash", "token_hash"),
-    )
+    __table_args__ = (Index("ix_integration_token_token_hash", "token_hash"),)

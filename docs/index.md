@@ -15,6 +15,7 @@ then drill into a guide or the API reference below.
 architecture
 observability
 tuning-prompts
+coaching-meal-plans
 telegram-bot
 integration-api
 frontend-design

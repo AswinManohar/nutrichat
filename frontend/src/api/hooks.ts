@@ -5,14 +5,69 @@ import type {
   DayTrend,
   LogMealRequest,
   LogMealResponse,
+  LogMyMealRequest,
+  LogMyMealResponse,
   MindfulDay,
+  MyMealDetail,
+  MyMealSummary,
+  SaveMealRequest,
   TodayTotals,
   GoalData,
   NutrientCheckupResponse,
   PendingNudgeResponse,
   TelegramLinkCode,
   TelegramLinkStatus,
+  QuotaStatus,
+  UpgradeResponse,
 } from './types'
+
+export const useMyMeals = () => {
+  return useQuery<MyMealSummary[], Error>({
+    queryKey: ['my-meals'],
+    queryFn: () => apiClient.get<MyMealSummary[]>('/my-meals'),
+    staleTime: 30_000,
+  })
+}
+
+export const useSaveMeal = () => {
+  const queryClient = useQueryClient()
+  return useMutation<MyMealDetail, ApiError, SaveMealRequest>({
+    mutationFn: (req) => apiClient.post<MyMealDetail>('/my-meals', req),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
+
+export const useDeleteMeal = () => {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => apiClient.delete<void>(`/my-meals/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
+
+/** Fetch a saved meal's full ingredient breakdown (for the Customize editor). */
+export const useMyMeal = (id: string, enabled: boolean) => {
+  return useQuery<MyMealDetail, Error>({
+    queryKey: ['my-meals', id],
+    queryFn: () => apiClient.get<MyMealDetail>(`/my-meals/${id}`),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+/** Log a saved meal directly (quick-log at 1x, or customized). */
+export const useLogMyMeal = (mealId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation<LogMyMealResponse, ApiError, LogMyMealRequest>({
+    mutationFn: (req) =>
+      apiClient.post<LogMyMealResponse>(`/my-meals/${mealId}/log`, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['trends'] })
+      queryClient.invalidateQueries({ queryKey: ['meal-categories'] })
+    },
+  })
+}
 
 export const useMindfulToday = () => {
   return useQuery<MindfulDay, Error>({
@@ -136,6 +191,18 @@ export const useDisconnectTelegram = () => {
   })
 }
 
+export const useDeleteMealLog = () => {
+  const queryClient = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (mealId) => apiClient.delete<void>(`/meals/log/${mealId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['trends'] })
+      queryClient.invalidateQueries({ queryKey: ['meal-categories'] })
+    },
+  })
+}
+
 export const useLogMeal = () => {
   const queryClient = useQueryClient()
   return useMutation<LogMealResponse, Error, LogMealRequest>({
@@ -146,6 +213,28 @@ export const useLogMeal = () => {
       if (!data.paused) {
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
       }
+    },
+  })
+}
+
+export const useQuota = () => {
+  return useQuery<QuotaStatus, ApiError>({
+    queryKey: ['quota'],
+    queryFn: () => apiClient.get<QuotaStatus>('/quota'),
+    staleTime: 30_000,
+    retry: (failureCount, error) => {
+      if (error.status === 404) return false
+      return failureCount < 3
+    },
+  })
+}
+
+export const useUpgradeQuota = () => {
+  const queryClient = useQueryClient()
+  return useMutation<UpgradeResponse, ApiError, void>({
+    mutationFn: () => apiClient.post<UpgradeResponse>('/billing/upgrade'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quota'] })
     },
   })
 }

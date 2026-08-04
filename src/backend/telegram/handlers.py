@@ -1,4 +1,4 @@
-"""aiogram message/command/callback handlers for the NutriChat bot.
+"""aiogram message/command/callback handlers for the Mealsy bot.
 
 Each handler resolves `chat_id -> user_id` via `auth.resolve_user_id`,
 delegates to `handle_message()` (the same orchestrator entry point the web
@@ -43,7 +43,7 @@ _LINK_CODE_PREFIX = "tglink:code:"
 
 _NOT_LINKED_MSG = (
     "Your Telegram account isn't linked yet.\n\n"
-    "Open NutriChat in your browser, go to Settings -> Telegram Bot, "
+    "Open Mealsy in your browser, go to Settings -> Telegram Bot, "
     'tap "Connect Telegram", and send me the code with /link <code>.'
 )
 
@@ -55,10 +55,10 @@ _MIN_QTY_G = 5.0
 _SHORT_NAME_LEN = 18
 
 _HELP_MSG = (
-    "NutriChat commands:\n\n"
+    "Mealsy commands:\n\n"
     "/start - welcome message & account-linking instructions\n"
     "/help - show this list\n"
-    "/link <code> - link your Telegram to your NutriChat account "
+    "/link <code> - link your Telegram to your Mealsy account "
     "(get the code from the web app -> Settings -> Telegram)\n"
     "/goals - show your current calorie/protein/fiber goals\n"
     "/progress - see how much of today's goals you've hit\n"
@@ -231,7 +231,7 @@ async def cmd_start(message: Message) -> None:
         )
     else:
         await message.answer(
-            "Welcome to NutriChat!\n\n" + _NOT_LINKED_MSG + "\n\nSend /help "
+            "Welcome to Mealsy!\n\n" + _NOT_LINKED_MSG + "\n\nSend /help "
             "to see all commands."
         )
 

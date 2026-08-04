@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from kombu.exceptions import OperationalError
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text as sa_text
@@ -16,6 +19,8 @@ from backend.config import get_tunables
 from backend.db.redis_client import increment_today
 from backend.db.session import get_session
 from backend.workers.tasks import embed_meal_summary
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
@@ -77,6 +82,7 @@ def normalize_meal_type(value: str | None) -> str:
         return value.strip().lower()
     return _meal_type_from_hour(datetime.now(_CATEGORY_TZ).hour)
 
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -89,6 +95,18 @@ class FoodEntity(BaseModel):
     qty_g: float = Field(gt=0, description="Gram weight of the portion")
     unit: str = Field(description="Original unit: cup, tablespoon, piece, etc.")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    is_composite: bool = Field(
+        default=False,
+        description=(
+            "True for a prepared/multi-ingredient dish that should be broken "
+            "into ingredients (biryani, pasta dishes, curries, sandwiches, "
+            "smoothies, stir-fries); false for a whole/standard single food "
+            "(apple, chicken breast, cooked rice, milk)."
+        ),
+    )
+    # Set by auto_decompose_node, NOT emitted by the LLM: the composite dish
+    # this ingredient was broken out of. Drives the Combine action + label.
+    source_dish: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -123,10 +141,12 @@ class MealLogResult(BaseModel):
 _extraction_llm = make_llm().with_structured_output(ExtractionResult)
 _classifier_llm = make_llm().with_structured_output(ImageClassification)
 _correction_llm = make_llm().with_structured_output(ExtractionResult)
+_log_reply_llm = make_llm()
 
 _EXTRACTION_SYSTEM = _TUNABLES.prompts.extraction_system
 _CLASSIFY_SYSTEM = _TUNABLES.prompts.image_classify_system
 _CORRECTION_SYSTEM = _TUNABLES.prompts.correction_system
+_LOG_REPLY_SYSTEM = _TUNABLES.prompts.log_reply_system
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +226,8 @@ def apply_correction(entities: list[dict], correction: str) -> ExtractionResult:
 
 _CONFIRM_KEYWORDS = frozenset(_TUNABLES.routing.confirm_keywords)
 _REJECT_KEYWORDS = frozenset(_TUNABLES.routing.reject_keywords)
+_NEW_MEAL_LEADINS = tuple(_TUNABLES.routing.new_meal_leadins)
+_NEW_MEAL_EXCLUSIONS = frozenset(_TUNABLES.routing.new_meal_exclusions)
 
 
 def format_confirmation_card(usda_results: list) -> str:
@@ -276,13 +298,21 @@ def format_confirmation_card(usda_results: list) -> str:
 
 
 def classify_intent(message: str) -> str:
-    """Classify user response as confirm / correct / reject — no LLM.
+    """Classify user response as confirm / reject / new_meal / correct — no LLM.
+
+    Confirm and reject keywords take precedence. A "new_meal" is a fresh meal
+    statement typed while a confirmation card is still pending (e.g. "i had
+    mutton curry"): the message starts with a lead-in from ``new_meal_leadins``
+    and carries no additive qualifier from ``new_meal_exclusions`` ("also",
+    "too", "as well", "plus"). Additive lead-ins ("i had some rice too") stay a
+    correction so they merge into the pending card. Anything else is a
+    correction.
 
     Args:
         message: User's reply to the confirmation card.
 
     Returns:
-        "confirm", "reject", or "correct".
+        "confirm", "reject", "new_meal", or "correct".
     """
     lowered = message.lower().strip()
     # Strip punctuation for word-level matching
@@ -299,6 +329,14 @@ def classify_intent(message: str) -> str:
             return "reject"
         if kw in words:
             return "reject"
+    # A fresh meal statement supersedes the pending card unless an additive
+    # qualifier marks it as an edit ("as well" is multi-word → substring match).
+    if any(lowered.startswith(leadin) for leadin in _NEW_MEAL_LEADINS):
+        has_exclusion = any(
+            (kw in lowered if " " in kw else kw in words) for kw in _NEW_MEAL_EXCLUSIONS
+        )
+        if not has_exclusion:
+            return "new_meal"
     return "correct"
 
 
@@ -330,11 +368,73 @@ def _junk_flags(usda_results: list) -> dict:
     return {"has_junk": bool(junk_items), "junk_items": junk_items}
 
 
+async def _generate_log_reply(
+    label: str,
+    totals: dict,
+    junk_items: list[str],
+) -> str:
+    """Generate a short personalized confirmation message via LLM.
+
+    Falls back to a static summary if the LLM call fails so the log
+    response is never blocked by a model error.
+
+    Args:
+        label: Human-facing meal name (e.g. "chicken biryani").
+        totals: Dict with kcal, protein_g, fiber_g.
+        junk_items: List of food names flagged as junk.
+
+    Returns:
+        Two-line confirmation string.
+    """
+    user_msg = (
+        f"Meal: {label}\n"
+        f"Nutrition: {totals['kcal']:.0f} kcal, "
+        f"{totals['protein_g']:.0f}g protein, "
+        f"{totals['fiber_g']:.0f}g fiber\n"
+        f"Junk items: {', '.join(junk_items) if junk_items else 'none'}"
+    )
+    try:
+        result = await _log_reply_llm.ainvoke(
+            [
+                SystemMessage(content=_LOG_REPLY_SYSTEM),
+                HumanMessage(content=user_msg),
+            ]
+        )
+        return result.content.strip()
+    except Exception:
+        return (
+            f"{label} logged. "
+            f"{totals['kcal']:.0f} kcal, "
+            f"{totals['protein_g']:.0f}g protein."
+        )
+
+
+def _meal_label(entities: list[dict]) -> str:
+    """Human-facing dish-name snapshot for meal_log.label.
+
+    Uses source_dish where an entity came from decomposing a composite dish,
+    else its food_name; deduplicates while preserving first-seen order.
+
+    Args:
+        entities: Logged entity dicts (FoodEntity/USDAResult shape).
+
+    Returns:
+        Comma-joined dish/food names, e.g. "chicken biryani, apple".
+    """
+    names: list[str] = []
+    for e in entities:
+        name = e.get("source_dish") or e.get("food_name")
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names)
+
+
 async def _insert_meal_log(
     user_id: str,
     meal_type: str,
     usda_results: list,
     totals: dict,
+    label: str | None = None,
 ) -> str:
     """Insert a meal_log row and return the generated meal_id."""
     meal_id = str(uuid.uuid4())
@@ -345,9 +445,10 @@ async def _insert_meal_log(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities, flags) "
-                "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, :carbs_g, "
-                ":fat_g, :fiber_g, CAST(:entities AS jsonb), CAST(:flags AS jsonb))"
+                "fat_g, fiber_g, entities, flags, label) "
+                "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, "
+                ":carbs_g, :fat_g, :fiber_g, CAST(:entities AS jsonb), "
+                "CAST(:flags AS jsonb), :label)"
             ),
             {
                 "meal_id": meal_id,
@@ -360,6 +461,7 @@ async def _insert_meal_log(
                 "fiber_g": totals["fiber_g"],
                 "entities": json.dumps(entities),
                 "flags": json.dumps(flags),
+                "label": label,
             },
         )
         await session.commit()
@@ -370,6 +472,7 @@ async def log_meal(
     user_id: str,
     usda_results: list,
     meal_type: str = "unspecified",
+    label: str | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 
@@ -391,24 +494,40 @@ async def log_meal(
         "fat_g": round(sum(r.fat_g for r in resolved), 1),
         "fiber_g": round(sum(r.fiber_g for r in resolved), 1),
     }
-    meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals)
-    await increment_today(
-        user_id,
-        kcal=totals["kcal"],
-        protein_g=totals["protein_g"],
-        fiber_g=totals["fiber_g"],
+    junk_items = _junk_flags(resolved)["junk_items"]
+
+    async def _persist() -> str:
+        """Insert the row, bump Redis, enqueue the embedding; return meal_id."""
+        meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals, label)
+        await increment_today(
+            user_id,
+            kcal=totals["kcal"],
+            protein_g=totals["protein_g"],
+            fiber_g=totals["fiber_g"],
+        )
+        # Best-effort embedding for history search; a broker outage (e.g. Redis
+        # down) must never fail the meal log the user just confirmed.
+        try:
+            embed_meal_summary.delay(meal_id)
+        except (OperationalError, OSError) as exc:
+            logger.warning("Could not enqueue meal embedding: %s", exc)
+        return meal_id
+
+    # The confirmation reply depends only on label/totals/junk (not meal_id), so
+    # generate it concurrently with the writes — confirm latency is then
+    # max(write, llm) instead of their sum.
+    meal_id, reply = await asyncio.gather(
+        _persist(),
+        _generate_log_reply(
+            label=label or "Meal", totals=totals, junk_items=junk_items
+        ),
     )
-    embed_meal_summary.delay(meal_id)
     return MealLogResult(
         meal_id=meal_id,
         meal_type=meal_type,
         n_items=len(resolved),
         **totals,
-        message=(
-            f"Logged {totals['kcal']:.0f} kcal, "
-            f"{totals['protein_g']:.0f}g protein, "
-            f"{totals['fiber_g']:.0f}g fiber"
-        ),
+        message=reply,
     )
 
 

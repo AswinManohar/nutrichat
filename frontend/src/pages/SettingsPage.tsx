@@ -1,21 +1,23 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   useGoals,
   useUpdateGoals,
   useTelegramLinkStatus,
   useGenerateTelegramLinkCode,
   useDisconnectTelegram,
+  useQuota,
 } from '../api/hooks'
 import { GoalSlider } from '../components/onboarding/GoalSlider'
 import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
-import { Sparkles, Save, LogOut, Heart, Target, Send } from 'lucide-react'
+import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send, Zap } from 'lucide-react'
 import { useMascotStore } from '../stores/mascotStore'
 
 export const SettingsPage: React.FC = () => {
-  const { user, signOut } = useAuthStore()
+  const { user, signOut, isBypassed, disableBypass } = useAuthStore()
   const { data: goals, isLoading: goalsLoading } = useGoals()
   const updateGoalsMutation = useUpdateGoals()
 
@@ -38,6 +40,9 @@ export const SettingsPage: React.FC = () => {
   const [dietaryPrefs, setDietaryPrefs] = useState<string[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
   const { enabled: mascotEnabled, setEnabled: setMascotEnabled } = useMascotStore()
+  const navigate = useNavigate()
+  const { data: quota } = useQuota()
+  const quotaPct = quota ? Math.min(100, Math.round((quota.used / quota.limit) * 100)) : 0
 
   // Seed form from fetched goals (React "adjust state during render")
   const [seededFrom, setSeededFrom] = useState<typeof goals | null>(null)
@@ -292,6 +297,61 @@ export const SettingsPage: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* Plan & Usage Card */}
+        {quota && (
+          <Card className="border border-sand-border bg-sand backdrop-blur-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-sage-deep" />
+                Plan & Usage
+              </CardTitle>
+              <CardDescription>
+                {quota.tier === 'paid' ? 'Pro plan' : 'Free plan'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-muted">
+                <span>{quota.used} / {quota.limit} AI requests</span>
+                <span>{quotaPct}% used</span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuenow={quotaPct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Quota usage: ${quota.used} of ${quota.limit} AI requests`}
+                className="w-full h-2 bg-container rounded-full overflow-hidden"
+              >
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    quota.exhausted
+                      ? 'bg-danger'
+                      : quotaPct >= 80
+                      ? 'bg-warn'
+                      : 'bg-sage'
+                  }`}
+                  style={{ width: `${quotaPct}%` }}
+                />
+              </div>
+              {quota.tier === 'paid' ? (
+                <p className="text-xs text-sage-deep font-medium">
+                  You're on the Pro plan
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/upgrade')}
+                  className="w-full mt-1"
+                >
+                  {quota.exhausted ? 'Upgrade to unlock more' : 'Upgrade →'}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Appearance Card */}
         <Card className="border border-sand-border bg-sand backdrop-blur-md">
           <CardHeader>
@@ -343,9 +403,28 @@ export const SettingsPage: React.FC = () => {
               <span className="text-ink font-mono text-[10px]">{user?.id}</span>
             </div>
             
-            <div className="text-muted leading-normal">
-              Connected securely via Supabase Auth services.
-            </div>
+            {isBypassed ? (
+              <div className="bg-warn/10 border border-warn/30 p-3.5 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center gap-1.5 text-ink-soft font-semibold">
+                  <ShieldAlert className="w-4 h-4" />
+                  Offline Developer Mode is Active
+                </div>
+                <p className="text-[11px] text-muted leading-normal">
+                  All requests bypass live Supabase session authorization checks. Useful for offline code edits.
+                </p>
+                <button
+                  type="button"
+                  onClick={disableBypass}
+                  className="text-ink-soft hover:text-ink font-semibold underline text-left w-fit self-start"
+                >
+                  Switch back to Supabase Authentication
+                </button>
+              </div>
+            ) : (
+              <div className="text-muted leading-normal">
+                Connected securely via Supabase Auth services.
+              </div>
+            )}
 
             <Button
               type="button"

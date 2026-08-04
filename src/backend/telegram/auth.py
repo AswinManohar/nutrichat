@@ -1,4 +1,4 @@
-"""Resolve a Telegram chat_id to a NutriChat user_id, with Redis caching.
+"""Resolve a Telegram chat_id to a Mealsy user_id, with Redis caching.
 
 The `telegram_link` table is the source of truth; a Redis cache avoids a
 Postgres round trip on every message. The cache is invalidated by `/link`
@@ -19,7 +19,7 @@ _USER_CACHE_TTL_S = 3600
 
 
 async def resolve_user_id(chat_id: int) -> str | None:
-    """Return the NutriChat user_id linked to a Telegram chat, if any.
+    """Return the Mealsy user_id linked to a Telegram chat, if any.
 
     Args:
         chat_id: Telegram chat ID.
