@@ -1,0 +1,12 @@
+{"text": "2 eggs and toast", "expect": [["egg"], ["toast", "bread"]], "source": "synthetic"}
+{"text": "i had a bowl of oatmeal with banana and honey", "expect": [["oat"], ["banana"], ["honey"]], "source": "synthetic"}
+{"text": "grilled chicken salad with vinaigrette", "expect": [["chicken"], ["salad", "lettuce", "greens"], ["vinaigrette", "dressing"]], "source": "meal_log"}
+{"text": "100g grilled chicken breast", "expect": [["chicken"]], "source": "meal_log"}
+{"text": "coffee with milk and two sugars", "expect": [["coffee"], ["milk"], ["sugar"]], "source": "synthetic"}
+{"text": "peanut butter on whole wheat toast", "expect": [["peanut butter"], ["bread", "toast"]], "source": "meal_log"}
+{"text": "i ate dosa with sambar and coconut chutney", "expect": [["dosa"], ["sambar"], ["chutney"]], "source": "meal_log"}
+{"text": "banana smoothie with almonds and walnuts", "expect": [["banana", "smoothie"], ["almond"], ["walnut"]], "source": "meal_log"}
+{"text": "pork belly, rasam and rice", "expect": [["pork"], ["rasam"], ["rice"]], "source": "meal_log"}
+{"text": "chicken curry with parotta", "expect": [["chicken"], ["parotta", "paratha"]], "source": "meal_log"}
+{"text": "a handful of blueberries and greek yogurt", "expect": [["blueberr"], ["yogurt", "yoghurt"]], "source": "meal_log"}
+{"text": "scrambled eggs, butter and whole wheat bread", "expect": [["egg"], ["butter"], ["bread"]], "source": "meal_log"}

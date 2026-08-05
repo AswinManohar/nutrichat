@@ -1,0 +1,14 @@
+{"query": "oatmeal", "acceptable_fdc_ids": [173904, 173905, 1101825, 2346396], "acceptable_name_substrings": ["oats", "oatmeal"], "category": "single_food"}
+{"query": "white rice", "acceptable_fdc_ids": [169756, 168878], "acceptable_name_substrings": ["rice, white"], "category": "single_food"}
+{"query": "chicken breast", "acceptable_fdc_ids": [171077, 1098464], "acceptable_name_substrings": ["chicken, broilers or fryers, breast", "chicken breast"], "category": "single_food"}
+{"query": "berries", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["berries", "blueberry", "strawberry", "raspberry", "blackberry"], "category": "ambiguous"}
+{"query": "banana", "acceptable_fdc_ids": [173944, 1102653], "acceptable_name_substrings": ["bananas"], "category": "single_food"}
+{"query": "tomatoes for stew", "acceptable_fdc_ids": [170457], "acceptable_name_substrings": ["tomatoes, red, ripe, canned"], "category": "preparation"}
+{"query": "whole wheat bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, whole-wheat", "bread, whole wheat"], "category": "single_food"}
+{"query": "greek yogurt", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["yogurt, greek"], "category": "single_food"}
+{"query": "peanut butter", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["peanut butter"], "category": "single_food"}
+{"query": "olive oil", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oil, olive"], "category": "single_food"}
+{"query": "almonds", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almond"], "category": "single_food"}
+{"query": "cheddar cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, cheddar"], "category": "single_food"}
+{"query": "lentils", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["lentil"], "category": "single_food"}
+{"query": "scrambled eggs", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["egg, whole, cooked, scrambled", "eggs, scrambled"], "category": "preparation"}

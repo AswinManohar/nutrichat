@@ -1,0 +1,14 @@
+{"text": "2 eggs and toast", "expect": "log_meal", "note": "plain meal report"}
+{"text": "i had a protein shake", "expect": "log_meal", "note": "explicit log signal"}
+{"text": "protein shake", "expect": "log_meal", "note": "BARE MEAL NOUN - known failure, misrouted to coaching 5/5 in ticket 01"}
+{"text": "mutton biryani", "expect": "log_meal", "note": "bare dish name, real user phrasing"}
+{"text": "grilled chicken salad with vinaigrette", "expect": "log_meal", "note": "real user phrasing"}
+{"text": "just ate dosa with sambar", "expect": "log_meal", "note": "log signal + composite"}
+{"text": "banana smoothie", "expect": "log_meal", "note": "bare dish name"}
+{"text": "coffee with milk", "expect": "log_meal", "note": "bare, contains no log signal"}
+{"text": "how much protein do i have left", "expect": "coaching", "note": "strong query signal"}
+{"text": "am i eating enough fiber", "expect": "coaching", "note": "query"}
+{"text": "what should i eat for dinner", "expect": "coaching", "note": "advice request"}
+{"text": "how many calories have i had today", "expect": "coaching", "note": "strong query signal"}
+{"text": "is rice healthy", "expect": "coaching", "note": "general nutrition question"}
+{"text": "give me a meal plan for tomorrow", "expect": "coaching", "note": "planning request"}
