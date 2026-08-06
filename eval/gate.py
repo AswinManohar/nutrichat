@@ -241,9 +241,27 @@ async def main() -> None:
     ap.add_argument("--runs", type=int, default=5, help="repeats per category (N>=5)")
     ap.add_argument("--baseline", type=Path, help="score against this baseline JSON")
     ap.add_argument(
-        "--out", type=Path, default=Path(__file__).parent / "baseline_scores.json"
+        "--out",
+        type=Path,
+        help="write the report here (default: the baseline file when establishing a "
+        "baseline; nothing when scoring against one)",
     )
     args = ap.parse_args()
+
+    default_baseline = Path(__file__).parent / "baseline_scores.json"
+    # Establishing a baseline writes it; scoring a change against one must NOT, or the
+    # report overwrites its own reference and every delta comes out as exactly +0.0.
+    out_path = args.out if args.out else (None if args.baseline else default_baseline)
+
+    # Read the reference up front, so no later write can shadow it.
+    base: dict[str, Any] | None = None
+    if args.baseline:
+        if not args.baseline.exists():
+            ap.error(f"baseline not found: {args.baseline}")
+        with open(args.baseline) as f:
+            base = json.load(f)
+        if out_path and out_path.resolve() == args.baseline.resolve():
+            ap.error("--out would overwrite the baseline being scored against")
 
     sem = asyncio.Semaphore(CONCURRENCY)
     await prepare_user()
@@ -301,8 +319,9 @@ async def main() -> None:
         "worst_noise_pct": round(worst[1], 2),
     }
 
-    with open(args.out, "w") as f:
-        json.dump(report, f, indent=2)
+    if out_path:
+        with open(out_path, "w") as f:
+            json.dump(report, f, indent=2)
 
     print("\n=== noise band (identical code, repeated runs) ===")
     for cat in pct_scores:
@@ -320,14 +339,15 @@ async def main() -> None:
         pctb = 100 * b["noise_band"] / b["mean"] if b["mean"] else 0
         print(f"  {d:20} mean={b['mean']:8.0f} kcal  band={pctb:5.1f}%")
 
-    if args.baseline and args.baseline.exists():
-        with open(args.baseline) as f:
-            base = json.load(f)
+    if base is not None:
+        failures: list[str] = []
         print("\n=== delta vs baseline ===")
         for cat in pct_scores:
             delta = report[cat]["mean"] - base[cat]["mean"]
             tol = TOLERANCES[cat]
             verdict = "PASS" if delta >= -tol else "FAIL"
+            if verdict == "FAIL":
+                failures.append(cat)
             print(f"{cat:16} {delta:+6.1f}pp  (tolerance {tol:.1f}pp)  {verdict}")
         base_dish = base["decomposition_kcal"]["per_dish"]
         tol_pct = TOLERANCES["decomposition_kcal_pct"]
@@ -338,11 +358,17 @@ async def main() -> None:
                 100 * (b["mean"] - base_dish[dish]["mean"]) / base_dish[dish]["mean"]
             )
             verdict = "PASS" if abs(delta) <= tol_pct else "FAIL"
+            if verdict == "FAIL":
+                failures.append(f"decomp:{dish}")
             print(
                 f"decomp:{dish:<16} {delta:+6.1f}%  "
                 f"(tolerance +/-{tol_pct:.0f}%)  {verdict}"
             )
-    print(f"\nwrote {args.out}")
+        print(f"\nGATE: {'FAIL -- ' + ', '.join(failures) if failures else 'PASS'}")
+    if out_path:
+        print(f"\nwrote {out_path}")
+    if base is not None and failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
