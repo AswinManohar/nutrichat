@@ -12,7 +12,19 @@ from backend.agent.tools.usda import (
     estimate_nutrition_llm,
     usda_lookup_batch,
 )
+from backend.agent.tools.usda_local import LocalMatch
 from backend.config import get_tunables
+
+
+@pytest.fixture(autouse=True)
+def _force_api_path():
+    """Most tests in this file exercise the FDC API path (they mock
+    aiohttp/_cache_lookup). use_local_db defaults to true, so force the
+    dispatch point to route through _fetch_usda_api unless a test
+    overrides this."""
+    with patch("backend.agent.tools.usda._use_local", return_value=False):
+        yield
+
 
 MOCK_FDC_RESPONSE = {
     "foods": [
@@ -480,3 +492,101 @@ async def test_high_confidence_match_is_not_overridden():
     mock_run.assert_not_called()
     assert results[0].estimated is False
     assert results[0].source == "USDA"
+
+
+# ---------------------------------------------------------------------------
+# Local SQLite read path
+# ---------------------------------------------------------------------------
+
+_LOCAL_MATCH = LocalMatch(
+    fdc_id=555,
+    description="Chicken, broilers or fryers, breast, meat only, cooked, grilled",
+    match_confidence=0.9,
+    candidates=["Chicken, broilers or fryers, breast, meat only, cooked, grilled"],
+    macros_per_100g={
+        "kcal": 165.0,
+        "protein_g": 31.0,
+        "carbs_g": 0.0,
+        "fat_g": 3.6,
+        "fiber_g": 0.0,
+        "sugar_g": 0.0,
+        "sat_fat_g": 1.0,
+    },
+    nutrients_per_100g={
+        "Energy": {"amount": 165.0, "unit": "kcal"},
+        "Protein": {"amount": 31.0, "unit": "g"},
+    },
+)
+
+
+@pytest.mark.asyncio
+async def test_local_path_scales_macros_and_skips_cache_lookup():
+    entity = FoodEntity(food_name="grilled chicken breast", qty_g=250.0, unit="g")
+
+    with (
+        patch("backend.agent.tools.usda._use_local", return_value=True),
+        patch("backend.agent.tools.usda.usda_local.lookup", return_value=_LOCAL_MATCH),
+        patch(
+            "backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock
+        ) as mock_cache_lookup,
+    ):
+        results = await usda_lookup_batch([entity])
+
+    mock_cache_lookup.assert_not_called()
+    assert len(results) == 1
+    r = results[0]
+    assert r.fdc_id == 555
+    assert r.source == "USDA"
+    assert r.kcal == pytest.approx(165.0 * 2.5)
+    assert r.protein_g == pytest.approx(31.0 * 2.5)
+    assert r.fat_g == pytest.approx(3.6 * 2.5)
+
+
+@pytest.mark.asyncio
+async def test_local_path_low_confidence_falls_back_to_llm_estimate():
+    entity = FoodEntity(food_name="chicken biryani", qty_g=300.0, unit="bowl")
+
+    weak_match = LocalMatch(
+        fdc_id=1,
+        description="Chicken spread",
+        match_confidence=0.1,
+        candidates=["Chicken spread"],
+        macros_per_100g={
+            "kcal": 200.0,
+            "protein_g": 10.0,
+            "carbs_g": 0.0,
+            "fat_g": 15.0,
+            "fiber_g": 0.0,
+            "sugar_g": 0.0,
+            "sat_fat_g": 3.0,
+        },
+        nutrients_per_100g={},
+    )
+
+    fake_run = MagicMock()
+    fake_run.output = _FAKE_ESTIMATE
+
+    with (
+        patch("backend.agent.tools.usda._use_local", return_value=True),
+        patch("backend.agent.tools.usda.usda_local.lookup", return_value=weak_match),
+        patch(
+            "backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock
+        ) as mock_cache_lookup,
+        patch(
+            "backend.agent.tools.usda._estimate_cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch(
+            "backend.agent.tools.usda._estimate_agent.run",
+            new_callable=AsyncMock,
+            return_value=fake_run,
+        ),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    mock_cache_lookup.assert_not_called()
+    assert results[0].fdc_id == -1
+    assert results[0].estimated is True
+    assert results[0].source == "LLM_ESTIMATE"

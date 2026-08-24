@@ -45,17 +45,31 @@ CONCURRENCY = 5
 
 QTY_TOL = 0.25  # counted grams must land within +/-25% of count x singular
 
-# Per-category tolerances, each set just above the 95% confidence interval of the
-# baseline mean at N=5 (see wayfinder ticket 12, build-the-missing-eval-sets).
-# The gate compares MEANS over N runs, so the binding uncertainty is the standard error
-# of the mean -- not the raw max-min band, which overstates it badly (quantity: 12.5pp
-# band vs 4.9pp CI). Re-derive these whenever the case sets or N change.
+# Per-category tolerances. TWO constraints bind, and the original values
+# satisfied only the first:
+#
+#   1. tolerance > 95% CI of the mean over N runs (the noise constraint), and
+#   2. tolerance >= granularity = 100/len(cases) (the RESOLUTION constraint).
+#
+# (2) was missed originally and made every percentage category unusable: with
+# 8 quantity cases one case flipping moves the score 12.5pp, against a 5.0pp
+# tolerance -- so any real change failed, and only a byte-identical score could
+# pass. A tolerance finer than a single case cannot be satisfied by anything the
+# metric is capable of measuring. _validate_tolerances() below enforces (2) at
+# run time so this cannot silently return.
+#
+# Consequence worth stating plainly: with case sets this small the gate is
+# COARSE. It detects "a case or two broke", not fine drift. The way to tighten
+# it is more cases, never a smaller tolerance.
 TOLERANCES: dict[str, float] = {
-    "entity_recall": 2.0,  # CI 0.0pp; floor, set is saturated at 100
-    "quantity": 5.0,  # CI 4.9pp -- the noisiest percentage category
-    "food_identity": 2.0,  # CI 0.0pp; deterministic (USDA cache)
-    "intent_routing": 2.0,  # CI 0.0pp; deterministic
-    "decomposition_kcal_pct": 15.0,  # worst dish CI 14.7% -- see the caveat in 12
+    "entity_recall": 10.0,  # 12 cases -> 8.3pp granularity; CI 0.0pp
+    "quantity": 8.0,  # 24 cases -> 4.2pp granularity; CI 6.6pp (extraction is noisy)
+    "food_identity": 8.0,  # 14 cases -> 7.1pp granularity; CI 5.2pp
+    "intent_routing": 8.0,  # 14 cases -> 7.1pp granularity; CI 0.0pp
+    # Not a percentage of cases, so granularity does not apply -- but the
+    # measured CI of the mean at N=5 is ~16% (haleem alone swings 45%
+    # run-to-run), so anything under that is noise. Raise N to tighten.
+    "decomposition_kcal_pct": 25.0,
 }
 
 
@@ -64,6 +78,43 @@ def load_cases(name: str) -> list[dict]:
     path = CASES_DIR / f"{name}.jsonl"
     with open(path) as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def _granularity(category: str) -> float:
+    """Smallest score change a single case can produce, in percentage points.
+
+    Args:
+        category: Case-set name, e.g. "quantity".
+
+    Returns:
+        100 / number_of_cases.
+    """
+    return 100.0 / len(load_cases(category))
+
+
+def _validate_tolerances() -> None:
+    """Fail loudly if any tolerance is finer than one case's worth of score.
+
+    A tolerance below the granularity can never be satisfied by a real change:
+    the smallest movement the metric can express already exceeds it. Catching
+    this at startup stops the gate from reporting confident FAILs it has no
+    resolution to justify.
+
+    Raises:
+        SystemExit: If any percentage category is mis-specified.
+    """
+    problems = []
+    for category, tol in TOLERANCES.items():
+        if category == "decomposition_kcal_pct":
+            continue
+        gran = _granularity(category)
+        if tol < gran:
+            problems.append(
+                f"  {category}: tolerance {tol}pp < granularity {gran:.1f}pp "
+                f"({len(load_cases(category))} cases) -- add cases or raise it"
+            )
+    if problems:
+        raise SystemExit("Mis-specified gate tolerances:\n" + "\n".join(problems))
 
 
 def _matches(text: str, alternatives: list[str]) -> bool:
@@ -139,6 +190,13 @@ async def score_food_identity(sem: asyncio.Semaphore) -> float:
         )
     hits = 0
     for case, result in zip(cases, results):
+        # An LLM estimate is never a food-identity hit. estimate_nutrition_llm
+        # echoes the query back as food_name, so without this guard a fallback
+        # scores against itself for every case whose acceptable_name_substrings
+        # contain the query (6 of the 14 today) — hiding the exact regression
+        # this category exists to detect.
+        if result.estimated or result.source != "USDA":
+            continue
         if result.fdc_id in case.get("acceptable_fdc_ids", []):
             hits += 1
         elif result.food_name and _matches(
@@ -247,6 +305,7 @@ async def main() -> None:
         "baseline; nothing when scoring against one)",
     )
     args = ap.parse_args()
+    _validate_tolerances()
 
     default_baseline = Path(__file__).parent / "baseline_scores.json"
     # Establishing a baseline writes it; scoring a change against one must NOT, or the

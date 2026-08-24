@@ -5,7 +5,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +14,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.agent.llm import FLASH_LITE_MODEL
+from backend.agent.tools import usda_local
+from backend.agent.tools.usda_match import (
+    _ENERGY_KEYS,
+    _MACRO_MAP,
+    _confidence,
+    _energy_kcal,
+)
 from backend.config import get_tunables
 from backend.db.session import get_session
 
@@ -23,30 +29,6 @@ logger = logging.getLogger(__name__)
 _TUNABLES = get_tunables()
 
 USDA_SEARCH_URL = _TUNABLES.usda.search_url
-
-# Grammatical fillers dropped before matching so they don't count as
-# required query words (e.g. "rice with chicken" -> {rice, chicken}).
-_MATCH_STOPWORDS = frozenset(
-    {"and", "or", "with", "the", "a", "an", "of", "in", "on", "to"}
-)
-
-_MACRO_MAP = {
-    "Energy": "kcal",
-    "Protein": "protein_g",
-    "Carbohydrate, by difference": "carbs_g",
-    "Total lipid (fat)": "fat_g",
-    "Fiber, total dietary": "fiber_g",
-    "Total Sugars": "sugar_g",
-    "Fatty acids, total saturated": "sat_fat_g",
-}
-
-# Foundation entries often report energy only under Atwater names (in kcal),
-# with no plain "Energy" row — check these in order.
-_ENERGY_KEYS = (
-    "Energy",
-    "Energy (Atwater General Factors)",
-    "Energy (Atwater Specific Factors)",
-)
 
 # ---------------------------------------------------------------------------
 # Models
@@ -230,49 +212,6 @@ async def _estimate_cache_write(food_name: str, nutrients_per_100g: dict) -> Non
 # ---------------------------------------------------------------------------
 
 
-def _singularize(token: str) -> str:
-    """Crude, symmetric singularizer so plurals match (eggs->egg).
-
-    Applied to both query and description tokens, so even rough rules are
-    safe for matching — both sides normalize identically. Handles the
-    common English plural endings; leaves short tokens alone.
-    """
-    if len(token) <= 3:
-        return token
-    if token.endswith("ies"):
-        return token[:-3] + "y"
-    if token.endswith(("ses", "shes", "ches", "xes")):
-        return token[:-2]
-    if token.endswith("s") and not token.endswith("ss"):
-        return token[:-1]
-    return token
-
-
-def _tokenize(text_value: str) -> set[str]:
-    """Lowercase, strip punctuation, drop stopwords, singularize."""
-    raw = re.sub(r"[^\w\s]", " ", text_value.lower()).split()
-    return {_singularize(t) for t in raw if t not in _MATCH_STOPWORDS}
-
-
-def _confidence(query: str, description: str) -> float:
-    """Match confidence as query-word coverage by the FDC description.
-
-    Returns the fraction of the user's food words that appear in the FDC
-    description (after singularizing and dropping filler words). Coverage,
-    not Jaccard: FDC descriptions are verbose ("Rice, white, long-grain,
-    regular, raw, enriched") and Jaccard's union denominator wrongly tanks
-    correct matches. Coverage asks the right question — "is the food the
-    user named actually in this description?" — so "white rice" and "banana"
-    score 1.0, while "chicken biryani" vs "Chicken spread" scores 0.5
-    (only "chicken" matched) and falls below the floor.
-    """
-    a = _tokenize(query)
-    b = _tokenize(description)
-    if not a or not b:
-        return 0.5
-    return round(len(a & b) / len(a), 3)
-
-
 def _miss_result(entity) -> USDAResult:
     return USDAResult(
         fdc_id=-1,
@@ -308,14 +247,6 @@ def _nutrients_by_name(food_nutrients: list[dict]) -> dict[str, tuple[float, str
     return raw
 
 
-def _energy_kcal(raw: dict[str, tuple[float, str]]) -> float:
-    """First non-zero energy value across the known FDC energy names."""
-    for key in _ENERGY_KEYS:
-        if key in raw and raw[key][0] > 0:
-            return raw[key][0]
-    return 0.0
-
-
 def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
     foods = data.get("foods", [])
     if not foods:
@@ -342,6 +273,36 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         qty_g=entity.qty_g,
         match_confidence=_confidence(entity.food_name, top["description"]),
         candidates=candidates,
+        **macros,
+        nutrients=nutrients,
+    )
+
+
+def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
+    """Build a USDAResult from a bundled-SQLite LocalMatch (per 100g)."""
+    scale = entity.qty_g / 100.0
+    macros = {
+        field: round(match.macros_per_100g[field] * scale, 2)
+        for field in (
+            "kcal",
+            "protein_g",
+            "carbs_g",
+            "fat_g",
+            "fiber_g",
+            "sugar_g",
+            "sat_fat_g",
+        )
+    }
+    nutrients = {
+        name: NutrientValue(amount=round(v["amount"] * scale, 3), unit=v["unit"])
+        for name, v in match.nutrients_per_100g.items()
+    }
+    return USDAResult(
+        fdc_id=match.fdc_id,
+        food_name=match.description,
+        qty_g=entity.qty_g,
+        match_confidence=match.match_confidence,
+        candidates=match.candidates,
         **macros,
         nutrients=nutrients,
     )
@@ -499,15 +460,48 @@ class _EntityShim:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_one(session: aiohttp.ClientSession, entity) -> USDAResult:
-    """Fetch one entity: cache-first, FDC on miss, write cache on miss.
+_local_unavailable_logged = False
+
+
+def _use_local() -> bool:
+    """Whether the bundled-SQLite local read path should be used.
+
+    Fail-soft: if use_local_db is on but the database isn't actually
+    available, log once (never per lookup) and fall back to the FDC API
+    path instead of taking the bot down.
+    """
+    global _local_unavailable_logged
+    if not _TUNABLES.usda.use_local_db:
+        return False
+    if usda_local.is_available():
+        return True
+    if not _local_unavailable_logged:
+        logger.error(
+            "usda.use_local_db is true but the local USDA database is "
+            "unavailable; falling back to the FDC API."
+        )
+        _local_unavailable_logged = True
+    return False
+
+
+async def _fetch_one(session: aiohttp.ClientSession | None, entity) -> USDAResult:
+    """Fetch one entity: local SQLite or cache-first FDC, then confidence gate.
 
     Confidence gate (Plan A): if the best USDA match's match_confidence is
     below usda.match_confidence_floor, or there is no usable match at all
     (fdc_id == -1), discard the weak hit and fall back to
     estimate_nutrition_llm() instead.
     """
-    result = await _fetch_usda(session, entity)
+    if _use_local():
+        match = await asyncio.to_thread(
+            usda_local.lookup,
+            entity.food_name,
+            pool_size=_TUNABLES.usda.candidate_pool_size,
+            max_candidates=_TUNABLES.usda.max_candidates,
+        )
+        result = _result_from_local(entity, match) if match else _miss_result(entity)
+    else:
+        result = await _fetch_usda_api(session, entity)
 
     floor = _TUNABLES.usda.match_confidence_floor
     if result.fdc_id == -1 or result.match_confidence < floor:
@@ -515,7 +509,7 @@ async def _fetch_one(session: aiohttp.ClientSession, entity) -> USDAResult:
     return result
 
 
-async def _fetch_usda(session: aiohttp.ClientSession, entity) -> USDAResult:
+async def _fetch_usda_api(session: aiohttp.ClientSession, entity) -> USDAResult:
     """Fetch one entity from the real USDA pipeline: cache-first, FDC on miss."""
     cached = await _cache_lookup(entity.food_name)
     if cached:
@@ -577,17 +571,22 @@ async def _fetch_usda(session: aiohttp.ClientSession, entity) -> USDAResult:
 async def usda_lookup_batch(entities: list) -> list[USDAResult]:
     """Fetch USDA nutrients for multiple entities in parallel.
 
-    Checks Postgres food_source cache first. Falls back to FDC API on miss
-    and writes the result back to cache.
+    By default (usda.use_local_db) every lookup is served from the SQLite
+    copy bundled in the image, so no network or Postgres access happens at
+    all. On the rollback path the old behaviour applies: Postgres
+    food_source cache first, FDC API on miss, result written back to cache.
+
+    Either way, entities whose best match falls below
+    usda.match_confidence_floor are resolved by estimate_nutrition_llm.
 
     Args:
         entities: List of FoodEntity with food_name and qty_g.
 
     Returns:
         List of USDAResult in same order. Failed lookups have fdc_id=-1.
-
-    Raises:
-        aiohttp.ClientError: If FDC API is unreachable after retries.
     """
+    if _use_local():
+        return list(await asyncio.gather(*[_fetch_one(None, e) for e in entities]))
+
     async with aiohttp.ClientSession() as session:
         return list(await asyncio.gather(*[_fetch_one(session, e) for e in entities]))

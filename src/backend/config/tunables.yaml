@@ -145,6 +145,27 @@ usda:
   # UI, this value just keeps the ⚠ heuristics sane.
   llm_estimate_confidence: 0.3
 
+  # --- Local FoodData Central database -------------------------------------
+  # When true, lookups are served from the SQLite copy bundled in the image
+  # (src/backend/data/usda_fdc.sqlite3, 13,694 Foundation + SR Legacy + FNDDS
+  # foods) instead of the FDC search API. Set false to fall back to the live
+  # API + Postgres cache path, which is kept intact for exactly that purpose.
+  #
+  # Why local is the default: the FDC API returns spurious HTML 404s at random
+  # (measured 2026-08-24: 1 in 5 sequential calls, 3 of 8 concurrent, with
+  # x-ratelimit-remaining at 3510/3600 — so not quota). With max_attempts: 1
+  # every such blip silently degrades a real food to an LLM estimate.
+  # Override the file location with the USDA_DB_PATH env var.
+  use_local_db: true
+
+  # FTS5/bm25 rows retrieved before re-ranking by coverage. Measured on the
+  # eval cases: identical accuracy from 10 to 400, so this is set for headroom
+  # on longer queries, not for score. 25 costs ~4 ms/lookup.
+  candidate_pool_size: 25
+
+  # Alternative descriptions surfaced on the card ("say 'use X' to switch").
+  max_candidates: 3
+
 memory:
   # Cosine-distance threshold for preference-fact dedup in
   # workers/tasks.py extract_and_store_facts. A new fact whose nearest

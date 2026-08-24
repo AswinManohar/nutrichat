@@ -48,6 +48,9 @@ class UsdaConfig(BaseModel):
     suggest_alternative_below: float = Field(ge=0.0, le=1.0)
     match_confidence_floor: float = Field(ge=0.0, le=1.0)
     llm_estimate_confidence: float = Field(ge=0.0, le=1.0)
+    use_local_db: bool = True
+    candidate_pool_size: int = Field(default=25, gt=0)
+    max_candidates: int = Field(default=3, gt=0)
 
     model_config = ConfigDict(extra="forbid")
 

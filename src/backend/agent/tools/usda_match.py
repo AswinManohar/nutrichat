@@ -1,0 +1,145 @@
+"""Pure food-name matching primitives shared by the USDA read and build paths.
+
+Extracted from ``usda.py`` so the offline importer
+(``backend.scripts.build_usda_db``) can reuse the exact scoring and
+nutrient-resolution rules without importing aiohttp, pydantic-ai or
+SQLAlchemy. Everything here is dependency-free and side-effect free.
+
+Keeping these in one place is load-bearing: the bundled SQLite database is
+built with the same energy-resolution rules the API path used, and matched
+with the same tokenizer that produced today's ``match_confidence`` values, so
+scores stay comparable across the cutover.
+"""
+
+from __future__ import annotations
+
+import re
+
+# Grammatical fillers dropped before matching so they don't count as
+# required query words (e.g. "rice with chicken" -> {rice, chicken}).
+_MATCH_STOPWORDS = frozenset(
+    {"and", "or", "with", "the", "a", "an", "of", "in", "on", "to"}
+)
+
+_MACRO_MAP = {
+    "Energy": "kcal",
+    "Protein": "protein_g",
+    "Carbohydrate, by difference": "carbs_g",
+    "Total lipid (fat)": "fat_g",
+    "Fiber, total dietary": "fiber_g",
+    "Total Sugars": "sugar_g",
+    "Fatty acids, total saturated": "sat_fat_g",
+}
+
+# Foundation entries often report energy only under Atwater names (in kcal),
+# with no plain "Energy" row — check these in order.
+_ENERGY_KEYS = (
+    "Energy",
+    "Energy (Atwater General Factors)",
+    "Energy (Atwater Specific Factors)",
+)
+
+
+def _singularize(token: str) -> str:
+    """Crude, symmetric singularizer so plurals match (eggs->egg).
+
+    Applied to both query and description tokens, so even rough rules are
+    safe for matching — both sides normalize identically. Handles the
+    common English plural endings; leaves short tokens alone.
+    """
+    if len(token) <= 3:
+        return token
+    if token.endswith("ies"):
+        return token[:-3] + "y"
+    if token.endswith(("ses", "shes", "ches", "xes")):
+        return token[:-2]
+    if token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _tokenize(text_value: str) -> set[str]:
+    """Lowercase, strip punctuation, drop stopwords, singularize."""
+    raw = re.sub(r"[^\w\s]", " ", text_value.lower()).split()
+    return {_singularize(t) for t in raw if t not in _MATCH_STOPWORDS}
+
+
+def _confidence(query: str, description: str) -> float:
+    """Match confidence as query-word coverage by the FDC description.
+
+    Returns the fraction of the user's food words that appear in the FDC
+    description (after singularizing and dropping filler words). Coverage,
+    not Jaccard: FDC descriptions are verbose ("Rice, white, long-grain,
+    regular, raw, enriched") and Jaccard's union denominator wrongly tanks
+    correct matches. Coverage asks the right question — "is the food the
+    user named actually in this description?" — so "white rice" and "banana"
+    score 1.0, while "chicken biryani" vs "Chicken spread" scores 0.5
+    (only "chicken" matched) and falls below the floor.
+    """
+    a = _tokenize(query)
+    b = _tokenize(description)
+    if not a or not b:
+        return 0.5
+    return round(len(a & b) / len(a), 3)
+
+
+def _head_purity(query: str, description: str) -> float:
+    """Fraction of the description's head segment covered by the query.
+
+    FDC descriptions are ``HeadNoun, modifier, modifier`` — e.g. "Rice,
+    white, cooked, glutinous". Plain query-word coverage over the *whole*
+    description ties many candidates at 1.0, and cheap tie-breaks on that
+    tie pick the wrong food: "prefer the shortest description" selects
+    "Beans and white rice" for the query "white rice", and plain bm25
+    selects "Rice flour, white, unenriched". Head purity asks "is the query
+    naming this entry's *primary* food?" -- "Rice, white, ..." has head
+    {rice} (purity 1.0), "Rice flour, white, ..." has head {rice, flour}
+    (0.5), and "Beans and white rice" has head {bean, white, rice} (0.67) --
+    so ranking on head purity after coverage sends the right entry to the
+    top.
+
+    Args:
+        query: The user's free-text food name.
+        description: An FDC food description.
+
+    Returns:
+        Fraction of the description's head-segment tokens covered by the
+        query's tokens, 0.0 if the head segment tokenizes to nothing.
+    """
+    head = description.split(",", 1)[0]
+    query_tokens = _tokenize(query)
+    head_tokens = _tokenize(head)
+    if not head_tokens:
+        return 0.0
+    return round(len(query_tokens & head_tokens) / len(head_tokens), 3)
+
+
+def _description_coverage(query: str, description: str) -> float:
+    """Fraction of the description's tokens covered by the query.
+
+    A secondary tie-break behind head purity: among candidates whose head
+    noun matches equally well, prefer the description whose modifiers are
+    also most fully explained by the query, rather than one with extra
+    unexplained modifiers.
+
+    Args:
+        query: The user's free-text food name.
+        description: An FDC food description.
+
+    Returns:
+        Fraction of the description's tokens covered by the query's
+        tokens, 0.0 if the description tokenizes to nothing.
+    """
+    query_tokens = _tokenize(query)
+    desc_tokens = _tokenize(description)
+    if not desc_tokens:
+        return 0.0
+    return round(len(query_tokens & desc_tokens) / len(desc_tokens), 3)
+
+
+def _energy_kcal(raw: dict[str, tuple[float, str]]) -> float:
+    """First non-zero energy value across the known FDC energy names."""
+    for key in _ENERGY_KEYS:
+        if key in raw and raw[key][0] > 0:
+            return raw[key][0]
+    return 0.0

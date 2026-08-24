@@ -6,3 +6,19 @@
 {"label": "dosa", "singular": "one dosa", "counted": "three dosas", "n": 3}
 {"label": "idli", "singular": "one idli", "counted": "four idlis", "n": 4}
 {"label": "cookie", "singular": "one cookie", "counted": "five cookies", "n": 5}
+{"label": "apple", "singular": "one apple", "counted": "two apples", "n": 2}
+{"label": "orange", "singular": "an orange", "counted": "three oranges", "n": 3}
+{"label": "pizza slice", "singular": "one slice of pizza", "counted": "three slices of pizza", "n": 3}
+{"label": "chapati", "singular": "one chapati", "counted": "four chapatis", "n": 4}
+{"label": "samosa", "singular": "one samosa", "counted": "two samosas", "n": 2}
+{"label": "idli extra", "singular": "one idli", "counted": "six idlis", "n": 6}
+{"label": "pancake", "singular": "one pancake", "counted": "three pancakes", "n": 3}
+{"label": "sausage", "singular": "one sausage", "counted": "two sausages", "n": 2}
+{"label": "meatball", "singular": "one meatball", "counted": "five meatballs", "n": 5}
+{"label": "shrimp", "singular": "one shrimp", "counted": "eight shrimp", "n": 8}
+{"label": "date", "singular": "one date", "counted": "four dates", "n": 4}
+{"label": "cracker", "singular": "one cracker", "counted": "six crackers", "n": 6}
+{"label": "tortilla", "singular": "one tortilla", "counted": "two tortillas", "n": 2}
+{"label": "boiled potato", "singular": "one boiled potato", "counted": "three boiled potatoes", "n": 3}
+{"label": "carrot", "singular": "one carrot", "counted": "two carrots", "n": 2}
+{"label": "toast slice", "singular": "one slice of toast", "counted": "four slices of toast", "n": 4}
