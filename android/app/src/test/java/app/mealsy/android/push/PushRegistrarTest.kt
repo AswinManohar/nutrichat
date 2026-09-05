@@ -1,5 +1,6 @@
 package app.mealsy.android.push
 
+import app.mealsy.data.api.GoalRequest
 import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogItemsResponse
@@ -33,6 +34,8 @@ private class FakeMealsyApi : MealsyApi {
     override suspend fun logItems(body: LogItemsRequest): LogItemsResponse = error("not used")
     override suspend fun today(): TodayResponse = error("not used")
     override suspend fun goals(): GoalsResponse = error("not used")
+    override suspend fun createGoals(body: GoalRequest): GoalsResponse = error("not used")
+    override suspend fun updateGoals(body: GoalRequest): GoalsResponse = error("not used")
     override suspend fun quota(): QuotaResponse = error("not used")
     override suspend fun appMeta(): AppMetaResponse = error("not used")
 

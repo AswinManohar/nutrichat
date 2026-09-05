@@ -5,6 +5,7 @@ import app.mealsy.android.push.DeviceTokenStore
 import app.mealsy.android.push.FcmTokenProvider
 import app.mealsy.android.push.PushRegistrar
 import app.mealsy.data.api.AppMetaResponse
+import app.mealsy.data.api.GoalRequest
 import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogItemsResponse
@@ -17,6 +18,9 @@ import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.auth.AuthGateway
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
+import app.mealsy.data.repo.GoalsRepository
+import java.io.IOException
+import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -50,12 +55,18 @@ private class FakeAuthGateway : AuthGateway {
  */
 private class FakeMealsyApi(
     private val appMetaResult: (suspend () -> AppMetaResponse)? = null,
+    private val goalsResult: (suspend () -> GoalsResponse)? = null,
 ) : MealsyApi {
     override suspend fun logTurn(body: LogTurnRequest): LogTurnResponse = error("not used")
     override suspend fun pending(id: String): LogTurnResponse = error("not used")
     override suspend fun logItems(body: LogItemsRequest): LogItemsResponse = error("not used")
     override suspend fun today(): TodayResponse = error("not used")
-    override suspend fun goals(): GoalsResponse = error("not used")
+
+    override suspend fun goals(): GoalsResponse =
+        goalsResult?.invoke() ?: error("goalsResult not configured for this test")
+
+    override suspend fun createGoals(body: GoalRequest): GoalsResponse = error("not used")
+    override suspend fun updateGoals(body: GoalRequest): GoalsResponse = error("not used")
     override suspend fun quota(): QuotaResponse = error("not used")
     override suspend fun registerDevice(body: RegisterDeviceRequest) = error("not used")
     override suspend fun deleteDevice(token: String) = error("not used")
@@ -97,10 +108,15 @@ class AppNavViewModelTest {
         fcmTokenProvider = FcmTokenProvider { null },
     )
 
+    /** Default: [MealsyApi.goals] is never called by these gate-only tests (sessionState stays SignedOut). */
+    private fun goalsRepository(api: FakeMealsyApi = FakeMealsyApi()) = GoalsRepository(api)
+
     @Test
     fun `appMeta throws yields fail-open Ready`() = runTest {
         val api = FakeMealsyApi(appMetaResult = { throw RuntimeException("boom") })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
+        val viewModel = AppNavViewModel(
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+        )
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -117,7 +133,9 @@ class AppNavViewModelTest {
             delay(10_000)
             neverResolves.await()
         })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
+        val viewModel = AppNavViewModel(
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+        )
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -131,7 +149,9 @@ class AppNavViewModelTest {
         val api = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 10, latestVersionCode = 10)
         })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
+        val viewModel = AppNavViewModel(
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+        )
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -144,7 +164,9 @@ class AppNavViewModelTest {
         val atMin = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 5)
         })
-        val atMinVm = AppNavViewModel(atMin, sessionManager(), currentVersionCode = 5, pushRegistrar())
+        val atMinVm = AppNavViewModel(
+            atMin, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+        )
         atMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
             assertEquals(GateState.Ready, awaitItem())
@@ -153,10 +175,90 @@ class AppNavViewModelTest {
         val aboveMin = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 6)
         })
-        val aboveMinVm = AppNavViewModel(aboveMin, sessionManager(), currentVersionCode = 6, pushRegistrar())
+        val aboveMinVm = AppNavViewModel(
+            aboveMin, sessionManager(), currentVersionCode = 6, pushRegistrar(), goalsRepository(),
+        )
         aboveMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
             assertEquals(GateState.Ready, awaitItem())
         }
+    }
+
+    @Test
+    fun `goals 404 yields onboarding Needed`() = runTest {
+        val goalsApi = FakeMealsyApi(goalsResult = { throw retrofit2.HttpException(
+            retrofit2.Response.error<Any>(404, "".toResponseBody(null)),
+        ) })
+        val authGateway = FakeAuthGateway()
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            SessionManager(authGateway),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(goalsApi),
+        )
+
+        authGateway.sessionState.value = SessionState.SignedIn("user-1")
+        advanceUntilIdle()
+
+        assertEquals(OnboardingState.Needed, viewModel.onboardingState.value)
+    }
+
+    @Test
+    fun `goals 200 yields onboarding NotNeeded`() = runTest {
+        val goalsApi = FakeMealsyApi(goalsResult = {
+            GoalsResponse(
+                trackingMode = "goals",
+                kcalGoal = 2000.0,
+                proteinGoal = 100.0,
+                fiberGoal = 30.0,
+            )
+        })
+        val authGateway = FakeAuthGateway()
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            SessionManager(authGateway),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(goalsApi),
+        )
+
+        authGateway.sessionState.value = SessionState.SignedIn("user-1")
+        advanceUntilIdle()
+
+        assertEquals(OnboardingState.NotNeeded, viewModel.onboardingState.value)
+    }
+
+    @Test
+    fun `offline goals check defaults to NotNeeded, does not brick startup`() = runTest {
+        val goalsApi = FakeMealsyApi(goalsResult = { throw IOException("offline") })
+        val authGateway = FakeAuthGateway()
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            SessionManager(authGateway),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(goalsApi),
+        )
+
+        authGateway.sessionState.value = SessionState.SignedIn("user-1")
+        advanceUntilIdle()
+
+        assertEquals(OnboardingState.NotNeeded, viewModel.onboardingState.value)
+    }
+
+    @Test
+    fun `onOnboardingComplete marks NotNeeded`() = runTest {
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            sessionManager(),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(),
+        )
+
+        viewModel.onOnboardingComplete()
+
+        assertEquals(OnboardingState.NotNeeded, viewModel.onboardingState.value)
     }
 }

@@ -2,6 +2,7 @@ package app.mealsy.data.api
 
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
+import app.mealsy.domain.Goals
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
@@ -212,6 +213,41 @@ data class GoalsResponse(
     @SerialName("dietary_prefs") val dietaryPrefs: JsonObject = JsonObject(emptyMap()),
     @SerialName("first_meal_time") val firstMealTime: String? = null,
     @SerialName("streak_days") val streakDays: Int = 0,
+)
+
+/**
+ * Wire body for `POST /goals` and `PUT /goals` — both endpoints share the
+ * same request shape (`GoalCreate`/`GoalUpdate` in `src/backend/api/goals.py`
+ * are field-for-field identical). `streak_days` is never sent: the backend
+ * computes it and neither request model accepts it.
+ */
+@Serializable
+data class GoalRequest(
+    @SerialName("tracking_mode") val trackingMode: String,
+    @SerialName("kcal_goal") val kcalGoal: Double? = null,
+    @SerialName("protein_goal") val proteinGoal: Double? = null,
+    @SerialName("fiber_goal") val fiberGoal: Double? = null,
+    @SerialName("dietary_prefs") val dietaryPrefs: JsonObject = JsonObject(emptyMap()),
+    @SerialName("first_meal_time") val firstMealTime: String? = null,
+)
+
+fun GoalsResponse.toGoals(): Goals = Goals(
+    trackingMode = trackingMode,
+    kcalGoal = kcalGoal,
+    proteinGoal = proteinGoal,
+    fiberGoal = fiberGoal,
+    dietaryPrefs = dietaryPrefs.mapValues { (_, v) -> v.jsonPrimitive.booleanOrNull ?: true },
+    firstMealTime = firstMealTime,
+    streakDays = streakDays,
+)
+
+fun Goals.toGoalRequest(): GoalRequest = GoalRequest(
+    trackingMode = trackingMode,
+    kcalGoal = kcalGoal,
+    proteinGoal = proteinGoal,
+    fiberGoal = fiberGoal,
+    dietaryPrefs = JsonObject(dietaryPrefs.mapValues { (_, v) -> JsonPrimitive(v) }),
+    firstMealTime = firstMealTime,
 )
 
 // ---------------------------------------------------------------------------
