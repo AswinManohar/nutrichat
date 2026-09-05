@@ -2,7 +2,6 @@ package app.mealsy.data.auth
 
 import android.app.Activity
 import kotlinx.coroutines.flow.StateFlow
-import javax.inject.Inject
 
 /** Coarse-grained auth state exposed to the rest of the app. */
 sealed interface SessionState {
@@ -49,7 +48,7 @@ interface AuthGateway {
  * which this class should depend on directly. Task 9 supplies a real
  * implementation via Hilt; until then it defaults to a no-op.
  */
-class SessionManager @Inject constructor(
+class SessionManager(
     private val authGateway: AuthGateway,
     private val onSignOut: suspend () -> Unit = {},
 ) {
@@ -71,14 +70,34 @@ class SessionManager @Inject constructor(
      */
     suspend fun currentToken(forceRefresh: Boolean = false): String? {
         return if (forceRefresh) {
-            authGateway.refreshCurrentSession()
+            try {
+                authGateway.refreshCurrentSession()
+            } catch (_: Exception) {
+                // AuthInterceptor calls this from its 401-retry path with
+                // runBlocking; a RestException/Ktor exception escaping
+                // here would surface as an unhandled crash-type exception
+                // from an OkHttp interceptor instead of Task 3's "second
+                // 401 propagates" contract. Swallow and return null so the
+                // retried request goes out unauthenticated and yields a
+                // clean 401.
+                null
+            }
         } else {
             authGateway.currentAccessTokenOrNull()
         }
     }
 
     suspend fun signOut() {
+        // onSignOut (Task 9: best-effort FCM device deregistration) needs
+        // an authenticated request, so it must run before the session is
+        // cleared — clearing first would make that call 401. Wrapped so a
+        // failing hook never blocks the local sign-out it's piggybacking on.
+        try {
+            onSignOut()
+        } catch (_: Exception) {
+            // Best-effort only — device deregistration failing must not
+            // prevent the user from signing out.
+        }
         authGateway.signOut()
-        onSignOut()
     }
 }
