@@ -35,6 +35,17 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     val goals by viewModel.goals.collectAsStateWithLifecycle()
 
     var input by remember { mutableStateOf("") }
+    var showCameraSheet by remember { mutableStateOf(false) }
+
+    if (showCameraSheet) {
+        CameraSheet(
+            onUsePhoto = { bitmap ->
+                showCameraSheet = false
+                viewModel.sendPhoto(bitmap)
+            },
+            onDismiss = { showCameraSheet = false },
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TodayHeader(today = today, goals = goals)
@@ -86,6 +97,13 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
                 enabled = !sending && !offline,
                 label = { Text("Describe a meal") },
             )
+            Button(
+                onClick = { showCameraSheet = true },
+                enabled = !sending && !offline,
+                modifier = Modifier.padding(start = 8.dp),
+            ) {
+                Text("Photo")
+            }
             Button(
                 onClick = {
                     val text = input.trim()

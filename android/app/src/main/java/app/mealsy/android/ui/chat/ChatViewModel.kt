@@ -1,11 +1,13 @@
 package app.mealsy.android.ui.chat
 
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TodayResponse
+import app.mealsy.data.image.ImageEncoder
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.LogOutcome
 import app.mealsy.data.repo.TurnResult
@@ -107,6 +109,39 @@ class ChatViewModel @Inject constructor(
         return viewModelScope.launch {
             try {
                 when (val result = repository.sendTurn(text)) {
+                    is TurnResult.Reply -> appendAssistant(result.message)
+                    is TurnResult.Card -> _pendingCard.value = result.card
+                    is TurnResult.UpgradeRequired -> appendAssistant(result.message)
+                }
+                _offline.value = false
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: IOException) {
+                _offline.value = true
+                appendAssistant("Couldn't reach Mealsy. Check your connection and try again.")
+            } catch (exc: HttpException) {
+                appendAssistant(httpErrorMessage(exc))
+            } catch (exc: Exception) {
+                appendAssistant("Something went wrong. Try again.")
+            } finally {
+                _sending.value = false
+            }
+        }
+    }
+
+    /**
+     * Sends a captured meal photo as a new turn: encodes [bitmap] via
+     * [ImageEncoder], appends a "[photo]" user bubble, then handles the
+     * result exactly like [send]. Returns the underlying [Job] purely so
+     * tests can [Job.join] it.
+     */
+    fun sendPhoto(bitmap: Bitmap): Job {
+        _messages.value = _messages.value + ChatMsg.User("[photo]")
+        _sending.value = true
+        return viewModelScope.launch {
+            try {
+                val imageB64 = ImageEncoder.encode(bitmap)
+                when (val result = repository.sendTurn("", imageB64 = imageB64)) {
                     is TurnResult.Reply -> appendAssistant(result.message)
                     is TurnResult.Card -> _pendingCard.value = result.card
                     is TurnResult.UpgradeRequired -> appendAssistant(result.message)
