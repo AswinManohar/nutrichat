@@ -121,14 +121,12 @@ class PushRegistrar @Inject constructor(
 
     /**
      * Fetches the current FCM token (if any) and registers it if it hasn't
-     * been sent yet — unless the user has turned reminders off in Settings
-     * ([DeviceTokenStore.isRemindersDisabled]), in which case this is a
-     * no-op. Without that check, this being called unconditionally after
-     * every sign-in (see `AppNavViewModel`) would silently re-register the
-     * token a Settings toggle-off just deleted.
+     * been sent yet. [registerToken] itself no-ops while reminders are
+     * disabled (see its doc comment), so this being called unconditionally
+     * after every sign-in (see `AppNavViewModel`) can't undo a Settings
+     * toggle-off.
      */
     suspend fun ensureRegistered() {
-        if (tokenStore.isRemindersDisabled()) return
         val token = try {
             fcmTokenProvider.currentToken()
         } catch (exc: CancellationException) {
@@ -142,11 +140,19 @@ class PushRegistrar @Inject constructor(
     /**
      * Registers [token] with the backend unless it's already the last one sent.
      *
-     * Best-effort: a network failure is swallowed rather than crashing the
-     * caller (sign-in flow or [MealsyMessagingService.onNewToken]) — the next
+     * No-ops entirely (does not store [token], does not POST) while the user
+     * has reminders turned off ([DeviceTokenStore.isRemindersDisabled]).
+     * [MealsyMessagingService.onNewToken] calls this directly on every FCM
+     * token rotation — without this guard here (not just in [ensureRegistered]),
+     * a rotation while reminders are off would silently re-register the
+     * device through that separate entry point, undoing a Settings toggle-off.
+     *
+     * Best-effort otherwise: a network failure is swallowed rather than
+     * crashing the caller (sign-in flow or `onNewToken`) — the next
      * [ensureRegistered]/[registerToken] call retries.
      */
     suspend fun registerToken(token: String) {
+        if (tokenStore.isRemindersDisabled()) return
         if (token == tokenStore.getLastSentToken()) return
         try {
             api.registerDevice(RegisterDeviceRequest(token = token))

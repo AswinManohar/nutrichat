@@ -139,6 +139,28 @@ class PushRegistrarTest {
     }
 
     @Test
+    fun `registerToken while disabled posts nothing and stores nothing`() = runTest {
+        // Regression: MealsyMessagingService.onNewToken calls registerToken
+        // directly (not ensureRegistered) on every FCM token rotation —
+        // without this guard in registerToken itself, a rotation while
+        // reminders are off would silently re-register the device through
+        // that separate entry point.
+        val api = FakeMealsyApi()
+        val tokenStore = FakeDeviceTokenStore()
+        tokenStore.setRemindersDisabled(true)
+        val registrar = PushRegistrar(
+            api = api,
+            tokenStore = tokenStore,
+            fcmTokenProvider = FcmTokenProvider { null },
+        )
+
+        registrar.registerToken("rotated-token")
+
+        assertTrue(api.registeredTokens.isEmpty())
+        assertNull(tokenStore.getLastSentToken())
+    }
+
+    @Test
     fun `toggling reminders off then ensureRegistered does not re-register`() = runTest {
         // Regression: AppNavViewModel calls ensureRegistered() unconditionally
         // after every sign-in — without the disabled check, that would silently
