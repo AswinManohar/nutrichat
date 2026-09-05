@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Requested at runtime on first entry to ChatScreen (API 33+); required
+         to show FCM notifications there (see MealsyMessagingService). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature
         android:name="android.hardware.camera.any"
@@ -51,6 +54,19 @@
                 <data android:scheme="mealsy" android:host="auth-callback" />
             </intent-filter>
         </activity>
+
+        <!-- FCM registration + notification handling (Task 9). Works
+             unconditionally in the manifest: on a checkout without
+             google-services.json there's no Firebase app for the FCM SDK to
+             route messages through, so this service is simply never
+             started. -->
+        <service
+            android:name=".push.MealsyMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

@@ -1,6 +1,9 @@
 package app.mealsy.android.ui
 
 import app.cash.turbine.test
+import app.mealsy.android.push.DeviceTokenStore
+import app.mealsy.android.push.FcmTokenProvider
+import app.mealsy.android.push.PushRegistrar
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.LogItemsRequest
@@ -78,10 +81,26 @@ class AppNavViewModelTest {
 
     private fun sessionManager() = SessionManager(FakeAuthGateway())
 
+    /**
+     * [AppNavViewModel] only calls [PushRegistrar.ensureRegistered] as a
+     * side effect of `SignedIn` — none of these tests exercise sign-in, so a
+     * [PushRegistrar] wired to a token provider that always returns `null`
+     * (nothing to register) is enough; no MockWebServer/HTTP needed.
+     */
+    private fun pushRegistrar() = PushRegistrar(
+        api = FakeMealsyApi(),
+        tokenStore = object : DeviceTokenStore {
+            override suspend fun getLastSentToken(): String? = null
+            override suspend fun setLastSentToken(token: String) = Unit
+            override suspend fun clearLastSentToken() = Unit
+        },
+        fcmTokenProvider = FcmTokenProvider { null },
+    )
+
     @Test
     fun `appMeta throws yields fail-open Ready`() = runTest {
         val api = FakeMealsyApi(appMetaResult = { throw RuntimeException("boom") })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5)
+        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -98,7 +117,7 @@ class AppNavViewModelTest {
             delay(10_000)
             neverResolves.await()
         })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5)
+        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -112,7 +131,7 @@ class AppNavViewModelTest {
         val api = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 10, latestVersionCode = 10)
         })
-        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5)
+        val viewModel = AppNavViewModel(api, sessionManager(), currentVersionCode = 5, pushRegistrar())
 
         viewModel.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -125,7 +144,7 @@ class AppNavViewModelTest {
         val atMin = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 5)
         })
-        val atMinVm = AppNavViewModel(atMin, sessionManager(), currentVersionCode = 5)
+        val atMinVm = AppNavViewModel(atMin, sessionManager(), currentVersionCode = 5, pushRegistrar())
         atMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
             assertEquals(GateState.Ready, awaitItem())
@@ -134,7 +153,7 @@ class AppNavViewModelTest {
         val aboveMin = FakeMealsyApi(appMetaResult = {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 6)
         })
-        val aboveMinVm = AppNavViewModel(aboveMin, sessionManager(), currentVersionCode = 6)
+        val aboveMinVm = AppNavViewModel(aboveMin, sessionManager(), currentVersionCode = 6, pushRegistrar())
         aboveMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
             assertEquals(GateState.Ready, awaitItem())

@@ -114,6 +114,10 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
 
+    // PushRegistrar (Task 9) persists the last-sent FCM token here, mirroring
+    // :core:data's ConversationIdStore pattern.
+    implementation(libs.androidx.datastore.preferences)
+
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)

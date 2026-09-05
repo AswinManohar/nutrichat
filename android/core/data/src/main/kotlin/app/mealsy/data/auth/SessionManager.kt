@@ -37,6 +37,19 @@ interface AuthGateway {
 }
 
 /**
+ * Seam for Task 9's best-effort FCM device deregistration on sign-out.
+ *
+ * Declared here (rather than `SessionManager` depending on
+ * `app.mealsy.android.push.PushRegistrar` directly) because `:core:data`
+ * cannot depend on `:app`, where `PushRegistrar` lives — `AuthModule`
+ * requires a [SignOutHook] binding, and `:app`'s `PushModule` supplies the
+ * real implementation via Hilt.
+ */
+fun interface SignOutHook {
+    suspend fun onDeviceSignOut()
+}
+
+/**
  * Owns the app's Supabase auth session.
  *
  * [sessionState] mirrors [AuthGateway.sessionState]. [currentToken] is bound

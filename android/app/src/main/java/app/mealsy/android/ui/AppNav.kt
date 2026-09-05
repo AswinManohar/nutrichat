@@ -18,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.mealsy.android.BuildConfig
 import app.mealsy.android.di.AppVersionCode
+import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
@@ -61,6 +62,7 @@ class AppNavViewModel @Inject constructor(
     private val api: MealsyApi,
     sessionManager: SessionManager,
     @AppVersionCode private val currentVersionCode: Int,
+    private val pushRegistrar: PushRegistrar,
 ) : ViewModel() {
 
     val sessionState: StateFlow<SessionState> = sessionManager.sessionState
@@ -70,6 +72,24 @@ class AppNavViewModel @Inject constructor(
 
     init {
         checkGate()
+        observeSignIn()
+    }
+
+    /**
+     * FCM registration (Task 9) needs a signed-in user (`POST /devices/register`
+     * requires auth), so it's driven from [sessionState] here rather than at
+     * app startup — this is the "sensible place" the task brief calls for,
+     * chosen because [AppNavViewModel] already observes [sessionState] for
+     * routing and outlives any single screen.
+     */
+    private fun observeSignIn() {
+        viewModelScope.launch {
+            sessionState.collect { state ->
+                if (state is SessionState.SignedIn) {
+                    pushRegistrar.ensureRegistered()
+                }
+            }
+        }
     }
 
     private fun checkGate() {

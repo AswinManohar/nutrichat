@@ -50,8 +50,8 @@ object AuthModule {
 
     @Provides
     @Singleton
-    fun provideSessionManager(authGateway: AuthGateway): SessionManager =
-        SessionManager(authGateway)
+    fun provideSessionManager(authGateway: AuthGateway, signOutHook: SignOutHook): SessionManager =
+        SessionManager(authGateway, onSignOut = signOutHook::onDeviceSignOut)
 
     @Provides
     @Singleton
