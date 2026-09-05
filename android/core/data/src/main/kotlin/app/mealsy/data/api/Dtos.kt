@@ -327,3 +327,85 @@ data class CategoryStatDto(
     @SerialName("total_kcal") val totalKcal: Double,
     @SerialName("share_kcal_pct") val shareKcalPct: Double,
 )
+
+// ---------------------------------------------------------------------------
+// GET/POST/DELETE /my-meals, POST /my-meals/{id}/log
+// ---------------------------------------------------------------------------
+
+/**
+ * One saved "quick log" meal, per `MyMealSummary` in
+ * `src/backend/api/my_meals.py`. `GET /my-meals` returns a bare JSON array of
+ * these (same bare-array contract as trends/categories above).
+ */
+@Serializable
+data class SavedMealDto(
+    val id: String,
+    val name: String,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fat_g") val fatG: Double,
+    @SerialName("fiber_g") val fiberG: Double,
+    @SerialName("n_ingredients") val nIngredients: Int,
+    @SerialName("logged_today") val loggedToday: Boolean = false,
+)
+
+/**
+ * Body for `POST /my-meals`. `ingredients` reuses [ItemDto]/[ItemDtoSerializer]
+ * — the backend's `IngredientIn` (`src/backend/api/my_meals.py`) declares the
+ * same `food_name`/`qty_g`/macro fields and allows (and stores verbatim) any
+ * extra keys, so [ItemDto]'s `food_name`/`qty_g`/macros/`fdc_id`/`estimated`
+ * plus flattened `extras` round-trips cleanly into it. `target_qty_g` is
+ * omitted here (each [ItemDto] is built with `targetQtyG = null`) since a
+ * saved meal has no separate "edited" weight — [ItemDto.qtyG] alone is the
+ * ingredient's stored gram weight.
+ */
+@Serializable
+data class SaveMealRequest(
+    val name: String,
+    val ingredients: List<ItemDto>,
+)
+
+/** One kept ingredient (by stored index) with its edited gram weight, for a customized quick-log. */
+@Serializable
+data class IngredientOverrideDto(
+    val index: Int,
+    @SerialName("qty_g") val qtyG: Double,
+)
+
+/**
+ * Body for `POST /my-meals/{id}/log`. Omit [ingredients] for a 1x quick-log
+ * of the meal exactly as saved; `explicitNulls = false` (see [ApiModule])
+ * means a `null` here is dropped from the wire entirely, matching the
+ * backend's "omit for quick-log" contract rather than sending `"ingredients": null`.
+ */
+@Serializable
+data class LogMyMealRequest(
+    @SerialName("meal_type") val mealType: String,
+    val portion: Double = 1.0,
+    val ingredients: List<IngredientOverrideDto>? = null,
+)
+
+/**
+ * Maps a [CardItem] into the [ItemDto] shape `POST /my-meals` expects,
+ * scaling its macros by the same `(targetQtyG / qtyG) * portion` factor
+ * [app.mealsy.domain.CardEditor.totals] uses — a saved meal stores each
+ * ingredient at its current, already-edited weight, not the original
+ * resolved one.
+ */
+fun CardItem.toSavedIngredientDto(portion: Double): ItemDto {
+    val factor = (targetQtyG / qtyG) * portion
+    return ItemDto(
+        foodName = foodName,
+        qtyG = targetQtyG * portion,
+        targetQtyG = null,
+        kcal = kcal * factor,
+        proteinG = proteinG * factor,
+        carbsG = carbsG * factor,
+        fatG = fatG * factor,
+        fiberG = fiberG * factor,
+        fdcId = fdcId,
+        estimated = estimated,
+        extras = extras,
+    )
+}

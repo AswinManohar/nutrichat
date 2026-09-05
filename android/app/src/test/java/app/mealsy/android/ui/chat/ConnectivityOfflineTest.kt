@@ -6,6 +6,7 @@ import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
+import app.mealsy.data.repo.MyMealsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -72,7 +73,7 @@ class ConnectivityOfflineTest {
         val api = retrofit.create(MealsyApi::class.java)
         val repository = ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
         val connectivity = FakeConnectivityObserver(initial = true)
-        val viewModel = ChatViewModel(repository, api, connectivity)
+        val viewModel = ChatViewModel(repository, api, connectivity, MyMealsRepository(api))
         viewModel.readyJob.join()
 
         assertTrue(!viewModel.offline.value)
@@ -102,7 +103,7 @@ class ConnectivityOfflineTest {
             val repository =
                 ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
             val connectivity = FakeConnectivityObserver(initial = true)
-            val viewModel = ChatViewModel(repository, api, connectivity)
+            val viewModel = ChatViewModel(repository, api, connectivity, MyMealsRepository(api))
             viewModel.readyJob.join()
             assertTrue(!viewModel.offline.value)
 

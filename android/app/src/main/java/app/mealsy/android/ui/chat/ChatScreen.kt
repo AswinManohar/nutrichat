@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,28 +28,53 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The chat screen: today header, transcript, pending confirmation card, and input.
  *
  * [onOpenTrends] is a temporary way to reach [app.mealsy.android.ui.trends.TrendsScreen]
- * (Task 11) via a plain button — a real bottom nav destination replaces this in Task 13.
+ * (Task 11) via a plain button, and [onOpenMyMeals] likewise reaches
+ * [app.mealsy.android.ui.mymeals.MyMealsScreen] (Task 12) — a real bottom
+ * nav destination replaces both in Task 13.
+ *
+ * The today header is refreshed on `ON_RESUME` (not just once at startup):
+ * `MyMealsScreen`'s quick-log can't refresh this screen's `ChatViewModel`
+ * directly (see `MyMealsViewModel`'s doc comment), so returning here via the
+ * back stack re-triggers [ChatViewModel.refreshTodayNow] instead.
  */
 @Composable
-fun ChatScreen(viewModel: ChatViewModel = hiltViewModel(), onOpenTrends: () -> Unit = {}) {
+fun ChatScreen(
+    viewModel: ChatViewModel = hiltViewModel(),
+    onOpenTrends: () -> Unit = {},
+    onOpenMyMeals: () -> Unit = {},
+) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val pendingCard by viewModel.pendingCard.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val offline by viewModel.offline.collectAsStateWithLifecycle()
     val today by viewModel.today.collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
+    val lastLoggedCard by viewModel.lastLoggedCard.collectAsStateWithLifecycle()
+    val savingMeal by viewModel.savingMeal.collectAsStateWithLifecycle()
 
     var input by remember { mutableStateOf("") }
     var showCameraSheet by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshTodayNow()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // POST_NOTIFICATIONS is a runtime permission on API 33+; request it the
     // first time the user reaches the chat screen (the only place FCM
@@ -84,7 +110,8 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel(), onOpenTrends: () -> U
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.End,
         ) {
-            Button(onClick = onOpenTrends) { Text("Trends") }
+            Button(onClick = onOpenMyMeals) { Text("My Meals") }
+            Button(onClick = onOpenTrends, modifier = Modifier.padding(start = 8.dp)) { Text("Trends") }
         }
         TodayHeader(today = today, goals = goals)
         HorizontalDivider()
@@ -121,6 +148,15 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel(), onOpenTrends: () -> U
                 onSetPortion = viewModel::setPortion,
                 onConfirm = viewModel::confirm,
                 onCancel = viewModel::cancel,
+            )
+        }
+
+        lastLoggedCard?.let { loggedCard ->
+            LoggedSuccessSaveMealPrompt(
+                card = loggedCard,
+                saving = savingMeal,
+                onSave = viewModel::saveAsMyMeal,
+                onDismiss = viewModel::dismissSaveMealPrompt,
             )
         }
 

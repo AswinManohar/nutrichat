@@ -22,6 +22,7 @@ import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
+import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingScreen
 import app.mealsy.android.ui.trends.TrendsScreen
 import app.mealsy.data.api.MealsyApi
@@ -45,6 +46,7 @@ private const val ROUTE_LOGIN = "login"
 private const val ROUTE_CHAT = "chat"
 private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_TRENDS = "trends"
+private const val ROUTE_MY_MEALS = "my-meals"
 
 /** Result of the startup version-gate check. */
 sealed interface GateState {
@@ -237,11 +239,21 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         )
                     }
                     composable(ROUTE_CHAT) {
-                        ChatScreen(onOpenTrends = { navController.navigate(ROUTE_TRENDS) })
+                        ChatScreen(
+                            onOpenTrends = { navController.navigate(ROUTE_TRENDS) },
+                            onOpenMyMeals = { navController.navigate(ROUTE_MY_MEALS) },
+                        )
                     }
                     // Reached only via ChatScreen's temporary "Trends" button (Task 11) —
                     // a real bottom nav destination lands in Task 13.
                     composable(ROUTE_TRENDS) { TrendsScreen() }
+                    // Reached only via ChatScreen's temporary "My Meals" button (Task 12) —
+                    // a real bottom nav destination lands in Task 13. Popping back to chat
+                    // (rather than a plain nav) is what triggers ChatScreen's ON_RESUME
+                    // today-header refresh after a quick-log.
+                    composable(ROUTE_MY_MEALS) {
+                        MyMealsScreen(onLoggedNavigateToChat = { navController.popBackStack() })
+                    }
                 }
 
                 LaunchedEffect(sessionState, onboardingState) {

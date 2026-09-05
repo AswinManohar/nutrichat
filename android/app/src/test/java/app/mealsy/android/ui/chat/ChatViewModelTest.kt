@@ -90,7 +90,12 @@ class ChatViewModelTest {
             NoopPendingLogQueue(),
             json,
         )
-        return ChatViewModel(repository, api, FakeOnlineConnectivityObserver())
+        return ChatViewModel(
+            repository,
+            api,
+            FakeOnlineConnectivityObserver(),
+            app.mealsy.data.repo.MyMealsRepository(api),
+        )
     }
 
     /** No pending card, empty today/goals — the common "nothing to restore" startup. */
@@ -154,6 +159,75 @@ class ChatViewModelTest {
         assertFalse(viewModel.sending.value)
         val messages = viewModel.messages.value
         assertTrue(messages.any { it is ChatMsg.Assistant && it.text == "Logged breakfast." })
+    }
+
+    @Test
+    fun `confirm sets lastLoggedCard for the save-as-my-meal prompt`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
+            ),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+
+        viewModel.confirm()?.join()
+
+        assertTrue(viewModel.lastLoggedCard.value != null)
+        assertEquals(1, viewModel.lastLoggedCard.value?.items?.size)
+    }
+
+    @Test
+    fun `saveAsMyMeal posts to my-meals and clears the prompt on success`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
+            ),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+        server.enqueue(
+            MockResponse().setResponseCode(201).setBody(
+                """{"id":"meal_1","name":"My eggs","kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"n_ingredients":1,"logged_today":false}""",
+            ),
+        )
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+        viewModel.confirm()?.join()
+
+        viewModel.saveAsMyMeal("My eggs")?.join()
+
+        assertNull(viewModel.lastLoggedCard.value)
+        assertFalse(viewModel.savingMeal.value)
+        val messages = viewModel.messages.value
+        assertTrue(messages.any { it is ChatMsg.Assistant && it.text.contains("Saved") })
+    }
+
+    @Test
+    fun `refreshTodayNow re-fetches today and goals`() = runBlocking {
+        enqueueEmptyStartup()
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        assertEquals(800.0, viewModel.today.value?.kcal)
+
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"kcal":950.0,"protein_g":50.0,"fiber_g":12.0,"n_meals":2,"by_type":[]}""",
+            ),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+
+        viewModel.refreshTodayNow().join()
+
+        assertEquals(950.0, viewModel.today.value?.kcal)
     }
 
     @Test

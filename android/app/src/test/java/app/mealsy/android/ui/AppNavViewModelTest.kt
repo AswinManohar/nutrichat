@@ -11,6 +11,8 @@ import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogItemsResponse
 import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
+import app.mealsy.data.api.LogMyMealRequest
+import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
@@ -75,6 +77,10 @@ private class FakeMealsyApi(
         appMetaResult?.invoke() ?: error("appMetaResult not configured for this test")
     override suspend fun trends(days: Int) = error("not used")
     override suspend fun categories(days: Int) = error("not used")
+    override suspend fun myMeals() = error("not used")
+    override suspend fun saveMeal(body: SaveMealRequest) = error("not used")
+    override suspend fun logMyMeal(id: String, body: LogMyMealRequest) = error("not used")
+    override suspend fun deleteMyMeal(id: String) = error("not used")
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

@@ -115,6 +115,48 @@ fun ConfirmationCardView(
     }
 }
 
+/**
+ * Shown after a [ConfirmationCard] is successfully logged, offering to save
+ * its items as a reusable "My Meal" (`POST /my-meals`). [card] is the card
+ * exactly as it was confirmed — its post-edit gram weights and portion are
+ * what gets saved (see `MyMealsRepository.save`/`CardItem.toSavedIngredientDto`).
+ */
+@Composable
+fun LoggedSuccessSaveMealPrompt(
+    card: ConfirmationCard,
+    saving: Boolean,
+    onSave: (name: String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var name by remember(card) { mutableStateOf("") }
+
+    Card(modifier = modifier.fillMaxWidth().padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Save this as a My Meal?", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Meal name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                enabled = !saving,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                OutlinedButton(onClick = onDismiss, enabled = !saving) { Text("No thanks") }
+                Button(
+                    onClick = { onSave(name.trim()) },
+                    enabled = !saving && name.isNotBlank(),
+                    modifier = Modifier.padding(start = 8.dp),
+                ) { Text("Save") }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CardItemRow(item: CardItem, onEditQty: (Double) -> Unit, onRemove: () -> Unit) {
     // The qty field commits on focus-loss/IME-done rather than per keystroke:

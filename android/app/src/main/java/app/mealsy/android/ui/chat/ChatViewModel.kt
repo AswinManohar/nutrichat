@@ -10,6 +10,7 @@ import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.image.ImageEncoder
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.LogOutcome
+import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.TurnResult
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.ConfirmationCard
@@ -46,6 +47,7 @@ class ChatViewModel @Inject constructor(
     private val repository: ChatRepository,
     private val api: MealsyApi,
     private val connectivity: ConnectivityObserver,
+    private val myMealsRepository: MyMealsRepository,
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMsg>>(emptyList())
@@ -65,6 +67,18 @@ class ChatViewModel @Inject constructor(
 
     private val _goals = MutableStateFlow<GoalsResponse?>(null)
     val goals: StateFlow<GoalsResponse?> = _goals.asStateFlow()
+
+    /**
+     * The just-confirmed card, kept around only so [ChatScreen] can offer
+     * "Save as My Meal" ([LoggedSuccessSaveMealPrompt]) right after a
+     * successful log. `null` once dismissed, saved, or superseded by a new
+     * turn.
+     */
+    private val _lastLoggedCard = MutableStateFlow<ConfirmationCard?>(null)
+    val lastLoggedCard: StateFlow<ConfirmationCard?> = _lastLoggedCard.asStateFlow()
+
+    private val _savingMeal = MutableStateFlow(false)
+    val savingMeal: StateFlow<Boolean> = _savingMeal.asStateFlow()
 
     init {
         // Primary offline signal: with no pending card there may be no
@@ -107,6 +121,7 @@ class ChatViewModel @Inject constructor(
      */
     fun send(text: String): Job {
         _messages.value = _messages.value + ChatMsg.User(text)
+        _lastLoggedCard.value = null
         _sending.value = true
         return viewModelScope.launch {
             try {
@@ -139,6 +154,7 @@ class ChatViewModel @Inject constructor(
      */
     fun sendPhoto(bitmap: Bitmap): Job {
         _messages.value = _messages.value + ChatMsg.User("[photo]")
+        _lastLoggedCard.value = null
         _sending.value = true
         return viewModelScope.launch {
             try {
@@ -206,6 +222,7 @@ class ChatViewModel @Inject constructor(
                 when (val outcome = repository.confirmCard(card)) {
                     is LogOutcome.Logged -> {
                         _pendingCard.value = null
+                        _lastLoggedCard.value = card
                         appendAssistant(outcome.message)
                         _offline.value = false
                         refreshToday()
@@ -264,6 +281,53 @@ class ChatViewModel @Inject constructor(
                 _sending.value = false
             }
         }
+    }
+
+    /**
+     * Re-fetches the today header's totals/goals. Public (unlike
+     * [refreshToday]) specifically for [ChatScreen]'s `ON_RESUME` hook — the
+     * simplest correct wiring for keeping the header current after a
+     * quick-log on `MyMealsScreen`, since that screen's `MyMealsViewModel`
+     * has no reference to this `ChatViewModel` instance (see
+     * `MyMealsViewModel`'s doc comment for the full rationale).
+     */
+    fun refreshTodayNow(): Job = viewModelScope.launch { refreshToday() }
+
+    /**
+     * Saves [lastLoggedCard] as a new My Meal named [name]. Clears the
+     * prompt on both success and failure — a 409 (duplicate name) or any
+     * other error is reported into the transcript rather than left silently
+     * retryable, since the name field itself is gone once the prompt closes.
+     */
+    fun saveAsMyMeal(name: String): Job? {
+        val card = _lastLoggedCard.value ?: return null
+        _savingMeal.value = true
+        return viewModelScope.launch {
+            try {
+                myMealsRepository.save(card, name)
+                appendAssistant("Saved \"$name\" to My Meals.")
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: HttpException) {
+                if (exc.code() == 409) {
+                    appendAssistant("You already have a meal named \"$name\".")
+                } else {
+                    appendAssistant("Couldn't save that meal. Try again.")
+                }
+            } catch (exc: IOException) {
+                appendAssistant("Couldn't reach Mealsy. Check your connection and try again.")
+            } catch (exc: Exception) {
+                appendAssistant("Couldn't save that meal. Try again.")
+            } finally {
+                _savingMeal.value = false
+                _lastLoggedCard.value = null
+            }
+        }
+    }
+
+    /** Dismisses the "Save as My Meal" prompt without saving. */
+    fun dismissSaveMealPrompt() {
+        _lastLoggedCard.value = null
     }
 
     private suspend fun refreshToday() {

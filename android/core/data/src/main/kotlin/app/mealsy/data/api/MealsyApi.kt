@@ -56,4 +56,16 @@ interface MealsyApi {
 
     @GET("meals/categories")
     suspend fun categories(@Query("days") days: Int): List<CategoryStatDto>
+
+    @GET("my-meals")
+    suspend fun myMeals(): List<SavedMealDto>
+
+    @POST("my-meals")
+    suspend fun saveMeal(@Body body: SaveMealRequest): SavedMealDto
+
+    @POST("my-meals/{id}/log")
+    suspend fun logMyMeal(@Path("id") id: String, @Body body: LogMyMealRequest): LogItemsResponse
+
+    @DELETE("my-meals/{id}")
+    suspend fun deleteMyMeal(@Path("id") id: String)
 }
