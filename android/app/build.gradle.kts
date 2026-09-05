@@ -43,6 +43,11 @@ android {
             "SUPABASE_ANON_KEY",
             "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
         )
+        buildConfigField(
+            "String",
+            "PRIVACY_POLICY_URL",
+            "\"${localProperties.getProperty("PRIVACY_POLICY_URL", "https://mealsy.app/privacy")}\"",
+        )
     }
 
     buildTypes {

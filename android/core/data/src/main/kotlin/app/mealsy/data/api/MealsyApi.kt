@@ -68,4 +68,7 @@ interface MealsyApi {
 
     @DELETE("my-meals/{id}")
     suspend fun deleteMyMeal(@Path("id") id: String)
+
+    @DELETE("account")
+    suspend fun deleteAccount()
 }

@@ -68,7 +68,14 @@ fun OnboardingScreen(
         ) { page ->
             when (page) {
                 0 -> TrackingModeStep(uiState.trackingMode, viewModel::setTrackingMode)
-                1 -> NumericGoalsStep(uiState, viewModel)
+                1 -> NumericGoalsStep(
+                    kcalGoal = uiState.kcalGoal,
+                    proteinGoal = uiState.proteinGoal,
+                    fiberGoal = uiState.fiberGoal,
+                    onKcalGoalChange = viewModel::setKcalGoal,
+                    onProteinGoalChange = viewModel::setProteinGoal,
+                    onFiberGoalChange = viewModel::setFiberGoal,
+                )
                 else -> DietaryPrefsStep(uiState.dietaryPrefs, viewModel::toggleDietaryPref)
             }
         }
@@ -116,8 +123,13 @@ fun OnboardingScreen(
     }
 }
 
+/**
+ * `internal` (rather than `private`) so [app.mealsy.android.ui.settings.SettingsScreen]
+ * can reuse these same step composables for editing goals post-onboarding —
+ * see Task 13's "Goals" section.
+ */
 @Composable
-private fun TrackingModeStep(selected: String, onSelect: (String) -> Unit) {
+internal fun TrackingModeStep(selected: String, onSelect: (String) -> Unit) {
     Column {
         Text(text = "How do you want to track?", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
@@ -155,34 +167,41 @@ private fun TrackingModeOption(
 }
 
 @Composable
-private fun NumericGoalsStep(uiState: OnboardingUiState, viewModel: OnboardingViewModel) {
+internal fun NumericGoalsStep(
+    kcalGoal: Double,
+    proteinGoal: Double,
+    fiberGoal: Double,
+    onKcalGoalChange: (Double) -> Unit,
+    onProteinGoalChange: (Double) -> Unit,
+    onFiberGoalChange: (Double) -> Unit,
+) {
     Column {
         Text(text = "Daily goals", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))
 
         GoalStepper(
             label = "Calories (kcal)",
-            value = uiState.kcalGoal,
+            value = kcalGoal,
             step = 50.0,
-            onChange = viewModel::setKcalGoal,
+            onChange = onKcalGoalChange,
         )
         GoalStepper(
             label = "Protein (g)",
-            value = uiState.proteinGoal,
+            value = proteinGoal,
             step = 5.0,
-            onChange = viewModel::setProteinGoal,
+            onChange = onProteinGoalChange,
         )
         GoalStepper(
             label = "Fiber (g)",
-            value = uiState.fiberGoal,
+            value = fiberGoal,
             step = 5.0,
-            onChange = viewModel::setFiberGoal,
+            onChange = onFiberGoalChange,
         )
     }
 }
 
 @Composable
-private fun GoalStepper(label: String, value: Double, step: Double, onChange: (Double) -> Unit) {
+internal fun GoalStepper(label: String, value: Double, step: Double, onChange: (Double) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -201,7 +220,7 @@ private fun GoalStepper(label: String, value: Double, step: Double, onChange: (D
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DietaryPrefsStep(selected: Set<String>, onToggle: (String) -> Unit) {
+internal fun DietaryPrefsStep(selected: Set<String>, onToggle: (String) -> Unit) {
     Column {
         Text(text = "Dietary preferences", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(16.dp))

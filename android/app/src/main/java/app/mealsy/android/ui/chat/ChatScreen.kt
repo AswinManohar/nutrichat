@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,10 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 /**
  * The chat screen: today header, transcript, pending confirmation card, and input.
  *
- * [onOpenTrends] is a temporary way to reach [app.mealsy.android.ui.trends.TrendsScreen]
- * (Task 11) via a plain button, and [onOpenMyMeals] likewise reaches
- * [app.mealsy.android.ui.mymeals.MyMealsScreen] (Task 12) — a real bottom
- * nav destination replaces both in Task 13.
+ * Trends, My Meals, and Settings are reached via `AppNav`'s bottom
+ * [androidx.compose.material3.NavigationBar], not from this screen.
  *
  * The today header is refreshed on `ON_RESUME` (not just once at startup):
  * `MyMealsScreen`'s quick-log can't refresh this screen's `ChatViewModel`
@@ -50,11 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  * back stack re-triggers [ChatViewModel.refreshTodayNow] instead.
  */
 @Composable
-fun ChatScreen(
-    viewModel: ChatViewModel = hiltViewModel(),
-    onOpenTrends: () -> Unit = {},
-    onOpenMyMeals: () -> Unit = {},
-) {
+fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val pendingCard by viewModel.pendingCard.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
@@ -106,13 +99,6 @@ fun ChatScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            Button(onClick = onOpenMyMeals) { Text("My Meals") }
-            Button(onClick = onOpenTrends, modifier = Modifier.padding(start = 8.dp)) { Text("Trends") }
-        }
         TodayHeader(today = today, goals = goals)
         HorizontalDivider()
 

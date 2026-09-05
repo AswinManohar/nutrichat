@@ -22,6 +22,11 @@ import kotlinx.coroutines.SupervisorJob
 @Retention(AnnotationRetention.BINARY)
 annotation class AppVersionCode
 
+/** The installed app's `versionName`, for [app.mealsy.android.ui.settings.SettingsViewModel]. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class AppVersionName
+
 /**
  * A [CoroutineScope] that outlives any single `ViewModel`'s `viewModelScope`
  * — for work that must finish even if the screen that started it is popped
@@ -41,6 +46,10 @@ object AppModule {
     @Provides
     @AppVersionCode
     fun provideAppVersionCode(): Int = BuildConfig.VERSION_CODE
+
+    @Provides
+    @AppVersionName
+    fun provideAppVersionName(): String = BuildConfig.VERSION_NAME
 
     @Provides
     @Singleton

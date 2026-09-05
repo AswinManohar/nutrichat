@@ -65,6 +65,7 @@ private class FakeMealsyApi(
     override suspend fun saveMeal(body: SaveMealRequest) = error("not used")
     override suspend fun logMyMeal(id: String, body: LogMyMealRequest) = error("not used")
     override suspend fun deleteMyMeal(id: String) = error("not used")
+    override suspend fun deleteAccount() = error("not used")
 }
 
 private fun echoResponse(body: GoalRequest) = GoalsResponse(

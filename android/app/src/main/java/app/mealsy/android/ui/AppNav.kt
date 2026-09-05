@@ -2,7 +2,15 @@ package app.mealsy.android.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,9 +20,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.mealsy.android.BuildConfig
 import app.mealsy.android.di.AppVersionCode
@@ -24,6 +35,7 @@ import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingScreen
+import app.mealsy.android.ui.settings.SettingsScreen
 import app.mealsy.android.ui.trends.TrendsScreen
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.auth.SessionManager
@@ -47,6 +59,17 @@ private const val ROUTE_CHAT = "chat"
 private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_TRENDS = "trends"
 private const val ROUTE_MY_MEALS = "my-meals"
+private const val ROUTE_SETTINGS = "settings"
+
+/** The four bottom-nav destinations, in display order. */
+private data class BottomNavDestination(val route: String, val label: String)
+
+private val BOTTOM_NAV_DESTINATIONS = listOf(
+    BottomNavDestination(ROUTE_CHAT, "Chat"),
+    BottomNavDestination(ROUTE_TRENDS, "Trends"),
+    BottomNavDestination(ROUTE_MY_MEALS, "My Meals"),
+    BottomNavDestination(ROUTE_SETTINGS, "Settings"),
+)
 
 /** Result of the startup version-gate check. */
 sealed interface GateState {
@@ -225,34 +248,66 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                     CircularProgressIndicator()
                 }
             } else {
-                NavHost(navController = navController, startDestination = ROUTE_LOGIN) {
-                    composable(ROUTE_LOGIN) { LoginScreen() }
-                    composable(ROUTE_ONBOARDING) {
-                        OnboardingScreen(
-                            onDone = {
-                                viewModel.onOnboardingComplete()
-                                navController.navigate(ROUTE_CHAT) {
-                                    popUpTo(navController.graph.id) { inclusive = true }
-                                    launchSingleTop = true
+                // Login/onboarding render outside the bottom-nav scaffold — only the
+                // four main destinations (chat/trends/my-meals/settings) get the bar.
+                val backStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = backStackEntry?.destination?.route
+                val showBottomNav = currentRoute in BOTTOM_NAV_DESTINATIONS.map { it.route }
+
+                Scaffold(
+                    bottomBar = {
+                        if (showBottomNav) {
+                            NavigationBar {
+                                BOTTOM_NAV_DESTINATIONS.forEach { destination ->
+                                    NavigationBarItem(
+                                        selected = backStackEntry?.destination?.hierarchy
+                                            ?.any { it.route == destination.route } == true,
+                                        onClick = {
+                                            navController.navigate(destination.route) {
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                        icon = {
+                                            if (destination.route == ROUTE_SETTINGS) {
+                                                Icon(Icons.Default.Settings, contentDescription = null)
+                                            }
+                                        },
+                                        label = { Text(destination.label) },
+                                    )
                                 }
-                            },
-                        )
-                    }
-                    composable(ROUTE_CHAT) {
-                        ChatScreen(
-                            onOpenTrends = { navController.navigate(ROUTE_TRENDS) },
-                            onOpenMyMeals = { navController.navigate(ROUTE_MY_MEALS) },
-                        )
-                    }
-                    // Reached only via ChatScreen's temporary "Trends" button (Task 11) —
-                    // a real bottom nav destination lands in Task 13.
-                    composable(ROUTE_TRENDS) { TrendsScreen() }
-                    // Reached only via ChatScreen's temporary "My Meals" button (Task 12) —
-                    // a real bottom nav destination lands in Task 13. Popping back to chat
-                    // (rather than a plain nav) is what triggers ChatScreen's ON_RESUME
-                    // today-header refresh after a quick-log.
-                    composable(ROUTE_MY_MEALS) {
-                        MyMealsScreen(onLoggedNavigateToChat = { navController.popBackStack() })
+                            }
+                        }
+                    },
+                ) { innerPadding ->
+                    NavHost(
+                        navController = navController,
+                        startDestination = ROUTE_LOGIN,
+                        modifier = Modifier.padding(innerPadding),
+                    ) {
+                        composable(ROUTE_LOGIN) { LoginScreen() }
+                        composable(ROUTE_ONBOARDING) {
+                            OnboardingScreen(
+                                onDone = {
+                                    viewModel.onOnboardingComplete()
+                                    navController.navigate(ROUTE_CHAT) {
+                                        popUpTo(navController.graph.id) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                },
+                            )
+                        }
+                        composable(ROUTE_CHAT) { ChatScreen() }
+                        composable(ROUTE_TRENDS) { TrendsScreen() }
+                        // Popping back to chat (rather than a plain nav) is what triggers
+                        // ChatScreen's ON_RESUME today-header refresh after a quick-log.
+                        composable(ROUTE_MY_MEALS) {
+                            MyMealsScreen(onLoggedNavigateToChat = { navController.popBackStack() })
+                        }
+                        composable(ROUTE_SETTINGS) { SettingsScreen() }
                     }
                 }
 

@@ -46,6 +46,7 @@ private class FakeMealsyApi : MealsyApi {
     override suspend fun saveMeal(body: SaveMealRequest) = error("not used")
     override suspend fun logMyMeal(id: String, body: LogMyMealRequest) = error("not used")
     override suspend fun deleteMyMeal(id: String) = error("not used")
+    override suspend fun deleteAccount() = error("not used")
 
     override suspend fun registerDevice(body: RegisterDeviceRequest) {
         if (registerDeviceShouldThrow) throw RuntimeException("network down")
