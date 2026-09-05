@@ -49,6 +49,11 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# Belt-and-braces: ItemDto's custom @Serializable(with = ...) object
+# (Dtos.kt) is referenced by name in the annotation rather than by a normal
+# call site, so keep it explicitly in case it's ever looked up reflectively.
+-keep class app.mealsy.data.api.ItemDtoSerializer { *; }
+
 # Retrofit — published consumer rules
 # (https://github.com/square/retrofit/blob/master/retrofit/src/main/resources/META-INF/proguard/retrofit2.pro)
 -dontwarn okhttp3.**

@@ -124,8 +124,8 @@ category names and required disclosures change between Play releases.
 
 - **Data sharing:** No data is shared with third parties.
 - **Data deletion:** Users can delete their account and all associated data
-  in-app via Settings → Delete account, or via the web app's account
-  deletion page (same backend `DELETE /account` endpoint both call).
+  in-app via Settings → Delete account, which calls the backend
+  `DELETE /account` endpoint.
 - **Data encrypted in transit:** Yes (HTTPS/TLS to the backend and to
   Supabase; FCM tokens and push payloads likewise sent over TLS).
 - **Data retention:** Meal and nutrition data is retained until the user
@@ -145,5 +145,8 @@ Play, none of which this task can complete from here:
   calls into.
 - Privacy policy live at the URL configured as `PRIVACY_POLICY_URL` —
   required both in-app and for the Play Store listing (spec §5).
+- Web account-deletion page calling `DELETE /account` — required for the
+  Play listing's data-safety deletion URL; not yet built (in-app deletion
+  via Settings → Delete account is the only working path today).
 - Eval gate (`eval/run_eval.py`) run and green against the backend version
   the app is targeting, per repo root eval-harness convention.
