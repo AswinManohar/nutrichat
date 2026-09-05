@@ -4,6 +4,7 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.MyMealsRepository
@@ -55,6 +56,11 @@ class ConnectivityOfflineTest {
         override suspend fun enqueue(clientRequestId: String, payloadJson: String) = Unit
     }
 
+    private class NoopDroppedLogStore : DroppedLogStore {
+        override suspend fun markDropped() = Unit
+        override suspend fun consumeDropped(): Boolean = false
+    }
+
     @Test
     fun `losing connectivity sets the offline banner without any failed request`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
@@ -73,7 +79,8 @@ class ConnectivityOfflineTest {
         val api = retrofit.create(MealsyApi::class.java)
         val repository = ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
         val connectivity = FakeConnectivityObserver(initial = true)
-        val viewModel = ChatViewModel(repository, api, connectivity, MyMealsRepository(api))
+        val viewModel =
+            ChatViewModel(repository, api, connectivity, MyMealsRepository(api), NoopDroppedLogStore())
         viewModel.readyJob.join()
 
         assertTrue(!viewModel.offline.value)
@@ -103,7 +110,8 @@ class ConnectivityOfflineTest {
             val repository =
                 ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
             val connectivity = FakeConnectivityObserver(initial = true)
-            val viewModel = ChatViewModel(repository, api, connectivity, MyMealsRepository(api))
+            val viewModel =
+                ChatViewModel(repository, api, connectivity, MyMealsRepository(api), NoopDroppedLogStore())
             viewModel.readyJob.join()
             assertTrue(!viewModel.offline.value)
 

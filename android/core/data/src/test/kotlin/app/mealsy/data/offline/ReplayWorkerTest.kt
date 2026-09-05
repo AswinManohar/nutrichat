@@ -16,6 +16,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -34,10 +35,39 @@ class ReplayWorkerTest {
     private lateinit var server: MockWebServer
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
+    /** Records every [ReplayFailureReporter.report] call for assertions. */
+    private class RecordingFailureReporter : ReplayFailureReporter {
+        val calls = mutableListOf<Pair<String, String>>()
+        override fun report(clientRequestId: String, reason: String) {
+            calls += clientRequestId to reason
+        }
+    }
+
+    /** In-memory [DroppedLogStore] fake — no DataStore/Context plumbing needed. */
+    private class FakeDroppedLogStore : DroppedLogStore {
+        var dropped = false
+            private set
+
+        override suspend fun markDropped() {
+            dropped = true
+        }
+
+        override suspend fun consumeDropped(): Boolean {
+            val was = dropped
+            dropped = false
+            return was
+        }
+    }
+
+    private lateinit var failureReporter: RecordingFailureReporter
+    private lateinit var droppedLogStore: FakeDroppedLogStore
+
     @Before
     fun setUp() {
         server = MockWebServer()
         server.start()
+        failureReporter = RecordingFailureReporter()
+        droppedLogStore = FakeDroppedLogStore()
     }
 
     @After
@@ -67,7 +97,9 @@ class ReplayWorkerTest {
                         appContext: Context,
                         workerClassName: String,
                         workerParameters: WorkerParameters,
-                    ): ListenableWorker = ReplayWorker(appContext, workerParameters, dao, api, json)
+                    ): ListenableWorker = ReplayWorker(
+                        appContext, workerParameters, dao, api, json, failureReporter, droppedLogStore,
+                    )
                 },
             )
             .build()
@@ -151,6 +183,18 @@ class ReplayWorkerTest {
     }
 
     @Test
+    fun `422 poison payload reports the failure and marks a dropped log`() {
+        server.enqueue(MockResponse().setResponseCode(422))
+        val dao = FakePendingLogDao().apply { seed(sampleRow("req-poison")) }
+        val worker = buildWorker(dao, buildApi())
+
+        worker.startWork().get()
+
+        assertEquals(listOf("req-poison" to "poison:422"), failureReporter.calls)
+        assertTrue(droppedLogStore.dropped)
+    }
+
+    @Test
     fun `row past max attempts is given up on without another network call`() {
         val dao = FakePendingLogDao().apply {
             seed(sampleRow().copy(attempts = ReplayWorker.MAX_ATTEMPTS))
@@ -162,6 +206,22 @@ class ReplayWorkerTest {
         assertEquals(ListenableWorker.Result.success(), result)
         assertTrue(runBlockingGetAll(dao).isEmpty())
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `giving up past max attempts reports the failure and marks a dropped log`() {
+        val dao = FakePendingLogDao().apply {
+            seed(sampleRow("req-giveup").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
+        }
+        val worker = buildWorker(dao, buildApi())
+
+        worker.startWork().get()
+
+        assertEquals(
+            listOf("req-giveup" to "give-up:attempts=${ReplayWorker.MAX_ATTEMPTS}"),
+            failureReporter.calls,
+        )
+        assertTrue(droppedLogStore.dropped)
     }
 
     @Test
@@ -180,6 +240,22 @@ class ReplayWorkerTest {
         assertEquals(ListenableWorker.Result.success(), result)
         assertTrue(runBlockingGetAll(dao).isEmpty())
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `a successfully replayed row never reports a failure or marks a dropped log`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged.","deduplicated":false}""",
+            ),
+        )
+        val dao = FakePendingLogDao().apply { seed(sampleRow()) }
+        val worker = buildWorker(dao, buildApi())
+
+        worker.startWork().get()
+
+        assertTrue(failureReporter.calls.isEmpty())
+        assertFalse(droppedLogStore.dropped)
     }
 
     /**

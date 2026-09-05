@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -35,9 +34,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.mealsy.android.ui.common.ErrorState
+import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.SavedMeal
 import kotlinx.coroutines.launch
 
@@ -97,7 +100,7 @@ fun MyMealsScreen(
             )
 
             when (val state = uiState) {
-                MyMealsUiState.Loading -> LoadingState()
+                MyMealsUiState.Loading -> LoadingState("Loading your meals…")
                 MyMealsUiState.Empty -> EmptyState()
                 is MyMealsUiState.Error -> ErrorState(state.message, onRetry = viewModel::load)
                 is MyMealsUiState.Loaded -> {
@@ -133,13 +136,6 @@ fun MyMealsScreen(
 }
 
 @Composable
-private fun LoadingState() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Loading your meals…")
-    }
-}
-
-@Composable
 private fun EmptyState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
@@ -147,16 +143,6 @@ private fun EmptyState() {
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(32.dp),
         )
-    }
-}
-
-@Composable
-private fun ErrorState(message: String, onRetry: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(message, modifier = Modifier.padding(bottom = 16.dp))
-            Button(onClick = onRetry) { Text("Retry") }
-        }
     }
 }
 
@@ -177,6 +163,14 @@ private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -
                     },
                     onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
                 )
+            }
+            // The whole card is one tap-to-log/swipe-to-delete target with
+            // no separately interactive children (unlike CardItemRow's
+            // editable qty field), so clearing and setting one description
+            // is safe here and avoids TalkBack reading three disjoint texts.
+            .clearAndSetSemantics {
+                contentDescription = "${meal.name}, ${meal.kcal.toInt()} kcal, " +
+                    "${meal.proteinG.toInt()}g protein"
             },
     ) {
         Column(

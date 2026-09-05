@@ -22,6 +22,9 @@ abstract class OfflineModule {
     @Binds
     abstract fun bindReplayWorkEnqueuer(impl: WorkManagerReplayEnqueuer): ReplayWorkEnqueuer
 
+    @Binds
+    abstract fun bindDroppedLogStore(impl: DataStoreDroppedLogStore): DroppedLogStore
+
     companion object {
         @Provides
         @Singleton

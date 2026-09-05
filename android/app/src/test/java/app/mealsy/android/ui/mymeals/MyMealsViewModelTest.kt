@@ -130,6 +130,28 @@ class MyMealsViewModelTest {
     }
 
     @Test
+    fun `a server error maps to Error state`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+
+        assertTrue(viewModel.uiState.value is MyMealsUiState.Error)
+    }
+
+    @Test
+    fun `retry after an error reloads and can land Loaded`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(500))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        assertTrue(viewModel.uiState.value is MyMealsUiState.Error)
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+        viewModel.load().join()
+
+        assertTrue(viewModel.uiState.value is MyMealsUiState.Loaded)
+    }
+
+    @Test
     fun `quickLog calls POST log and reports success`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
         val viewModel = buildViewModel()

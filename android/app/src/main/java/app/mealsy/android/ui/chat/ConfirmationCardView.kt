@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -185,7 +187,15 @@ private fun CardItemRow(item: CardItem, onEditQty: (Double) -> Unit, onRemove: (
                     onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
                 )
             }
-            .background(MaterialTheme.colorScheme.surface),
+            .background(MaterialTheme.colorScheme.surface)
+            // Announced alongside (not instead of — the qty field below must
+            // stay independently focusable/editable for TalkBack) the row's
+            // individual child nodes, so a swipe-to-remove target with no
+            // visible affordance still reads as a coherent item summary.
+            .semantics {
+                contentDescription =
+                    "${item.foodName}, ${item.targetQtyG.toInt()}g, ${item.kcal.toInt()} kcal"
+            },
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(

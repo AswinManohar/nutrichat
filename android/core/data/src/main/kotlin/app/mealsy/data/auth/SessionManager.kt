@@ -1,6 +1,7 @@
 package app.mealsy.data.auth
 
 import android.app.Activity
+import app.mealsy.data.error.ErrorReporter
 import kotlinx.coroutines.flow.StateFlow
 
 /** Coarse-grained auth state exposed to the rest of the app. */
@@ -64,6 +65,7 @@ fun interface SignOutHook {
 class SessionManager(
     private val authGateway: AuthGateway,
     private val onSignOut: suspend () -> Unit = {},
+    private val errorReporter: ErrorReporter = ErrorReporter {},
 ) {
     val sessionState: StateFlow<SessionState> = authGateway.sessionState
 
@@ -85,14 +87,17 @@ class SessionManager(
         return if (forceRefresh) {
             try {
                 authGateway.refreshCurrentSession()
-            } catch (_: Exception) {
+            } catch (exc: Exception) {
                 // AuthInterceptor calls this from its 401-retry path with
                 // runBlocking; a RestException/Ktor exception escaping
                 // here would surface as an unhandled crash-type exception
                 // from an OkHttp interceptor instead of Task 3's "second
                 // 401 propagates" contract. Swallow and return null so the
                 // retried request goes out unauthenticated and yields a
-                // clean 401.
+                // clean 401. Still recorded — a session refresh that fails
+                // unexpectedly often is worth knowing about even though the
+                // user-visible behavior (a clean 401) is unaffected.
+                errorReporter.record(exc)
                 null
             }
         } else {
@@ -107,9 +112,12 @@ class SessionManager(
         // failing hook never blocks the local sign-out it's piggybacking on.
         try {
             onSignOut()
-        } catch (_: Exception) {
+        } catch (exc: Exception) {
             // Best-effort only — device deregistration failing must not
-            // prevent the user from signing out.
+            // prevent the user from signing out. Still recorded so a
+            // systemic deregistration failure (vs. one-off offline sign-outs)
+            // is visible rather than permanently silent.
+            errorReporter.record(exc)
         }
         authGateway.signOut()
     }

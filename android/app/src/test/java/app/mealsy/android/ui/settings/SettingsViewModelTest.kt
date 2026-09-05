@@ -59,8 +59,13 @@ private class FakeAuthGateway(
  */
 private class FakeMealsyApi(
     private val onGoals: (suspend () -> GoalsResponse)? = null,
-    private val onDeleteAccount: (suspend () -> Unit)? = null,
+    private var onDeleteAccount: (suspend () -> Unit)? = null,
 ) : MealsyApi {
+
+    /** Swaps the delete behavior mid-test, e.g. to simulate a retry that now succeeds. */
+    fun setOnDeleteAccount(block: (suspend () -> Unit)?) {
+        onDeleteAccount = block
+    }
     var deleteAccountCallCount = 0
         private set
 
@@ -225,6 +230,30 @@ class SettingsViewModelTest {
         assertEquals(0, authGateway.signOutCallCount)
         assertFalse(viewModel.uiState.value.signedOut)
         assertTrue(viewModel.uiState.value.deleteError != null)
+    }
+
+    @Test
+    fun `retrying deleteAccount after a failure can succeed`() = runTest {
+        val authGateway = FakeAuthGateway()
+        val api = FakeMealsyApi(
+            onGoals = ::echoGoals,
+            onDeleteAccount = { error("boom") },
+        )
+        val (viewModel, _, _) = viewModel(api = api, authGateway = authGateway)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.setDeleteConfirmationText("DELETE")
+        viewModel.deleteAccount()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.deleteError != null)
+
+        api.setOnDeleteAccount(null) // the retry now succeeds
+        viewModel.deleteAccount()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(2, api.deleteAccountCallCount)
+        assertEquals(1, authGateway.signOutCallCount)
+        assertTrue(viewModel.uiState.value.signedOut)
+        assertNull(viewModel.uiState.value.deleteError)
     }
 
     @Test

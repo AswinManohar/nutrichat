@@ -2,6 +2,7 @@ package app.mealsy.data.auth
 
 import app.mealsy.android.data.BuildConfig
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.error.ErrorReporter
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -50,8 +51,12 @@ object AuthModule {
 
     @Provides
     @Singleton
-    fun provideSessionManager(authGateway: AuthGateway, signOutHook: SignOutHook): SessionManager =
-        SessionManager(authGateway, onSignOut = signOutHook::onDeviceSignOut)
+    fun provideSessionManager(
+        authGateway: AuthGateway,
+        signOutHook: SignOutHook,
+        errorReporter: ErrorReporter,
+    ): SessionManager =
+        SessionManager(authGateway, onSignOut = signOutHook::onDeviceSignOut, errorReporter = errorReporter)
 
     @Provides
     @Singleton

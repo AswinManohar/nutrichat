@@ -8,6 +8,7 @@ import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.image.ImageEncoder
+import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.LogOutcome
 import app.mealsy.data.repo.MyMealsRepository
@@ -48,6 +49,7 @@ class ChatViewModel @Inject constructor(
     private val api: MealsyApi,
     private val connectivity: ConnectivityObserver,
     private val myMealsRepository: MyMealsRepository,
+    private val droppedLogStore: DroppedLogStore,
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMsg>>(emptyList())
@@ -101,6 +103,19 @@ class ChatViewModel @Inject constructor(
      * resulting state flows.
      */
     val readyJob: Job = viewModelScope.launch {
+        // Surface (once — consumeDropped clears the flag) a queued meal
+        // ReplayWorker gave up on or poison-deleted, per the CARRIED FINDING
+        // from Task 7: an offline log silently vanishing must leave a
+        // user-visible trace, not just a Crashlytics record.
+        try {
+            if (droppedLogStore.consumeDropped()) {
+                appendAssistant("A queued meal from earlier couldn't be synced and was dropped.")
+            }
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (exc: Exception) {
+            // Best-effort — a failure reading this flag must not block startup.
+        }
         try {
             _pendingCard.value = repository.recoverPending()
             _offline.value = false

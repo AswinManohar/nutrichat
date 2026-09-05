@@ -4,6 +4,7 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,19 @@ private class FakeOnlineConnectivityObserver : ConnectivityObserver {
 /** No-op fake — queueing itself is covered by `ChatRepositoryTest`. */
 private class NoopPendingLogQueue : PendingLogQueue {
     override suspend fun enqueue(clientRequestId: String, payloadJson: String) = Unit
+}
+
+/** In-memory [DroppedLogStore] fake, defaulting to "nothing dropped". */
+private class FakeDroppedLogStore(private var dropped: Boolean = false) : DroppedLogStore {
+    override suspend fun markDropped() {
+        dropped = true
+    }
+
+    override suspend fun consumeDropped(): Boolean {
+        val was = dropped
+        dropped = false
+        return was
+    }
 }
 
 /**
@@ -82,7 +96,7 @@ class ChatViewModelTest {
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildViewModel(): ChatViewModel {
+    private fun buildViewModel(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatViewModel {
         val api = buildApi()
         val repository = ChatRepository(
             api,
@@ -95,6 +109,7 @@ class ChatViewModelTest {
             api,
             FakeOnlineConnectivityObserver(),
             app.mealsy.data.repo.MyMealsRepository(api),
+            droppedLogStore,
         )
     }
 
@@ -271,6 +286,36 @@ class ChatViewModelTest {
 
         assertTrue(viewModel.pendingCard.value != null)
         assertEquals(1, viewModel.pendingCard.value?.items?.size)
+    }
+
+    @Test
+    fun `a dropped queued log surfaces a one-time notice on init`() = runBlocking {
+        enqueueEmptyStartup()
+        val droppedLogStore = FakeDroppedLogStore(dropped = true)
+        val viewModel = buildViewModel(droppedLogStore)
+
+        viewModel.readyJob.join()
+
+        val messages = viewModel.messages.value
+        assertTrue(
+            messages.any {
+                it is ChatMsg.Assistant &&
+                    it.text == "A queued meal from earlier couldn't be synced and was dropped."
+            },
+        )
+        // consumeDropped clears the flag — a second ChatViewModel (e.g. a
+        // later process start) must not re-surface the same notice.
+        assertFalse(droppedLogStore.consumeDropped())
+    }
+
+    @Test
+    fun `nothing dropped means no notice on init`() = runBlocking {
+        enqueueEmptyStartup()
+        val viewModel = buildViewModel(FakeDroppedLogStore(dropped = false))
+
+        viewModel.readyJob.join()
+
+        assertTrue(viewModel.messages.value.none { it is ChatMsg.Assistant })
     }
 
     private companion object {

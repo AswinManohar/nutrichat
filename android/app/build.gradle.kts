@@ -75,8 +75,13 @@ android {
     }
 }
 
+// Crashlytics's Gradle plugin, like google-services above, needs
+// google-services.json (it reads the Firebase app id out of it to upload
+// mapping/build ids) — applied conditionally so the build still works on a
+// checkout without Firebase configured yet (see Global Constraints).
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }
 
 dependencies {
@@ -118,6 +123,11 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
+    // ErrorReporting no-ops (via FirebaseApp.getApps(context).isEmpty()) when
+    // there's no google-services.json, same guard PushRegistrar's
+    // FirebaseFcmTokenProvider uses — safe to depend on unconditionally even
+    // though the Crashlytics *plugin* above is applied conditionally.
+    implementation(libs.firebase.crashlytics.ktx)
 
     // PushRegistrar (Task 9) persists the last-sent FCM token here, mirroring
     // :core:data's ConversationIdStore pattern.

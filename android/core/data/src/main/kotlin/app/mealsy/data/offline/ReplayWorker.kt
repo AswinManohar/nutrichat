@@ -35,6 +35,18 @@ import retrofit2.HttpException
  * with a warning logged — once it has been attempted [MAX_ATTEMPTS] times or
  * is older than [MAX_AGE_MS], regardless of the error.
  *
+ * Both silent-data-loss paths (poison-delete and give-up) call
+ * [ReplayFailureReporter.report] (Crashlytics in production, so an
+ * unexpectedly high drop rate is visible) and [DroppedLogStore.markDropped]
+ * (so [app.mealsy.android.ui.chat.ChatViewModel] can surface a one-time
+ * "a queued meal couldn't be synced" notice in the chat transcript) — a row
+ * silently vanishing from the user's perspective was the gap this closes.
+ * The corrupt-payload-decode path just above is left as `Log.e`-only: a
+ * malformed local `payloadJson` blob is a bug in what this device itself
+ * wrote, not a meal ever meaningfully "in flight" from the user's point of
+ * view (it never reached even the request-building stage on a real attempt).
+ *
+
  * [doWork] re-queries [PendingLogDao.getAll] in a loop (tracking which
  * `clientRequestId`s it has already processed this run) rather than reading
  * the table once: `ExistingWorkPolicy.KEEP` means a confirm that queues a
@@ -49,6 +61,8 @@ class ReplayWorker @AssistedInject constructor(
     private val dao: PendingLogDao,
     private val api: MealsyApi,
     private val json: Json,
+    private val failureReporter: ReplayFailureReporter,
+    private val droppedLogStore: DroppedLogStore,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -72,6 +86,8 @@ class ReplayWorker @AssistedInject constructor(
                         "Giving up on pending log ${row.clientRequestId} " +
                             "after ${row.attempts} attempts (age ${age}ms)",
                     )
+                    failureReporter.report(row.clientRequestId, "give-up:attempts=${row.attempts}")
+                    droppedLogStore.markDropped()
                     dao.delete(row.clientRequestId)
                     continue
                 }
@@ -106,6 +122,8 @@ class ReplayWorker @AssistedInject constructor(
                                 "discarding (poison payload)",
                             exc,
                         )
+                        failureReporter.report(row.clientRequestId, "poison:$code")
+                        droppedLogStore.markDropped()
                         dao.delete(row.clientRequestId)
                     }
                 }

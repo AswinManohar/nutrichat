@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -28,6 +27,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.mealsy.android.ui.common.ErrorState
+import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.CategorySlice
 import app.mealsy.data.repo.DayPoint
 
@@ -64,18 +65,11 @@ fun TrendsScreen(viewModel: TrendsViewModel = hiltViewModel()) {
         HorizontalDivider(modifier = Modifier.padding(top = 16.dp))
 
         when (val state = uiState) {
-            TrendsUiState.Loading -> LoadingState()
+            TrendsUiState.Loading -> LoadingState("Loading trends…")
             TrendsUiState.Empty -> EmptyState()
             is TrendsUiState.Error -> ErrorState(message = state.message, onRetry = viewModel::retry)
             is TrendsUiState.Loaded -> LoadedState(state)
         }
-    }
-}
-
-@Composable
-private fun LoadingState() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Loading trends…")
     }
 }
 
@@ -87,16 +81,6 @@ private fun EmptyState() {
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(32.dp),
         )
-    }
-}
-
-@Composable
-private fun ErrorState(message: String, onRetry: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(message, modifier = Modifier.padding(bottom = 16.dp))
-            Button(onClick = onRetry) { Text("Retry") }
-        }
     }
 }
 
