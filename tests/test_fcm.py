@@ -91,3 +91,47 @@ async def test_send_prunes_unregistered_token() -> None:
     # first fetched the token list).
     delete_call = session.execute.call_args_list[1]
     assert "device_token" in str(delete_call[0][0]).lower()
+
+
+async def test_send_continues_past_transient_error_without_pruning() -> None:
+    """A transient failure (e.g. FCM 5xx) on one token must not abort the
+    loop, skip later tokens, or prune the row — and the rollback-on-raise
+    bug (session.commit() never reached) must not recur."""
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_tokens_result(["t1", "t2"]))
+    session.commit = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    transient = RuntimeError("upstream 503")
+
+    with (
+        patch.object(fcm, "_get_app", return_value=MagicMock()),
+        patch("backend.push.fcm.get_session", return_value=factory),
+        patch.object(fcm, "_send_one", side_effect=[transient, None]) as send_one,
+    ):
+        sent = await fcm.send_to_user("user-1", "hi", "body")
+
+    assert sent == 1  # only t2 succeeded
+    assert send_one.call_count == 2  # t2 was still attempted
+    session.commit.assert_awaited_once()  # commit still runs
+    # No delete was issued — only the initial token-list fetch executed.
+    assert session.execute.await_count == 1
+
+
+async def test_send_prunes_on_value_error_malformed_token() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_tokens_result(["garbage-token"]))
+    session.commit = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    with (
+        patch.object(fcm, "_get_app", return_value=MagicMock()),
+        patch("backend.push.fcm.get_session", return_value=factory),
+        patch.object(fcm, "_send_one", side_effect=ValueError("bad token")),
+    ):
+        sent = await fcm.send_to_user("user-1", "hi", "body")
+
+    assert sent == 0
+    delete_call = session.execute.call_args_list[1]
+    assert "device_token" in str(delete_call[0][0]).lower()
+    session.commit.assert_awaited_once()

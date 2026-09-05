@@ -54,8 +54,13 @@ async def send_to_user(
 ) -> int:
     """Send a push notification to every device registered to user_id.
 
-    Tokens that FCM reports as unregistered are pruned from `device_token`
-    so future sends don't keep retrying them.
+    Each token's send is isolated: `UnregisteredError` and `ValueError`
+    (a malformed token string) prune the row from `device_token`, since
+    retrying them can never succeed. Any other exception (e.g. a
+    transient FCM 5xx or network error) is logged and skipped — it does
+    not abort the loop, prune the row, or propagate, so the commit that
+    persists earlier prunes always runs and later tokens still get a
+    chance.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -88,9 +93,20 @@ async def send_to_user(
             try:
                 await asyncio.to_thread(_send_one, token, title, body, data or {})
                 sent += 1
-            except messaging.UnregisteredError:
+            except (messaging.UnregisteredError, ValueError) as exc:
+                logfire.info(
+                    "fcm_token_pruned",
+                    user_id=user_id,
+                    reason=type(exc).__name__,
+                )
                 await session.execute(
                     delete(DeviceToken).where(DeviceToken.token == token)
+                )
+            except Exception as exc:  # noqa: BLE001 - isolate per-token failures
+                logfire.warning(
+                    "fcm_send_failed",
+                    user_id=user_id,
+                    exception=type(exc).__name__,
                 )
         await session.commit()
     return sent
