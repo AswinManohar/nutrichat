@@ -50,13 +50,47 @@ android {
         )
     }
 
+    // Release signing reads from env vars so CI/local `assembleRelease` never
+    // needs a keystore checked in. Unset vars fall back to the debug
+    // keystore (Android Studio's auto-generated ~/.android/debug.keystore)
+    // so the release build type still builds — and installs — on a fresh
+    // checkout; swap in the real keystore via env vars for an actual
+    // Play-signed build.
+    val releaseKeystorePath = System.getenv("MEALSY_KEYSTORE_PATH")
+    val releaseKeystorePassword = System.getenv("MEALSY_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("MEALSY_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("MEALSY_KEY_PASSWORD")
+    val hasReleaseSigningEnv =
+        !releaseKeystorePath.isNullOrBlank() &&
+            !releaseKeystorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
+    signingConfigs {
+        if (hasReleaseSigningEnv) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig =
+                if (hasReleaseSigningEnv) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 

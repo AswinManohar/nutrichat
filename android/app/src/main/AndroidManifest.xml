@@ -17,6 +17,8 @@
         android:name=".MealsyApp"
         android:allowBackup="false"
         android:label="Mealsy"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
