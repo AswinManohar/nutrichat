@@ -57,6 +57,8 @@ private class FakeMealsyApi(
     override suspend fun registerDevice(body: RegisterDeviceRequest) = error("not used")
     override suspend fun deleteDevice(token: String) = error("not used")
     override suspend fun appMeta(): AppMetaResponse = error("not used")
+    override suspend fun trends(days: Int) = error("not used")
+    override suspend fun categories(days: Int) = error("not used")
 }
 
 private fun echoResponse(body: GoalRequest) = GoalsResponse(

@@ -32,9 +32,14 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/** The chat screen: today header, transcript, pending confirmation card, and input. */
+/**
+ * The chat screen: today header, transcript, pending confirmation card, and input.
+ *
+ * [onOpenTrends] is a temporary way to reach [app.mealsy.android.ui.trends.TrendsScreen]
+ * (Task 11) via a plain button — a real bottom nav destination replaces this in Task 13.
+ */
 @Composable
-fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
+fun ChatScreen(viewModel: ChatViewModel = hiltViewModel(), onOpenTrends: () -> Unit = {}) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val pendingCard by viewModel.pendingCard.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
@@ -75,6 +80,12 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Button(onClick = onOpenTrends) { Text("Trends") }
+        }
         TodayHeader(today = today, goals = goals)
         HorizontalDivider()
 

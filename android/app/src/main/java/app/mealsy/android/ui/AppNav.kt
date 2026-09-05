@@ -23,6 +23,7 @@ import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.android.ui.onboarding.OnboardingScreen
+import app.mealsy.android.ui.trends.TrendsScreen
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
@@ -43,6 +44,7 @@ private const val APP_META_TIMEOUT_MS = 3_000L
 private const val ROUTE_LOGIN = "login"
 private const val ROUTE_CHAT = "chat"
 private const val ROUTE_ONBOARDING = "onboarding"
+private const val ROUTE_TRENDS = "trends"
 
 /** Result of the startup version-gate check. */
 sealed interface GateState {
@@ -234,7 +236,12 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             },
                         )
                     }
-                    composable(ROUTE_CHAT) { ChatScreen() }
+                    composable(ROUTE_CHAT) {
+                        ChatScreen(onOpenTrends = { navController.navigate(ROUTE_TRENDS) })
+                    }
+                    // Reached only via ChatScreen's temporary "Trends" button (Task 11) —
+                    // a real bottom nav destination lands in Task 13.
+                    composable(ROUTE_TRENDS) { TrendsScreen() }
                 }
 
                 LaunchedEffect(sessionState, onboardingState) {

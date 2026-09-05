@@ -73,6 +73,8 @@ private class FakeMealsyApi(
 
     override suspend fun appMeta(): AppMetaResponse =
         appMetaResult?.invoke() ?: error("appMetaResult not configured for this test")
+    override suspend fun trends(days: Int) = error("not used")
+    override suspend fun categories(days: Int) = error("not used")
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

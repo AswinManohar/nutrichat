@@ -38,6 +38,8 @@ private class FakeMealsyApi : MealsyApi {
     override suspend fun updateGoals(body: GoalRequest): GoalsResponse = error("not used")
     override suspend fun quota(): QuotaResponse = error("not used")
     override suspend fun appMeta(): AppMetaResponse = error("not used")
+    override suspend fun trends(days: Int) = error("not used")
+    override suspend fun categories(days: Int) = error("not used")
 
     override suspend fun registerDevice(body: RegisterDeviceRequest) {
         if (registerDeviceShouldThrow) throw RuntimeException("network down")

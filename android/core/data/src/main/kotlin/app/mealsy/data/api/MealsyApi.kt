@@ -50,4 +50,10 @@ interface MealsyApi {
 
     @GET("meta/app")
     suspend fun appMeta(): AppMetaResponse
+
+    @GET("meals/trends")
+    suspend fun trends(@Query("days") days: Int): List<DayTrendDto>
+
+    @GET("meals/categories")
+    suspend fun categories(@Query("days") days: Int): List<CategoryStatDto>
 }

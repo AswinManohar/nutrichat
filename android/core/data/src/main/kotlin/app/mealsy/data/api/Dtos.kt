@@ -289,3 +289,41 @@ data class AppMetaResponse(
     @SerialName("min_supported_version_code") val minSupportedVersionCode: Int,
     @SerialName("latest_version_code") val latestVersionCode: Int,
 )
+
+// ---------------------------------------------------------------------------
+// GET /meals/trends, GET /meals/categories
+// ---------------------------------------------------------------------------
+
+/**
+ * One day's aggregate, per `DayTrend` in `src/backend/api/meals.py`. Days
+ * with no logged meals are omitted server-side — the response is a bare
+ * JSON array, never wrapped in an envelope object.
+ */
+@Serializable
+data class DayTrendDto(
+    val date: String,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fiber_g") val fiberG: Double,
+    @SerialName("n_meals") val nMeals: Int,
+    @SerialName("junk_meals") val junkMeals: Int,
+)
+
+/**
+ * Per-category macro averages/frequency, per `CategoryStat` in
+ * `src/backend/api/meals.py`. Also a bare JSON array on the wire.
+ */
+@Serializable
+data class CategoryStatDto(
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("n_meals") val nMeals: Int,
+    @SerialName("days_logged") val daysLogged: Int,
+    @SerialName("avg_kcal") val avgKcal: Double,
+    @SerialName("avg_protein_g") val avgProteinG: Double,
+    @SerialName("avg_carbs_g") val avgCarbsG: Double,
+    @SerialName("avg_fat_g") val avgFatG: Double,
+    @SerialName("avg_fiber_g") val avgFiberG: Double,
+    @SerialName("total_kcal") val totalKcal: Double,
+    @SerialName("share_kcal_pct") val shareKcalPct: Double,
+)
