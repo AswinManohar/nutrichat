@@ -105,7 +105,14 @@ async def log_meal(
     request: Request,
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    thread_id = req.conversation_id or user_id
+    """Log or resume a meal-logging conversation turn.
+
+    The thread id is namespaced with the authenticated user_id
+    (`{user_id}:{conversation_id or 'default'}`) so one user can never
+    read or resume another user's paused conversation, even if they
+    guess or reuse someone else's conversation_id.
+    """
+    thread_id = f"{user_id}:{req.conversation_id or 'default'}"
     checkpointer = request.app.state.checkpointer
 
     return await handle_message(
@@ -125,9 +132,18 @@ async def pending_card(
     conversation_id: str = Query(min_length=1),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
+    """Recover the paused confirmation card for a conversation, if any.
+
+    The thread id is namespaced with the authenticated user_id
+    (`{user_id}:{conversation_id}`) so one user can never read another
+    user's paused card by passing their conversation_id. Pass
+    conversation_id=default to reach the same thread as a POST /meals/log
+    call made with no conversation_id.
+    """
+    thread_id = f"{user_id}:{conversation_id}"
     return await get_pending_card(
         user_id=user_id,
-        thread_id=conversation_id,
+        thread_id=thread_id,
         checkpointer=request.app.state.checkpointer,
     )
 
