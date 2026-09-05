@@ -1,11 +1,15 @@
 package app.mealsy.android.ui.chat
 
+import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -23,6 +27,16 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+
+/** Always-online fake — connectivity-driven offline handling is exercised in [ConnectivityOfflineTest]. */
+private class FakeOnlineConnectivityObserver : ConnectivityObserver {
+    override val isOnline: Flow<Boolean> = flowOf(true)
+}
+
+/** No-op fake — queueing itself is covered by `ChatRepositoryTest`. */
+private class NoopPendingLogQueue : PendingLogQueue {
+    override suspend fun enqueue(clientRequestId: String, payloadJson: String) = Unit
+}
 
 /**
  * These drive [ChatViewModel] against a real [MockWebServer] rather than a
@@ -70,7 +84,13 @@ class ChatViewModelTest {
 
     private fun buildViewModel(): ChatViewModel {
         val api = buildApi()
-        return ChatViewModel(ChatRepository(api, fakeConversationIdStore()), api)
+        val repository = ChatRepository(
+            api,
+            fakeConversationIdStore(),
+            NoopPendingLogQueue(),
+            json,
+        )
+        return ChatViewModel(repository, api, FakeOnlineConnectivityObserver())
     }
 
     /** No pending card, empty today/goals — the common "nothing to restore" startup. */

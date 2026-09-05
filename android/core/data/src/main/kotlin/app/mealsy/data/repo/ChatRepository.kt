@@ -6,6 +6,7 @@ import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.toCard
+import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
 import java.io.IOException
@@ -13,6 +14,7 @@ import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.Json
 
 /**
  * Result of a single `POST /meals/log` turn.
@@ -35,18 +37,32 @@ sealed interface TurnResult {
     data class UpgradeRequired(val message: String) : TurnResult
 }
 
-/** Result of `POST /meals/log-items`. */
-data class LogOutcome(
-    val mealId: String,
-    val mealType: String,
-    val kcal: Double,
-    val proteinG: Double,
-    val carbsG: Double,
-    val fatG: Double,
-    val fiberG: Double,
-    val message: String,
-    val deduplicated: Boolean,
-)
+/**
+ * Result of confirming a card (`POST /meals/log-items`, or a local queue
+ * when that request cannot reach the server).
+ */
+sealed interface LogOutcome {
+    /** The server accepted (or deduplicated) the log. */
+    data class Logged(
+        val mealId: String,
+        val mealType: String,
+        val kcal: Double,
+        val proteinG: Double,
+        val carbsG: Double,
+        val fatG: Double,
+        val fiberG: Double,
+        val message: String,
+        val deduplicated: Boolean,
+    ) : LogOutcome
+
+    /**
+     * The device was offline: the exact payload was persisted locally
+     * (keyed by the same `client_request_id` that was on the wire) and
+     * queued for background replay via [app.mealsy.data.offline.ReplayWorker].
+     * No server round trip completed.
+     */
+    data object Queued : LogOutcome
+}
 
 /**
  * The exact string the backend returns as `message` on `POST /meals/log`
@@ -83,6 +99,8 @@ private fun stripUrls(text: String): String =
 class ChatRepository @Inject constructor(
     private val api: MealsyApi,
     private val conversationIdStore: ConversationIdStore,
+    private val pendingLogQueue: PendingLogQueue,
+    private val json: Json,
 ) {
 
     private val conversationIdMutex = Mutex()
@@ -140,19 +158,36 @@ class ChatRepository @Inject constructor(
             UUID.randomUUID().toString().also { pendingConfirmation = card to it }
         }
 
-        val response = api.logItems(
-            LogItemsRequest(
-                mealType = card.mealType,
-                portion = card.portion,
-                items = card.items.map { it.toItemDto() },
-                clientRequestId = clientRequestId,
-            ),
+        val request = LogItemsRequest(
+            mealType = card.mealType,
+            portion = card.portion,
+            items = card.items.map { it.toItemDto() },
+            clientRequestId = clientRequestId,
         )
+
+        val response = try {
+            api.logItems(request)
+        } catch (exc: IOException) {
+            // The request may or may not have committed server-side, but
+            // the same client_request_id travels with the replayed payload
+            // either way — the backend's dedup-on-client_request_id makes a
+            // later successful replay safe even if this attempt actually
+            // landed. Do NOT queue on HttpException: a 422 means the server
+            // rejected the payload outright, and queuing that forever would
+            // just poison-retry a request that can never succeed.
+            pendingLogQueue.enqueue(
+                clientRequestId,
+                json.encodeToString(LogItemsRequest.serializer(), request),
+            )
+            pendingConfirmation = null
+            rotateConversationId()
+            return LogOutcome.Queued
+        }
 
         pendingConfirmation = null
         rotateConversationId()
 
-        return LogOutcome(
+        return LogOutcome.Logged(
             mealId = response.mealId,
             mealType = response.mealType,
             kcal = response.kcal,

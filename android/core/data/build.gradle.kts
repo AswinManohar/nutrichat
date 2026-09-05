@@ -82,6 +82,12 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -109,6 +115,8 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     implementation(libs.androidx.datastore.preferences)
 
@@ -130,4 +138,6 @@ dependencies {
     testImplementation(libs.mockwebserver)
     testImplementation(libs.turbine)
     testImplementation(libs.robolectric)
+    testImplementation(libs.work.testing)
+    testImplementation(libs.androidx.test.core)
 }

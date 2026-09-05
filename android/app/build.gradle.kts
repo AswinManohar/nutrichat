@@ -103,6 +103,7 @@ dependencies {
     implementation(libs.camerax.view)
 
     implementation(libs.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
 
     // :core:data's Retrofit dependency is `implementation`-scoped there, so
     // it isn't on :app's compile classpath transitively — ChatViewModel

@@ -2,10 +2,12 @@ package app.mealsy.android.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.GoalsResponse
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.repo.ChatRepository
+import app.mealsy.data.repo.LogOutcome
 import app.mealsy.data.repo.TurnResult
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.ConfirmationCard
@@ -39,6 +41,7 @@ sealed interface ChatMsg {
 class ChatViewModel @Inject constructor(
     private val repository: ChatRepository,
     private val api: MealsyApi,
+    private val connectivity: ConnectivityObserver,
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMsg>>(emptyList())
@@ -58,6 +61,20 @@ class ChatViewModel @Inject constructor(
 
     private val _goals = MutableStateFlow<GoalsResponse?>(null)
     val goals: StateFlow<GoalsResponse?> = _goals.asStateFlow()
+
+    init {
+        // Additive with the request-driven signal below: losing connectivity
+        // sets the banner immediately rather than waiting for the next
+        // network call to time out. Coming back online is intentionally
+        // NOT handled here — only a call that actually succeeds clears the
+        // banner, avoiding a flicker where the OS briefly reports "online"
+        // just before a request that still fails.
+        viewModelScope.launch {
+            connectivity.isOnline.collect { online ->
+                if (!online) _offline.value = true
+            }
+        }
+    }
 
     /**
      * The startup job that recovers a pending card and loads the today
@@ -147,11 +164,19 @@ class ChatViewModel @Inject constructor(
         _sending.value = true
         return viewModelScope.launch {
             try {
-                val outcome = repository.confirmCard(card)
-                _pendingCard.value = null
-                appendAssistant(outcome.message)
-                _offline.value = false
-                refreshToday()
+                when (val outcome = repository.confirmCard(card)) {
+                    is LogOutcome.Logged -> {
+                        _pendingCard.value = null
+                        appendAssistant(outcome.message)
+                        _offline.value = false
+                        refreshToday()
+                    }
+                    is LogOutcome.Queued -> {
+                        _pendingCard.value = null
+                        _offline.value = true
+                        appendAssistant("Saved — will sync when you're back online")
+                    }
+                }
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {

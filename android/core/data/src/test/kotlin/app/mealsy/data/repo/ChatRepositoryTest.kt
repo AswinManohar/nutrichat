@@ -1,8 +1,10 @@
 package app.mealsy.data.repo
 
 import app.mealsy.data.api.AuthInterceptor
+import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
@@ -25,6 +27,17 @@ import retrofit2.HttpException
 import retrofit2.Retrofit
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
+/** In-memory [PendingLogQueue] fake — records what was enqueued, does nothing else. */
+class FakePendingLogQueue : PendingLogQueue {
+    data class Entry(val clientRequestId: String, val payloadJson: String)
+
+    val enqueued = mutableListOf<Entry>()
+
+    override suspend fun enqueue(clientRequestId: String, payloadJson: String) {
+        enqueued += Entry(clientRequestId, payloadJson)
+    }
+}
+
 /** MockWebServer-backed tests for [ChatRepository]. */
 class ChatRepositoryTest {
 
@@ -42,7 +55,10 @@ class ChatRepositoryTest {
         server.shutdown()
     }
 
-    private fun buildRepository(store: ConversationIdStore = FakeConversationIdStore()): ChatRepository {
+    private fun buildRepository(
+        store: ConversationIdStore = FakeConversationIdStore(),
+        pendingLogQueue: PendingLogQueue = FakePendingLogQueue(),
+    ): ChatRepository {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
             // No keep-alive connection reuse: a SocketPolicy.DISCONNECT_AT_START
@@ -60,7 +76,7 @@ class ChatRepositoryTest {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
         val api = retrofit.create(MealsyApi::class.java)
-        return ChatRepository(api, store)
+        return ChatRepository(api, store, pendingLogQueue, json)
     }
 
     private fun sampleCard(mealType: String = "breakfast") = ConfirmationCard(
@@ -148,10 +164,49 @@ class ChatRepositoryTest {
         )
         val repository = buildRepository()
 
-        val outcome = repository.confirmCard(sampleCard())
+        val outcome = repository.confirmCard(sampleCard()) as LogOutcome.Logged
 
         assertEquals(true, outcome.deduplicated)
         assertEquals("m_1", outcome.mealId)
+    }
+
+    // --- Offline replay queue (Task 7) ------------------------------------
+
+    @Test
+    fun `confirmCard on IOException persists the same client_request_id and returns Queued`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+            )
+            val queue = FakePendingLogQueue()
+            val repository = buildRepository(pendingLogQueue = queue)
+
+            val outcome = repository.confirmCard(sampleCard())
+
+            assertEquals(LogOutcome.Queued, outcome)
+            assertEquals(1, queue.enqueued.size)
+            val entry = queue.enqueued.single()
+            assertTrue(entry.payloadJson.contains("\"client_request_id\":\"${entry.clientRequestId}\""))
+            val decoded = json.decodeFromString(LogItemsRequest.serializer(), entry.payloadJson)
+            assertEquals(entry.clientRequestId, decoded.clientRequestId)
+            assertEquals("breakfast", decoded.mealType)
+            assertEquals(1, decoded.items.size)
+        }
+
+    @Test
+    fun `confirmCard on HttpException does not queue`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(422))
+        val queue = FakePendingLogQueue()
+        val repository = buildRepository(pendingLogQueue = queue)
+
+        try {
+            repository.confirmCard(sampleCard())
+            org.junit.Assert.fail("expected HttpException")
+        } catch (exc: HttpException) {
+            // expected — a rejected payload must never be queued for replay.
+        }
+
+        assertTrue(queue.enqueued.isEmpty())
     }
 
     @Test

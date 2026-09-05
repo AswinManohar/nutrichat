@@ -83,7 +83,7 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
-                enabled = !sending,
+                enabled = !sending && !offline,
                 label = { Text("Describe a meal") },
             )
             Button(
@@ -94,7 +94,7 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
                         input = ""
                     }
                 },
-                enabled = !sending,
+                enabled = !sending && !offline,
                 modifier = Modifier.padding(start = 8.dp),
             ) {
                 Text("Send")
