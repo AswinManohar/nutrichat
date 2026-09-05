@@ -91,6 +91,41 @@ class PushSubscription(Base):
     )
 
 
+class DeviceToken(Base):
+    """An FCM registration token for a user's Android device.
+
+    Written by POST /devices/register. A token can move between users (a
+    device re-registers under a different logged-in account) so registration
+    upserts on the unique token instead of inserting a duplicate row. The
+    push sender (backend.push.fcm) prunes rows here when FCM reports a
+    token as unregistered.
+    """
+
+    __tablename__ = "device_token"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    platform: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="fcm", server_default="fcm"
+    )
+    token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class MealLog(Base):
     """Every logged meal with full nutrient breakdown and pgvector embedding.
 

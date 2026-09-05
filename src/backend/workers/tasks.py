@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import Coroutine
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, TypeVar
 
 from celery import Celery
 from celery.schedules import crontab
@@ -13,7 +13,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy import text as sa_text
-
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.agent.llm import FLASH_LITE_MODEL, embed_text, make_llm
@@ -22,7 +21,13 @@ from backend.agent.tools.history import (
     summarize_nutrient_checkup,
 )
 from backend.config import get_tunables
-from backend.db.models import MealLog, NutrientCheckup, UserGoal, UserMemory
+from backend.db.models import (
+    DeviceToken,
+    MealLog,
+    NutrientCheckup,
+    UserGoal,
+    UserMemory,
+)
 from backend.db.redis_client import reset_day_key
 from backend.db.session import dispose_engine, get_session
 from backend.observability import configure_observability
@@ -63,6 +68,10 @@ celery_app.conf.beat_schedule = {
         "task": "backend.workers.tasks.build_weekly_summary",
         "schedule": crontab(hour=23, minute=0, day_of_week="sun"),
     },
+    "send-daily-summary-push": {
+        "task": "backend.workers.tasks.send_daily_summary_push",
+        "schedule": crontab(hour=7, minute=0),
+    },
 }
 
 
@@ -82,7 +91,10 @@ _MISSED_MEAL_MIN_DAYS = _TUNABLES.summaries.missed_meal_min_days
 _MEAL_TYPES = ("breakfast", "lunch", "dinner")
 
 
-def _run(coro: Coroutine[Any, Any, None]) -> None:
+_T = TypeVar("_T")
+
+
+def _run(coro: Coroutine[Any, Any, _T]) -> _T:
     """Run an async task body in its own loop, then dispose the DB engine.
 
     Each Celery task gets a fresh event loop via asyncio.run(); the cached
@@ -90,13 +102,13 @@ def _run(coro: Coroutine[Any, Any, None]) -> None:
     or the next task's loop fails with "Future attached to a different loop".
     """
 
-    async def _wrapped() -> None:
+    async def _wrapped() -> _T:
         try:
-            await coro
+            return await coro
         finally:
             await dispose_engine()
 
-    asyncio.run(_wrapped())
+    return asyncio.run(_wrapped())
 
 
 class _ExtractedFacts(BaseModel):
@@ -526,6 +538,59 @@ def reset_day_keys() -> None:
     _run(_reset_day_keys())
 
 
+# ---------------------------------------------------------------------------
+# send_push_fcm / send_daily_summary_push
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(name="backend.workers.tasks.send_push_fcm")
+def send_push_fcm(
+    user_id: str, title: str, body: str, data: dict[str, str] | None = None
+) -> int:
+    """Send an FCM push to every device registered to a user.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        title: Notification title.
+        body: Notification body.
+        data: Optional string-keyed payload delivered with the notification.
+
+    Returns:
+        Number of tokens the push was successfully sent to.
+    """
+    from backend.push.fcm import send_to_user
+
+    return _run(send_to_user(user_id, title, body, data))
+
+
+async def _send_daily_summary_push() -> int:
+    session_factory = get_session()
+    async with session_factory() as session:
+        user_ids = (
+            (await session.execute(select(DeviceToken.user_id).distinct()))
+            .scalars()
+            .all()
+        )
+    for uid in user_ids:
+        send_push_fcm.delay(
+            uid,
+            "Your Mealsy daily summary",
+            "Yesterday's recap is ready — open Mealsy to see it.",
+            {"deeplink": "mealsy://chat"},
+        )
+    return len(user_ids)
+
+
+@celery_app.task(name="backend.workers.tasks.send_daily_summary_push")
+def send_daily_summary_push() -> int:
+    """Beat 07:00: enqueue one send_push_fcm per user with device tokens.
+
+    Returns:
+        Number of users a push was enqueued for.
+    """
+    return _run(_send_daily_summary_push())
+
+
 __all__ = [
     "celery_app",
     "embed_meal_summary",
@@ -535,4 +600,6 @@ __all__ = [
     "build_nutrient_checkup",
     "send_daily_summary_telegram",
     "reset_day_keys",
+    "send_push_fcm",
+    "send_daily_summary_push",
 ]
