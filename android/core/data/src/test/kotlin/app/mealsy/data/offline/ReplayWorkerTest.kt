@@ -45,18 +45,30 @@ class ReplayWorkerTest {
 
     /** In-memory [DroppedLogStore] fake — no DataStore/Context plumbing needed. */
     private class FakeDroppedLogStore : DroppedLogStore {
-        var dropped = false
+        var count = 0
             private set
 
         override suspend fun markDropped() {
-            dropped = true
+            count++
         }
 
-        override suspend fun consumeDropped(): Boolean {
-            val was = dropped
-            dropped = false
+        override suspend fun consumeDropped(): Int {
+            val was = count
+            count = 0
             return was
         }
+    }
+
+    /** A [DroppedLogStore] whose calls always throw, for the best-effort-wrapping test. */
+    private class ThrowingDroppedLogStore : DroppedLogStore {
+        override suspend fun markDropped(): Nothing = error("DataStore unavailable")
+        override suspend fun consumeDropped(): Int = error("DataStore unavailable")
+    }
+
+    /** A [ReplayFailureReporter] that always throws, for the same test. */
+    private class ThrowingFailureReporter : ReplayFailureReporter {
+        override fun report(clientRequestId: String, reason: String): Nothing =
+            error("Crashlytics not configured")
     }
 
     private lateinit var failureReporter: RecordingFailureReporter
@@ -88,7 +100,12 @@ class ReplayWorkerTest {
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildWorker(dao: PendingLogDao, api: MealsyApi): ReplayWorker {
+    private fun buildWorker(
+        dao: PendingLogDao,
+        api: MealsyApi,
+        reporter: ReplayFailureReporter = failureReporter,
+        store: DroppedLogStore = droppedLogStore,
+    ): ReplayWorker {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val worker = TestListenableWorkerBuilder<ReplayWorker>(context)
             .setWorkerFactory(
@@ -98,7 +115,7 @@ class ReplayWorkerTest {
                         workerClassName: String,
                         workerParameters: WorkerParameters,
                     ): ListenableWorker = ReplayWorker(
-                        appContext, workerParameters, dao, api, json, failureReporter, droppedLogStore,
+                        appContext, workerParameters, dao, api, json, reporter, store,
                     )
                 },
             )
@@ -191,7 +208,7 @@ class ReplayWorkerTest {
         worker.startWork().get()
 
         assertEquals(listOf("req-poison" to "poison:422"), failureReporter.calls)
-        assertTrue(droppedLogStore.dropped)
+        assertEquals(1, droppedLogStore.count)
     }
 
     @Test
@@ -221,7 +238,7 @@ class ReplayWorkerTest {
             listOf("req-giveup" to "give-up:attempts=${ReplayWorker.MAX_ATTEMPTS}"),
             failureReporter.calls,
         )
-        assertTrue(droppedLogStore.dropped)
+        assertEquals(1, droppedLogStore.count)
     }
 
     @Test
@@ -243,6 +260,48 @@ class ReplayWorkerTest {
     }
 
     @Test
+    fun `giving up on age (not attempts) reports the age-specific reason`() {
+        val dao = FakePendingLogDao().apply {
+            seed(
+                sampleRow("req-old").copy(
+                    createdAt = System.currentTimeMillis() - ReplayWorker.MAX_AGE_MS - 1_000,
+                ),
+            )
+        }
+        val worker = buildWorker(dao, buildApi())
+
+        worker.startWork().get()
+
+        assertEquals(listOf("req-old" to "give-up:age"), failureReporter.calls)
+        assertEquals(1, droppedLogStore.count)
+    }
+
+    @Test
+    fun `a reporter or store failure does not prevent deleting the row`() {
+        val dao = FakePendingLogDao().apply {
+            seed(sampleRow("req-throws").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
+        }
+        val worker = buildWorker(dao, buildApi(), reporter = ThrowingFailureReporter())
+
+        val result = worker.startWork().get()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertTrue(runBlockingGetAll(dao).isEmpty())
+    }
+
+    @Test
+    fun `a dropped-log-store failure also does not prevent deleting the row`() {
+        server.enqueue(MockResponse().setResponseCode(422))
+        val dao = FakePendingLogDao().apply { seed(sampleRow("req-store-throws")) }
+        val worker = buildWorker(dao, buildApi(), store = ThrowingDroppedLogStore())
+
+        val result = worker.startWork().get()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertTrue(runBlockingGetAll(dao).isEmpty())
+    }
+
+    @Test
     fun `a successfully replayed row never reports a failure or marks a dropped log`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -255,7 +314,7 @@ class ReplayWorkerTest {
         worker.startWork().get()
 
         assertTrue(failureReporter.calls.isEmpty())
-        assertFalse(droppedLogStore.dropped)
+        assertEquals(0, droppedLogStore.count)
     }
 
     /**

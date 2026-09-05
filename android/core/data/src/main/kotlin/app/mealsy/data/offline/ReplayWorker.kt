@@ -17,6 +17,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 
@@ -46,7 +47,6 @@ import retrofit2.HttpException
  * wrote, not a meal ever meaningfully "in flight" from the user's point of
  * view (it never reached even the request-building stage on a real attempt).
  *
-
  * [doWork] re-queries [PendingLogDao.getAll] in a loop (tracking which
  * `clientRequestId`s it has already processed this run) rather than reading
  * the table once: `ExistingWorkPolicy.KEEP` means a confirm that queues a
@@ -86,8 +86,12 @@ class ReplayWorker @AssistedInject constructor(
                         "Giving up on pending log ${row.clientRequestId} " +
                             "after ${row.attempts} attempts (age ${age}ms)",
                     )
-                    failureReporter.report(row.clientRequestId, "give-up:attempts=${row.attempts}")
-                    droppedLogStore.markDropped()
+                    // Distinguish which condition tripped — a spike in
+                    // "give-up:age" (a device offline for a full week) reads
+                    // very differently from "give-up:attempts" (a request
+                    // that keeps failing every retry).
+                    val reason = if (age >= MAX_AGE_MS) "give-up:age" else "give-up:attempts=${row.attempts}"
+                    notifyDropped(row.clientRequestId, reason)
                     dao.delete(row.clientRequestId)
                     continue
                 }
@@ -122,8 +126,7 @@ class ReplayWorker @AssistedInject constructor(
                                 "discarding (poison payload)",
                             exc,
                         )
-                        failureReporter.report(row.clientRequestId, "poison:$code")
-                        droppedLogStore.markDropped()
+                        notifyDropped(row.clientRequestId, "poison:$code")
                         dao.delete(row.clientRequestId)
                     }
                 }
@@ -131,6 +134,25 @@ class ReplayWorker @AssistedInject constructor(
         }
 
         return if (anyRetryable) Result.retry() else Result.success()
+    }
+
+    /**
+     * Best-effort: calls [failureReporter]/[droppedLogStore] for a
+     * silent-data-loss row, but a failure in either (e.g. Crashlytics
+     * misconfigured, DataStore I/O error) must not prevent [dao.delete] —
+     * losing the *reporting* of a drop is much less bad than aborting
+     * `doWork` and leaving the row (which is never going to succeed) stuck
+     * in the queue forever.
+     */
+    private suspend fun notifyDropped(clientRequestId: String, reason: String) {
+        try {
+            failureReporter.report(clientRequestId, reason)
+            droppedLogStore.markDropped()
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (exc: Exception) {
+            Log.w(TAG, "Failed to report/mark dropped log $clientRequestId ($reason)", exc)
+        }
     }
 
     companion object {

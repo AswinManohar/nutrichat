@@ -40,14 +40,14 @@ private class NoopPendingLogQueue : PendingLogQueue {
 }
 
 /** In-memory [DroppedLogStore] fake, defaulting to "nothing dropped". */
-private class FakeDroppedLogStore(private var dropped: Boolean = false) : DroppedLogStore {
+private class FakeDroppedLogStore(private var count: Int = 0) : DroppedLogStore {
     override suspend fun markDropped() {
-        dropped = true
+        count++
     }
 
-    override suspend fun consumeDropped(): Boolean {
-        val was = dropped
-        dropped = false
+    override suspend fun consumeDropped(): Int {
+        val was = count
+        count = 0
         return was
     }
 }
@@ -291,7 +291,7 @@ class ChatViewModelTest {
     @Test
     fun `a dropped queued log surfaces a one-time notice on init`() = runBlocking {
         enqueueEmptyStartup()
-        val droppedLogStore = FakeDroppedLogStore(dropped = true)
+        val droppedLogStore = FakeDroppedLogStore(count = 1)
         val viewModel = buildViewModel(droppedLogStore)
 
         viewModel.readyJob.join()
@@ -303,15 +303,31 @@ class ChatViewModelTest {
                     it.text == "A queued meal from earlier couldn't be synced and was dropped."
             },
         )
-        // consumeDropped clears the flag — a second ChatViewModel (e.g. a
+        // consumeDropped clears the counter — a second ChatViewModel (e.g. a
         // later process start) must not re-surface the same notice.
-        assertFalse(droppedLogStore.consumeDropped())
+        assertEquals(0, droppedLogStore.consumeDropped())
+    }
+
+    @Test
+    fun `multiple dropped queued logs surface a pluralized notice`() = runBlocking {
+        enqueueEmptyStartup()
+        val viewModel = buildViewModel(FakeDroppedLogStore(count = 2))
+
+        viewModel.readyJob.join()
+
+        val messages = viewModel.messages.value
+        assertTrue(
+            messages.any {
+                it is ChatMsg.Assistant &&
+                    it.text == "2 queued meals couldn't be synced and were dropped."
+            },
+        )
     }
 
     @Test
     fun `nothing dropped means no notice on init`() = runBlocking {
         enqueueEmptyStartup()
-        val viewModel = buildViewModel(FakeDroppedLogStore(dropped = false))
+        val viewModel = buildViewModel(FakeDroppedLogStore(count = 0))
 
         viewModel.readyJob.join()
 

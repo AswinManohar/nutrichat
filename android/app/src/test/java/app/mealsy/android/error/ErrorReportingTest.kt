@@ -50,6 +50,22 @@ class ErrorReportingTest {
     }
 
     @Test
+    fun `a recorder that throws does not escape record`() {
+        val reporting = ErrorReporting(
+            appsPresence = FirebaseAppsPresence { true },
+            recorder = CrashRecorder { _, _ -> throw IllegalStateException("Crashlytics not configured") },
+        )
+
+        // Must return normally — see ErrorReporting's doc comment: this is
+        // called from SessionManager.currentToken's 401-retry path
+        // (runBlocking inside an OkHttp interceptor) and from ReplayWorker
+        // right before dao.delete, where a thrown exception here would
+        // become an actual crash or abort a queue cleanup, not just a
+        // missed non-fatal report.
+        reporting.record(IllegalStateException("boom"))
+    }
+
+    @Test
     fun `keys default to empty`() {
         val recorder = RecordingCrashRecorder()
         val reporting = ErrorReporting(

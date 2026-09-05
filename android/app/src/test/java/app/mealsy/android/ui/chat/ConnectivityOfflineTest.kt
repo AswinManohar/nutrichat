@@ -58,7 +58,7 @@ class ConnectivityOfflineTest {
 
     private class NoopDroppedLogStore : DroppedLogStore {
         override suspend fun markDropped() = Unit
-        override suspend fun consumeDropped(): Boolean = false
+        override suspend fun consumeDropped(): Int = 0
     }
 
     @Test

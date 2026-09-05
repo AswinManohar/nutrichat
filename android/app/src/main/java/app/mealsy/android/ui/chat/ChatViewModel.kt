@@ -103,18 +103,24 @@ class ChatViewModel @Inject constructor(
      * resulting state flows.
      */
     val readyJob: Job = viewModelScope.launch {
-        // Surface (once — consumeDropped clears the flag) a queued meal
-        // ReplayWorker gave up on or poison-deleted, per the CARRIED FINDING
-        // from Task 7: an offline log silently vanishing must leave a
-        // user-visible trace, not just a Crashlytics record.
+        // Surface (once — consumeDropped clears the counter) however many
+        // queued meals ReplayWorker gave up on or poison-deleted, per the
+        // CARRIED FINDING from Task 7: an offline log silently vanishing
+        // must leave a user-visible trace, not just a Crashlytics record.
         try {
-            if (droppedLogStore.consumeDropped()) {
-                appendAssistant("A queued meal from earlier couldn't be synced and was dropped.")
+            val droppedCount = droppedLogStore.consumeDropped()
+            if (droppedCount > 0) {
+                val notice = if (droppedCount == 1) {
+                    "A queued meal from earlier couldn't be synced and was dropped."
+                } else {
+                    "$droppedCount queued meals couldn't be synced and were dropped."
+                }
+                appendAssistant(notice)
             }
         } catch (exc: CancellationException) {
             throw exc
         } catch (exc: Exception) {
-            // Best-effort — a failure reading this flag must not block startup.
+            // Best-effort — a failure reading this counter must not block startup.
         }
         try {
             _pendingCard.value = repository.recoverPending()

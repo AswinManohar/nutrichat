@@ -73,6 +73,16 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // ErrorReporting.record's swallow-and-log path calls
+            // android.util.Log.w — the plain-JUnit (non-Robolectric) app
+            // module tests need Log to no-op rather than throw
+            // "not mocked", per ErrorReportingTest's recorder-throws case.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 // Crashlytics's Gradle plugin, like google-services above, needs

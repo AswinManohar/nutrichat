@@ -1,6 +1,7 @@
 package app.mealsy.android.error
 
 import android.content.Context
+import android.util.Log
 import app.mealsy.data.error.ErrorReporter
 import app.mealsy.data.offline.ReplayFailureReporter
 import com.google.firebase.FirebaseApp
@@ -11,8 +12,11 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "ErrorReporting"
 
 /**
  * Seam over `FirebaseApp.getApps(context).isEmpty()` — the same no-Firebase
@@ -62,6 +66,16 @@ class FirebaseCrashRecorder @Inject constructor() : CrashRecorder {
  * Bound as [app.mealsy.data.error.ErrorReporter] for `:core:data` callers
  * (currently `SessionManager`'s two best-effort swallow paths) via
  * [ErrorReportingModule].
+ *
+ * [recorder]'s call is itself wrapped in a try/catch: a misconfigured (but
+ * present) Crashlytics install can throw from `getInstance()`/`setCustomKey`/
+ * `recordException` (e.g. `IllegalStateException`), and callers of `record`
+ * include `SessionManager.currentToken`'s 401-retry path (invoked from
+ * `AuthInterceptor` via `runBlocking`) and `ReplayWorker`'s poison/give-up
+ * paths, just before `dao.delete` — a reporting failure escaping either
+ * would turn "record this non-fatal" into an actual crash or a stuck queue
+ * row. Swallow-and-log instead, same contract as every other best-effort
+ * seam in this codebase (`PushRegistrar`, `SessionManager.signOut`).
  */
 @Singleton
 class ErrorReporting @Inject constructor(
@@ -70,7 +84,13 @@ class ErrorReporting @Inject constructor(
 ) {
     fun record(t: Throwable, keys: Map<String, String> = emptyMap()) {
         if (!appsPresence.hasApps()) return
-        recorder.record(t, keys)
+        try {
+            recorder.record(t, keys)
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (exc: Exception) {
+            Log.w(TAG, "Crashlytics recorder threw while reporting a non-fatal", exc)
+        }
     }
 }
 

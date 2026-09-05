@@ -3,11 +3,10 @@ package app.mealsy.data.offline
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,33 +17,42 @@ import javax.inject.Singleton
  * the real Crashlytics wrapper (`app.mealsy.android.error.ErrorReporting`)
  * lives, so `:app` supplies the real binding (same pattern as
  * [app.mealsy.data.auth.SignOutHook]). [reason] is a short, stable tag
- * (e.g. `"poison:422"`, `"give-up:attempts"`) rather than free text, so
- * Crashlytics custom keys stay low-cardinality.
+ * (e.g. `"poison:422"`, `"give-up:attempts=50"`, `"give-up:age"`) rather
+ * than free text, so Crashlytics custom keys stay low-cardinality.
  */
 fun interface ReplayFailureReporter {
     fun report(clientRequestId: String, reason: String)
 }
 
 /**
- * Whether a queued meal log was ever silently dropped (poison-deleted or
- * given up on) by [ReplayWorker], for [app.mealsy.android.ui.chat.ChatViewModel]
- * to surface once as a chat notice. Entirely within `:core:data` (unlike
- * [ReplayFailureReporter]) since it's just a persisted flag — no Crashlytics
- * dependency needed to write or read it.
+ * How many queued meal logs have been silently dropped (poison-deleted or
+ * given up on) by [ReplayWorker] since the last time
+ * [app.mealsy.android.ui.chat.ChatViewModel] surfaced (and cleared) the
+ * count as a chat notice. Entirely within `:core:data` (unlike
+ * [ReplayFailureReporter]) since it's just a persisted counter — no
+ * Crashlytics dependency needed to write or read it.
  *
- * [consumeDropped] both reads and clears the flag atomically-enough for this
- * use (single-writer-at-a-time DataStore edit) so the notice surfaces
- * exactly once, not on every `ChatViewModel` init thereafter.
+ * A count (not a boolean) so the notice can say "2 queued meals" rather than
+ * collapsing multiple drops into one generic message.
+ *
+ * [consumeDropped] reads and clears the counter inside a single
+ * `DataStore.edit {}` block, so a `markDropped()` racing a `consumeDropped()`
+ * (e.g. a second `ReplayWorker` run overlapping `ChatViewModel` startup)
+ * can't land its increment between a separate read and a separate clear and
+ * get silently lost — `edit {}` serializes concurrent transforms of the same
+ * DataStore.
  */
 interface DroppedLogStore {
     suspend fun markDropped()
-    suspend fun consumeDropped(): Boolean
+
+    /** Returns however many drops had accumulated, clearing the counter to 0. */
+    suspend fun consumeDropped(): Int
 }
 
 private val Context.droppedLogDataStore: DataStore<Preferences> by
     preferencesDataStore(name = "dropped_pending_log")
 
-private val DROPPED_KEY = booleanPreferencesKey("has_dropped_log")
+private val DROPPED_COUNT_KEY = intPreferencesKey("dropped_log_count")
 
 @Singleton
 class DataStoreDroppedLogStore @Inject constructor(
@@ -52,14 +60,17 @@ class DataStoreDroppedLogStore @Inject constructor(
 ) : DroppedLogStore {
 
     override suspend fun markDropped() {
-        context.droppedLogDataStore.edit { prefs -> prefs[DROPPED_KEY] = true }
+        context.droppedLogDataStore.edit { prefs ->
+            prefs[DROPPED_COUNT_KEY] = (prefs[DROPPED_COUNT_KEY] ?: 0) + 1
+        }
     }
 
-    override suspend fun consumeDropped(): Boolean {
-        val wasDropped = context.droppedLogDataStore.data.first()[DROPPED_KEY] ?: false
-        if (wasDropped) {
-            context.droppedLogDataStore.edit { prefs -> prefs[DROPPED_KEY] = false }
+    override suspend fun consumeDropped(): Int {
+        var count = 0
+        context.droppedLogDataStore.edit { prefs ->
+            count = prefs[DROPPED_COUNT_KEY] ?: 0
+            prefs[DROPPED_COUNT_KEY] = 0
         }
-        return wasDropped
+        return count
     }
 }
