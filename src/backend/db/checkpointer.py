@@ -44,7 +44,8 @@ async def pooled_checkpointer() -> AsyncIterator[AsyncPostgresSaver]:
     async with AsyncConnectionPool(
         psycopg_url,
         min_size=1,
-        max_size=4,
+        max_size=int(os.environ.get("CHECKPOINTER_POOL_SIZE", "8")),
+        timeout=5.0,  # raise PoolTimeout loudly instead of stalling requests
         max_idle=240.0,
         check=_check_connection,
         open=False,
