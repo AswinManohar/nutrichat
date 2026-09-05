@@ -3,7 +3,6 @@ package app.mealsy.android.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.mealsy.android.BuildConfig
 import app.mealsy.android.di.AppVersionCode
+import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.data.api.MealsyApi
@@ -127,7 +127,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
             } else {
                 NavHost(navController = navController, startDestination = ROUTE_LOGIN) {
                     composable(ROUTE_LOGIN) { LoginScreen() }
-                    composable(ROUTE_CHAT) { Text("Chat — coming in Task 6") }
+                    composable(ROUTE_CHAT) { ChatScreen() }
                 }
 
                 LaunchedEffect(sessionState) {

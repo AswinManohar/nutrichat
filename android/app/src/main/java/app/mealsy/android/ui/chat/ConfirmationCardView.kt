@@ -1,0 +1,158 @@
+package app.mealsy.android.ui.chat
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
+import app.mealsy.domain.CardEditor
+import app.mealsy.domain.CardItem
+import app.mealsy.domain.ConfirmationCard
+
+private val MEAL_TYPES = listOf("breakfast", "lunch", "snack", "dinner")
+
+/** Editable confirmation card: item rows, meal type, portion, totals, confirm/cancel. */
+@Composable
+fun ConfirmationCardView(
+    card: ConfirmationCard,
+    sending: Boolean,
+    onEditQty: (index: Int, newQtyG: Double) -> Unit,
+    onRemoveItem: (index: Int) -> Unit,
+    onSetMealType: (String) -> Unit,
+    onSetPortion: (Double) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val totals = CardEditor.totals(card)
+
+    Card(modifier = modifier.fillMaxWidth().padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = card.message, style = MaterialTheme.typography.bodyLarge)
+
+            LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
+                items(card.items.size) { index ->
+                    CardItemRow(
+                        item = card.items[index],
+                        onEditQty = { newQty -> onEditQty(index, newQty) },
+                        onRemove = { onRemoveItem(index) },
+                    )
+                }
+            }
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(top = 12.dp)) {
+                MEAL_TYPES.forEachIndexed { index, mealType ->
+                    SegmentedButton(
+                        selected = card.mealType == mealType,
+                        onClick = { onSetMealType(mealType) },
+                        shape = SegmentedButtonDefaults.itemShape(index, MEAL_TYPES.size),
+                    ) {
+                        Text(mealType.replaceFirstChar { it.uppercase() })
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Portion: ${card.portion}x")
+                Row {
+                    OutlinedButton(
+                        onClick = { onSetPortion((card.portion - 0.25).coerceAtLeast(0.25)) },
+                    ) { Text("-") }
+                    OutlinedButton(
+                        onClick = { onSetPortion(card.portion + 0.25) },
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text("+") }
+                }
+            }
+
+            Text(
+                text = "Total: ${totals.kcal.toInt()} kcal, ${totals.proteinG.toInt()}g protein",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                OutlinedButton(onClick = onCancel, enabled = !sending) { Text("Cancel") }
+                Button(
+                    onClick = onConfirm,
+                    enabled = !sending && card.items.isNotEmpty(),
+                    modifier = Modifier.padding(start = 8.dp),
+                ) { Text("Confirm") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardItemRow(item: CardItem, onEditQty: (Double) -> Unit, onRemove: () -> Unit) {
+    var qtyText by remember(item.targetQtyG) { mutableStateOf(item.targetQtyG.toString()) }
+    var dragOffset by remember { mutableStateOf(0f) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .pointerInput(item) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        // Swipe-to-remove: a leftward drag past a small threshold removes the row.
+                        if (dragOffset < -SWIPE_REMOVE_THRESHOLD_PX) onRemove()
+                        dragOffset = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
+                )
+            }
+            .background(MaterialTheme.colorScheme.surface),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = item.foodName,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        OutlinedTextField(
+            value = qtyText,
+            onValueChange = { newValue ->
+                qtyText = newValue
+                newValue.toDoubleOrNull()?.let { if (it > 0) onEditQty(it) }
+            },
+            label = { Text("g") },
+            modifier = Modifier.padding(horizontal = 8.dp),
+            singleLine = true,
+        )
+        Text(
+            text = "${item.kcal.toInt()} kcal",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+}
+
+private const val SWIPE_REMOVE_THRESHOLD_PX = 300f

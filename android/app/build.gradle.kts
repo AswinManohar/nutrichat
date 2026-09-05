@@ -110,6 +110,11 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockwebserver)
+    testImplementation(libs.retrofit)
+    testImplementation(libs.retrofit.kotlinx.serialization.converter)
+    testImplementation(libs.okhttp)
+    testImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }
