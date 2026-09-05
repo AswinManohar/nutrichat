@@ -45,6 +45,13 @@ class ChatRepositoryTest {
     private fun buildRepository(store: ConversationIdStore = FakeConversationIdStore()): ChatRepository {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+            // No keep-alive connection reuse: a SocketPolicy.DISCONNECT_AT_START
+            // response behaves inconsistently on a warm, reused connection
+            // (OkHttp can silently open a fresh connection and retry against
+            // the *next* queued response instead of surfacing an IOException).
+            // A fresh connection per request keeps the dropped-connection
+            // tests deterministic.
+            .connectionPool(okhttp3.ConnectionPool(0, 1, java.util.concurrent.TimeUnit.NANOSECONDS))
             .build()
         val contentType = "application/json".toMediaType()
         val retrofit = Retrofit.Builder()
@@ -268,10 +275,16 @@ class ChatRepositoryTest {
         }
         val firstAttemptBody = server.takeRequest().body.readUtf8()
         val firstAttemptId = clientRequestIdOf(firstAttemptBody)
+        val idBeforeCancel = repository.conversationId()
 
         repository.cancelCard()
         server.takeRequest() // drain cancel's sendTurn("cancel") request
         server.takeRequest() // drain the resulting quota() check
+
+        // A cancel that actually lands (Reply/UpgradeRequired) rotates the
+        // conversation id — see `cancelCard on a dropped connection ...`
+        // below for the contrasting case where it must NOT rotate.
+        assertNotEquals(idBeforeCancel, repository.conversationId())
 
         val cardB = (repository.sendTurn("two eggs again") as TurnResult.Card).card
         server.takeRequest()
@@ -280,6 +293,56 @@ class ChatRepositoryTest {
 
         assertNotEquals(firstAttemptId, secondAttemptId)
     }
+
+    @Test
+    fun `cancelCard on a dropped connection keeps the conversation id and pending confirmation`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+            server.enqueue(MockResponse().setResponseCode(500))
+            server.enqueue(
+                MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"meal_id":"m_4","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged.","deduplicated":false}""",
+                ),
+            )
+            val repository = buildRepository()
+            val cardA = (repository.sendTurn("an egg") as TurnResult.Card).card
+            server.takeRequest() // drain the turn request
+
+            try {
+                repository.confirmCard(cardA)
+            } catch (exc: HttpException) {
+                // expected — the confirm attempt fails, but the id it used
+                // must survive: the server may have committed it anyway.
+            }
+            val originalAttemptId = clientRequestIdOf(server.takeRequest().body.readUtf8())
+            val idBeforeCancel = repository.conversationId()
+
+            val cancelResult = repository.cancelCard()
+
+            assertTrue(cancelResult is TurnResult.Card)
+            val recovered = (cancelResult as TurnResult.Card).card
+            assertEquals(cardA, recovered)
+            server.takeRequest() // the dropped-connection attempt itself (recorded with a null path)
+            // The dropped cancel never actually landed: the conversation id
+            // must be untouched, or a later recoverPending() (e.g. after
+            // process death) would target a conversation the server never
+            // saw, orphaning this still-paused card.
+            val pendingRequest = server.takeRequest() // the recovery GET /meals/pending call
+            assertEquals(idBeforeCancel, pendingRequest.requestUrl?.queryParameter("conversation_id"))
+            assertEquals(idBeforeCancel, repository.conversationId())
+
+            // Re-confirming the same (still-pending) card must reuse the
+            // ORIGINAL client_request_id — pendingConfirmation must not have
+            // been cleared by the failed cancel, or this would double-log a
+            // confirm that may have already committed server-side.
+            repository.confirmCard(recovered)
+            val retryAttemptId = clientRequestIdOf(server.takeRequest().body.readUtf8())
+            assertEquals(originalAttemptId, retryAttemptId)
+        }
 
     @Test
     fun `recoverPending recovers the same conversation id across repository instances`() = runBlocking {
@@ -377,6 +440,31 @@ class ChatRepositoryTest {
 
         assertTrue(result is TurnResult.Reply)
         assertFalse((result as TurnResult.Reply).message.contains("mealsy.app"))
+    }
+
+    @Test
+    fun `reply text without urls survives stripUrls unchanged`() = runBlocking {
+        val original = "1.5 g of protein, e.g. eggs"
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "status": "success",
+                  "message": "$original",
+                  "paused": false,
+                  "items": [
+                    {"food_name": "egg", "qty_g": 1, "kcal": 1, "protein_g": 1, "carbs_g": 1, "fat_g": 1, "fiber_g": 1, "fdc_id": 1}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val repository = buildRepository()
+
+        val result = repository.sendTurn("anything")
+
+        assertTrue(result is TurnResult.Reply)
+        assertEquals(original, (result as TurnResult.Reply).message)
     }
 
     private fun pausedCardBody(foodName: String = "egg"): String = """

@@ -165,10 +165,27 @@ class ChatRepository @Inject constructor(
         )
     }
 
+    /**
+     * Cancels the paused conversation. The conversation id only rotates —
+     * and [pendingConfirmation] only clears — when the cancel actually
+     * lands ([TurnResult.Reply]/[TurnResult.UpgradeRequired]). If
+     * `sendTurn("cancel")` drops with an [IOException] and recovers a still-
+     * pending [TurnResult.Card] (see [sendTurn]'s recovery path), the card
+     * was never actually cancelled server-side: rotating here would orphan
+     * it (a later [recoverPending] would target the new id and never find
+     * it again), and clearing [pendingConfirmation] would hand a re-confirm
+     * of that same card a fresh `client_request_id`, double-logging a
+     * confirm that may have already committed.
+     */
     suspend fun cancelCard(): TurnResult {
-        pendingConfirmation = null
         val result = sendTurn("cancel")
-        rotateConversationId()
+        when (result) {
+            is TurnResult.Reply, is TurnResult.UpgradeRequired -> {
+                pendingConfirmation = null
+                rotateConversationId()
+            }
+            is TurnResult.Card -> Unit
+        }
         return result
     }
 
