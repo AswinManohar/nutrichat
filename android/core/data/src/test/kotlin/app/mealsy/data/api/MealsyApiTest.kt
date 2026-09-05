@@ -8,7 +8,6 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -102,8 +101,10 @@ class MealsyApiTest {
                 .setBody("""{"kcal":1450.0,"protein_g":88.0,"fiber_g":14.0,"n_meals":3,"by_type":[]}"""),
         )
         var calls = 0
-        val tokenProvider = TokenProvider {
+        val forceRefreshFlags = mutableListOf<Boolean>()
+        val tokenProvider = TokenProvider { forceRefresh ->
             calls++
+            forceRefreshFlags.add(forceRefresh)
             "token-$calls"
         }
         val api = buildApi(tokenProvider)
@@ -111,7 +112,12 @@ class MealsyApiTest {
         val response = api.today()
 
         assertEquals(2, calls)
+        assertEquals(listOf(false, true), forceRefreshFlags)
         assertEquals(1450.0, response.kcal, 0.0)
+
+        server.takeRequest() // the initial, unauthenticated-refresh 401 attempt
+        val retried = server.takeRequest()
+        assertEquals("Bearer token-2", retried.getHeader("Authorization"))
     }
 
     @Test
@@ -128,7 +134,76 @@ class MealsyApiTest {
         val response = api.today()
 
         assertEquals(1450.0, response.kcal, 0.0)
-        assertNull(null) // reaching here without a SerializationException is the assertion
+    }
+
+    @Test
+    fun `retrofit builds when base url has no trailing slash`() {
+        val retrofit = Retrofit.Builder()
+            .baseUrl(normalizeBaseUrl("http://10.0.2.2:8000"))
+            .addConverterFactory(json.asConverterFactory(MEDIA_TYPE_JSON))
+            .build()
+
+        val api = retrofit.create(MealsyApi::class.java)
+
+        assertTrue(api is MealsyApi)
+    }
+
+    @Test
+    fun `unknown item fields round-trip through extras on encode`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "status": "confirm",
+                      "message": "Got it.",
+                      "paused": true,
+                      "items": [
+                        {
+                          "food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13,
+                          "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345,
+                          "source": "usda", "nutrients": {"vitamin_d": 1.1, "calcium": 25}
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ),
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged.","deduplicated":false}""",
+                ),
+        )
+        val api = buildApi()
+
+        val turnResponse = api.logTurn(LogTurnRequest(userInput = "an egg"))
+        server.takeRequest() // drain the logTurn request
+
+        api.logItems(
+            LogItemsRequest(
+                mealType = "breakfast",
+                items = turnResponse.items,
+            ),
+        )
+        val recorded = server.takeRequest().body.readUtf8()
+
+        assertTrue(recorded.contains("\"source\":\"usda\""))
+        assertTrue(recorded.contains("\"nutrients\":{\"vitamin_d\":1.1,\"calcium\":25}"))
+        assertTrue(!recorded.contains("\"extras\""))
+    }
+
+    @Test
+    fun `registerDevice always serializes platform`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"status":"registered"}"""))
+        val api = buildApi()
+
+        api.registerDevice(RegisterDeviceRequest(token = "fcm-token-123"))
+
+        val recorded = server.takeRequest().body.readUtf8()
+        assertTrue(recorded.contains("\"platform\":\"fcm\""))
     }
 }
 

@@ -36,6 +36,22 @@ android {
         )
     }
 
+    buildTypes {
+        // Release must never silently inherit the debug/emulator default
+        // ("http://10.0.2.2:8000"). If API_BASE_URL isn't set in
+        // local.properties for a release build, this resolves to "" and
+        // ApiModule.normalizeBaseUrl() throws IllegalStateException at
+        // injection time instead of shipping a build that talks to the
+        // emulator loopback address.
+        release {
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"${localProperties.getProperty("API_BASE_URL", "")}\"",
+            )
+        }
+    }
+
     buildFeatures {
         buildConfig = true
     }

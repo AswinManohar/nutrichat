@@ -47,7 +47,7 @@ object ApiModule {
     fun provideRetrofit(client: OkHttpClient, json: Json): Retrofit {
         val contentType = "application/json".toMediaType()
         return Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
+            .baseUrl(normalizeBaseUrl(BuildConfig.API_BASE_URL))
             .client(client)
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
@@ -56,4 +56,18 @@ object ApiModule {
     @Provides
     @Singleton
     fun provideMealsyApi(retrofit: Retrofit): MealsyApi = retrofit.create(MealsyApi::class.java)
+}
+
+/**
+ * Retrofit's `Retrofit.Builder().baseUrl(...)` throws at build time unless
+ * the URL ends in `/`. `BuildConfig.API_BASE_URL` values (e.g.
+ * `http://10.0.2.2:8000` from local.properties) commonly omit it, which
+ * previously crashed Hilt injection. Also enforces that release builds
+ * don't silently fall back to an unset/dev URL (see build.gradle.kts,
+ * where the release variant's field defaults to "" instead of the debug
+ * default).
+ */
+internal fun normalizeBaseUrl(baseUrl: String): String {
+    check(baseUrl.isNotBlank()) { "API_BASE_URL not configured for release" }
+    return if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
 }
