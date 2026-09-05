@@ -18,6 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.mealsy.android.BuildConfig
+import app.mealsy.android.di.AppVersionCode
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.data.api.MealsyApi
@@ -49,10 +50,17 @@ sealed interface GateState {
 fun isUpdateRequired(currentVersionCode: Int, minSupportedVersionCode: Int): Boolean =
     currentVersionCode < minSupportedVersionCode
 
+/**
+ * `currentVersionCode` is [BuildConfig.VERSION_CODE] in production, bound via [AppVersionCode]
+ * in `app.mealsy.android.di.AppModule` since Hilt has no visibility into `BuildConfig`. Being a
+ * constructor param (rather than reading BuildConfig directly) lets tests override it and make
+ * the gate's fail-open/fail-closed branches plain-JVM-testable without Robolectric.
+ */
 @HiltViewModel
 class AppNavViewModel @Inject constructor(
     private val api: MealsyApi,
     sessionManager: SessionManager,
+    @AppVersionCode private val currentVersionCode: Int,
 ) : ViewModel() {
 
     val sessionState: StateFlow<SessionState> = sessionManager.sessionState
@@ -61,10 +69,14 @@ class AppNavViewModel @Inject constructor(
     val gateState: StateFlow<GateState> = _gateState.asStateFlow()
 
     init {
+        checkGate()
+    }
+
+    private fun checkGate() {
         viewModelScope.launch {
             _gateState.value = try {
                 val meta = withTimeout(APP_META_TIMEOUT_MS) { api.appMeta() }
-                if (isUpdateRequired(BuildConfig.VERSION_CODE, meta.minSupportedVersionCode)) {
+                if (isUpdateRequired(currentVersionCode, meta.minSupportedVersionCode)) {
                     GateState.UpdateRequired
                 } else {
                     GateState.Ready
@@ -106,24 +118,32 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
         GateState.Ready -> {
             val sessionState by viewModel.sessionState.collectAsStateWithLifecycle()
 
-            NavHost(navController = navController, startDestination = ROUTE_LOGIN) {
-                composable(ROUTE_LOGIN) { LoginScreen() }
-                composable(ROUTE_CHAT) { Text("Chat — coming in Task 6") }
-            }
+            if (sessionState == SessionState.Loading) {
+                // Session status isn't known yet — avoid flashing LoginScreen under the
+                // NavHost before the first real sessionState value arrives.
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                NavHost(navController = navController, startDestination = ROUTE_LOGIN) {
+                    composable(ROUTE_LOGIN) { LoginScreen() }
+                    composable(ROUTE_CHAT) { Text("Chat — coming in Task 6") }
+                }
 
-            LaunchedEffect(sessionState) {
-                when (sessionState) {
-                    is SessionState.SignedIn -> navController.navigate(ROUTE_CHAT) {
-                        popUpTo(0)
-                        launchSingleTop = true
+                LaunchedEffect(sessionState) {
+                    when (sessionState) {
+                        is SessionState.SignedIn -> navController.navigate(ROUTE_CHAT) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+
+                        SessionState.SignedOut -> navController.navigate(ROUTE_LOGIN) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+
+                        SessionState.Loading -> Unit
                     }
-
-                    SessionState.SignedOut -> navController.navigate(ROUTE_LOGIN) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
-
-                    SessionState.Loading -> Unit
                 }
             }
         }
