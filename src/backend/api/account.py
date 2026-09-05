@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -29,6 +30,7 @@ router = APIRouter(tags=["account"])
 
 _SUPABASE_URL_ENV = "SUPABASE_URL"
 _SERVICE_ROLE_KEY_ENV = "SUPABASE_SERVICE_ROLE_KEY"
+_ADMIN_API_TIMEOUT_S = 10
 
 
 async def _delete_auth_user(user_id: str) -> None:
@@ -40,7 +42,9 @@ async def _delete_auth_user(user_id: str) -> None:
     Raises:
         RuntimeError: If the server is not configured for admin access, the
             Admin API returns a non-2xx status, or the request fails
-            (timeout, connection error, etc.).
+            (timeout — including a hung connection, since we cap total
+            request time at `_ADMIN_API_TIMEOUT_S` seconds — or connection
+            error).
     """
     supabase_url = os.environ.get(_SUPABASE_URL_ENV)
     service_role_key = os.environ.get(_SERVICE_ROLE_KEY_ENV)
@@ -49,15 +53,16 @@ async def _delete_auth_user(user_id: str) -> None:
 
     url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
     headers = {"Authorization": f"Bearer {service_role_key}"}
+    timeout = aiohttp.ClientTimeout(total=_ADMIN_API_TIMEOUT_S)
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.delete(url, headers=headers) as response:
                 if response.status // 100 != 2:
                     body = await response.text()
                     raise RuntimeError(
                         f"Supabase Admin API returned {response.status}: {body}"
                     )
-    except aiohttp.ClientError as exc:
+    except (aiohttp.ClientError, TimeoutError) as exc:
         raise RuntimeError(f"Supabase Admin API request failed: {exc}") from exc
 
 
@@ -81,9 +86,17 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
         An empty 204 response.
 
     Raises:
-        HTTPException: 502 if the Supabase Admin API call fails. No data is
-            deleted in that case.
+        HTTPException: 400 if `user_id` is not a well-formed UUID (guards
+            the raw LIKE patterns built below against `%`/`_` injection,
+            relevant under DEV_BYPASS_AUTH where the header is taken
+            verbatim). 502 if the Supabase Admin API call fails or times
+            out. No data is deleted in either case.
     """
+    try:
+        uuid.UUID(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid user id") from exc
+
     try:
         await _delete_auth_user(user_id)
     except Exception as exc:
