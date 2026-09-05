@@ -34,8 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -171,6 +173,9 @@ private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -
             .clearAndSetSemantics {
                 contentDescription = "${meal.name}, ${meal.kcal.toInt()} kcal, " +
                     "${meal.proteinG.toInt()}g protein"
+                customActions = listOf(
+                    CustomAccessibilityAction("Delete meal") { onSwipeDelete(); true },
+                )
             },
     ) {
         Column(

@@ -30,21 +30,6 @@ android {
 
         buildConfigField(
             "String",
-            "API_BASE_URL",
-            "\"${localProperties.getProperty("API_BASE_URL", "http://10.0.2.2:8000")}\"",
-        )
-        buildConfigField(
-            "String",
-            "SUPABASE_URL",
-            "\"${localProperties.getProperty("SUPABASE_URL", "")}\"",
-        )
-        buildConfigField(
-            "String",
-            "SUPABASE_ANON_KEY",
-            "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
-        )
-        buildConfigField(
-            "String",
             "PRIVACY_POLICY_URL",
             "\"${localProperties.getProperty("PRIVACY_POLICY_URL", "https://mealsy.app/privacy")}\"",
         )
