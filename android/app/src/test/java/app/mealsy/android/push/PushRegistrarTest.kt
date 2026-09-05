@@ -62,6 +62,7 @@ private class FakeMealsyApi : MealsyApi {
 /** In-memory [DeviceTokenStore] — a real DataStore needs Android/Robolectric. */
 private class FakeDeviceTokenStore : DeviceTokenStore {
     private var lastSentToken: String? = null
+    private var remindersDisabled: Boolean = false
 
     override suspend fun getLastSentToken(): String? = lastSentToken
     override suspend fun setLastSentToken(token: String) {
@@ -69,6 +70,10 @@ private class FakeDeviceTokenStore : DeviceTokenStore {
     }
     override suspend fun clearLastSentToken() {
         lastSentToken = null
+    }
+    override suspend fun isRemindersDisabled(): Boolean = remindersDisabled
+    override suspend fun setRemindersDisabled(disabled: Boolean) {
+        remindersDisabled = disabled
     }
 }
 
@@ -114,6 +119,46 @@ class PushRegistrarTest {
         registrar.ensureRegistered()
 
         assertTrue(api.registeredTokens.isEmpty())
+    }
+
+    @Test
+    fun `ensureRegistered no-ops when reminders are disabled`() = runTest {
+        val api = FakeMealsyApi()
+        val tokenStore = FakeDeviceTokenStore()
+        tokenStore.setRemindersDisabled(true)
+        val registrar = PushRegistrar(
+            api = api,
+            tokenStore = tokenStore,
+            fcmTokenProvider = FcmTokenProvider { "token-a" },
+        )
+
+        registrar.ensureRegistered()
+
+        assertTrue(api.registeredTokens.isEmpty())
+        assertNull(tokenStore.getLastSentToken())
+    }
+
+    @Test
+    fun `toggling reminders off then ensureRegistered does not re-register`() = runTest {
+        // Regression: AppNavViewModel calls ensureRegistered() unconditionally
+        // after every sign-in — without the disabled check, that would silently
+        // undo a Settings toggle-off.
+        val api = FakeMealsyApi()
+        val tokenStore = FakeDeviceTokenStore()
+        val registrar = PushRegistrar(
+            api = api,
+            tokenStore = tokenStore,
+            fcmTokenProvider = FcmTokenProvider { "token-a" },
+        )
+        registrar.ensureRegistered()
+        assertEquals(listOf("token-a"), api.registeredTokens)
+
+        registrar.unregisterCurrentDevice()
+        tokenStore.setRemindersDisabled(true)
+        registrar.ensureRegistered()
+
+        assertEquals(listOf("token-a"), api.registeredTokens)
+        assertNull(tokenStore.getLastSentToken())
     }
 
     @Test

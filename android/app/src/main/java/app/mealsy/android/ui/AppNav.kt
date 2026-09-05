@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -16,13 +19,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -61,14 +64,19 @@ private const val ROUTE_TRENDS = "trends"
 private const val ROUTE_MY_MEALS = "my-meals"
 private const val ROUTE_SETTINGS = "settings"
 
-/** The four bottom-nav destinations, in display order. */
-private data class BottomNavDestination(val route: String, val label: String)
+/**
+ * The four bottom-nav destinations, in display order. [icon] is one of the
+ * bundled `Icons.Default` glyphs (no `material-icons-extended` dependency,
+ * per Global Constraints) chosen as a reasonable approximation rather than
+ * leaving three of the four tabs unlabeled-by-icon.
+ */
+private data class BottomNavDestination(val route: String, val label: String, val icon: ImageVector)
 
 private val BOTTOM_NAV_DESTINATIONS = listOf(
-    BottomNavDestination(ROUTE_CHAT, "Chat"),
-    BottomNavDestination(ROUTE_TRENDS, "Trends"),
-    BottomNavDestination(ROUTE_MY_MEALS, "My Meals"),
-    BottomNavDestination(ROUTE_SETTINGS, "Settings"),
+    BottomNavDestination(ROUTE_CHAT, "Chat", Icons.Default.Email),
+    BottomNavDestination(ROUTE_TRENDS, "Trends", Icons.Default.DateRange),
+    BottomNavDestination(ROUTE_MY_MEALS, "My Meals", Icons.AutoMirrored.Filled.List),
+    BottomNavDestination(ROUTE_SETTINGS, "Settings", Icons.Default.Settings),
 )
 
 /** Result of the startup version-gate check. */
@@ -263,18 +271,25 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                         selected = backStackEntry?.destination?.hierarchy
                                             ?.any { it.route == destination.route } == true,
                                         onClick = {
+                                            // popUpTo ROUTE_CHAT (not the graph's start
+                                            // destination, which is ROUTE_LOGIN — removed
+                                            // from the stack on sign-in via `inclusive =
+                                            // true`, making a start-destination popUpTo a
+                                            // no-op here) so ROUTE_CHAT is the tab-root:
+                                            // switching tabs saves/restores each tab's
+                                            // state instead of stacking indefinitely, and
+                                            // back from any tab returns to chat.
                                             navController.navigate(destination.route) {
-                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                popUpTo(ROUTE_CHAT) {
                                                     saveState = true
+                                                    inclusive = false
                                                 }
                                                 launchSingleTop = true
                                                 restoreState = true
                                             }
                                         },
                                         icon = {
-                                            if (destination.route == ROUTE_SETTINGS) {
-                                                Icon(Icons.Default.Settings, contentDescription = null)
-                                            }
+                                            Icon(destination.icon, contentDescription = null)
                                         },
                                         label = { Text(destination.label) },
                                     )

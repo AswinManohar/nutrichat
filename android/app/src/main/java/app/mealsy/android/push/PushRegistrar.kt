@@ -3,6 +3,7 @@ package app.mealsy.android.push
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -33,17 +34,26 @@ fun interface FcmTokenProvider {
     suspend fun currentToken(): String?
 }
 
-/** Persists the most recently registered FCM token, for [PushRegistrar]'s idempotency check. */
+/**
+ * Persists the most recently registered FCM token, for [PushRegistrar]'s
+ * idempotency check, and whether the user has explicitly turned reminders
+ * off from Settings ([isRemindersDisabled]) — [PushRegistrar.ensureRegistered]
+ * checks this so `AppNav`'s unconditional post-sign-in call can't silently
+ * re-register a token the user just asked to stop receiving.
+ */
 interface DeviceTokenStore {
     suspend fun getLastSentToken(): String?
     suspend fun setLastSentToken(token: String)
     suspend fun clearLastSentToken()
+    suspend fun isRemindersDisabled(): Boolean
+    suspend fun setRemindersDisabled(disabled: Boolean)
 }
 
 private val Context.deviceTokenDataStore: DataStore<Preferences> by
     preferencesDataStore(name = "push_device")
 
 private val LAST_SENT_TOKEN_KEY = stringPreferencesKey("last_sent_fcm_token")
+private val REMINDERS_DISABLED_KEY = booleanPreferencesKey("reminders_disabled")
 
 @Singleton
 class DataStoreDeviceTokenStore @Inject constructor(
@@ -59,6 +69,13 @@ class DataStoreDeviceTokenStore @Inject constructor(
 
     override suspend fun clearLastSentToken() {
         context.deviceTokenDataStore.edit { prefs -> prefs.remove(LAST_SENT_TOKEN_KEY) }
+    }
+
+    override suspend fun isRemindersDisabled(): Boolean =
+        context.deviceTokenDataStore.data.first()[REMINDERS_DISABLED_KEY] ?: false
+
+    override suspend fun setRemindersDisabled(disabled: Boolean) {
+        context.deviceTokenDataStore.edit { prefs -> prefs[REMINDERS_DISABLED_KEY] = disabled }
     }
 }
 
@@ -102,8 +119,16 @@ class PushRegistrar @Inject constructor(
     private val fcmTokenProvider: FcmTokenProvider,
 ) {
 
-    /** Fetches the current FCM token (if any) and registers it if it hasn't been sent yet. */
+    /**
+     * Fetches the current FCM token (if any) and registers it if it hasn't
+     * been sent yet — unless the user has turned reminders off in Settings
+     * ([DeviceTokenStore.isRemindersDisabled]), in which case this is a
+     * no-op. Without that check, this being called unconditionally after
+     * every sign-in (see `AppNavViewModel`) would silently re-register the
+     * token a Settings toggle-off just deleted.
+     */
     suspend fun ensureRegistered() {
+        if (tokenStore.isRemindersDisabled()) return
         val token = try {
             fcmTokenProvider.currentToken()
         } catch (exc: CancellationException) {

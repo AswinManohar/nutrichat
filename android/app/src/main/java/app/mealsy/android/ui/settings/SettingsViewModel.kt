@@ -84,7 +84,9 @@ class SettingsViewModel @Inject constructor(
     @AppVersionName versionName: String,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(versionName = versionName))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(versionName = versionName, versionCode = currentVersionCode),
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -123,7 +125,7 @@ class SettingsViewModel @Inject constructor(
     private fun loadReminderState() {
         viewModelScope.launch {
             val enabled = try {
-                tokenStore.getLastSentToken() != null
+                !tokenStore.isRemindersDisabled() && tokenStore.getLastSentToken() != null
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: Exception) {
@@ -213,14 +215,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Toggle-off both unregisters the current device and sets the
+     * "reminders disabled" flag ([DeviceTokenStore.setRemindersDisabled])
+     * so that `AppNavViewModel`'s unconditional post-sign-in
+     * [PushRegistrar.ensureRegistered] call can't silently undo it. Toggle-on
+     * clears the flag first (so [PushRegistrar.ensureRegistered] doesn't
+     * immediately no-op) and then registers.
+     */
     fun setReminderEnabled(enabled: Boolean) {
         viewModelScope.launch {
             _uiState.update { it.copy(reminderEnabled = enabled) }
             try {
                 if (enabled) {
+                    tokenStore.setRemindersDisabled(false)
                     pushRegistrar.ensureRegistered()
                 } else {
                     pushRegistrar.unregisterCurrentDevice()
+                    tokenStore.setRemindersDisabled(true)
                 }
             } catch (exc: CancellationException) {
                 throw exc

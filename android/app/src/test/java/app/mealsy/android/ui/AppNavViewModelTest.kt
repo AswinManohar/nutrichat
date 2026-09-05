@@ -113,6 +113,8 @@ class AppNavViewModelTest {
             override suspend fun getLastSentToken(): String? = null
             override suspend fun setLastSentToken(token: String) = Unit
             override suspend fun clearLastSentToken() = Unit
+            override suspend fun isRemindersDisabled(): Boolean = false
+            override suspend fun setRemindersDisabled(disabled: Boolean) = Unit
         },
         fcmTokenProvider = FcmTokenProvider { null },
     )

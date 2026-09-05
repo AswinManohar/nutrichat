@@ -103,6 +103,7 @@ private fun echoGoals() = GoalsResponse(
 
 private class FakeDeviceTokenStore : DeviceTokenStore {
     private var token: String? = null
+    private var remindersDisabled: Boolean = false
 
     override suspend fun getLastSentToken(): String? = token
     override suspend fun setLastSentToken(token: String) {
@@ -111,6 +112,11 @@ private class FakeDeviceTokenStore : DeviceTokenStore {
 
     override suspend fun clearLastSentToken() {
         token = null
+    }
+
+    override suspend fun isRemindersDisabled(): Boolean = remindersDisabled
+    override suspend fun setRemindersDisabled(disabled: Boolean) {
+        remindersDisabled = disabled
     }
 }
 
@@ -133,24 +139,31 @@ class SettingsViewModelTest {
         api: FakeMealsyApi = FakeMealsyApi(onGoals = ::echoGoals),
         authGateway: FakeAuthGateway = FakeAuthGateway(),
         onSignOut: suspend () -> Unit = {},
-    ): Triple<SettingsViewModel, FakeMealsyApi, FakeAuthGateway> {
+        tokenStore: FakeDeviceTokenStore = FakeDeviceTokenStore(),
+        fcmToken: String? = null,
+    ): Quad<SettingsViewModel, FakeMealsyApi, FakeAuthGateway, FakeDeviceTokenStore> {
         val sessionManager = SessionManager(authGateway, onSignOut)
+        // Production wires PushRegistrar and SettingsViewModel to the same
+        // @Singleton DeviceTokenStore — sharing one fake here keeps the
+        // reminder-toggle state coherent between them, same as real usage.
         val pushRegistrar = PushRegistrar(
             api = api,
-            tokenStore = FakeDeviceTokenStore(),
-            fcmTokenProvider = FcmTokenProvider { null },
+            tokenStore = tokenStore,
+            fcmTokenProvider = FcmTokenProvider { fcmToken },
         )
         val viewModel = SettingsViewModel(
             goalsRepository = GoalsRepository(api),
             sessionManager = sessionManager,
             api = api,
             pushRegistrar = pushRegistrar,
-            tokenStore = FakeDeviceTokenStore(),
+            tokenStore = tokenStore,
             currentVersionCode = 1,
             versionName = "1.0",
         )
-        return Triple(viewModel, api, authGateway)
+        return Quad(viewModel, api, authGateway, tokenStore)
     }
+
+    private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     @Test
     fun `delete requires typed confirmation DELETE`() {
@@ -231,5 +244,52 @@ class SettingsViewModelTest {
         assertTrue(hookCalled)
         assertEquals(1, authGateway.signOutCallCount)
         assertTrue(viewModel.uiState.value.signedOut)
+    }
+
+    @Test
+    fun `toggling reminders off then a fresh sign-in ensureRegistered does not silently re-enable`() = runTest {
+        // Regression: AppNavViewModel calls PushRegistrar.ensureRegistered()
+        // unconditionally after every sign-in. Without the "disabled" flag
+        // this toggle-off sets, that call would re-register the token this
+        // test just deleted.
+        val tokenStore = FakeDeviceTokenStore()
+        val (viewModel, api, _, sharedTokenStore) =
+            viewModel(tokenStore = tokenStore, fcmToken = "token-a")
+        dispatcher.scheduler.advanceUntilIdle()
+        // Register once first, as a real sign-in would.
+        sharedTokenStore.setLastSentToken("token-a")
+
+        viewModel.setReminderEnabled(false)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.reminderEnabled)
+        assertNull(sharedTokenStore.getLastSentToken())
+        assertTrue(sharedTokenStore.isRemindersDisabled())
+
+        // Simulate AppNavViewModel's unconditional post-sign-in call.
+        val pushRegistrar = PushRegistrar(
+            api = api,
+            tokenStore = sharedTokenStore,
+            fcmTokenProvider = FcmTokenProvider { "token-a" },
+        )
+        pushRegistrar.ensureRegistered()
+
+        assertNull(sharedTokenStore.getLastSentToken())
+    }
+
+    @Test
+    fun `toggling reminders on clears the disabled flag and registers`() = runTest {
+        val tokenStore = FakeDeviceTokenStore()
+        tokenStore.setRemindersDisabled(true)
+        val (viewModel, _, _, sharedTokenStore) =
+            viewModel(tokenStore = tokenStore, fcmToken = "token-a")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.setReminderEnabled(true)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(sharedTokenStore.isRemindersDisabled())
+        assertEquals("token-a", sharedTokenStore.getLastSentToken())
+        assertTrue(viewModel.uiState.value.reminderEnabled)
     }
 }
