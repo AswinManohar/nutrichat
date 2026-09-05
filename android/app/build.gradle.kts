@@ -104,6 +104,12 @@ dependencies {
 
     implementation(libs.work.runtime.ktx)
 
+    // :core:data's Retrofit dependency is `implementation`-scoped there, so
+    // it isn't on :app's compile classpath transitively — ChatViewModel
+    // catches retrofit2.HttpException directly to distinguish server errors
+    // from IOException (offline), so it needs its own reference here.
+    implementation(libs.retrofit)
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
 

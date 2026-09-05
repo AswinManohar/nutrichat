@@ -10,6 +10,7 @@ import app.mealsy.data.repo.TurnResult
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.ConfirmationCard
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import retrofit2.HttpException
 
 /** A single line in the chat transcript. */
 sealed interface ChatMsg {
@@ -69,8 +71,11 @@ class ChatViewModel @Inject constructor(
             _offline.value = false
         } catch (exc: CancellationException) {
             throw exc
-        } catch (exc: Exception) {
+        } catch (exc: IOException) {
             _offline.value = true
+        } catch (exc: Exception) {
+            // HttpException or anything else on startup recovery isn't fatal
+            // and there's no chat transcript yet to report it into.
         }
         refreshToday()
     }
@@ -92,9 +97,13 @@ class ChatViewModel @Inject constructor(
                 _offline.value = false
             } catch (exc: CancellationException) {
                 throw exc
-            } catch (exc: Exception) {
+            } catch (exc: IOException) {
                 _offline.value = true
                 appendAssistant("Couldn't reach Mealsy. Check your connection and try again.")
+            } catch (exc: HttpException) {
+                appendAssistant(httpErrorMessage(exc))
+            } catch (exc: Exception) {
+                appendAssistant("Something went wrong. Try again.")
             } finally {
                 _sending.value = false
             }
@@ -145,32 +154,48 @@ class ChatViewModel @Inject constructor(
                 refreshToday()
             } catch (exc: CancellationException) {
                 throw exc
-            } catch (exc: Exception) {
+            } catch (exc: IOException) {
                 _offline.value = true
                 appendAssistant("Couldn't log that — check your connection and try again.")
+            } catch (exc: HttpException) {
+                appendAssistant(httpErrorMessage(exc))
+            } catch (exc: Exception) {
+                appendAssistant("Something went wrong. Try again.")
             } finally {
                 _sending.value = false
             }
         }
     }
 
-    /** Cancels the pending card. */
+    /** Cancels the pending card. The card is only cleared once cancellation actually succeeds. */
     fun cancel(): Job? {
         if (_pendingCard.value == null) return null
         _sending.value = true
         return viewModelScope.launch {
             try {
-                _pendingCard.value = null
                 when (val result = repository.cancelCard()) {
-                    is TurnResult.Reply -> appendAssistant(result.message)
+                    is TurnResult.Reply -> {
+                        _pendingCard.value = null
+                        appendAssistant(result.message)
+                    }
                     is TurnResult.Card -> _pendingCard.value = result.card
-                    is TurnResult.UpgradeRequired -> appendAssistant(result.message)
+                    is TurnResult.UpgradeRequired -> {
+                        _pendingCard.value = null
+                        appendAssistant(result.message)
+                    }
                 }
                 _offline.value = false
             } catch (exc: CancellationException) {
                 throw exc
-            } catch (exc: Exception) {
+            } catch (exc: IOException) {
+                // Leave the card in place — the server's confirmation thread
+                // is still paused, and losing it here strands that thread.
                 _offline.value = true
+                appendAssistant("Couldn't cancel — check your connection and try again.")
+            } catch (exc: HttpException) {
+                appendAssistant(httpErrorMessage(exc))
+            } catch (exc: Exception) {
+                appendAssistant("Something went wrong. Try again.")
             } finally {
                 _sending.value = false
             }
@@ -186,6 +211,13 @@ class ChatViewModel @Inject constructor(
         } catch (exc: Exception) {
             // Today header just stays stale/empty; not fatal to the chat flow.
         }
+    }
+
+    /** A 429 gets its own copy; every other server error is a generic retry prompt. */
+    private fun httpErrorMessage(exc: HttpException): String = if (exc.code() == 429) {
+        "Slow down a moment and try again."
+    } else {
+        "Something went wrong on our end. Try again shortly."
     }
 
     private fun appendAssistant(text: String) {

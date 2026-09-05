@@ -24,8 +24,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
@@ -112,8 +117,17 @@ fun ConfirmationCardView(
 
 @Composable
 private fun CardItemRow(item: CardItem, onEditQty: (Double) -> Unit, onRemove: () -> Unit) {
+    // The qty field commits on focus-loss/IME-done rather than per keystroke:
+    // committing per keystroke fights the `remember(item.targetQtyG)` key —
+    // every commit changes targetQtyG, which re-keys the remember and snaps
+    // the field back to the just-committed value mid-edit (e.g. typing "150"
+    // reverts to "1" after the first digit lands).
     var qtyText by remember(item.targetQtyG) { mutableStateOf(item.targetQtyG.toString()) }
     var dragOffset by remember { mutableStateOf(0f) }
+
+    fun commitQty() {
+        qtyText.toDoubleOrNull()?.let { if (it > 0) onEditQty(it) }
+    }
 
     Row(
         modifier = Modifier
@@ -139,13 +153,17 @@ private fun CardItemRow(item: CardItem, onEditQty: (Double) -> Unit, onRemove: (
         )
         OutlinedTextField(
             value = qtyText,
-            onValueChange = { newValue ->
-                qtyText = newValue
-                newValue.toDoubleOrNull()?.let { if (it > 0) onEditQty(it) }
-            },
+            onValueChange = { newValue -> qtyText = newValue },
             label = { Text("g") },
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .onFocusChanged { focusState -> if (!focusState.isFocused) commitQty() },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { commitQty() }),
         )
         Text(
             text = "${item.kcal.toInt()} kcal",

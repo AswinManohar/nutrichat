@@ -110,6 +110,8 @@ dependencies {
 
     implementation(libs.work.runtime.ktx)
 
+    implementation(libs.androidx.datastore.preferences)
+
     // `api`, not `implementation`: MainActivity (in :app) injects the
     // SupabaseClient directly to call handleDeeplinks(intent), so its type
     // needs to be on :app's compile classpath, not just :core:data's.

@@ -70,7 +70,7 @@ class ChatViewModelTest {
 
     private fun buildViewModel(): ChatViewModel {
         val api = buildApi()
-        return ChatViewModel(ChatRepository(api), api)
+        return ChatViewModel(ChatRepository(api, fakeConversationIdStore()), api)
     }
 
     /** No pending card, empty today/goals — the common "nothing to restore" startup. */
@@ -134,6 +134,36 @@ class ChatViewModelTest {
         assertFalse(viewModel.sending.value)
         val messages = viewModel.messages.value
         assertTrue(messages.any { it is ChatMsg.Assistant && it.text == "Logged breakfast." })
+    }
+
+    @Test
+    fun `429 error appends a slow-down message and does not mark offline`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(429))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+
+        viewModel.send("two eggs").join()
+
+        assertFalse(viewModel.offline.value)
+        val messages = viewModel.messages.value
+        assertTrue(messages.any { it is ChatMsg.Assistant && it.text.contains("Slow down") })
+    }
+
+    @Test
+    fun `cancel keeps the card in place when the network call fails`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        server.enqueue(MockResponse().setResponseCode(500))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+        assertTrue(viewModel.pendingCard.value != null)
+
+        viewModel.cancel()?.join()
+
+        assertTrue(viewModel.pendingCard.value != null)
+        assertFalse(viewModel.sending.value)
     }
 
     @Test
