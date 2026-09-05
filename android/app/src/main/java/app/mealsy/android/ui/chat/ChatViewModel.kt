@@ -63,16 +63,16 @@ class ChatViewModel @Inject constructor(
     val goals: StateFlow<GoalsResponse?> = _goals.asStateFlow()
 
     init {
-        // Additive with the request-driven signal below: losing connectivity
-        // sets the banner immediately rather than waiting for the next
-        // network call to time out. Coming back online is intentionally
-        // NOT handled here — only a call that actually succeeds clears the
-        // banner, avoiding a flicker where the OS briefly reports "online"
-        // just before a request that still fails.
+        // Primary offline signal: with no pending card there may be no
+        // in-flight network call left to ever clear a stale `_offline=true`
+        // (e.g. connectivity drops with nothing queued), so connectivity
+        // changes must be able to both set AND clear the banner, or the
+        // chat input stays locked out until the process restarts. The
+        // request-driven sets elsewhere (send/confirm/cancel/startup)
+        // remain a secondary signal — they fire immediately on a call's
+        // actual outcome without waiting for the OS to notice.
         viewModelScope.launch {
-            connectivity.isOnline.collect { online ->
-                if (!online) _offline.value = true
-            }
+            connectivity.isOnline.collect { online -> _offline.value = !online }
         }
     }
 

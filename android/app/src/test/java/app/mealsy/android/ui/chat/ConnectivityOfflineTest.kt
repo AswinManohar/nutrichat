@@ -82,6 +82,41 @@ class ConnectivityOfflineTest {
         assertTrue(viewModel.offline.value)
     }
 
+    @Test
+    fun `connectivity restored clears the offline banner (no request needed to unstick it)`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+
+            val client = OkHttpClient.Builder()
+                .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                .build()
+            val contentType = "application/json".toMediaType()
+            val retrofit = Retrofit.Builder()
+                .baseUrl(server.url("/"))
+                .client(client)
+                .addConverterFactory(json.asConverterFactory(contentType))
+                .build()
+            val api = retrofit.create(MealsyApi::class.java)
+            val repository =
+                ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
+            val connectivity = FakeConnectivityObserver(initial = true)
+            val viewModel = ChatViewModel(repository, api, connectivity)
+            viewModel.readyJob.join()
+            assertTrue(!viewModel.offline.value)
+
+            // Connectivity lost — no pending card, so (before the fix) there
+            // would be no other network call left that could ever clear this.
+            connectivity.state.value = false
+            assertTrue(viewModel.offline.value)
+
+            // Connectivity restored — must clear on its own, without needing
+            // a send/confirm/cancel to succeed first.
+            connectivity.state.value = true
+            assertTrue(!viewModel.offline.value)
+        }
+
     private companion object {
         const val EMPTY_PENDING_BODY = """{"status":"success","message":"","paused":false,"items":[]}"""
         const val TODAY_BODY =

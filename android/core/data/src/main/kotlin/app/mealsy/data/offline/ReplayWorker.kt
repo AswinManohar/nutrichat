@@ -34,6 +34,13 @@ import retrofit2.HttpException
  * backoff (configured in [enqueue]) applies. A row is given up on — deleted,
  * with a warning logged — once it has been attempted [MAX_ATTEMPTS] times or
  * is older than [MAX_AGE_MS], regardless of the error.
+ *
+ * [doWork] re-queries [PendingLogDao.getAll] in a loop (tracking which
+ * `clientRequestId`s it has already processed this run) rather than reading
+ * the table once: `ExistingWorkPolicy.KEEP` means a confirm that queues a
+ * row while a replay run is already in flight does NOT get a follow-up
+ * `enqueue` — without the loop that row would sit unprocessed until some
+ * *other* future replay run happens to fire.
  */
 @HiltWorker
 class ReplayWorker @AssistedInject constructor(
@@ -46,46 +53,61 @@ class ReplayWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         var anyRetryable = false
+        val processed = mutableSetOf<String>()
 
-        for (row in dao.getAll()) {
-            val age = System.currentTimeMillis() - row.createdAt
-            if (row.attempts >= MAX_ATTEMPTS || age >= MAX_AGE_MS) {
-                Log.w(
-                    TAG,
-                    "Giving up on pending log ${row.clientRequestId} " +
-                        "after ${row.attempts} attempts (age ${age}ms)",
-                )
-                dao.delete(row.clientRequestId)
-                continue
-            }
+        // Loop until a pass finds nothing new: a row queued by a confirm
+        // that races with this run (see the class doc) must still be picked
+        // up in the SAME run, since ExistingWorkPolicy.KEEP means no
+        // follow-up run is guaranteed to happen otherwise.
+        while (true) {
+            val rows = dao.getAll().filterNot { it.clientRequestId in processed }
+            if (rows.isEmpty()) break
 
-            val request = try {
-                json.decodeFromString(LogItemsRequest.serializer(), row.payloadJson)
-            } catch (exc: Exception) {
-                Log.e(TAG, "Corrupt pending log payload ${row.clientRequestId}, discarding", exc)
-                dao.delete(row.clientRequestId)
-                continue
-            }
+            for (row in rows) {
+                processed += row.clientRequestId
+                val age = System.currentTimeMillis() - row.createdAt
+                if (row.attempts >= MAX_ATTEMPTS || age >= MAX_AGE_MS) {
+                    Log.w(
+                        TAG,
+                        "Giving up on pending log ${row.clientRequestId} " +
+                            "after ${row.attempts} attempts (age ${age}ms)",
+                    )
+                    dao.delete(row.clientRequestId)
+                    continue
+                }
 
-            try {
-                api.logItems(request)
-                dao.delete(row.clientRequestId)
-            } catch (exc: IOException) {
-                dao.incrementAttempts(row.clientRequestId)
-                anyRetryable = true
-            } catch (exc: HttpException) {
-                val code = exc.code()
-                if (code == 429 || code == 408 || code >= 500) {
-                    dao.incrementAttempts(row.clientRequestId)
-                    anyRetryable = true
-                } else {
+                val request = try {
+                    json.decodeFromString(LogItemsRequest.serializer(), row.payloadJson)
+                } catch (exc: Exception) {
                     Log.e(
                         TAG,
-                        "Pending log ${row.clientRequestId} rejected with HTTP $code, " +
-                            "discarding (poison payload)",
+                        "Corrupt pending log payload ${row.clientRequestId}, discarding",
                         exc,
                     )
                     dao.delete(row.clientRequestId)
+                    continue
+                }
+
+                try {
+                    api.logItems(request)
+                    dao.delete(row.clientRequestId)
+                } catch (exc: IOException) {
+                    dao.incrementAttempts(row.clientRequestId)
+                    anyRetryable = true
+                } catch (exc: HttpException) {
+                    val code = exc.code()
+                    if (code == 429 || code == 408 || code >= 500) {
+                        dao.incrementAttempts(row.clientRequestId)
+                        anyRetryable = true
+                    } else {
+                        Log.e(
+                            TAG,
+                            "Pending log ${row.clientRequestId} rejected with HTTP $code, " +
+                                "discarding (poison payload)",
+                            exc,
+                        )
+                        dao.delete(row.clientRequestId)
+                    }
                 }
             }
         }

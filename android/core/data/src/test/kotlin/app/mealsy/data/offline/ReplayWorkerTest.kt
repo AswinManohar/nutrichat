@@ -182,6 +182,57 @@ class ReplayWorkerTest {
         assertEquals(0, server.requestCount)
     }
 
+    /**
+     * A [PendingLogDao] wrapper that inserts a second row into [underlying]
+     * right after its first [getAll] snapshot is taken (but before that
+     * snapshot is returned to the caller) — modeling a `confirmCard()` that
+     * queues a new row while a replay run is already past its first
+     * `dao.getAll()`. With `ExistingWorkPolicy.KEEP`, that race means no
+     * follow-up run is guaranteed, so [ReplayWorker.doWork] must re-query
+     * and pick the new row up within the SAME run.
+     */
+    private class RacyPendingLogDao(
+        private val underlying: FakePendingLogDao,
+        private val onFirstSnapshot: () -> Unit,
+    ) : PendingLogDao {
+        private var getAllCalls = 0
+
+        override suspend fun insert(entity: PendingLogEntity) = underlying.insert(entity)
+        override suspend fun delete(clientRequestId: String) = underlying.delete(clientRequestId)
+        override suspend fun incrementAttempts(clientRequestId: String) =
+            underlying.incrementAttempts(clientRequestId)
+
+        override suspend fun getAll(): List<PendingLogEntity> {
+            getAllCalls++
+            val snapshot = underlying.getAll()
+            if (getAllCalls == 1) onFirstSnapshot()
+            return snapshot
+        }
+    }
+
+    @Test
+    fun `row queued mid-run (past the first getAll) is still processed in the same run`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged.","deduplicated":false}""",
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"meal_id":"m_2","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged.","deduplicated":false}""",
+            ),
+        )
+        val underlying = FakePendingLogDao().apply { seed(sampleRow("req-1")) }
+        val dao = RacyPendingLogDao(underlying) { underlying.seed(sampleRow("req-2")) }
+        val worker = buildWorker(dao, buildApi())
+
+        val result = worker.startWork().get()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertTrue(runBlockingGetAll(underlying).isEmpty())
+        assertEquals(2, server.requestCount)
+    }
+
     private fun runBlockingGetAll(dao: FakePendingLogDao): List<PendingLogEntity> =
         kotlinx.coroutines.runBlocking { dao.getAll() }
 }
