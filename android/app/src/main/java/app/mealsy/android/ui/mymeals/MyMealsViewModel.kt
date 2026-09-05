@@ -12,12 +12,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * How long a swiped-away meal stays hidden-but-recoverable before
@@ -154,7 +156,20 @@ class MyMealsViewModel @Inject constructor(
         }
     }
 
-    /** Calls `DELETE /my-meals/{id}` and removes [id] from a currently-[MyMealsUiState.Loaded] list. */
+    /**
+     * Calls `DELETE /my-meals/{id}` and removes [id] from a currently-
+     * [MyMealsUiState.Loaded] list.
+     *
+     * The network call runs on whatever dispatcher the caller launched this
+     * on ([appScope]'s `Dispatchers.Default`), but [pendingDeleteJobs],
+     * [_uiState], and [_hiddenIds] are all plain, unsynchronized mutable
+     * state that [deleteWithUndo]/[undoDelete]/[onCleared] also touch from
+     * the main thread — mutating them from a background worker here would be
+     * an unguarded data race (a lost `pendingDeleteJobs` removal, or a
+     * clobbered `Loaded` list read-modify-write). `withContext(Dispatchers.Main.immediate)`
+     * hops every bit of that bookkeeping back onto main, leaving only the
+     * actual HTTP call on the worker.
+     */
     private suspend fun commitDelete(id: String) {
         try {
             repository.delete(id)
@@ -164,11 +179,14 @@ class MyMealsViewModel @Inject constructor(
             // Best-effort: the meal stays hidden client-side either way; a
             // failed delete just means it reappears on the next [load].
         }
-        pendingDeleteJobs.remove(id)
-        val current = _uiState.value
-        if (current is MyMealsUiState.Loaded) {
-            val remaining = current.meals.filterNot { it.id == id }
-            _uiState.value = if (remaining.isEmpty()) MyMealsUiState.Empty else MyMealsUiState.Loaded(remaining)
+        withContext(Dispatchers.Main.immediate) {
+            pendingDeleteJobs.remove(id)
+            val current = _uiState.value
+            if (current is MyMealsUiState.Loaded) {
+                val remaining = current.meals.filterNot { it.id == id }
+                _uiState.value =
+                    if (remaining.isEmpty()) MyMealsUiState.Empty else MyMealsUiState.Loaded(remaining)
+            }
         }
     }
 }
