@@ -1,8 +1,8 @@
-# Android App MVP Implementation Plan
+# Android App Implementation Plan (Production)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Native Android client (Kotlin + Compose) for Mealsy: Supabase login, chat-based meal logging with an editable confirmation card, today header, offline direct-log replay, FCM push, version gate.
+**Goal:** Production native Android client (Kotlin + Compose) for Mealsy: onboarding, Supabase login, chat-based meal logging with an editable confirmation card, today header, trends, My Meals, settings with account deletion, offline direct-log replay, FCM push, crash reporting, version gate.
 
 **Architecture:** Three Gradle modules under `android/` — `core:domain` (pure Kotlin: models + card-edit logic, KMP-ready), `core:data` (Retrofit API, supabase-kt session, Room offline queue, repositories), `app` (Compose UI, Hilt wiring, FCM service). All server state flows through repositories; UI state via `ViewModel` + `StateFlow`.
 
@@ -245,21 +245,102 @@ sealed interface TurnResult { data class Reply(val message: String): TurnResult
 
 ---
 
-### Task 10: Release readiness
+
+---
+
+### Task 10: Onboarding (goal setup)
+
+**Files:**
+- Create: `android/app/src/main/java/app/mealsy/android/ui/onboarding/OnboardingScreen.kt`, `OnboardingViewModel.kt`; `android/core/data/src/main/kotlin/app/mealsy/data/repo/GoalsRepository.kt`
+- Modify: `ui/AppNav.kt` (route decision), `api/Dtos.kt` (goals DTOs already exist from Task 3 — extend with POST/PUT bodies if missing)
+- Test: `android/core/data/src/test/.../repo/GoalsRepositoryTest.kt`, `android/app/src/test/.../onboarding/OnboardingViewModelTest.kt`
+
+**Interfaces:**
+- Consumes: `MealsyApi.goals()` plus new `@POST("goals")` / `@PUT("goals")` methods (add to `MealsyApi` here; request body mirrors backend `GET /goals` response fields: `tracking_mode`, `kcal_goal`, `protein_goal`, `fiber_goal`, `dietary_prefs`).
+- Produces: `GoalsRepository { suspend fun get(): Goals?  // null on 404; suspend fun create(g: Goals); suspend fun update(g: Goals) }`; nav rule: SignedIn + `get()==null` → `onboarding`, else `chat`.
+
+- [ ] **Step 1: Failing tests** — repository: `get maps 404 to null`, `create posts snake_case body`; ViewModel: `defaults prefilled (2000 kcal / 100 g protein / 30 g fiber, mode "standard" — confirm real defaults against backend api/goals.py before hardcoding)`, `save success navigates`, `skip creates defaults`.
+- [ ] **Step 2:** RED run. **Step 3:** implement 3-step Compose pager (tracking mode → numeric goals with steppers → dietary prefs chips), Save + "Skip for now". **Step 4:** GREEN + assembleDebug. **Step 5:** commit `feat(android): onboarding goal setup`.
+
+---
+
+### Task 11: Trends screen
+
+**Files:**
+- Create: `ui/trends/TrendsScreen.kt`, `TrendsViewModel.kt`; `core/data/.../repo/TrendsRepository.kt`
+- Modify: `MealsyApi` (`@GET("meals/trends") suspend fun trends(@Query("days") days: Int): TrendsResponse`; `@GET("meals/categories") suspend fun categories(@Query("days") days: Int): CategoriesResponse` — read `src/backend/api/meals.py` GET /trends and /categories handlers first and mirror their exact response fields in the DTOs)
+- Test: `core/data` repository test (MockWebServer, golden JSON copied from a real local backend response), ViewModel test (7/30-day toggle refetches)
+
+**Interfaces:**
+- Produces: `TrendsRepository { suspend fun trends(days: Int): TrendData; suspend fun categories(days: Int): List<CategorySlice> }`.
+
+- [ ] **Step 1:** RED tests as above. **Step 2:** implement repository + DTOs. **Step 3:** UI: kcal bar chart + protein line drawn with Compose `Canvas` (no chart library dependency for two simple charts; tabular-style axis labels, goal reference line from `GoalsRepository`), category list with per-slice bars; loading/empty ("Log a few meals to see trends")/error-retry states. **Step 4:** GREEN + assembleDebug. **Step 5:** commit `feat(android): trends screen`.
+
+---
+
+### Task 12: My Meals
+
+**Files:**
+- Create: `ui/mymeals/MyMealsScreen.kt`, `MyMealsViewModel.kt`; `core/data/.../repo/MyMealsRepository.kt`
+- Modify: `MealsyApi` (add `@GET("my-meals")`, `@POST("my-meals")`, `@POST("my-meals/{id}/log")`, `@DELETE("my-meals/{id}")` — mirror `src/backend/api/my_meals.py` request/response shapes exactly, reading it first), `ConfirmationCardView.kt` (add "Save as My Meal" action on the post-log success state)
+- Test: repository test (MockWebServer), ViewModel test (quick-log calls POST /{id}/log then refreshes today header)
+
+**Interfaces:**
+- Produces: `MyMealsRepository { suspend fun list(): List<SavedMeal>; suspend fun save(fromCard: ConfirmationCard, name: String); suspend fun quickLog(id: String, mealType: String); suspend fun delete(id: String) }`.
+
+- [ ] **Step 1:** RED tests. **Step 2:** implement. **Step 3:** UI: list with macros per meal, tap → meal-type sheet → quick-log, swipe-to-delete with undo snackbar; save flow from card success message. **Step 4:** GREEN. **Step 5:** commit `feat(android): my meals list, save and quick-log`.
+
+---
+
+### Task 13: Settings + account deletion
+
+**Files:**
+- Create: `ui/settings/SettingsScreen.kt`, `SettingsViewModel.kt`
+- Modify: `MealsyApi` (`@DELETE("account") suspend fun deleteAccount()`), `SessionManager` (deleteAccount orchestration), `AppNav` (bottom nav: Chat / Trends / My Meals / Settings — introduce the NavigationBar here)
+- Test: `SettingsViewModelTest` — `delete requires typed confirmation "DELETE"`, `delete calls api then signOut`, `api failure keeps account and shows error`, `sign out unregisters FCM token`
+
+**Interfaces:**
+- Consumes: `GoalsRepository` (Task 10), `PushRegistrar` (Task 9), backend `DELETE /account` (readiness plan Task 6).
+- Produces: settings list — Goals (reuses onboarding steps in edit mode), Daily reminder toggle (registers/deletes FCM token), Privacy policy link (`BuildConfig.PRIVACY_POLICY_URL`), App version + `latest_version_code` update nudge, Sign out, Delete account (danger zone; dialog explains permanence, requires typing DELETE).
+
+- [ ] **Step 1:** RED ViewModel tests. **Step 2:** implement screen + nav bar. **Step 3:** GREEN + assembleDebug. **Step 4:** commit `feat(android): settings, bottom nav, account deletion`.
+
+---
+
+### Task 14: Crash reporting + error-state sweep
+
+**Files:**
+- Create: `app/.../ErrorReporting.kt` (Crashlytics wrapper: `record(t: Throwable, keys: Map<String,String>)` no-op when Firebase absent), `ui/common/ErrorState.kt`, `ui/common/LoadingState.kt` (shared composables)
+- Modify: every repository catch-path to call `ErrorReporting.record` for non-IOException failures; `app/build.gradle.kts` (crashlytics plugin, conditional like google-services); all ViewModels' error states to use `ErrorState(retry = ...)`
+- Test: `ErrorReportingTest` (no-op without Firebase; records with), plus one ViewModel test per screen asserting error→retry→success recovery (chat, trends, my-meals, settings)
+
+- [ ] **Step 1:** RED tests. **Step 2:** implement; sweep every screen for the loading/empty/error triple and TalkBack `contentDescription` on icon buttons, card rows announce "item, name, grams, calories". **Step 3:** GREEN, `./gradlew :app:testDebugUnitTest`. **Step 4:** commit `feat(android): crashlytics and unified error/loading states`.
+
+---
+
+### Task 15: Release readiness (runs last)
+
+Additional release steps beyond the MVP draft:
+- Crashlytics verified in release build (forced test crash appears in console).
+- Play data-safety form drafted in `android/README.md` from spec §4.12 (health info collected, not shared, deletable; deletion URL = web app account page).
+- Store listing needs the privacy-policy URL (external prerequisite, spec §5).
 
 **Files:**
 - Create: `android/README.md` (setup: local.properties keys, google-services.json, Supabase redirect URL, emulator-vs-device base URL), `android/app/proguard-rules.pro`
 - Modify: `android/app/build.gradle.kts` (release build type: minify + shrink, signingConfig placeholder from env), `.github/workflows/android.yml` if a CI dir exists (else skip with note)
 
 - [ ] **Step 1:** Proguard/R8 keep rules for kotlinx-serialization DTOs and Retrofit interfaces (standard published rules; verify `assembleRelease` output boots against staging).
-- [ ] **Step 2:** `./gradlew :app:assembleRelease` → BUILD SUCCESSFUL; install release APK, full manual pass: login → log "2 eggs and toast" → edit qty → confirm → kill app → reopen (pending/today correct) → airplane-mode confirm → restore network → row synced → push test via backend `send_push_fcm` task.
+- [ ] **Step 2:** `./gradlew :app:assembleRelease` → BUILD SUCCESSFUL; install release APK, full manual pass: login → log "2 eggs and toast" → edit qty → confirm → kill app → reopen (pending/today correct) → airplane-mode confirm → restore network → row synced → push test via backend `send_push_fcm` task → onboarding as a fresh user → save a My Meal and quick-log it → trends renders 7/30d → delete a second test account end-to-end (rows gone, login dead).
 - [ ] **Step 3:** Record the manual-pass checklist results in `android/README.md` under "Launch QA".
 - [ ] **Step 4:** commit `chore(android): release build config and QA checklist`
 
 ---
 
+
 ## Self-review notes
 
-- Spec §4 coverage: auth→T4/5, chat+card→T6, today header→T6, offline→T7, camera→T8, push→T9, version gate→T5, quota upsell→T6 (`UpgradeRequired`), contract compliance→T3 (`ignoreUnknownKeys`, retry rules). Trends/settings/my-meals: explicitly post-MVP per spec §2.
+- Spec §4 coverage: auth→T4/5, chat+card→T6, today header→T6, offline→T7, camera→T8, push→T9, version gate→T5, quota card (no upsell link, Play policy)→T6, onboarding→T10, trends→T11, my meals→T12, settings+deletion→T13, production quality bar (crash reporting, error states, TalkBack)→T14, release/QA/data-safety→T15, contract compliance→T3.
 - Type consistency: `ConfirmationCard`/`CardItem`/`CardEditor` defined once in T2 and consumed by name in T3/T6/T7; `client_request_id` naming matches backend plan Task 2; `min_supported_version_code` matches backend plan Task 5.
 - Known judgment call: quota-exhaustion detection (T6) depends on a backend field that may not exist — flagged inline with a concrete fallback.
+- Play-policy calls encoded: no external purchase link anywhere (T6 quota card, T13 has no upgrade row); in-app account deletion (T13) backed by DELETE /account; data-safety declarations in T15.
+- Execution order: T1–T9 as numbered, then T10–T14 in any order (independent screens sharing nav from T13 — do T13's nav bar first if parallelizing), T15 strictly last.

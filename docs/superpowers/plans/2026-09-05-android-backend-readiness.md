@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Harden the Mealsy API for a native Android launch: sized DB pool, idempotent logging, pending-card recovery, FCM push, and a version gate.
+**Goal:** Harden the Mealsy API for a native Android production launch: sized DB pool, idempotent logging, pending-card recovery, FCM push, a version gate, and account deletion.
 
-**Architecture:** Five additive changes to the existing FastAPI backend; no breaking changes to any response shape. Two Alembic migrations (012, 013). New external dependency: `firebase-admin`.
+**Architecture:** Six additive changes to the existing FastAPI backend; no breaking changes to any response shape. Two Alembic migrations (012, 013). New external dependency: `firebase-admin`.
 
 **Tech Stack:** Python 3.12/3.13 · FastAPI · SQLAlchemy async · Alembic · Celery · psycopg_pool · firebase-admin · pytest (`asyncio_mode=auto`).
 
@@ -732,4 +732,51 @@ Run: `uv run pytest tests/test_meta_api.py -v` → PASS. Full suite once: `uv ru
 ```bash
 git add src/backend/api/meta.py src/backend/main.py tests/test_meta_api.py docs/reference/mobile-api.md .env.example
 git commit -m "feat(meta): app version gate + frozen mobile API contract doc"
+```
+
+---
+
+### Task 6: `DELETE /account` (Play policy / GDPR)
+
+**Files:**
+- Create: `src/backend/api/account.py`, `tests/test_account_delete.py`
+- Modify: `src/backend/main.py` (include router), `.env.example` (`SUPABASE_SERVICE_ROLE_KEY=`)
+
+**Interfaces:**
+- Consumes: `get_current_user_id`, `get_session`, models from `db/models.py`.
+- Produces: authed `DELETE /account` → 204. Deletes all user rows and the Supabase Auth user. Workstream B's settings task calls exactly this route.
+
+- [ ] **Step 1: Write the failing test** (mirror the fixture style of `tests/test_goals_api.py`; seed a `user_goal` + one `meal_log` + one `telegram_link` row for the test user)
+
+```python
+async def test_delete_account_removes_all_rows(client, db_session, seeded_user):
+    with patch("backend.api.account._delete_auth_user", new=AsyncMock()) as auth_del:
+        r = await client.delete("/account")
+    assert r.status_code == 204
+    auth_del.assert_awaited_once_with(seeded_user.user_id)
+    for model in (UserGoal, MealLog, TelegramLink):
+        rows = (await db_session.execute(select(model))).scalars().all()
+        assert rows == []
+
+
+async def test_delete_account_fails_closed_when_auth_delete_fails(client, seeded_user):
+    with patch("backend.api.account._delete_auth_user",
+               new=AsyncMock(side_effect=RuntimeError("supabase down"))):
+        r = await client.delete("/account")
+    assert r.status_code == 502  # DB rows NOT deleted (auth deleted first? see Step 3 ordering)
+```
+
+- [ ] **Step 2: Run to verify failure** — `uv run pytest tests/test_account_delete.py -v` → 404.
+
+- [ ] **Step 3: Implement `api/account.py`**
+
+Ordering decision (encode it in a comment): delete the **Auth user first**, then DB rows in one transaction. Rationale: if DB deletion then failed, the user can no longer log in but data removal can be retried by ops; the reverse order could leave a login that resurrects an empty account mid-failure. `_delete_auth_user(user_id)` calls Supabase Admin API `DELETE {SUPABASE_URL}/auth/v1/admin/users/{user_id}` with `Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}` via `aiohttp`; non-2xx raises → endpoint returns 502 and deletes nothing. DB pass (single transaction): delete `TelegramLink`, `IntegrationToken`, `PushSubscription`, `DeviceToken` by user_id; delete `UserGoal` (cascades `meal_log`, `user_meal`, `user_memory`, `daily_summary`, `weekly_summary`, `nutrient_checkup` — verify each FK has `ondelete="CASCADE"` in models.py and add a targeted delete for any that doesn't); delete LangGraph checkpoint rows `DELETE FROM checkpoints WHERE thread_id LIKE :uid || '%' OR thread_id IN (SELECT ...)` — check the actual thread-id conventions (`user_id` for web, `tg:{chat_id}:*` for Telegram; resolve chat_ids from the just-read `telegram_link` rows *before* deleting them) and delete from `checkpoints`, `checkpoint_writes`, `checkpoint_blobs` by those thread ids.
+
+- [ ] **Step 4: Run tests** — `uv run pytest tests/test_account_delete.py -v` → PASS; also `uv run pytest -m "not integration" -q` (full suite).
+
+- [ ] **Step 5: Docs + commit** — add `DELETE /account` to `docs/reference/mobile-api.md`; add `SUPABASE_SERVICE_ROLE_KEY=  # admin API; account deletion` to `.env.example`.
+
+```bash
+git add src/backend/api/account.py src/backend/main.py tests/test_account_delete.py docs/reference/mobile-api.md .env.example
+git commit -m "feat(account): DELETE /account removes all user data and the auth user"
 ```

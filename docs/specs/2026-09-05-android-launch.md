@@ -9,19 +9,25 @@ consumer client, backed by the existing FastAPI backend. Two workstreams:
 
 - **A. Backend Android-readiness** — harden the API for mobile clients
   (bursty traffic, retries, flaky networks, push) *before* the first APK.
-- **B. Android client MVP** — login, chat-based meal logging with the
-  confirmation card, today dashboard, push registration.
+- **B. Android client (production)** — full consumer app: onboarding,
+  chat-based logging with the confirmation card, today dashboard, trends,
+  My Meals, settings with account deletion, crash reporting, push.
 
 Each workstream has its own implementation plan and ships independently.
 A must merge (and deploy to staging) before B's API-dependent tasks run
 against a live backend, but B can develop against local `uvicorn` from day 1.
 
-## 2. Non-goals (launch MVP)
+## 2. Non-goals (this launch)
 
 - iOS (but Gradle modules are structured so a KMP split is possible later).
 - Streaming/SSE (post-launch; the pending-card endpoint is the precursor).
-- Trends charts, My Meals management, Settings beyond sign-out, onboarding
-  flow parity, mindful/nutrient-checkup surfaces — all post-MVP plan.
+- Mindful/nutrient-checkup surfaces and Telegram account linking stay
+  web-only at launch (additive later; no API changes needed).
+- **In-app purchases.** Google Play requires Play Billing for digital
+  subscriptions and forbids linking out to external payment pages. Until
+  Play Billing is implemented (post-launch plan), the over-quota state
+  shows the limit plainly with NO upgrade link or price — upgrading
+  happens on the web, unprompted by the app.
 - Offline queueing of **chat** turns. Offline supports only direct
   (no-LLM) logging via `POST /meals/log-items` replay; free-text logging
   requires connectivity and says so in the UI.
@@ -75,7 +81,18 @@ from env `ANDROID_MIN_VERSION_CODE` / `ANDROID_LATEST_VERSION_CODE`
 (default 1). Unauthed. The app checks at cold start; below-min shows a
 blocking upgrade screen.
 
-### A6. Contract freeze
+### A6. Account deletion (Play policy + GDPR)
+`DELETE /account` (authed): hard-deletes the user's rows — `user_goal`
+cascades to `meal_log`, `user_meal`, `user_memory`, summaries,
+`nutrient_checkup`, `device_token`; plus `telegram_link`,
+`integration_token`, `push_subscription`, LangGraph checkpoints for the
+user's threads — then deletes the Supabase Auth user via the Admin API
+(`SUPABASE_SERVICE_ROLE_KEY`, new env var). Returns 204. Google Play
+requires in-app account deletion AND a web deletion URL for the store
+listing (the web app gains the same button post-launch, calling this
+endpoint).
+
+### A7. Contract freeze
 The response shapes of `POST /meals/log`, `POST /meals/log-items`,
 `GET /meals/today`, `GET /goals`, `GET /quota` are frozen additive-only
 from A-merge onward. Documented in `docs/reference/mobile-api.md`
@@ -86,7 +103,7 @@ ignored by clients).
 Deferred from A (separate scaling plan, pre-launch but independent):
 fact-extraction debounce, quota-consume-on-success, Celery chunking.
 
-## 4. Android client MVP (Workstream B)
+## 4. Android client — production scope (Workstream B)
 
 ### Product surface
 1. **Auth**: email magic-link + Google OAuth via Supabase (PKCE, deep link
@@ -107,9 +124,25 @@ fact-extraction debounce, quota-consume-on-success, Celery chunking.
 5. **Push**: FCM token registered after login; notification tap deep-links
    to chat. 07:00 daily summary is the only notification at launch.
 6. **Version gate**: `/meta/app` check at start.
-7. **Quota/upsell**: over-quota reply (`_UPGRADE_MSG`) renders as a
-   distinct card linking to the web upgrade page (no in-app billing at
-   launch → avoids Play billing review scope; revisit post-launch).
+7. **Quota**: over-quota reply renders as a distinct informational card —
+   no upgrade link, no price (Play payments policy, see §2). Direct
+   logging (`/meals/log-items`, no LLM) keeps working over quota.
+8. **Onboarding**: first sign-in with no `user_goal` (GET /goals → 404)
+   routes to a goal-setup flow (tracking mode, kcal/protein/fiber goals,
+   dietary prefs) posting `POST /goals`; skippable with sensible defaults.
+9. **Trends**: 7/30-day kcal + protein charts from `GET /meals/trends`,
+   category breakdown from `GET /meals/categories`.
+10. **My Meals**: list, save-from-card, quick-log, delete via `/my-meals`.
+11. **Settings**: edit goals, notification toggle, sign out, **delete
+    account** (double-confirm → `DELETE /account` → sign out), privacy
+    policy link, app version.
+12. **Production quality bar**: Crashlytics crash + non-fatal reporting;
+    every network surface has loading/empty/error-with-retry states;
+    TalkBack labels on all interactive elements and the card rows; session
+    stored via supabase-kt with encrypted preferences storage; R8 enabled
+    with tested rules; Play data-safety form drafted from the contract doc
+    (data collected: email, meal text/photos, health-adjacent nutrition
+    data — declared as health info, not shared, deletable).
 
 ### Technical stack
 Kotlin 2.x · Jetpack Compose + Material 3 · Hilt · Retrofit +
@@ -128,9 +161,11 @@ android/
 
 ### API contract used (all existing unless marked A#)
 `POST /meals/log` · `POST /meals/log-items` (+`client_request_id`, A2) ·
-`GET /meals/pending` (A3) · `GET /meals/today` · `GET /goals` ·
-`GET /quota` · `POST /devices/register` / `DELETE /devices/{token}` (A4) ·
-`GET /meta/app` (A5). Auth: `Authorization: Bearer <supabase access token>`.
+`GET /meals/pending` (A3) · `GET /meals/today` · `GET /meals/trends` ·
+`GET /meals/categories` · `GET/POST/PUT /goals` · `GET /quota` ·
+`GET/POST/DELETE /my-meals*` · `POST /devices/register` /
+`DELETE /devices/{token}` (A4) · `GET /meta/app` (A5) ·
+`DELETE /account` (A6). Auth: `Authorization: Bearer <supabase access token>`.
 
 ## 5. Risks / open questions
 - Supabase Google OAuth on Android needs the Android client ID added in
@@ -140,8 +175,12 @@ android/
 - Image upload size: `image_b64` in JSON is fine at launch (client
   downscales to ≤1024px JPEG q80, ~150–300 KB); multipart upload is a
   post-launch improvement.
-- Play Store listing/privacy policy: out of scope for these plans.
+- Privacy policy document: must exist at a public URL before Play
+  submission (listing + data-safety form reference it). Writing it is a
+  small standalone task outside these plans; the settings screen links it.
+- Play review timeline: first submission includes account-deletion review
+  and health-data declarations; budget 1–2 weeks of review buffer.
 
 ## 6. Plans
 - Workstream A: `docs/superpowers/plans/2026-09-05-android-backend-readiness.md`
-- Workstream B: `docs/superpowers/plans/2026-09-05-android-app-mvp.md`
+- Workstream B: `docs/superpowers/plans/2026-09-05-android-app.md`
