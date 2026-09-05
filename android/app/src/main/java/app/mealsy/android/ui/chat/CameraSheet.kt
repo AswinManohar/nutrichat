@@ -3,7 +3,7 @@ package app.mealsy.android.ui.chat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Matrix
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -40,6 +41,8 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import app.mealsy.data.image.ImageEncoder
+import kotlin.math.max
 
 /**
  * Full-screen bottom sheet: requests camera permission, previews the live
@@ -60,6 +63,7 @@ fun CameraSheet(onUsePhoto: (Bitmap) -> Unit, onDismiss: () -> Unit) {
     }
     var permissionDenied by remember { mutableStateOf(false) }
     var captured by remember { mutableStateOf<Bitmap?>(null) }
+    var captureError by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -104,10 +108,27 @@ fun CameraSheet(onUsePhoto: (Bitmap) -> Unit, onDismiss: () -> Unit) {
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         onImageCaptureReady = { imageCapture = it },
                     )
+                    if (captureError != null) {
+                        Text(
+                            text = captureError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
                     Button(
                         onClick = {
                             imageCapture?.let { capture ->
-                                takePhoto(context, capture) { bitmap -> captured = bitmap }
+                                takePhoto(
+                                    context = context,
+                                    imageCapture = capture,
+                                    onCaptured = { bitmap ->
+                                        captureError = null
+                                        captured = bitmap
+                                    },
+                                    onError = {
+                                        captureError = "Couldn't take that photo — try again."
+                                    },
+                                )
                             }
                         },
                         modifier = Modifier.padding(top = 8.dp),
@@ -176,31 +197,68 @@ private fun takePhoto(
     context: android.content.Context,
     imageCapture: ImageCapture,
     onCaptured: (Bitmap) -> Unit,
+    onError: (ImageCaptureException) -> Unit,
 ) {
     imageCapture.takePicture(
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                val bitmap = image.toBitmap()
+                val bitmap = image.toRotatedBitmap()
                 image.close()
                 onCaptured(bitmap)
             }
 
             override fun onError(exception: ImageCaptureException) {
                 Log.e("CameraSheet", "Photo capture failed", exception)
+                onError(exception)
             }
         },
     )
 }
 
-/** Converts a JPEG/YUV [ImageProxy] frame into a correctly-rotated [Bitmap]. */
-private fun ImageProxy.toBitmap(): Bitmap {
+/**
+ * Longest edge a raw capture is subsampled to before rotation/base64
+ * downscaling, so a ~12MP sensor frame doesn't fully decode (and get
+ * copied again for rotation) at full resolution — [ImageEncoder.encode]
+ * downscales further to 1024px anyway, so decoding straight to ~2048px is
+ * plenty of headroom without risking OOM on low-end devices.
+ */
+private const val DECODE_TARGET_PX = 2048
+
+/**
+ * Decodes a JPEG/YUV [ImageProxy] frame into a [Bitmap], subsampled to
+ * roughly [DECODE_TARGET_PX] on its longest edge, then rotated upright per
+ * `imageInfo.rotationDegrees`.
+ *
+ * Named explicitly (not `toBitmap()`) because [ImageProxy] already declares
+ * a member `toBitmap()` in CameraX 1.3 that Kotlin resolves ahead of any
+ * same-named extension — a same-named extension here would silently never
+ * run (and skip the rotation it's meant to apply).
+ */
+private fun ImageProxy.toRotatedBitmap(): Bitmap {
     val buffer = planes[0].buffer
     val bytes = ByteArray(buffer.remaining())
     buffer.get(bytes)
-    val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    val rotation = imageInfo.rotationDegrees
-    if (rotation == 0) return bitmap
-    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = computeInSampleSize(bounds.outWidth, bounds.outHeight, DECODE_TARGET_PX)
+    }
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    return ImageEncoder.rotate(bitmap, imageInfo.rotationDegrees)
+}
+
+/**
+ * Smallest power-of-two subsample factor that brings the longest edge down
+ * to [targetPx] or less (never upsamples — factor is always >= 1).
+ */
+private fun computeInSampleSize(width: Int, height: Int, targetPx: Int): Int {
+    val longestEdge = max(width, height)
+    var sampleSize = 1
+    while (longestEdge / sampleSize > targetPx) {
+        sampleSize *= 2
+    }
+    return sampleSize
 }

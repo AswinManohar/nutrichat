@@ -62,4 +62,23 @@ class ImageEncoderTest {
         assertEquals(200, width)
         assertEquals(100, height)
     }
+
+    @Test
+    fun `rotate 90 degrees swaps width and height`() {
+        val bitmap = solidBitmap(200, 100)
+
+        val rotated = ImageEncoder.rotate(bitmap, 90)
+
+        assertEquals(100, rotated.width)
+        assertEquals(200, rotated.height)
+    }
+
+    @Test
+    fun `rotate 0 degrees returns the same bitmap`() {
+        val bitmap = solidBitmap(200, 100)
+
+        val rotated = ImageEncoder.rotate(bitmap, 0)
+
+        assertEquals(bitmap, rotated)
+    }
 }

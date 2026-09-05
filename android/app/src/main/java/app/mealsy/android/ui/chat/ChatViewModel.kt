@@ -16,11 +16,13 @@ import app.mealsy.domain.ConfirmationCard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import retrofit2.HttpException
 
@@ -140,7 +142,9 @@ class ChatViewModel @Inject constructor(
         _sending.value = true
         return viewModelScope.launch {
             try {
-                val imageB64 = ImageEncoder.encode(bitmap)
+                // JPEG compression is CPU-bound; keep it off the main thread
+                // so a large capture doesn't cause a frame-drop stutter.
+                val imageB64 = withContext(Dispatchers.Default) { ImageEncoder.encode(bitmap) }
                 when (val result = repository.sendTurn("", imageB64 = imageB64)) {
                     is TurnResult.Reply -> appendAssistant(result.message)
                     is TurnResult.Card -> _pendingCard.value = result.card
