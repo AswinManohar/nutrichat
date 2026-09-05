@@ -353,8 +353,14 @@ upgrade; a client between `min_supported_version_code` and
 
 ## `DELETE /account`
 
-**Not yet implemented — coming in Task 6** of this readiness plan (account
-deletion / data export). Documented here as a placeholder so the mobile
-client's settings screen can be built against the planned shape; do not wire
-it up until Task 6 lands and this section is updated with the real
-request/response.
+Permanently deletes the caller's account: the Supabase Auth user and every
+database row scoped to them (goals, meal logs, saved meals, memory,
+summaries, nutrient checkups, Telegram link, integration tokens, device
+tokens, push subscriptions, and LangGraph conversation history). This
+cannot be undone.
+
+204, no body, on success.
+
+The Supabase Auth user is deleted first; if that call fails, the endpoint
+returns `502` and **no data is deleted** — safe to retry. Once the auth
+user is gone, database rows are removed in a single transaction.
