@@ -132,6 +132,7 @@ class MealLogResult(BaseModel):
     fat_g: float
     fiber_g: float
     message: str
+    deduplicated: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -435,8 +436,17 @@ async def _insert_meal_log(
     usda_results: list,
     totals: dict,
     label: str | None = None,
+    client_request_id: str | None = None,
 ) -> str:
-    """Insert a meal_log row and return the generated meal_id."""
+    """Insert a meal_log row and return the generated meal_id.
+
+    Raises:
+        sqlalchemy.exc.IntegrityError: If client_request_id is set and a row
+            already exists for (user_id, client_request_id) — the unique
+            index added in migration 012 — e.g. a concurrent replay of the
+            same client request. Callers that pass client_request_id must be
+            prepared to catch this and treat it as "already logged".
+    """
     meal_id = str(uuid.uuid4())
     entities = [r.model_dump() for r in usda_results]
     flags = _junk_flags(usda_results)
@@ -445,10 +455,10 @@ async def _insert_meal_log(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities, flags, label) "
+                "fat_g, fiber_g, entities, flags, label, client_request_id) "
                 "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, "
                 ":carbs_g, :fat_g, :fiber_g, CAST(:entities AS jsonb), "
-                "CAST(:flags AS jsonb), :label)"
+                "CAST(:flags AS jsonb), :label, :client_request_id)"
             ),
             {
                 "meal_id": meal_id,
@@ -462,6 +472,7 @@ async def _insert_meal_log(
                 "entities": json.dumps(entities),
                 "flags": json.dumps(flags),
                 "label": label,
+                "client_request_id": client_request_id,
             },
         )
         await session.commit()
@@ -473,6 +484,7 @@ async def log_meal(
     usda_results: list,
     meal_type: str = "unspecified",
     label: str | None = None,
+    client_request_id: str | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 
@@ -480,9 +492,16 @@ async def log_meal(
         user_id: Supabase Auth UUID.
         usda_results: Confirmed USDAResult list (fdc_id=-1 items excluded).
         meal_type: breakfast | lunch | snack | dinner | unspecified.
+        client_request_id: Optional client-generated idempotency key. When
+            set, the insert is guarded by a unique index on
+            (user_id, client_request_id); a duplicate raises IntegrityError
+            for the caller to translate into a dedup response.
 
     Returns:
         MealLogResult with meal_id, totals, and confirmation message.
+
+    Raises:
+        sqlalchemy.exc.IntegrityError: See _insert_meal_log.
     """
     # LLM estimates also carry fdc_id=-1 (no real FDC row) but ARE usable
     # nutrition data — only exclude true misses (no estimate either).
@@ -498,7 +517,9 @@ async def log_meal(
 
     async def _persist() -> str:
         """Insert the row, bump Redis, enqueue the embedding; return meal_id."""
-        meal_id = await _insert_meal_log(user_id, meal_type, resolved, totals, label)
+        meal_id = await _insert_meal_log(
+            user_id, meal_type, resolved, totals, label, client_request_id
+        )
         await increment_today(
             user_id,
             kcal=totals["kcal"],

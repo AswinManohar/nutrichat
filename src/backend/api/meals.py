@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.orchestrator import handle_message
@@ -146,8 +147,59 @@ class LogItemsRequest(BaseModel):
     meal_type: str
     portion: float = Field(default=1.0, gt=0)
     items: list[LogItemIn] = Field(min_length=1)
+    client_request_id: str | None = Field(default=None, max_length=64)
 
     model_config = ConfigDict(extra="forbid")
+
+
+async def _find_by_client_request_id(
+    user_id: str, client_request_id: str
+) -> MealLog | None:
+    """Look up a previously-logged meal by its client idempotency key.
+
+    Args:
+        user_id: The authenticated user's ID.
+        client_request_id: Client-generated UUID sent with /meals/log-items.
+
+    Returns:
+        The matching MealLog row, or None if this request id hasn't been
+        seen before for this user.
+    """
+    session_factory = get_session()
+    async with session_factory() as db:
+        result = await db.execute(
+            select(MealLog).where(
+                MealLog.user_id == user_id,
+                MealLog.client_request_id == client_request_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+def _dedup_result(row: MealLog) -> MealLogResult:
+    """Rebuild a log_items success response from an already-logged row.
+
+    Used both on the fast path (pre-select finds the row before we try to
+    insert) and the race path (insert loses a concurrent-duplicate race and
+    we re-select the winner).
+    """
+    entities = (
+        row.entities
+        if isinstance(row.entities, list)
+        else json.loads(row.entities or "[]")
+    )
+    return MealLogResult(
+        meal_id=row.meal_id,
+        meal_type=row.meal_type,
+        n_items=len(entities),
+        kcal=row.kcal,
+        protein_g=row.protein_g,
+        carbs_g=row.carbs_g,
+        fat_g=row.fat_g,
+        fiber_g=row.fiber_g,
+        message="Already logged.",
+        deduplicated=True,
+    )
 
 
 @router.post("/log-items")
@@ -162,16 +214,47 @@ async def log_items(
     via the same log_meal path as chat/My-Meals logging so flags, Redis
     today-totals, and the embedding enqueue all match.
 
+    When client_request_id is set, this call is idempotent: a replay (e.g.
+    a mobile client retrying after a dropped response) returns the original
+    meal with deduplicated=True instead of logging a second time. The
+    pre-select below is the fast path; a concurrent replay that loses the
+    pre-select race is still caught via the unique index on
+    (user_id, client_request_id) and answered the same way.
+
     Raises:
         HTTPException 422: Invalid meal_type.
     """
     if req.meal_type not in MEAL_CATEGORIES:
         raise HTTPException(status_code=422, detail="Invalid meal_type")
 
+    if req.client_request_id:
+        existing = await _find_by_client_request_id(user_id, req.client_request_id)
+        if existing is not None:
+            return _dedup_result(existing)
+
     item_dicts = [it.model_dump() for it in req.items]
     results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
-    return await persist_meal(user_id, results, req.meal_type, label=label)
+    try:
+        return await persist_meal(
+            user_id,
+            results,
+            req.meal_type,
+            label=label,
+            client_request_id=req.client_request_id,
+        )
+    except IntegrityError:
+        # Lost the race: another request with the same client_request_id
+        # committed between our pre-select and our insert. Re-select the
+        # winner and answer as a dedup rather than surfacing the DB error.
+        # An IntegrityError with no client_request_id set can't be this
+        # race — re-raise rather than looking up a None key.
+        if not req.client_request_id:
+            raise
+        existing = await _find_by_client_request_id(user_id, req.client_request_id)
+        if existing is None:
+            raise
+        return _dedup_result(existing)
 
 
 @router.delete("/log/{meal_id}", status_code=204)

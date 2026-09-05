@@ -122,6 +122,7 @@ class MealLog(Base):
     fiber_g: Mapped[float] = mapped_column(Float, nullable=False)
     entities: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
