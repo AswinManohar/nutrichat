@@ -12,17 +12,23 @@ import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.repo.GoalsRepository
+import app.mealsy.domain.Goals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 
 /**
  * [MealsyApi] is a plain Retrofit interface — faked directly, same as
@@ -82,7 +88,7 @@ class OnboardingViewModelTest {
         OnboardingViewModel(GoalsRepository(api)) to api
 
     @Test
-    fun `defaults prefilled per backend`() = runTest {
+    fun `defaults prefilled (app-chosen, not from a backend default)`() = runTest {
         val (viewModel, _) = viewModel()
 
         val state = viewModel.uiState.value
@@ -90,6 +96,87 @@ class OnboardingViewModelTest {
         assertEquals(2000.0, state.kcalGoal, 0.0)
         assertEquals(100.0, state.proteinGoal, 0.0)
         assertEquals(30.0, state.fiberGoal, 0.0)
+    }
+
+    @Test
+    fun `goal steppers clamp at a positive floor, never zero`() = runTest {
+        val (viewModel, _) = viewModel()
+
+        // Repeatedly stepping down (as the "-" stepper button does) must never reach 0 —
+        // the backend rejects kcal_goal/protein_goal/fiber_goal <= 0 in "goals" mode.
+        repeat(100) { viewModel.setKcalGoal(viewModel.uiState.value.kcalGoal - 50.0) }
+        repeat(100) { viewModel.setProteinGoal(viewModel.uiState.value.proteinGoal - 5.0) }
+        repeat(100) { viewModel.setFiberGoal(viewModel.uiState.value.fiberGoal - 5.0) }
+        // Also clamp on a single, drastically negative input.
+        viewModel.setKcalGoal(-1_000_000.0)
+        viewModel.setProteinGoal(-1_000_000.0)
+        viewModel.setFiberGoal(-1_000_000.0)
+
+        val state = viewModel.uiState.value
+        assertTrue("kcalGoal must be > 0, was ${state.kcalGoal}", state.kcalGoal > 0.0)
+        assertTrue("proteinGoal must be > 0, was ${state.proteinGoal}", state.proteinGoal > 0.0)
+        assertTrue("fiberGoal must be > 0, was ${state.fiberGoal}", state.fiberGoal > 0.0)
+        assertEquals(MIN_KCAL_GOAL, state.kcalGoal, 0.0)
+        assertEquals(MIN_PROTEIN_GOAL, state.proteinGoal, 0.0)
+        assertEquals(MIN_FIBER_GOAL, state.fiberGoal, 0.0)
+    }
+
+    @Test
+    fun `goalsSubmissionError flags a non-positive goal in goals mode with a specific message`() {
+        val invalid = Goals(
+            trackingMode = "goals",
+            kcalGoal = 0.0,
+            proteinGoal = 100.0,
+            fiberGoal = 30.0,
+        )
+
+        val error = goalsSubmissionError(invalid)
+
+        assertEquals("Calories goal must be greater than 0.", error)
+    }
+
+    @Test
+    fun `goalsSubmissionError allows non-positive fields outside goals mode`() {
+        val mindful = Goals(
+            trackingMode = "mindful",
+            kcalGoal = null,
+            proteinGoal = null,
+            fiberGoal = null,
+        )
+
+        assertNull(goalsSubmissionError(mindful))
+    }
+
+    @Test
+    fun `submitting an invalid value does not call the API and shows the specific message`() = runTest {
+        val (viewModel, api) = viewModel()
+        val invalid = Goals(
+            trackingMode = "goals",
+            kcalGoal = 0.0,
+            proteinGoal = 100.0,
+            fiberGoal = 30.0,
+        )
+
+        viewModel.submit(invalid)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(api.lastCreateRequest)
+        assertFalse(viewModel.uiState.value.done)
+        assertEquals("Calories goal must be greater than 0.", viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `409 from create is treated as success`() = runTest {
+        val api = FakeMealsyApi(onCreateGoals = {
+            throw HttpException(Response.error<Any>(409, "".toResponseBody(null)))
+        })
+        val viewModel = OnboardingViewModel(GoalsRepository(api))
+
+        viewModel.save()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.done)
+        assertNull(viewModel.uiState.value.error)
     }
 
     @Test
