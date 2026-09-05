@@ -2,12 +2,14 @@ package app.mealsy.android.ui.mymeals
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.android.di.ApplicationScope
 import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.SavedMeal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -51,10 +53,21 @@ sealed interface MyMealsUiState {
  * always triggers that resume, so the header is current by the time the
  * user sees it again without this ViewModel needing to know `ChatViewModel`
  * exists.
+ *
+ * [deleteWithUndo]'s delayed `DELETE` deliberately runs on [appScope], not
+ * `viewModelScope`: this `ViewModel` is scoped to the My Meals back-stack
+ * entry, so `viewModelScope` is cancelled the instant the user pops back to
+ * chat (e.g. right after a quick-log) — before the undo window elapses. That
+ * would silently cancel the coroutine and drop the delete, leaving the
+ * "deleted" meal to reappear on the next [load]. [onCleared] additionally
+ * flushes any still-pending delete immediately rather than leaving it to run
+ * out its window on [appScope] unattended — leaving the screen is treated as
+ * an implicit "commit" of the delete, same as closing the undo snackbar.
  */
 @HiltViewModel
 class MyMealsViewModel @Inject constructor(
     private val repository: MyMealsRepository,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<MyMealsUiState>(MyMealsUiState.Loading)
@@ -104,27 +117,18 @@ class MyMealsViewModel @Inject constructor(
 
     /**
      * Hides [id] immediately and schedules the real `DELETE` after
-     * [undoWindowMs]. If [undoDelete] is called for the same [id] first, the
-     * scheduled delete is cancelled and the meal reappears.
+     * [undoWindowMs], on [appScope] so it survives this `ViewModel` being
+     * cleared. If [undoDelete] is called for the same [id] first, the
+     * scheduled delete is cancelled and the meal reappears. Calling this
+     * again for an [id] that already has a pending delete cancels the first
+     * job before scheduling a fresh one, rather than racing two deletes.
      */
     fun deleteWithUndo(id: String) {
+        pendingDeleteJobs.remove(id)?.cancel()
         _hiddenIds.value = _hiddenIds.value + id
-        pendingDeleteJobs[id] = viewModelScope.launch {
+        pendingDeleteJobs[id] = appScope.launch {
             delay(undoWindowMs)
-            try {
-                repository.delete(id)
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                // Best-effort: the meal stays hidden client-side either way; a
-                // failed delete just means it reappears on the next [load].
-            }
-            pendingDeleteJobs.remove(id)
-            val current = _uiState.value
-            if (current is MyMealsUiState.Loaded) {
-                val remaining = current.meals.filterNot { it.id == id }
-                _uiState.value = if (remaining.isEmpty()) MyMealsUiState.Empty else MyMealsUiState.Loaded(remaining)
-            }
+            commitDelete(id)
         }
     }
 
@@ -132,5 +136,39 @@ class MyMealsViewModel @Inject constructor(
     fun undoDelete(id: String) {
         pendingDeleteJobs.remove(id)?.cancel()
         _hiddenIds.value = _hiddenIds.value - id
+    }
+
+    /**
+     * Leaving the screen commits any pending deletes immediately instead of
+     * leaving them to run out their window unattended on [appScope] — same
+     * intent as the undo window elapsing normally, just without the wait.
+     * The delete itself still runs on [appScope] (not the now-cancelled
+     * `viewModelScope`) so it isn't dropped by this very `onCleared` call.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        val ids = pendingDeleteJobs.keys.toList()
+        for (id in ids) {
+            pendingDeleteJobs.remove(id)?.cancel()
+            appScope.launch { commitDelete(id) }
+        }
+    }
+
+    /** Calls `DELETE /my-meals/{id}` and removes [id] from a currently-[MyMealsUiState.Loaded] list. */
+    private suspend fun commitDelete(id: String) {
+        try {
+            repository.delete(id)
+        } catch (exc: CancellationException) {
+            throw exc
+        } catch (exc: Exception) {
+            // Best-effort: the meal stays hidden client-side either way; a
+            // failed delete just means it reappears on the next [load].
+        }
+        pendingDeleteJobs.remove(id)
+        val current = _uiState.value
+        if (current is MyMealsUiState.Loaded) {
+            val remaining = current.meals.filterNot { it.id == id }
+            _uiState.value = if (remaining.isEmpty()) MyMealsUiState.Empty else MyMealsUiState.Loaded(remaining)
+        }
     }
 }

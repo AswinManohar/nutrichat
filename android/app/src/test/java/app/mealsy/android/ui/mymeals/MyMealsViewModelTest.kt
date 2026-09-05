@@ -4,8 +4,12 @@ import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.repo.MyMealsRepository
+import androidx.lifecycle.ViewModelStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -33,6 +37,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 class MyMealsViewModelTest {
 
     private lateinit var server: MockWebServer
+    private lateinit var appScope: CoroutineScope
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     @Before
@@ -40,6 +45,11 @@ class MyMealsViewModelTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         server = MockWebServer()
         server.start()
+        // A real scope (not Dispatchers.Unconfined/Main) — deleteWithUndo's
+        // delayed delete must survive independently of the ViewModel's own
+        // (test) Main-backed viewModelScope, same as production's injected
+        // `@ApplicationScope`.
+        appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         // Fast enough to actually elapse within a JVM unit test's timeout.
         undoWindowMs = 50L
     }
@@ -48,6 +58,7 @@ class MyMealsViewModelTest {
     fun tearDown() {
         server.shutdown()
         Dispatchers.resetMain()
+        appScope.cancel()
         undoWindowMs = 4_000L
     }
 
@@ -64,7 +75,8 @@ class MyMealsViewModelTest {
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildViewModel(): MyMealsViewModel = MyMealsViewModel(MyMealsRepository(buildApi()))
+    private fun buildViewModel(): MyMealsViewModel =
+        MyMealsViewModel(MyMealsRepository(buildApi()), appScope)
 
     private val listGoldenJson = """
         [
@@ -167,6 +179,53 @@ class MyMealsViewModelTest {
             assertEquals("DELETE", deleteRequest.method)
             assertEquals("/my-meals/meal_1", deleteRequest.path)
         }
+
+    @Test
+    fun `onCleared flushes a pending delete immediately instead of losing it`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        server.takeRequest() // the initial GET
+
+        viewModel.deleteWithUndo("meal_1")
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        // Simulate leaving the screen (popping the back-stack entry) well
+        // before the undo window elapses — this is exactly the scenario fix
+        // round 1 addresses: viewModelScope is cancelled here, so if the
+        // delayed delete were still running on it, it would never fire.
+        val store = ViewModelStore()
+        store.put("my-meals", viewModel)
+        store.clear()
+
+        // The delete now runs on appScope, independent of the (cleared)
+        // viewModelScope — give it a moment to land without waiting out the
+        // full undo window.
+        kotlinx.coroutines.delay(200)
+
+        val deleteRequest = server.takeRequest()
+        assertEquals("DELETE", deleteRequest.method)
+        assertEquals("/my-meals/meal_1", deleteRequest.path)
+    }
+
+    @Test
+    fun `deleteWithUndo called twice for the same id only fires one DELETE`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        server.takeRequest() // the initial GET
+
+        viewModel.deleteWithUndo("meal_1")
+        kotlinx.coroutines.delay(undoWindowMs / 2)
+        viewModel.deleteWithUndo("meal_1") // re-swipe before the first delete fires
+
+        server.enqueue(MockResponse().setResponseCode(204))
+        kotlinx.coroutines.delay(undoWindowMs + 200)
+
+        assertEquals(2, server.requestCount) // the initial GET plus exactly one DELETE, not two
+        val deleteRequest = server.takeRequest()
+        assertEquals("DELETE", deleteRequest.method)
+    }
 
     @Test
     fun `undoDelete cancels the pending delete and un-hides the meal`() = runBlocking {

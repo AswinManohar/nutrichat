@@ -394,7 +394,12 @@ data class LogMyMealRequest(
  * resolved one.
  */
 fun CardItem.toSavedIngredientDto(portion: Double): ItemDto {
-    val factor = (targetQtyG / qtyG) * portion
+    // qtyG is normally a positive resolved gram weight, but a malformed/edge
+    // card (e.g. a decompose sub-item that never got a real weight) could
+    // carry a 0 — dividing by it would put NaN macros on the wire. Falling
+    // back to an unscaled factor keeps the request well-formed rather than
+    // failing the whole save over one bad item.
+    val factor = if (qtyG != 0.0) (targetQtyG / qtyG) * portion else portion
     return ItemDto(
         foodName = foodName,
         qtyG = targetQtyG * portion,

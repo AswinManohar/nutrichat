@@ -41,7 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.data.repo.SavedMeal
 import kotlinx.coroutines.launch
 
-private val MEAL_TYPES = listOf("breakfast", "lunch", "snack", "dinner")
+// Mirrors the backend's MEAL_CATEGORIES (src/backend/agent/tools/meals.py).
+private val MEAL_TYPES = listOf("breakfast", "brunch", "lunch", "snack", "dinner")
 private const val SWIPE_DELETE_THRESHOLD_PX = 300f
 
 /**
