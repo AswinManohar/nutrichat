@@ -34,6 +34,22 @@ android {
             "API_BASE_URL",
             "\"${localProperties.getProperty("API_BASE_URL", "http://10.0.2.2:8000")}\"",
         )
+
+        // Task 4: Supabase project URL/anon key, read the same way as
+        // API_BASE_URL above — from local.properties, never hardcoded or
+        // committed. Left blank by default; AuthModule's supabase client
+        // creation fails loudly at Hilt injection time (not at compile
+        // time) if these are unset, mirroring normalizeBaseUrl() below.
+        buildConfigField(
+            "String",
+            "SUPABASE_URL",
+            "\"${localProperties.getProperty("SUPABASE_URL", "")}\"",
+        )
+        buildConfigField(
+            "String",
+            "SUPABASE_ANON_KEY",
+            "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
+        )
     }
 
     buildTypes {
@@ -48,6 +64,16 @@ android {
                 "String",
                 "API_BASE_URL",
                 "\"${localProperties.getProperty("API_BASE_URL", "")}\"",
+            )
+            buildConfigField(
+                "String",
+                "SUPABASE_URL",
+                "\"${localProperties.getProperty("SUPABASE_URL", "")}\"",
+            )
+            buildConfigField(
+                "String",
+                "SUPABASE_ANON_KEY",
+                "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
             )
         }
     }
@@ -84,9 +110,16 @@ dependencies {
 
     implementation(libs.work.runtime.ktx)
 
-    implementation(platform(libs.supabase.bom))
-    implementation(libs.supabase.gotrue)
+    // `api`, not `implementation`: MainActivity (in :app) injects the
+    // SupabaseClient directly to call handleDeeplinks(intent), so its type
+    // needs to be on :app's compile classpath, not just :core:data's.
+    api(platform(libs.supabase.bom))
+    api(libs.supabase.gotrue)
     implementation(libs.supabase.postgrest)
+    // supabase-kt's HTTP client is Ktor-based and needs an explicit engine;
+    // OkHttp is already a dependency here (Retrofit's client) so reuse it
+    // rather than pulling in a second HTTP stack (e.g. ktor-client-android).
+    implementation(libs.ktor.client.okhttp)
 
     implementation(libs.kotlinx.coroutines.android)
 
