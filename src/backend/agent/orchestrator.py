@@ -183,6 +183,82 @@ def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) ->
         logger.warning("Could not enqueue fact extraction: %s", exc)
 
 
+def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Shape raw USDA lookup results into the confirmation-card item format.
+
+    Shared by the normal paused meal-logging response and the
+    `GET /meals/pending` recovery path so the two shapes can never drift.
+
+    Args:
+        usda_results: Raw entries from graph state, keyed by food_name,
+            qty_g, match_confidence, kcal, protein_g, carbs_g, fat_g,
+            fiber_g, fdc_id, and optional extras.
+
+    Returns:
+        List of dicts shaped for the frontend confirmation card.
+    """
+    items = []
+    for r in usda_results:
+        items.append(
+            {
+                "food_name": r["food_name"],
+                "qty_g": r["qty_g"],
+                "confidence": r["match_confidence"],
+                "kcal": r["kcal"],
+                "protein_g": r["protein_g"],
+                "carbs_g": r["carbs_g"],
+                "fat_g": r["fat_g"],
+                "fiber_g": r["fiber_g"],
+                "fdc_id": r["fdc_id"],
+                "candidates": r.get("candidates", []),
+                "source": r.get("source", "USDA"),
+                "estimated": r.get("estimated", False),
+                "source_dish": r.get("source_dish"),
+                "is_composite": r.get("is_composite", False),
+                # Full breakdown so "Save to My Meals" preserves micros.
+                "sugar_g": r.get("sugar_g", 0.0),
+                "sat_fat_g": r.get("sat_fat_g", 0.0),
+                "nutrients": r.get("nutrients", {}),
+            }
+        )
+    return items
+
+
+async def get_pending_card(
+    user_id: str,
+    thread_id: str,
+    checkpointer: Any,
+) -> dict[str, Any]:
+    """Return the unanswered confirmation card for a thread, if any.
+
+    Read-only recovery path for clients that lost the POST /meals/log
+    response (mobile process death, dropped connection). Never runs the
+    graph, never consumes quota.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        thread_id: LangGraph thread ID.
+        checkpointer: AsyncPostgresSaver instance from app.state.
+
+    Returns:
+        `{"paused": False}` when no interrupt is pending, otherwise
+        `{"status": "pending", "paused": True, "message": ..., "items": ...}`.
+    """
+    graph = _graph_for(checkpointer)
+    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+    state = await graph.aget_state(config)
+    if not state.next:
+        return {"paused": False}
+    messages = state.values.get("messages", [])
+    ai_texts = [m.content for m in messages if getattr(m, "type", "") == "ai"]
+    return {
+        "status": "pending",
+        "paused": True,
+        "message": ai_texts[-1] if ai_texts else "",
+        "items": _serialize_items(state.values.get("usda_results", [])),
+    }
+
+
 async def _handle_meal_logging(
     graph: Any,
     config: dict[str, Any],
@@ -262,31 +338,7 @@ async def _handle_meal_logging(
         # Expose structured items so the frontend can render editable quantity
         # fields. Only included when paused (confirmation card shown); empty
         # after log/cancel.
-        items = []
-        if still_paused:
-            for r in result.get("usda_results", []):
-                items.append(
-                    {
-                        "food_name": r["food_name"],
-                        "qty_g": r["qty_g"],
-                        "confidence": r["match_confidence"],
-                        "kcal": r["kcal"],
-                        "protein_g": r["protein_g"],
-                        "carbs_g": r["carbs_g"],
-                        "fat_g": r["fat_g"],
-                        "fiber_g": r["fiber_g"],
-                        "fdc_id": r["fdc_id"],
-                        "candidates": r.get("candidates", []),
-                        "source": r.get("source", "USDA"),
-                        "estimated": r.get("estimated", False),
-                        "source_dish": r.get("source_dish"),
-                        "is_composite": r.get("is_composite", False),
-                        # Full breakdown so "Save to My Meals" preserves micros.
-                        "sugar_g": r.get("sugar_g", 0.0),
-                        "sat_fat_g": r.get("sat_fat_g", 0.0),
-                        "nutrients": r.get("nutrients", {}),
-                    }
-                )
+        items = _serialize_items(result.get("usda_results", [])) if still_paused else []
 
         response: dict[str, Any] = {
             "status": "success",

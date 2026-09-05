@@ -10,7 +10,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agent.orchestrator import handle_message
+from backend.agent.orchestrator import get_pending_card, handle_message
 from backend.agent.tools.history import get_category_breakdown
 from backend.agent.tools.meals import (
     MEAL_CATEGORIES,
@@ -116,6 +116,19 @@ async def log_meal(
         image_b64=req.image_b64,
         meal_type=req.meal_type,
         action=req.action,
+    )
+
+
+@router.get("/pending")
+async def pending_card(
+    request: Request,
+    conversation_id: str = Query(min_length=1),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    return await get_pending_card(
+        user_id=user_id,
+        thread_id=conversation_id,
+        checkpointer=request.app.state.checkpointer,
     )
 
 
