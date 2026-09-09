@@ -16,7 +16,7 @@
 - Pydantic models that cross a boundary use `model_config = ConfigDict(extra="forbid")`.
 - All I/O is async; no blocking calls inside async code.
 - TypeScript: no `any`; new files kebab-case (`feedback-buttons.tsx`, `use-coaching-feedback.ts`); 100-column lines.
-- Migration revision id is exactly `"012"`, `down_revision = "011"`.
+- Migration revision id is exactly `"014"` (012 and 013 are taken by feat/android-app), `down_revision = "011"`.
 - `guideline_chunk.embedding` and query embeddings are 768-dim (`EMBEDDING_DIM`), IVFFlat cosine index, matching `user_memory`.
 - Allowed `user_goal.conditions` values: `diabetes`, `prediabetes`, `hypertension`, `ckd`. Only `diabetes` and `prediabetes` map to retrieval tag `diabetes`; retrieval always includes tag `general`.
 - Feedback rate limit: 60 requests per user per minute, via `backend.ratelimit.user_rate_limiter`.
@@ -40,7 +40,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `src/backend/db/migrations/versions/20260909_012_coaching_feedback_guidelines.py` | Creates `guideline_chunk`, `coaching_response`, adds `user_goal.conditions` |
+| `src/backend/db/migrations/versions/20260909_014_coaching_feedback_guidelines.py` | Creates `guideline_chunk`, `coaching_response`, adds `user_goal.conditions` |
 | `src/backend/db/models.py` | `GuidelineChunk`, `CoachingResponse` ORM classes; `UserGoal.conditions` |
 | `src/backend/guidelines/__init__.py` | Package marker |
 | `src/backend/guidelines/chunking.py` | `parse_markdown(path) -> list[Chunk]`, pure |
@@ -65,10 +65,10 @@
 
 ---
 
-### Task 1: Migration 012 and ORM models
+### Task 1: Migration 014 and ORM models
 
 **Files:**
-- Create: `src/backend/db/migrations/versions/20260909_012_coaching_feedback_guidelines.py`
+- Create: `src/backend/db/migrations/versions/20260909_014_coaching_feedback_guidelines.py`
 - Modify: `src/backend/db/models.py` (after `UserGoal.dietary_prefs` at line 45; append two classes at end of file)
 - Test: `tests/test_models_coaching_feedback.py`
 
@@ -219,7 +219,7 @@ Expected: 3 passed
 
 - [ ] **Step 5: Write the migration**
 
-Create `src/backend/db/migrations/versions/20260909_012_coaching_feedback_guidelines.py`:
+Create `src/backend/db/migrations/versions/20260909_014_coaching_feedback_guidelines.py`:
 
 ```python
 """Coaching feedback loop + guideline retrieval tables.
@@ -230,7 +230,7 @@ coaching reply with its inputs, ratable by the user), and
 `user_goal.conditions` (declared health conditions used to filter which
 guideline passages the coach may cite).
 
-Revision ID: 012
+Revision ID: 014
 Revises: 011
 Create Date: 2026-09-09
 """
@@ -241,7 +241,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
-revision = "012"
+revision = "014"
 down_revision = "011"
 branch_labels = None
 depends_on = None
@@ -349,7 +349,7 @@ def downgrade() -> None:
 - [ ] **Step 6: Apply, roll back, re-apply against the dev database**
 
 Run: `PYTHONPATH=src uv run alembic upgrade head && PYTHONPATH=src uv run alembic downgrade 011 && PYTHONPATH=src uv run alembic upgrade head`
-Expected: three `INFO  [alembic.runtime.migration] Running ...` blocks, last line `Running upgrade 011 -> 012, Coaching feedback loop + guideline retrieval tables.`, exit 0.
+Expected: three `INFO  [alembic.runtime.migration] Running ...` blocks, last line `Running upgrade 011 -> 014, Coaching feedback loop + guideline retrieval tables.`, exit 0.
 
 - [ ] **Step 7: Run the existing suites that construct `UserGoal`**
 
@@ -359,7 +359,7 @@ Expected: all passed (the new column has defaults, so untouched tests still pass
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/backend/db/models.py src/backend/db/migrations/versions/20260909_012_coaching_feedback_guidelines.py tests/test_models_coaching_feedback.py
+git add src/backend/db/models.py src/backend/db/migrations/versions/20260909_014_coaching_feedback_guidelines.py tests/test_models_coaching_feedback.py
 git commit -F - <<'EOF'
 feat(db): guideline_chunk, coaching_response tables and user_goal.conditions
 
@@ -1467,7 +1467,7 @@ __all__ = ["RetrievedChunk", "condition_tags", "retrieve"]
 Run: `uv run pytest tests/test_guideline_retrieval.py -v`
 Expected: 5 passed
 
-- [ ] **Step 5: Add the integration test (live Postgres, migration 012 applied)**
+- [ ] **Step 5: Add the integration test (live Postgres, migration 014 applied)**
 
 Append to `tests/test_guideline_retrieval.py`:
 
@@ -1475,7 +1475,7 @@ Append to `tests/test_guideline_retrieval.py`:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_condition_filter_against_live_postgres() -> None:
-    """Requires DATABASE_URL with migration 012 applied."""
+    """Requires DATABASE_URL with migration 014 applied."""
     import uuid
 
     from sqlalchemy import delete
