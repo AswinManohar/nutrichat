@@ -44,6 +44,7 @@ nutrichat/
 │   │   ├── graph.py            # LangGraph StateGraph
 │   │   ├── orchestrator.py     # handle_message(), intent routing
 │   │   ├── coaching.py         # proactive coaching logic
+│   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
 │   │   └── tools/
 │   │       ├── meals.py        # extract_entities, log_meal
 │   │       ├── usda.py         # usda_lookup_batch (parallel)
@@ -55,7 +56,13 @@ nutrichat/
 │   ├── api/
 │   │   ├── meals.py            # POST /meals/log
 │   │   ├── goals.py            # GET/PUT /goals
+│   │   ├── coaching_feedback.py  # POST /coaching/{id}/feedback
 │   │   └── billing.py          # Stripe
+│   ├── guidelines/             # curated dietary-guideline corpus
+│   │   ├── chunking.py         # markdown + frontmatter -> Chunk
+│   │   ├── ingest.py           # idempotent embed + sync CLI
+│   │   ├── retrieval.py        # condition-filtered pgvector search
+│   │   └── export_feedback.py  # rated coaching turns -> JSONL
 │   ├── db/
 │   │   ├── models.py           # SQLAlchemy ORM
 │   │   ├── redis_client.py     # connection pool + helpers
@@ -101,6 +108,11 @@ uvicorn backend.main:app --reload --port 8000
 alembic upgrade head
 celery -A backend.workers.tasks worker --loglevel=info
 python -m backend.telegram.bot   # Telegram bot, polling mode (dev)
+
+# Guidelines corpus
+PYTHONPATH=src python -m backend.guidelines.ingest --dir docs/guidelines [--dry-run]
+PYTHONPATH=src python -m backend.guidelines.export_feedback \
+    [--rated-only] [--since YYYY-MM-DD] --out eval/coaching_feedback.jsonl
 
 # Frontend
 cd frontend && npm run dev

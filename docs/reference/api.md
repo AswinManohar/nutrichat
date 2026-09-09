@@ -12,6 +12,12 @@
 :members:
 ```
 
+## Coaching feedback
+
+```{automodule} backend.api.coaching_feedback
+:members:
+```
+
 ## Nutrient check-up
 
 ```{automodule} backend.api.nutrient_checkup

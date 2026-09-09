@@ -162,6 +162,23 @@ before the LLM is called. Two further inputs frame every coaching call:
   the response agent and as a transcript block for `parse_query`, so
   "and yesterday?" can inherit the nutrient from the previous question.
 
+**Guideline retrieval and the feedback loop.** When `parse_query` sets
+`needs_guidance`, `guidelines/retrieval.py` embeds the message and runs a
+condition-filtered pgvector cosine search over `guideline_chunk` (the user's
+`user_goal.conditions` map to chunk tags, always including `general`). It
+fetches `retrieval.guideline_top_k` rows and drops anything scoring below
+`retrieval.guideline_min_score`, so an uncovered question retrieves nothing
+rather than the nearest irrelevant passage. Survivors are rendered as a
+delimited, numbered reference block the model cites as `[n]`; the numbers are
+mapped back to chunk ids by `extract_citations`. Retrieval is enrichment only —
+any failure logs a warning and the coach answers without citations. Every
+coaching turn is then persisted by `agent/coaching_store.py` as a
+`coaching_response` row (query, parsed query, a snapshot of the passages shown,
+citations, reply, model, trace id). The web UI rates it thumbs up/down with an
+optional comment via `POST /coaching/{id}/feedback`, and
+`guidelines/export_feedback.py` exports the rows as JSONL — the seed for a
+coaching eval set.
+
 ## 5. Memory layers (PRD §5.1)
 
 | Layer | Storage | Writer | Reader | Status |
