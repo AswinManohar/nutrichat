@@ -12,6 +12,7 @@ from backend.db.session import get_session
 router = APIRouter(prefix="/goals", tags=["goals"])
 
 TrackingMode = Literal["goals", "mindful"]
+Condition = Literal["diabetes", "prediabetes", "hypertension", "ckd"]
 
 
 class GoalResponse(BaseModel):
@@ -20,6 +21,7 @@ class GoalResponse(BaseModel):
     protein_goal: float | None
     fiber_goal: float | None
     dietary_prefs: dict
+    conditions: list[str]
     first_meal_time: str | None
     streak_days: int
 
@@ -32,6 +34,7 @@ class GoalCreate(BaseModel):
     protein_goal: float | None = Field(default=None, gt=0)
     fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
+    conditions: list[Condition] = Field(default_factory=list)
     first_meal_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
     )
@@ -58,6 +61,7 @@ class GoalUpdate(BaseModel):
     protein_goal: float | None = Field(default=None, gt=0)
     fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
+    conditions: list[Condition] = Field(default_factory=list)
     first_meal_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
     )
@@ -85,6 +89,7 @@ def _to_response(goal: UserGoal) -> GoalResponse:
         protein_goal=goal.protein_goal,
         fiber_goal=goal.fiber_goal,
         dietary_prefs=goal.dietary_prefs,
+        conditions=list(goal.conditions or []),
         first_meal_time=goal.first_meal_time,
         streak_days=goal.streak_days,
     )
@@ -117,6 +122,7 @@ async def create_goals(
             protein_goal=req.protein_goal,
             fiber_goal=req.fiber_goal,
             dietary_prefs=req.dietary_prefs,
+            conditions=req.conditions,
             first_meal_time=req.first_meal_time,
             streak_days=0,
         )
@@ -141,6 +147,7 @@ async def update_goals(
         goal.protein_goal = req.protein_goal
         goal.fiber_goal = req.fiber_goal
         goal.dietary_prefs = req.dietary_prefs
+        goal.conditions = req.conditions
         goal.first_meal_time = req.first_meal_time
         await session.commit()
         await session.refresh(goal)

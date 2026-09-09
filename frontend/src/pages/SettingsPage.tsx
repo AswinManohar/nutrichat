@@ -38,6 +38,7 @@ export const SettingsPage: React.FC = () => {
   const [proteinGoal, setProteinGoal] = useState(120)
   const [fiberGoal, setFiberGoal] = useState(30)
   const [dietaryPrefs, setDietaryPrefs] = useState<string[]>([])
+  const [conditions, setConditions] = useState<string[]>([])
   const [saveSuccess, setSaveSuccess] = useState(false)
   const { enabled: mascotEnabled, setEnabled: setMascotEnabled } = useMascotStore()
   const navigate = useNavigate()
@@ -54,6 +55,7 @@ export const SettingsPage: React.FC = () => {
     setDietaryPrefs(
       Object.keys(goals.dietary_prefs || {}).filter((key) => goals.dietary_prefs[key] === true)
     )
+    setConditions(goals.conditions ?? [])
   }
 
   const currentMode = goals?.tracking_mode ?? 'goals'
@@ -74,6 +76,7 @@ export const SettingsPage: React.FC = () => {
       protein_goal: toMindful ? null : proteinGoal,
       fiber_goal: toMindful ? null : fiberGoal,
       dietary_prefs: prefsObject(),
+      conditions,
     })
   }
 
@@ -88,6 +91,7 @@ export const SettingsPage: React.FC = () => {
         protein_goal: currentMode === 'mindful' ? null : proteinGoal,
         fiber_goal: currentMode === 'mindful' ? null : fiberGoal,
         dietary_prefs: prefsObject(),
+        conditions,
       },
       {
         onSuccess: () => {
@@ -108,6 +112,13 @@ export const SettingsPage: React.FC = () => {
     { label: 'Dairy-Free', value: 'dairy_free' },
     { label: 'Low-Carb', value: 'low_carb' },
     { label: 'High-Protein Focus', value: 'high_protein' },
+  ]
+
+  const conditionOptions = [
+    { label: 'Diabetes', value: 'diabetes' },
+    { label: 'Prediabetes', value: 'prediabetes' },
+    { label: 'Hypertension', value: 'hypertension' },
+    { label: 'Chronic kidney disease', value: 'ckd' },
   ]
 
   if (goalsLoading) {
@@ -225,6 +236,27 @@ export const SettingsPage: React.FC = () => {
                 options={preferenceOptions}
                 selectedValues={dietaryPrefs}
                 onChange={setDietaryPrefs}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Health Conditions Card */}
+          <Card className="border border-sand-border bg-sand backdrop-blur-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-sage-deep" />
+                Health conditions
+              </CardTitle>
+              <CardDescription>
+                Used to choose which dietary guidelines the coach references. Mealsy does not
+                give medical advice.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PreferenceChips
+                options={conditionOptions}
+                selectedValues={conditions}
+                onChange={setConditions}
               />
             </CardContent>
           </Card>
