@@ -35,3 +35,4 @@ skills-lock.json
 # Stray local artifacts
 .railway-config-pull-*/
 *-this-session-is-being-continued-*.txt
+eval/coaching_feedback.jsonl
