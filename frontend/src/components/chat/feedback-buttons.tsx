@@ -23,10 +23,11 @@ export function FeedbackButtons({ responseId }: FeedbackButtonsProps) {
   const [comment, setComment] = useState('')
   const [showComment, setShowComment] = useState(false)
   const [sentComment, setSentComment] = useState(false)
+  const [sendingComment, setSendingComment] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const rated = state === 'up' || state === 'down'
-  const busy = state === 'submitting'
+  const busy = state === 'submitting' || sendingComment
 
   const rate = async (rating: 'up' | 'down') => {
     setState('submitting')
@@ -42,18 +43,24 @@ export function FeedbackButtons({ responseId }: FeedbackButtonsProps) {
   }
 
   const sendComment = async () => {
+    // A second click (or Enter) while the first request is still in flight
+    // would post the same comment twice.
+    if (busy) return
     const trimmed = comment.trim()
     if (!trimmed) {
       setShowComment(false)
       return
     }
     setError(null)
+    setSendingComment(true)
     try {
       await feedback.mutateAsync({ responseId, rating: 'down', comment: trimmed })
       setShowComment(false)
       setSentComment(true)
     } catch {
       setError(ERROR_TEXT)
+    } finally {
+      setSendingComment(false)
     }
   }
 
@@ -108,7 +115,8 @@ export function FeedbackButtons({ responseId }: FeedbackButtonsProps) {
           <button
             type="button"
             onClick={() => void sendComment()}
-            className="press text-[13px] font-medium text-sage-deep px-2.5 py-1.5 rounded-full border border-sand-border hover:border-sage"
+            disabled={busy}
+            className="press text-[13px] font-medium text-sage-deep px-2.5 py-1.5 rounded-full border border-sand-border hover:border-sage disabled:opacity-60 disabled:cursor-default"
           >
             Send
           </button>

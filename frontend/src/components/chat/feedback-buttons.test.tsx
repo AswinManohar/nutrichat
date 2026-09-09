@@ -61,6 +61,36 @@ describe('FeedbackButtons', () => {
     expect(screen.getByText('Thanks for the feedback.')).toBeTruthy()
   })
 
+  it('ignores a second Send click while the comment request is in flight', async () => {
+    let resolveComment: (value: unknown) => void = () => {}
+    mutateAsync
+      .mockResolvedValueOnce({ response_id: 'r1', rating: 'down' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveComment = resolve
+          }),
+      )
+    render(<FeedbackButtons responseId="r1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not helpful' }))
+    const input = await screen.findByPlaceholderText('What was off? (optional)')
+    fireEvent.change(input, { target: { value: 'wrong protein number' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(button('Send').disabled).toBe(true))
+    fireEvent.click(button('Send'))
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(mutateAsync).toHaveBeenCalledTimes(2) // the rating + one comment
+
+    resolveComment({ response_id: 'r1', rating: 'down' })
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText('What was off? (optional)')).toBeNull(),
+    )
+    expect(mutateAsync).toHaveBeenCalledTimes(2)
+  })
+
   it('shows an error and re-enables the buttons when the request fails', async () => {
     mutateAsync.mockRejectedValue(new Error('network'))
     render(<FeedbackButtons responseId="r1" />)
