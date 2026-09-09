@@ -316,7 +316,7 @@ async def test_handle_food_only_question_skips_no_data_exit():
         )
 
     gen_mock.assert_awaited_once()
-    assert response == "Your most frequent food is the cheeseburger."
+    assert response.message == "Your most frequent food is the cheeseburger."
 
 
 @pytest.mark.asyncio
@@ -343,7 +343,7 @@ async def test_handle_no_data_delegates_to_generate_response():
         response = await CoachingAgent().handle("user-1", "how many calories today?")
 
     gen_mock.assert_awaited_once()
-    assert response == "Nothing logged for today yet."
+    assert response.message == "Nothing logged for today yet."
 
 
 @pytest.mark.asyncio
@@ -369,7 +369,7 @@ async def test_handle_missing_micronutrient_returns_graceful_message():
     ):
         response = await CoachingAgent().handle("user-1", "how much B12 today?")
 
-    assert "Vitamin B12, total" in response
+    assert "Vitamin B12, total" in response.message
     gen_mock.assert_not_called()
 
 
@@ -397,7 +397,7 @@ async def test_handle_with_data_calls_generate_response():
         response = await CoachingAgent().handle("user-1", "how many calories today?")
 
     gen_mock.assert_awaited_once()
-    assert response == "You've had 1,240 kcal today."
+    assert response.message == "You've had 1,240 kcal today."
 
 
 @pytest.mark.asyncio
@@ -576,7 +576,7 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
     ):
         reply = await CoachingAgent().handle("user-1", "and yesterday?")
 
-    assert reply == "120g yesterday."
+    assert reply.message == "120g yesterday."
     ctx_mock.assert_awaited_once_with("user-1", "and yesterday?")
     assert parse_mock.await_args.kwargs["history"] == _HISTORY
     kwargs = gen_mock.await_args.kwargs
@@ -611,5 +611,5 @@ async def test_handle_answers_without_context_when_build_context_fails():
     ):
         reply = await CoachingAgent().handle("user-1", "how many calories today?")
 
-    assert reply == "1,240 kcal today."
+    assert reply.message == "1,240 kcal today."
     assert gen_mock.await_args.kwargs["context_prompt"] == ""

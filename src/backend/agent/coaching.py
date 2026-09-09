@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -36,6 +37,7 @@ from backend.db.redis_client import (
     get_today_totals,
 )
 from backend.db.session import get_session
+from backend.guidelines.retrieval import RetrievedChunk, retrieve
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +66,97 @@ class QueryParsed(BaseModel):
     nutrients: list[str] = Field(default_factory=list)
     include_goals: bool = False
     include_foods: bool = False
+    # True when the user asks for a recommendation (what to eat, is X
+    # healthy, how to change intake) rather than a readback of their data.
+    needs_guidance: bool = False
 
     model_config = ConfigDict(extra="forbid")
+
+
+class Citation(BaseModel):
+    """A bracketed [n] in the reply that resolved to a retrieved passage."""
+
+    n: int
+    chunk_id: str
+    source_id: str
+    section: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CoachingResult(BaseModel):
+    """Everything a coaching turn produced, for the reply and for persistence."""
+
+    message: str
+    parsed: QueryParsed
+    retrieved: list[RetrievedChunk] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
+
+def format_passages(chunks: Sequence[RetrievedChunk]) -> str:
+    """Render retrieved passages as the numbered block appended to instructions.
+
+    Args:
+        chunks: Passages in retrieval order; their 1-based position is the
+            citation number the model must use.
+
+    Returns:
+        The block, or "" when there are no passages.
+    """
+    if not chunks:
+        return ""
+    lines = [
+        "## Guideline passages",
+        "Cite with [n] where you rely on a passage. "
+        "Do not cite passages you did not use.",
+    ]
+    for n, chunk in enumerate(chunks, start=1):
+        lines.append(f"[{n}] {chunk.source_title} — {chunk.section}\n{chunk.text}")
+    return "\n".join(lines)
+
+
+def extract_citations(text: str, chunks: Sequence[RetrievedChunk]) -> list[Citation]:
+    """Map every [n] in ``text`` to its passage; unknown numbers are dropped.
+
+    Unknown numbers stay in the text (a signal for the eval set) and are
+    logged as a warning.
+
+    Args:
+        text: The model's reply.
+        chunks: Passages in the order they were numbered by format_passages.
+
+    Returns:
+        One Citation per distinct valid number, in first-appearance order.
+    """
+    citations: list[Citation] = []
+    seen: set[int] = set()
+    for raw in _CITATION_RE.findall(text):
+        n = int(raw)
+        if n in seen:
+            continue
+        seen.add(n)
+        if 1 <= n <= len(chunks):
+            chunk = chunks[n - 1]
+            citations.append(
+                Citation(
+                    n=n,
+                    chunk_id=chunk.id,
+                    source_id=chunk.source_id,
+                    section=chunk.section,
+                )
+            )
+        else:
+            logger.warning(
+                "coaching reply cited [%d] but only %d passages were provided",
+                n,
+                len(chunks),
+            )
+    return citations
 
 
 _UNIT_SUFFIXES = ("_mcg", "_mg", "_g", "_iu")
@@ -117,6 +208,7 @@ class _ResponseDeps:
     """Per-run input for the response agent's dynamic instructions."""
 
     context_prompt: str
+    passage_block: str = ""
 
 
 # `instructions` rather than `system_prompt`: pydantic-ai only re-sends
@@ -134,8 +226,11 @@ _response_agent = Agent(
 @_response_agent.instructions
 def _user_context_instructions(ctx: RunContext[_ResponseDeps]) -> str:
     """Append the per-user context block (today, goals, weekly pattern,
-    preferences) built by agent/context.py to the static coaching rules."""
-    return ctx.deps.context_prompt
+    preferences) built by agent/context.py, then any guideline passages,
+    to the static coaching rules."""
+    return "\n\n".join(
+        block for block in (ctx.deps.context_prompt, ctx.deps.passage_block) if block
+    )
 
 
 def _render_history_text(history: Sequence[CoachingTurn]) -> str:
@@ -302,6 +397,7 @@ async def generate_response(
     *,
     context_prompt: str = "",
     history: Sequence[CoachingTurn] = (),
+    passages: Sequence[RetrievedChunk] = (),
 ) -> str:
     """Generate a grounded natural-language answer from fetched data.
 
@@ -312,14 +408,19 @@ async def generate_response(
             appended to the model instructions. Empty string omits it.
         history: Recent conversation turns, oldest first, replayed as
             message history ahead of this question.
+        passages: Retrieved guideline passages; rendered by format_passages
+            and appended after the context block. Empty omits the block.
 
     Returns:
-        Natural language response, under 3 sentences.
+        Natural language response, under 3 sentences, possibly carrying
+        [n] citations into ``passages``.
     """
     content = f"User question: {message}\n\nData:\n{json.dumps(data, default=str)}"
     result = await _response_agent.run(
         content,
-        deps=_ResponseDeps(context_prompt=context_prompt),
+        deps=_ResponseDeps(
+            context_prompt=context_prompt, passage_block=format_passages(passages)
+        ),
         message_history=_history_to_messages(history) or None,
     )
     record_run_cost(result, COACHING_MODEL, operation="coaching_response")
@@ -343,6 +444,29 @@ async def _safe_context_prompt(user_id: str, message: str) -> str:
         return ""
 
 
+async def _user_conditions(user_id: str) -> list[str]:
+    """Read ``user_goal.conditions`` for retrieval filtering ([] if no row)."""
+    session_factory = get_session()
+    async with session_factory() as session:
+        goal = await session.get(UserGoal, user_id)
+        return list(goal.conditions or []) if goal is not None else []
+
+
+async def _retrieve_for(user_id: str, message: str) -> list[RetrievedChunk]:
+    """Retrieve guideline passages for this user; [] on any failure."""
+    try:
+        conditions = await _user_conditions(user_id)
+    except Exception as exc:  # noqa: BLE001 — retrieval must not fail the turn
+        logger.warning("reading conditions failed for %s: %s", user_id, exc)
+        conditions = []
+    return await retrieve(message, conditions)
+
+
+async def _none() -> list[RetrievedChunk]:
+    """Awaitable empty result, so gather() has a uniform shape."""
+    return []
+
+
 class CoachingAgent:
     """Linear pipeline: parse_query -> fetch_data -> generate_response.
 
@@ -351,7 +475,7 @@ class CoachingAgent:
     gets the per-user context block from agent/context.py.
     """
 
-    async def handle(self, user_id: str, message: str) -> str:
+    async def handle(self, user_id: str, message: str) -> CoachingResult:
         """Answer a nutrition question grounded in the user's logged data.
 
         Args:
@@ -359,8 +483,10 @@ class CoachingAgent:
             message: User's nutrition question.
 
         Returns:
-            Grounded natural-language response, or a graceful "no data"
-            message when nothing has been logged for the requested range.
+            CoachingResult whose message is the reply (or a graceful
+            "no data" message when nothing has been logged for the
+            requested range), plus the parsed query, retrieved passages
+            and resolved citations for persistence.
         """
         history = await get_coaching_history(user_id)
         # Independent I/O: the parse call and the context fan-out don't
@@ -369,23 +495,44 @@ class CoachingAgent:
             parse_query(message, history=history),
             _safe_context_prompt(user_id, message),
         )
-        data = await fetch_data(user_id, parsed)
+        # Data fetch and guideline retrieval are independent too.
+        data, retrieved = await asyncio.gather(
+            fetch_data(user_id, parsed),
+            _retrieve_for(user_id, message) if parsed.needs_guidance else _none(),
+        )
 
         micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
 
         if micro_nutrients and not data.get("micronutrients"):
             names = ", ".join(_humanize_nutrient_name(n) for n in micro_nutrients)
-            return f"I don't have data on {names} for that period."
+            return CoachingResult(
+                message=f"I don't have data on {names} for that period.",
+                parsed=parsed,
+            )
 
-        return await generate_response(
-            message, data, context_prompt=context_prompt, history=history
+        text = await generate_response(
+            message,
+            data,
+            context_prompt=context_prompt,
+            history=history,
+            passages=retrieved,
+        )
+        return CoachingResult(
+            message=text,
+            parsed=parsed,
+            retrieved=list(retrieved),
+            citations=extract_citations(text, retrieved),
         )
 
 
 __all__ = [
+    "Citation",
     "CoachingAgent",
+    "CoachingResult",
     "QueryParsed",
+    "extract_citations",
     "fetch_data",
+    "format_passages",
     "generate_response",
     "parse_query",
 ]

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage
 
+from backend.agent.coaching import CoachingResult, QueryParsed
 from backend.agent.orchestrator import _classify_intent, _IntentResult, handle_message
 from backend.db.redis_client import CoachingTurn
 
@@ -186,7 +187,10 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
         patch(
             "backend.agent.orchestrator._coaching_agent.handle",
             new_callable=AsyncMock,
-            return_value="You've had 1,240 kcal today.",
+            return_value=CoachingResult(
+                message="You've had 1,240 kcal today.",
+                parsed=QueryParsed(time_range="today"),
+            ),
         ) as handle_mock,
     ):
         result = await handle_message(
@@ -297,7 +301,10 @@ async def test_coaching_turn_is_recorded_verbatim(_mock_history_store):
         patch(
             "backend.agent.orchestrator._coaching_agent.handle",
             new_callable=AsyncMock,
-            return_value="You've had 1,240 kcal today.",
+            return_value=CoachingResult(
+                message="You've had 1,240 kcal today.",
+                parsed=QueryParsed(time_range="today"),
+            ),
         ),
     ):
         await handle_message("user-1", "how many calories today?", "thread-1", None)
@@ -402,7 +409,9 @@ async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store)
         patch(
             "backend.agent.orchestrator._coaching_agent.handle",
             new_callable=AsyncMock,
-            return_value="ok",
+            return_value=CoachingResult(
+                message="ok", parsed=QueryParsed(time_range="today")
+            ),
         ),
     ):
         result = await handle_message("user-1", "how am I doing?", "thread-1", None)

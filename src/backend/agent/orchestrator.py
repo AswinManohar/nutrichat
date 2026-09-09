@@ -376,5 +376,10 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
             "items": [],
         }
     with logfire.span("coaching"):
-        message = await _coaching_agent.handle(user_id, user_input)
-    return {"status": "success", "message": message, "paused": False, "items": []}
+        result = await _coaching_agent.handle(user_id, user_input)
+    return {
+        "status": "success",
+        "message": result.message,
+        "paused": False,
+        "items": [],
+    }

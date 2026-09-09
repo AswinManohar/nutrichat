@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.agent.coaching import CoachingResult, QueryParsed
 from backend.agent.orchestrator import _UPGRADE_MSG
 
 
@@ -13,7 +14,10 @@ from backend.agent.orchestrator import _UPGRADE_MSG
 async def test_coaching_over_quota_returns_upgrade_message():
     from backend.agent.orchestrator import _handle_coaching
 
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=False)):
+    with patch(
+        "backend.agent.orchestrator.consume_llm_credit",
+        new=AsyncMock(return_value=False),
+    ):
         result = await _handle_coaching("user-1", "how much protein today?")
 
     assert result["status"] == "success"
@@ -27,10 +31,18 @@ async def test_coaching_under_quota_calls_agent():
     from backend.agent.orchestrator import _handle_coaching
 
     with (
-        patch("backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
         patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
     ):
-        mock_coaching.handle = AsyncMock(return_value="You had 120g protein today.")
+        mock_coaching.handle = AsyncMock(
+            return_value=CoachingResult(
+                message="You had 120g protein today.",
+                parsed=QueryParsed(time_range="today"),
+            )
+        )
         result = await _handle_coaching("user-1", "how much protein today?")
 
     assert result["message"] == "You had 120g protein today."
@@ -40,7 +52,10 @@ async def test_coaching_under_quota_calls_agent():
 async def test_classify_intent_over_quota_defaults_to_log_meal():
     from backend.agent.orchestrator import _classify_intent
 
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=False)):
+    with patch(
+        "backend.agent.orchestrator.consume_llm_credit",
+        new=AsyncMock(return_value=False),
+    ):
         intent = await _classify_intent("blah blah", "user-1")
 
     assert intent == "log_meal"
@@ -65,7 +80,10 @@ async def test_meal_logging_over_quota_returns_upgrade_message():
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock()
 
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=False)):
+    with patch(
+        "backend.agent.orchestrator.consume_llm_credit",
+        new=AsyncMock(return_value=False),
+    ):
         result = await _handle_meal_logging(
             graph=mock_graph,
             config={"configurable": {"thread_id": "t1", "user_id": "user-1"}},
