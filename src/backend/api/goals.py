@@ -42,7 +42,7 @@ class GoalCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
-    def _require_targets_in_goal_mode(self) -> "GoalCreate":
+    def _require_targets_in_goal_mode(self) -> GoalCreate:
         if self.tracking_mode == "goals" and (
             self.kcal_goal is None
             or self.protein_goal is None
@@ -56,12 +56,14 @@ class GoalCreate(BaseModel):
 
 
 class GoalUpdate(BaseModel):
+    """PUT body. Omitting ``conditions`` leaves them unchanged; ``[]`` clears."""
+
     tracking_mode: TrackingMode = "goals"
     kcal_goal: float | None = Field(default=None, gt=0)
     protein_goal: float | None = Field(default=None, gt=0)
     fiber_goal: float | None = Field(default=None, gt=0)
     dietary_prefs: dict = Field(default_factory=dict)
-    conditions: list[Condition] = Field(default_factory=list)
+    conditions: list[Condition] | None = None
     first_meal_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
     )
@@ -69,7 +71,7 @@ class GoalUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
-    def _require_targets_in_goal_mode(self) -> "GoalUpdate":
+    def _require_targets_in_goal_mode(self) -> GoalUpdate:
         if self.tracking_mode == "goals" and (
             self.kcal_goal is None
             or self.protein_goal is None
@@ -147,7 +149,8 @@ async def update_goals(
         goal.protein_goal = req.protein_goal
         goal.fiber_goal = req.fiber_goal
         goal.dietary_prefs = req.dietary_prefs
-        goal.conditions = req.conditions
+        if req.conditions is not None:
+            goal.conditions = req.conditions
         goal.first_meal_time = req.first_meal_time
         await session.commit()
         await session.refresh(goal)

@@ -230,7 +230,12 @@ def _round_trip_session() -> tuple[MagicMock, dict[str, UserGoal]]:
 
 def test_conditions_round_trip_through_post_put_get(client: TestClient) -> None:
     factory, _ = _round_trip_session()
-    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30, "dietary_prefs": {}}
+    base = {
+        "kcal_goal": 2000,
+        "protein_goal": 150,
+        "fiber_goal": 30,
+        "dietary_prefs": {},
+    }
 
     with patch("backend.api.goals.get_session", return_value=factory):
         post = client.post(
@@ -278,3 +283,39 @@ def test_invalid_condition_is_rejected(client: TestClient) -> None:
             headers=_auth_headers("user-1"),
         )
     assert resp.status_code == 422
+
+
+def test_put_without_conditions_leaves_them_unchanged(client: TestClient) -> None:
+    factory, store = _round_trip_session()
+    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        client.post(
+            "/goals",
+            json={**base, "conditions": ["diabetes"]},
+            headers=_auth_headers("user-1"),
+        )
+        put = client.put("/goals", json=base, headers=_auth_headers("user-1"))
+
+    assert put.status_code == 200
+    assert put.json()["conditions"] == ["diabetes"]
+    assert store["user-1"].conditions == ["diabetes"]
+
+
+def test_put_with_empty_conditions_clears_them(client: TestClient) -> None:
+    factory, store = _round_trip_session()
+    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        client.post(
+            "/goals",
+            json={**base, "conditions": ["diabetes"]},
+            headers=_auth_headers("user-1"),
+        )
+        put = client.put(
+            "/goals", json={**base, "conditions": []}, headers=_auth_headers("user-1")
+        )
+
+    assert put.status_code == 200
+    assert put.json()["conditions"] == []
+    assert store["user-1"].conditions == []
