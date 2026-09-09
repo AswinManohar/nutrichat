@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import (
     billing,
+    coaching_feedback,
     goals,
     integrations,
     meals,
@@ -72,6 +73,7 @@ app.include_router(nutrient_checkup.router)
 app.include_router(mindful.router)
 app.include_router(my_meals.router)
 app.include_router(push.router)
+app.include_router(coaching_feedback.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook
