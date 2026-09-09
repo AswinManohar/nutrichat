@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.config import get_tunables
 from backend.db.models import GuidelineChunk
 from backend.guidelines.retrieval import RetrievedChunk, condition_tags, retrieve
 
@@ -70,6 +71,60 @@ async def test_retrieve_maps_rows_to_retrieved_chunks() -> None:
     ]
 
 
+def _chunk(section: str) -> GuidelineChunk:
+    return GuidelineChunk(
+        id="22222222-2222-2222-2222-222222222222",
+        source_id="dga-2020",
+        source_title="Dietary Guidelines for Americans, 2020-2025",
+        source_url="https://www.dietaryguidelines.gov/",
+        section=section,
+        condition="general",
+        ordinal=0,
+        text=section,
+        content_hash=section,
+    )
+
+
+@pytest.mark.asyncio
+async def test_retrieve_drops_rows_below_the_relevance_floor() -> None:
+    floor = get_tunables().retrieval.guideline_min_score
+    above = _chunk("above the floor")
+    below = _chunk("below the floor")
+    rows = [(above, 1.0 - (floor + 0.05)), (below, 1.0 - (floor - 0.05))]
+
+    with (
+        patch(
+            "backend.guidelines.retrieval.embed_text",
+            new_callable=AsyncMock,
+            return_value=[0.1] * 768,
+        ),
+        patch(
+            "backend.guidelines.retrieval.get_session",
+            return_value=_session_returning(rows),
+        ),
+    ):
+        chunks = await retrieve("how much sugar is ok?", [])
+
+    assert [c.section for c in chunks] == ["above the floor"]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_defaults_k_to_the_configured_top_k() -> None:
+    factory = _session_returning([])
+    with (
+        patch(
+            "backend.guidelines.retrieval.embed_text",
+            new_callable=AsyncMock,
+            return_value=[0.1] * 768,
+        ),
+        patch("backend.guidelines.retrieval.get_session", return_value=factory),
+    ):
+        await retrieve("q", [])
+
+    stmt = factory.return_value.execute.await_args.args[0]
+    assert stmt._limit == get_tunables().retrieval.guideline_top_k
+
+
 @pytest.mark.asyncio
 async def test_retrieve_returns_empty_and_warns_when_embedding_fails(
     caplog: pytest.LogCaptureFixture,
@@ -92,6 +147,11 @@ async def test_retrieve_returns_empty_and_warns_when_embedding_fails(
 @pytest.mark.asyncio
 async def test_condition_filter_against_live_postgres() -> None:
     """Requires DATABASE_URL with migration 014 applied."""
+    from tests.conftest import DATABASE_URL_PRESET
+
+    if not DATABASE_URL_PRESET:
+        pytest.skip("DATABASE_URL not set")
+
     import uuid
 
     from sqlalchemy import delete
@@ -99,8 +159,10 @@ async def test_condition_filter_against_live_postgres() -> None:
     from backend.db.session import dispose_engine, get_session
 
     marker = f"test-{uuid.uuid4()}"
+    # Every seeded row carries the query vector itself, so each scores 1.0
+    # and clears the relevance floor — this test is about the condition
+    # filter, not about ranking.
     near = [1.0] + [0.0] * 767
-    far = [0.0] * 767 + [1.0]
 
     def row(condition: str, text: str, vector: list[float]) -> GuidelineChunk:
         return GuidelineChunk(
@@ -121,7 +183,7 @@ async def test_condition_filter_against_live_postgres() -> None:
             session.add_all(
                 [
                     row("general", "general-near", near),
-                    row("general", "general-far", far),
+                    row("general", "general-second", near),
                     row("diabetes", "diabetes-near", near),
                 ]
             )
@@ -132,7 +194,7 @@ async def test_condition_filter_against_live_postgres() -> None:
             new_callable=AsyncMock,
             return_value=near,
         ):
-            # k well above the seed row count so the far vector is still
+            # k well above the seed row count so every seeded row is
             # returned; with ~20 rows the planner seq-scans (exact results).
             plain = await retrieve("q", [], k=100)
             diabetic = await retrieve("q", ["diabetes"], k=100)
@@ -140,7 +202,7 @@ async def test_condition_filter_against_live_postgres() -> None:
         plain_texts = {c.text for c in plain if c.source_id == marker}
         diabetic_texts = {c.text for c in diabetic if c.source_id == marker}
         assert "diabetes-near" not in plain_texts
-        assert {"general-near", "general-far"} <= plain_texts
+        assert {"general-near", "general-second"} <= plain_texts
         assert "diabetes-near" in diabetic_texts
     finally:
         async with session_factory() as session:

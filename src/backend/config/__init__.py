@@ -55,6 +55,15 @@ class UsdaConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RetrievalConfig(BaseModel):
+    """Guideline passage retrieval thresholds (see tunables.yaml)."""
+
+    guideline_min_score: float = Field(ge=0.0, le=1.0)
+    guideline_top_k: int = Field(gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class MemoryConfig(BaseModel):
     dedup_distance_threshold: float = Field(ge=0.0, le=2.0)
     new_fact_confidence: float = Field(ge=0.0, le=1.0)
@@ -174,6 +183,7 @@ class Tunables(BaseModel):
     models: ModelsConfig
     token_limits: TokenLimitsConfig
     usda: UsdaConfig
+    retrieval: RetrievalConfig
     junk: JunkConfig
     memory: MemoryConfig
     summaries: SummariesConfig
@@ -241,4 +251,4 @@ def get_tunables() -> Tunables:
     return Tunables.model_validate(raw)
 
 
-__all__ = ["Tunables", "UpperLimitEntry", "get_tunables"]
+__all__ = ["RetrievalConfig", "Tunables", "UpperLimitEntry", "get_tunables"]

@@ -166,6 +166,24 @@ usda:
   # Alternative descriptions surfaced on the card ("say 'use X' to switch").
   max_candidates: 3
 
+retrieval:
+  # Guideline passage retrieval for the coaching agent
+  # (backend/guidelines/retrieval.py). Scores are cosine similarity
+  # (1 - cosine distance) between the query embedding and a chunk embedding.
+
+  # Passages scoring below this are dropped rather than shown to the model.
+  # Without a floor, a question the corpus does not cover still pulls in the
+  # k nearest chunks and invites an irrelevant citation. Measured on the two
+  # curated sources: "how much added sugar is ok for me?" scores 0.61-0.74,
+  # "what car should I buy?" scores 0.46-0.50, so 0.58 sits in the gap.
+  # Lower it if the coach stops citing when it should; raise it if it cites
+  # tangential passages.
+  guideline_min_score: 0.58
+
+  # Passages fetched per coaching turn before the floor is applied. Each one
+  # costs ~150 prompt tokens.
+  guideline_top_k: 5
+
 memory:
   # Cosine-distance threshold for preference-fact dedup in
   # workers/tasks.py extract_and_store_facts. A new fact whose nearest
