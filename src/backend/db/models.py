@@ -509,6 +509,12 @@ class CoachingResponse(Base):
         default=list,
         server_default=text("'{}'"),
     )
+    # Snapshot of the passages shown to the model, taken at write time so an
+    # export still reflects what the coach actually saw after the corpus is
+    # re-ingested (chunk rows are replaced whenever a source file changes).
+    retrieved: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     citations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     response_text: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(Text, nullable=False)

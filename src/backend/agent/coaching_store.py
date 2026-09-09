@@ -50,6 +50,16 @@ async def save_coaching_response(
                     query=query,
                     parsed_query=result.parsed.model_dump(mode="json"),
                     retrieved_chunk_ids=[c.id for c in result.retrieved],
+                    retrieved=[
+                        {
+                            "chunk_id": c.id,
+                            "source_id": c.source_id,
+                            "source_title": c.source_title,
+                            "section": c.section,
+                            "text": c.text,
+                        }
+                        for c in result.retrieved
+                    ],
                     citations=[c.model_dump() for c in result.citations],
                     response_text=result.message,
                     model=model,
@@ -58,7 +68,12 @@ async def save_coaching_response(
             )
             await session.commit()
     except Exception as exc:  # noqa: BLE001 — see docstring
-        logger.error("coaching_response write failed for %s: %s", user_id, exc)
+        logger.error(
+            "coaching_response write failed for %s: %s",
+            user_id,
+            exc,
+            exc_info=True,
+        )
         return None
     return row_id
 

@@ -5,8 +5,9 @@ Usage:
         [--rated-only] [--since YYYY-MM-DD] --out eval/coaching_feedback.jsonl
 
 One JSON object per row; ``user_id`` is never exported. ``conditions`` is
-joined from user_goal at export time and ``retrieved`` carries the text of
-every chunk that was shown to the model, cited or not.
+joined from user_goal at export time; ``retrieved`` is the snapshot of every
+passage shown to the model (cited or not) that was stored on the row when the
+reply was written, so a later re-ingest of the corpus cannot rewrite history.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from pathlib import Path
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import CoachingResponse, GuidelineChunk, UserGoal
+from backend.db.models import CoachingResponse, UserGoal
 from backend.db.session import dispose_engine, get_session
 
 
@@ -39,20 +40,23 @@ def build_query(*, rated_only: bool, since: date | None) -> Select:
     return stmt
 
 
-def row_to_record(
-    resp: CoachingResponse,
-    conditions: list[str] | None,
-    chunks: dict[str, GuidelineChunk],
-) -> dict:
-    """Shape one row as the eval JSONL record (no user_id)."""
+def row_to_record(resp: CoachingResponse, conditions: list[str] | None) -> dict:
+    """Shape one row as the eval JSONL record (no user_id).
+
+    Args:
+        resp: The stored coaching turn, carrying its own ``retrieved`` snapshot.
+        conditions: The user's declared conditions at export time, or None.
+
+    Returns:
+        A JSON-serializable record with the spec's keys.
+    """
     retrieved = [
         {
-            "source_id": chunks[cid].source_id,
-            "section": chunks[cid].section,
-            "text": chunks[cid].text,
+            "source_id": passage.get("source_id"),
+            "section": passage.get("section"),
+            "text": passage.get("text"),
         }
-        for cid in resp.retrieved_chunk_ids or []
-        if cid in chunks
+        for passage in resp.retrieved or []
     ]
     return {
         "response_id": resp.id,
@@ -72,16 +76,11 @@ def row_to_record(
 async def export_feedback(
     session: AsyncSession, *, rated_only: bool, since: date | None
 ) -> list[dict]:
-    """Fetch matching rows plus their chunks and return JSONL-ready records."""
-    rows = (await session.execute(build_query(rated_only=rated_only, since=since))).all()
-    chunk_ids = {cid for resp, _ in rows for cid in (resp.retrieved_chunk_ids or [])}
-    chunks: dict[str, GuidelineChunk] = {}
-    if chunk_ids:
-        result = await session.execute(
-            select(GuidelineChunk).where(GuidelineChunk.id.in_(chunk_ids))
-        )
-        chunks = {str(c.id): c for c in result.scalars().all()}
-    return [row_to_record(resp, conditions, chunks) for resp, conditions in rows]
+    """Fetch matching rows and return JSONL-ready records (one query)."""
+    rows = (
+        await session.execute(build_query(rated_only=rated_only, since=since))
+    ).all()
+    return [row_to_record(resp, conditions) for resp, conditions in rows]
 
 
 async def _run_export(*, rated_only: bool, since: date | None) -> list[dict]:

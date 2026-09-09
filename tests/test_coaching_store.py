@@ -26,7 +26,9 @@ def _result() -> CoachingResult:
         parsed=QueryParsed(time_range="today", needs_guidance=True),
         retrieved=[chunk],
         citations=[
-            Citation(n=1, chunk_id=chunk.id, source_id="dga-2020", section=chunk.section)
+            Citation(
+                n=1, chunk_id=chunk.id, source_id="dga-2020", section=chunk.section
+            )
         ],
     )
 
@@ -66,6 +68,15 @@ async def test_save_writes_row_and_returns_its_id() -> None:
     assert row.query == "is sugar ok?"
     assert row.parsed_query["needs_guidance"] is True
     assert row.retrieved_chunk_ids == ["aaaaaaaa-0000-0000-0000-000000000001"]
+    assert row.retrieved == [
+        {
+            "chunk_id": "aaaaaaaa-0000-0000-0000-000000000001",
+            "source_id": "dga-2020",
+            "source_title": "DGA",
+            "section": "Limit added sugars",
+            "text": "...",
+        }
+    ]
     assert row.citations == [
         {
             "n": 1,
