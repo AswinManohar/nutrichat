@@ -103,6 +103,8 @@ export interface LogMealResponse {
   paused: boolean;
   items: MealItem[];
   meal_id?: string | null;
+  /** Set on coaching replies once persisted; absent for meal logging. */
+  response_id?: string | null;
 }
 
 export interface CategoryStat {
