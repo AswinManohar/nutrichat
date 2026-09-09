@@ -6,11 +6,13 @@ from typing import Any, Literal
 import logfire
 from kombu.exceptions import OperationalError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.coaching import CoachingAgent
+from backend.agent.coaching_store import save_coaching_response
 from backend.agent.graph import build_graph
-from backend.agent.llm import FLASH_LITE_MODEL, make_llm
+from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import consume_llm_credit
@@ -149,7 +151,9 @@ async def handle_message(
             and await _classify_intent(user_input, user_id) == "coaching"
         )
         if is_coaching:
-            result = await _handle_coaching(user_id, user_input)
+            result = await _handle_coaching(
+                user_id, user_input, conversation_id=thread_id
+            )
         else:
             result = await _handle_meal_logging(
                 graph,
@@ -353,19 +357,25 @@ _UPGRADE_MSG = (
 )
 
 
-async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
+async def _handle_coaching(
+    user_id: str, user_input: str, conversation_id: str | None = None
+) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
 
     Consumes one quota credit per coaching turn (not per internal LLM call
     inside CoachingAgent). Returns an upgrade prompt when over quota.
+    Persists the reply to coaching_response so it can be rated and exported;
+    a failed write drops ``response_id`` but still returns the reply.
 
     Args:
         user_id: Supabase Auth UUID.
         user_input: User's nutrition question.
+        conversation_id: Thread id from the request, stored with the reply.
 
     Returns:
-        Dict with status, message, paused=False, and items=[] — same shape
-        as meal logging so web and Telegram channels stay uniform.
+        Dict with status, message, paused=False, items=[] — same shape as
+        meal logging so web and Telegram channels stay uniform — plus
+        response_id when the reply was persisted.
     """
     granted = await consume_llm_credit(user_id)
     if not granted:
@@ -375,11 +385,29 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
             "paused": False,
             "items": [],
         }
-    with logfire.span("coaching"):
+    with logfire.span("coaching") as span:
         result = await _coaching_agent.handle(user_id, user_input)
-    return {
+        span_ctx = trace.get_current_span().get_span_context()
+        trace_id = format(span_ctx.trace_id, "032x") if span_ctx.is_valid else None
+        response_id = await save_coaching_response(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            query=user_input,
+            result=result,
+            model=COACHING_MODEL,
+            trace_id=trace_id,
+        )
+        span.set_attribute("needs_guidance", result.parsed.needs_guidance)
+        span.set_attribute("retrieved_count", len(result.retrieved))
+        span.set_attribute("citation_count", len(result.citations))
+        span.set_attribute("response_id", response_id or "")
+
+    response: dict[str, Any] = {
         "status": "success",
         "message": result.message,
         "paused": False,
         "items": [],
     }
+    if response_id is not None:
+        response["response_id"] = response_id
+    return response

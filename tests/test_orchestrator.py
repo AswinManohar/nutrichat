@@ -18,6 +18,17 @@ def _mock_fact_task():
 
 
 @pytest.fixture(autouse=True)
+def _no_response_store():
+    """Keep coaching_response persistence off the database in every test."""
+    with patch(
+        "backend.agent.orchestrator.save_coaching_response",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _mock_history_store():
     """Keep the coaching history writes off the real Redis."""
     with patch(

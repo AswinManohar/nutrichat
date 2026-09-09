@@ -36,6 +36,10 @@ async def test_coaching_under_quota_calls_agent():
             new=AsyncMock(return_value=True),
         ),
         patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         mock_coaching.handle = AsyncMock(
             return_value=CoachingResult(
@@ -71,6 +75,68 @@ async def test_classify_intent_keyword_match_skips_quota():
 
     mock_credit.assert_not_called()
     assert intent == "log_meal"
+
+
+def _coaching_result(text: str) -> CoachingResult:
+    return CoachingResult(message=text, parsed=QueryParsed(time_range="today"))
+
+
+@pytest.mark.asyncio
+async def test_coaching_persists_and_returns_response_id():
+    from backend.agent.orchestrator import _handle_coaching
+
+    with (
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new_callable=AsyncMock,
+            return_value="resp-123",
+        ) as save_mock,
+    ):
+        mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
+        result = await _handle_coaching("user-1", "protein today?", conversation_id="t-1")
+
+    assert result == {
+        "status": "success",
+        "message": "120g today.",
+        "paused": False,
+        "items": [],
+        "response_id": "resp-123",
+    }
+    kwargs = save_mock.await_args.kwargs
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["conversation_id"] == "t-1"
+    assert kwargs["query"] == "protein today?"
+    assert kwargs["result"].message == "120g today."
+    assert kwargs["model"]  # COACHING_MODEL value
+    assert kwargs["trace_id"] is None or len(kwargs["trace_id"]) == 32
+
+
+@pytest.mark.asyncio
+async def test_coaching_omits_response_id_when_persistence_fails():
+    from backend.agent.orchestrator import _handle_coaching
+
+    with (
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
+        result = await _handle_coaching("user-1", "protein today?")
+
+    assert "response_id" not in result
+    assert result["message"] == "120g today."
 
 
 @pytest.mark.asyncio
