@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 import logfire
@@ -62,7 +62,7 @@ async def rate_response(
             raise HTTPException(status_code=404, detail="Coaching response not found")
         row.rating = req.rating
         row.rating_comment = req.comment
-        row.rated_at = datetime.now(timezone.utc)
+        row.rated_at = datetime.now(UTC)
         await session.commit()
         logfire.info(
             "coaching_feedback",

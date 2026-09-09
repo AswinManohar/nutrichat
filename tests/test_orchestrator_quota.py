@@ -98,7 +98,9 @@ async def test_coaching_persists_and_returns_response_id():
         ) as save_mock,
     ):
         mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
-        result = await _handle_coaching("user-1", "protein today?", conversation_id="t-1")
+        result = await _handle_coaching(
+            "user-1", "protein today?", conversation_id="t-1"
+        )
 
     assert result == {
         "status": "success",

@@ -385,7 +385,7 @@ async def run_simulations() -> None:
         print(f"\n=== {user_id} ===")
         for question in QUESTIONS:
             answer = await agent.handle(user_id, question)
-            print(f"Q: {question}\nA: {answer}\n")
+            print(f"Q: {question}\nA: {answer.message}\n")
 
 
 async def cleanup_users() -> None:
