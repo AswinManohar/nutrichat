@@ -147,7 +147,16 @@ async def delete_missing_sources(
 
 
 async def _run(directory: Path, dry_run: bool) -> int:
-    """Parse every file first (fail fast), then sync each source."""
+    """Parse every file first (fail fast), then sync each source.
+
+    A missing or empty directory never reaches the database: an unreadable
+    ``--dir`` would otherwise parse zero sources and make the orphan sweep
+    delete the whole corpus.
+    """
+    if not directory.is_dir():
+        print(f"error: not a guideline directory: {directory}", file=sys.stderr)
+        return 2
+
     parsed: list[tuple[str, list[Chunk]]] = []
     for path in sorted(directory.glob("*.md")):
         try:
@@ -155,6 +164,10 @@ async def _run(directory: Path, dry_run: bool) -> int:
         except FrontmatterError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
+
+    if not parsed:
+        print(f"no guideline sources found in {directory}; orphan sweep skipped")
+        return 0
 
     session_factory = get_session()
     try:

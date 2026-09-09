@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.sql.dml import Delete
@@ -8,6 +9,7 @@ from sqlalchemy.sql.dml import Delete
 from backend.guidelines.chunking import Chunk, content_hash
 from backend.guidelines.ingest import (
     IngestStats,
+    _run,
     delete_missing_sources,
     sync_source,
 )
@@ -137,3 +139,27 @@ async def test_dry_run_counts_missing_sources_without_deleting() -> None:
     assert removed == 1
     assert session.execute.await_count == 1
     session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_directory_exits_2_without_opening_a_session(
+    tmp_path: Path,
+) -> None:
+    """A mistyped --dir must not let the orphan sweep empty the corpus."""
+    with patch("backend.guidelines.ingest.get_session") as get_session:
+        code = await _run(tmp_path / "no-such-dir", dry_run=False)
+
+    assert code == 2
+    get_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_empty_directory_skips_the_orphan_sweep(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with patch("backend.guidelines.ingest.get_session") as get_session:
+        code = await _run(tmp_path, dry_run=False)
+
+    assert code == 0
+    get_session.assert_not_called()
+    assert "orphan sweep skipped" in capsys.readouterr().out

@@ -88,6 +88,45 @@ def test_source_id_must_match_filename(tmp_path: Path) -> None:
         parse_markdown(path)
 
 
+def test_a_dashed_line_that_is_not_exactly_three_dashes_is_not_the_fence(
+    tmp_path: Path,
+) -> None:
+    """``----`` opens no body: the header is unterminated, not split early."""
+    path = tmp_path / "demo.md"
+    path.write_text(
+        "---\n"
+        "source_id: demo\n"
+        "title: Demo Guideline\n"
+        "url: https://example.org/demo\n"
+        "condition: general\n"
+        "license: public domain\n"
+        "----\n"
+        "## Chapter 1\n\nBody text.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FrontmatterError, match="unterminated"):
+        parse_markdown(path)
+
+
+def test_a_fence_with_trailing_text_is_not_the_fence(tmp_path: Path) -> None:
+    path = tmp_path / "demo.md"
+    path.write_text(
+        "---\n"
+        "source_id: demo\n"
+        "title: Demo Guideline\n"
+        "url: https://example.org/demo\n"
+        "condition: general\n"
+        "license: public domain\n"
+        "--- x\n"
+        "## Chapter 1\n\nBody text.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FrontmatterError, match="unterminated"):
+        parse_markdown(path)
+
+
 def test_horizontal_rule_inside_a_line_does_not_close_the_frontmatter(
     tmp_path: Path,
 ) -> None:

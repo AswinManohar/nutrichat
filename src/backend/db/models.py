@@ -457,8 +457,9 @@ class GuidelineChunk(Base):
     """One embedded passage from a curated public dietary guideline.
 
     Written by ``python -m backend.guidelines.ingest``. Read by
-    backend.guidelines.retrieval.retrieve() via pgvector ANN when a coaching
-    question needs a recommendation rather than a data readback.
+    backend.guidelines.retrieval.retrieve() via an exact pgvector cosine scan
+    (no ANN index — see migration 014) when a coaching question needs a
+    recommendation rather than a data readback.
     """
 
     __tablename__ = "guideline_chunk"
