@@ -86,3 +86,27 @@ def test_source_id_must_match_filename(tmp_path: Path) -> None:
     path = _write(tmp_path, "## A\n\nx\n", name="other.md")
     with pytest.raises(FrontmatterError, match="source_id"):
         parse_markdown(path)
+
+
+def test_horizontal_rule_inside_a_line_does_not_close_the_frontmatter(
+    tmp_path: Path,
+) -> None:
+    """A dashed run that is not its own line must not end the header."""
+    path = tmp_path / "demo.md"
+    path.write_text(
+        "---\n"
+        "source_id: demo\n"
+        "title: Demo Guideline\n"
+        "url: https://example.org/demo\n"
+        "condition: general\n"
+        "license: public domain\n"
+        "---\n"
+        "## Chapter 1\n\nA sentence with a stray ---dash run--- inside it.\n",
+        encoding="utf-8",
+    )
+
+    chunks = parse_markdown(path)
+
+    assert [c.section for c in chunks] == ["Chapter 1"]
+    assert chunks[0].source_title == "Demo Guideline"
+    assert "stray ---dash run--- inside it." in chunks[0].text

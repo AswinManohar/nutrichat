@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 MAX_CHUNK_WORDS = 300
 
 _HEADING_RE = re.compile(r"^(#{2,3})\s+(.*\S)\s*$")
+_CLOSING_DELIMITER_RE = re.compile(r"^---[ \t]*$", re.MULTILINE)
 
 
 class FrontmatterError(ValueError):
@@ -73,11 +74,13 @@ def _split_frontmatter(raw: str, path: Path) -> tuple[Frontmatter, str]:
     """
     if not raw.startswith("---\n"):
         raise FrontmatterError(f"{path.name}: missing YAML frontmatter")
-    end = raw.find("\n---", 4)
-    if end == -1:
+    # The closing delimiter is a line that is exactly "---", so a horizontal
+    # rule written inside a paragraph does not end the header early.
+    match = _CLOSING_DELIMITER_RE.search(raw, 4)
+    if match is None:
         raise FrontmatterError(f"{path.name}: unterminated YAML frontmatter")
-    header = raw[4:end]
-    body = raw[end + len("\n---") :].lstrip("\n")
+    header = raw[4 : match.start()]
+    body = raw[match.end() :].lstrip("\n")
     try:
         fields = yaml.safe_load(header) or {}
         frontmatter = Frontmatter(**fields)

@@ -6,7 +6,8 @@ Usage:
 
 For each ``<source_id>.md`` the file is chunked and hashed; only chunks whose
 hash is not yet stored are embedded and inserted, and stored chunks whose
-hash is no longer present are deleted. A second run with unchanged files
+hash is no longer present are deleted. Sources whose file has been removed
+from the directory are deleted wholesale. A second run with unchanged files
 performs no embedding calls and no writes.
 """
 
@@ -119,6 +120,32 @@ async def sync_source(
     return stats
 
 
+async def delete_missing_sources(
+    session: AsyncSession, present: Sequence[str], *, dry_run: bool = False
+) -> int:
+    """Delete every stored source that no longer has a file on disk.
+
+    Args:
+        session: Open async session; committed here when rows are deleted.
+        present: source_ids parsed from the directory in this run.
+        dry_run: Count without deleting.
+
+    Returns:
+        Number of sources removed (not chunks).
+    """
+    stmt = select(GuidelineChunk.source_id).distinct()
+    stored = set((await session.execute(stmt)).scalars().all())
+    orphaned = sorted(stored - set(present))
+    if not orphaned or dry_run:
+        return len(orphaned)
+
+    await session.execute(
+        delete(GuidelineChunk).where(GuidelineChunk.source_id.in_(orphaned))
+    )
+    await session.commit()
+    return len(orphaned)
+
+
 async def _run(directory: Path, dry_run: bool) -> int:
     """Parse every file first (fail fast), then sync each source."""
     parsed: list[tuple[str, list[Chunk]]] = []
@@ -140,6 +167,10 @@ async def _run(directory: Path, dry_run: bool) -> int:
                     f"{stats.source_id}: unchanged={stats.unchanged} "
                     f"added={stats.added} removed={stats.removed}"
                 )
+            removed_sources = await delete_missing_sources(
+                session, [source_id for source_id, _ in parsed], dry_run=dry_run
+            )
+            print(f"removed_sources={removed_sources}")
     finally:
         await dispose_engine()
     return 0

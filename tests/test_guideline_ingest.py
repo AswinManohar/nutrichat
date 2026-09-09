@@ -6,7 +6,11 @@ import pytest
 from sqlalchemy.sql.dml import Delete
 
 from backend.guidelines.chunking import Chunk, content_hash
-from backend.guidelines.ingest import IngestStats, sync_source
+from backend.guidelines.ingest import (
+    IngestStats,
+    delete_missing_sources,
+    sync_source,
+)
 
 
 def _chunk(section: str, text: str) -> Chunk:
@@ -89,4 +93,47 @@ async def test_dry_run_reports_but_does_not_write() -> None:
     assert stats.added == 1
     embed.assert_not_called()
     session.add_all.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+def _sources_session(stored_source_ids: list[str]) -> MagicMock:
+    session = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = stored_source_ids
+    session.execute = AsyncMock(return_value=result)
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.mark.asyncio
+async def test_source_whose_file_is_gone_is_deleted() -> None:
+    session = _sources_session(["demo", "retired"])
+
+    removed = await delete_missing_sources(session, ["demo"])
+
+    assert removed == 1
+    delete_stmt = session.execute.await_args_list[1].args[0]
+    assert isinstance(delete_stmt, Delete)
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_no_deletion_when_every_stored_source_still_has_a_file() -> None:
+    session = _sources_session(["demo"])
+
+    removed = await delete_missing_sources(session, ["demo"])
+
+    assert removed == 0
+    assert session.execute.await_count == 1
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dry_run_counts_missing_sources_without_deleting() -> None:
+    session = _sources_session(["demo", "retired"])
+
+    removed = await delete_missing_sources(session, ["demo"], dry_run=True)
+
+    assert removed == 1
+    assert session.execute.await_count == 1
     session.commit.assert_not_awaited()
