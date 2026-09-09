@@ -1,8 +1,8 @@
 """Coaching feedback loop + guideline retrieval tables.
 
 Adds `guideline_chunk` (embedded passages from curated public dietary
-guidelines, pgvector IVFFlat cosine index), `coaching_response` (every
-coaching reply with its inputs, ratable by the user), and
+guidelines, searched by exact pgvector cosine scan), `coaching_response`
+(every coaching reply with its inputs, ratable by the user), and
 `user_goal.conditions` (declared health conditions used to filter which
 guideline passages the coach may cite).
 
@@ -66,12 +66,9 @@ def upgrade() -> None:
         "ALTER COLUMN embedding TYPE vector(768) USING NULL"
     )
     op.create_index("ix_guideline_chunk_condition", "guideline_chunk", ["condition"])
-    op.execute("""
-        CREATE INDEX ix_guideline_chunk_embedding
-        ON guideline_chunk
-        USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100)
-        """)
+    # No ANN index yet: the corpus is small and a sequential scan is exact.
+    # Add an IVFFlat/HNSW index by a later migration once the corpus exceeds
+    # a few thousand chunks.
 
     # coaching_response
     op.create_table(
@@ -91,6 +88,12 @@ def upgrade() -> None:
             ARRAY(UUID()),
             nullable=False,
             server_default=sa.text("'{}'"),
+        ),
+        sa.Column(
+            "retrieved",
+            JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'"),
         ),
         sa.Column("citations", JSONB(), nullable=False),
         sa.Column("response_text", sa.Text(), nullable=False),
@@ -116,7 +119,6 @@ def downgrade() -> None:
     op.drop_index("ix_coaching_response_created_at", table_name="coaching_response")
     op.drop_index("ix_coaching_response_user_id", table_name="coaching_response")
     op.drop_table("coaching_response")
-    op.execute("DROP INDEX IF EXISTS ix_guideline_chunk_embedding")
     op.drop_index("ix_guideline_chunk_condition", table_name="guideline_chunk")
     op.drop_table("guideline_chunk")
     op.drop_column("user_goal", "conditions")
