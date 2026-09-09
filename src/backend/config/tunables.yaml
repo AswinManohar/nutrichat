@@ -181,6 +181,20 @@ memory:
   # Used in: agent/context.py
   top_k_preferences: 3
 
+  # Short-term conversation memory for the coaching agent: the last N
+  # user/assistant exchanges (across BOTH logging and coaching turns —
+  # logging turns are stored as one-line summaries) kept in Redis at
+  # `coach_history:{user_id}`. Lets follow-ups like "and yesterday?" or
+  # "what should I eat now?" resolve against what was just said/logged.
+  # Each exchange costs ~2 messages of prompt per coaching call.
+  # Used in: db/redis_client.py append_coaching_turns / get_coaching_history
+  coaching_history_turns: 6
+
+  # TTL (seconds) on the coaching history key, refreshed on every turn.
+  # A day: a follow-up the next morning shouldn't inherit last night's
+  # thread, and stale context is worse than none.
+  coaching_history_ttl_s: 43200
+
 junk:
   # Per-100g nutrient-density heuristic used by log_meal to flag junk
   # food in meal_log.flags ({"has_junk": bool, "junk_items": [...]}).

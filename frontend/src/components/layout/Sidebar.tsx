@@ -33,7 +33,7 @@ export function Sidebar() {
               onClick={disableBypass}
               className="text-[11px] text-sage-deep hover:underline font-medium text-left"
             >
-              Re-enable Supabase
+              Turn off Developer Mode
             </button>
           </div>
         )}

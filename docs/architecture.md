@@ -148,13 +148,26 @@ flowchart TD
 
 The response LLM (Gemini 2.5 Flash) only ever sees fetched data — the system
 prompt forbids inventing numbers, and graceful "no data" replies short-circuit
-before the LLM is called.
+before the LLM is called. Two further inputs frame every coaching call:
+
+- **User context** (`agent/context.py` `build_context` → `build_system_prompt`):
+  today's totals, goals/streak, the latest weekly pattern, mindful-mode
+  safety alerts, and the top-k pgvector preferences for this message. Appended
+  to the response agent's instructions; built concurrently with `parse_query`
+  and dropped (with a warning) if any of its backends fail.
+- **Conversation history** (`db/redis_client.py` `get_coaching_history`): the
+  last `memory.coaching_history_turns` exchanges, written by the orchestrator
+  after *every* turn — coaching replies verbatim, logging turns as a one-line
+  summary of the card or the post-log reply. Replayed as message history for
+  the response agent and as a transcript block for `parse_query`, so
+  "and yesterday?" can inherit the nutrient from the previous question.
 
 ## 5. Memory layers (PRD §5.1)
 
 | Layer | Storage | Writer | Reader | Status |
 |---|---|---|---|---|
 | Session (today totals) | Redis, TTL 24h | `log_meal` | coaching, dashboard | ✅ |
+| Conversation (last N turns, both intents) | Redis `coach_history:{user}`, TTL 12h | `orchestrator._record_turn` | `CoachingAgent` (parse + respond) | ✅ |
 | Episodic (meals) | `meal_log` + embedding | `log_meal` + `embed_meal_summary` | `get_history` | ✅ |
 | Semantic (preferences) | `user_memory` + pgvector | `extract_and_store_facts` | `build_context` ANN | ⚠️ task exists, not yet enqueued |
 | Procedural (templates) | `meal_template` | — | — | deferred (post-MVP) |

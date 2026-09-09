@@ -12,6 +12,7 @@ from backend.agent.coaching import CoachingAgent
 from backend.agent.graph import build_graph
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.config import get_tunables
+from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import consume_llm_credit
 from backend.workers.tasks import extract_and_store_facts
 
@@ -164,9 +165,57 @@ async def handle_message(
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
         span.set_attribute("paused", result["paused"])
 
+    # Short-term coaching memory: both intents, so the coach knows what was
+    # just logged as well as what was just asked.
+    await _record_turn(user_id, user_input, image_b64, result)
     # Preference memory (PRD F6): fire-and-forget on every handled turn.
     _enqueue_fact_extraction(user_id, user_input, result["message"])
     return result
+
+
+def _summarize_logging_result(result: dict[str, Any]) -> str:
+    """One-line assistant-side summary of a meal-logging turn for history.
+
+    A pending confirmation card is condensed to its items and totals (the
+    rendered card is long and half of it is UI chrome). Anything else — the
+    post-log reply, a cancel, an error — is already short and is kept as-is.
+    """
+    items = result.get("items") or []
+    if not (result.get("paused") and items):
+        return result["message"]
+    foods = ", ".join(f"{i['food_name']} {i['qty_g']:g}g" for i in items)
+    kcal = sum(i["kcal"] for i in items)
+    protein = sum(i["protein_g"] for i in items)
+    return (
+        f"Proposed a meal card, awaiting confirmation: {foods} "
+        f"(~{kcal:.0f} kcal, {protein:.0f}g protein)."
+    )
+
+
+async def _record_turn(
+    user_id: str,
+    user_input: str,
+    image_b64: str | None,
+    result: dict[str, Any],
+) -> None:
+    """Append this exchange to the user's coaching history.
+
+    Never raises: history is a side effect of the turn, and the reply has
+    already been produced by the time this runs.
+    """
+    if result["message"] == _UPGRADE_MSG:
+        return
+    user_text = user_input.strip() or ("[sent a meal photo]" if image_b64 else "")
+    if not user_text:
+        return
+    turns = [
+        CoachingTurn(role="user", content=user_text),
+        CoachingTurn(role="assistant", content=_summarize_logging_result(result)),
+    ]
+    try:
+        await append_coaching_turns(user_id, turns)
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("coaching history append failed for %s: %s", user_id, exc)
 
 
 def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) -> None:

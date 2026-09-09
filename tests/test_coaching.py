@@ -4,6 +4,8 @@ from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic_ai import capture_run_messages
+from pydantic_ai.messages import ModelRequest, ModelResponse
 from pydantic_ai.models.test import TestModel
 
 from backend.agent import coaching
@@ -12,10 +14,37 @@ from backend.agent.coaching import (
     QueryParsed,
     _resolve_date_range,
     fetch_data,
+    generate_response,
     parse_query,
 )
+from backend.agent.context import ContextBundle, GoalSummary
 from backend.db.models import UserGoal
-from backend.db.redis_client import TodayTotals
+from backend.db.redis_client import CoachingTurn, TodayTotals
+
+
+@pytest.fixture(autouse=True)
+def _no_user_state():
+    """Keep build_context (Postgres + embeddings) and the Redis history off
+    the real backends for every test; tests that care override these."""
+    with (
+        patch(
+            "backend.agent.coaching.build_context",
+            new_callable=AsyncMock,
+            return_value=ContextBundle(today_totals=TodayTotals()),
+        ),
+        patch(
+            "backend.agent.coaching.get_coaching_history",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        yield
+
+
+_HISTORY = [
+    CoachingTurn(role="user", content="how much protein today?"),
+    CoachingTurn(role="assistant", content="95g so far."),
+]
 
 
 def _mock_session_factory(goal=None):
@@ -421,3 +450,166 @@ async def test_handle_meal_plan_feeds_today_totals_and_goals():
     assert data["goals"]["protein_goal"] == 120.0
     # Dietary prefs must reach the model so suggestions can respect them.
     assert data["goals"]["dietary_prefs"] == {"vegan": True}
+
+
+# ---------------------------------------------------------------------------
+# User context + conversation history wiring
+# ---------------------------------------------------------------------------
+
+
+async def test_generate_response_puts_user_context_in_instructions():
+    ctx = ContextBundle(
+        today_totals=TodayTotals(kcal=1450, protein_g=95, fiber_g=18, n_meals=3),
+        goals=GoalSummary(
+            kcal_goal=2200,
+            protein_goal=140,
+            fiber_goal=30,
+            dietary_prefs={},
+            streak_days=4,
+        ),
+        preferences=["dislikes mushrooms"],
+    )
+    context_prompt = coaching.build_system_prompt(ctx)
+
+    with (
+        coaching._response_agent.override(model=TestModel()),
+        capture_run_messages() as msgs,
+    ):
+        await generate_response(
+            "am I on track?", {"today_totals": {}}, context_prompt=context_prompt
+        )
+
+    first = msgs[0]
+    assert isinstance(first, ModelRequest)
+    assert "dislikes mushrooms" in first.instructions
+    assert "Current streak: 4 day(s)" in first.instructions
+    # The static rule set is still there alongside the per-user block.
+    assert "Ground every answer strictly in the provided data" in first.instructions
+
+
+async def test_generate_response_replays_history_before_the_question():
+    with (
+        coaching._response_agent.override(model=TestModel()),
+        capture_run_messages() as msgs,
+    ):
+        await generate_response("and yesterday?", {"macros": {}}, history=_HISTORY)
+
+    # history (request, response) then the new request
+    assert [type(m) for m in msgs[:3]] == [ModelRequest, ModelResponse, ModelRequest]
+    assert msgs[0].parts[0].content == "how much protein today?"
+    assert msgs[1].parts[0].content == "95g so far."
+    assert "and yesterday?" in msgs[2].parts[-1].content
+
+
+async def test_generate_response_without_history_starts_with_the_question():
+    with (
+        coaching._response_agent.override(model=TestModel()),
+        capture_run_messages() as msgs,
+    ):
+        await generate_response("how am I doing?", {"macros": {}})
+
+    assert isinstance(msgs[0], ModelRequest)
+    assert "how am I doing?" in msgs[0].parts[-1].content
+
+
+async def test_parse_query_sees_recent_conversation():
+    test_model = TestModel(
+        custom_output_args={"time_range": "yesterday", "nutrients": ["protein_g"]}
+    )
+    with (
+        coaching._parse_agent.override(model=test_model),
+        capture_run_messages() as msgs,
+    ):
+        await parse_query("and yesterday?", history=_HISTORY)
+
+    prompt = msgs[0].parts[-1].content
+    assert "how much protein today?" in prompt
+    assert "95g so far." in prompt
+    assert prompt.rstrip().endswith("and yesterday?")
+
+
+async def test_parse_query_without_history_has_no_conversation_block():
+    test_model = TestModel(custom_output_args={"time_range": "today", "nutrients": []})
+    with (
+        coaching._parse_agent.override(model=test_model),
+        capture_run_messages() as msgs,
+    ):
+        await parse_query("how many calories today?")
+
+    prompt = msgs[0].parts[-1].content
+    assert "Recent conversation" not in prompt
+
+
+async def test_handle_threads_context_and_history_into_both_llm_calls():
+    parsed = QueryParsed(time_range="yesterday", nutrients=["protein_g"])
+    ctx = ContextBundle(
+        today_totals=TodayTotals(kcal=1450, protein_g=95, fiber_g=18, n_meals=3),
+        preferences=["vegetarian"],
+    )
+
+    with (
+        patch(
+            "backend.agent.coaching.get_coaching_history",
+            new_callable=AsyncMock,
+            return_value=_HISTORY,
+        ),
+        patch(
+            "backend.agent.coaching.build_context",
+            new_callable=AsyncMock,
+            return_value=ctx,
+        ) as ctx_mock,
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ) as parse_mock,
+        patch(
+            "backend.agent.coaching.get_macros_for_range",
+            new_callable=AsyncMock,
+            return_value={"protein_g": 120, "n_meals": 3},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="120g yesterday.",
+        ) as gen_mock,
+    ):
+        reply = await CoachingAgent().handle("user-1", "and yesterday?")
+
+    assert reply == "120g yesterday."
+    ctx_mock.assert_awaited_once_with("user-1", "and yesterday?")
+    assert parse_mock.await_args.kwargs["history"] == _HISTORY
+    kwargs = gen_mock.await_args.kwargs
+    assert kwargs["history"] == _HISTORY
+    assert "vegetarian" in kwargs["context_prompt"]
+
+
+async def test_handle_answers_without_context_when_build_context_fails():
+    parsed = QueryParsed(time_range="today", nutrients=["kcal"])
+
+    with (
+        patch(
+            "backend.agent.coaching.build_context",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("embedding API down"),
+        ),
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(kcal=1240, protein_g=85, fiber_g=10, n_meals=2),
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="1,240 kcal today.",
+        ) as gen_mock,
+    ):
+        reply = await CoachingAgent().handle("user-1", "how many calories today?")
+
+    assert reply == "1,240 kcal today."
+    assert gen_mock.await_args.kwargs["context_prompt"] == ""

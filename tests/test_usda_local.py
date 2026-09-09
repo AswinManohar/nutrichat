@@ -26,6 +26,8 @@ _ROWS: list[tuple[int, str]] = [
     (1010, "Bread, oatmeal"),
     (1011, "Rice, brown, long-grain, cooked"),
     (1012, "Chicken curry"),
+    (1013, "Blueberry juice"),
+    (1014, "Blueberry syrup"),
 ]
 
 _SAMPLE_MACROS = {
@@ -128,6 +130,23 @@ def test_empty_tokens_returns_none(fixture_db: Path, query: str) -> None:
 
 def test_substring_rescue_finds_blueberries(fixture_db: Path) -> None:
     match = usda_local.lookup("berries")
+    assert match is not None
+    assert match.description == "Blueberries, raw"
+
+
+def test_plural_query_reaches_plural_description_with_full_pool(
+    fixture_db: Path,
+) -> None:
+    """A full FTS pool must not hide the food the user actually named.
+
+    ``_tokenize`` rewrites "blueberries" to "blueberry", but FTS5 indexes the
+    raw description terms, and "blueberry" is not a prefix of the indexed
+    "blueberries". Substring rescue only backfills a thin pool, so with
+    ``pool_size`` filled by singular-form distractors ("Blueberry juice",
+    "Blueberry syrup") the correct row was unreachable and the lookup
+    returned juice at confidence 1.0 -- above the floor, so no LLM fallback.
+    """
+    match = usda_local.lookup("blueberries", pool_size=2)
     assert match is not None
     assert match.description == "Blueberries, raw"
 

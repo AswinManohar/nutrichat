@@ -59,6 +59,8 @@ class MemoryConfig(BaseModel):
     dedup_distance_threshold: float = Field(ge=0.0, le=2.0)
     new_fact_confidence: float = Field(ge=0.0, le=1.0)
     top_k_preferences: int = Field(gt=0)
+    coaching_history_turns: int = Field(gt=0)
+    coaching_history_ttl_s: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 

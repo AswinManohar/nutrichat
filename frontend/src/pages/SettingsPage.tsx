@@ -410,19 +410,19 @@ export const SettingsPage: React.FC = () => {
                   Offline Developer Mode is Active
                 </div>
                 <p className="text-[11px] text-muted leading-normal">
-                  All requests bypass live Supabase session authorization checks. Useful for offline code edits.
+                  All requests bypass live session authorization checks. Useful for offline code edits.
                 </p>
                 <button
                   type="button"
                   onClick={disableBypass}
                   className="text-ink-soft hover:text-ink font-semibold underline text-left w-fit self-start"
                 >
-                  Switch back to Supabase Authentication
+                  Turn off Developer Mode and sign in to Mealsy
                 </button>
               </div>
             ) : (
               <div className="text-muted leading-normal">
-                Connected securely via Supabase Auth services.
+                Signed in securely with your Mealsy account.
               </div>
             )}
 
