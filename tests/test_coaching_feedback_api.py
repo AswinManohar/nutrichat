@@ -119,6 +119,21 @@ def test_rating_overwrites_prior_rating_and_sets_rated_at(client: TestClient) ->
     factory.return_value.commit.assert_awaited_once()
 
 
+def test_comment_of_500_chars_is_accepted(client: TestClient) -> None:
+    row = _row("user-1")
+    factory = _session_with(row)
+
+    with patch("backend.api.coaching_feedback.get_session", return_value=factory):
+        resp = client.post(
+            f"/coaching/{RESPONSE_ID}/feedback",
+            json={"rating": "up", "comment": "x" * 500},
+            headers=_auth("user-1"),
+        )
+
+    assert resp.status_code == 200
+    assert row.rating_comment == "x" * 500
+
+
 def test_comment_over_500_chars_is_rejected(client: TestClient) -> None:
     resp = client.post(
         f"/coaching/{RESPONSE_ID}/feedback",
