@@ -6,7 +6,7 @@ coaching reply with its inputs, ratable by the user), and
 `user_goal.conditions` (declared health conditions used to filter which
 guideline passages the coach may cite).
 
-Revision ID: 012
+Revision ID: 014
 Revises: 011
 Create Date: 2026-09-09
 """
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
-revision = "012"
+revision = "014"
 down_revision = "011"
 branch_labels = None
 depends_on = None
