@@ -246,3 +246,50 @@ async def test_handle_no_micronutrient_data_returns_result_not_str() -> None:
 
     assert isinstance(result, CoachingResult)
     assert result.message == "I don't have data on Vitamin B-12 for that period."
+
+
+@pytest.mark.asyncio
+async def test_handle_answers_from_passages_when_nutrient_has_no_logged_data() -> None:
+    """A guidance question naming a nutrient must not hit the "no data" reply.
+
+    "How much sodium should I have?" parses with nutrients=["sodium_mg"] and
+    needs_guidance=True. With nothing logged, the old short-circuit returned
+    "I don't have data on sodium" before the guideline passages were used.
+    """
+    parsed = QueryParsed(
+        time_range="today", nutrients=["sodium_mg"], needs_guidance=True
+    )
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching.get_micronutrients_for_range",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.get_session",
+            return_value=_mock_session_factory(None),
+        ),
+        patch(
+            "backend.agent.coaching.retrieve",
+            new_callable=AsyncMock,
+            return_value=_CHUNKS,
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="Keep sodium under 2,300 mg a day [1].",
+        ) as gen_mock,
+    ):
+        result = await CoachingAgent().handle(
+            "user-1", "how much sodium should I have?"
+        )
+
+    gen_mock.assert_awaited_once()
+    assert gen_mock.await_args.kwargs["passages"] == _CHUNKS
+    assert result.message == "Keep sodium under 2,300 mg a day [1]."
+    assert [c.n for c in result.citations] == [1]

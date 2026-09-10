@@ -511,7 +511,11 @@ class CoachingAgent:
 
         micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
 
-        if micro_nutrients and not data.get("micronutrients"):
+        # "How much sodium should I have?" names a nutrient but asks for a
+        # recommendation, not a readback. When guideline passages came back,
+        # let the model answer from them instead of short-circuiting on the
+        # absence of logged data.
+        if micro_nutrients and not data.get("micronutrients") and not retrieved:
             names = ", ".join(_humanize_nutrient_name(n) for n in micro_nutrients)
             return CoachingResult(
                 message=f"I don't have data on {names} for that period.",
