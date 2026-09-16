@@ -108,18 +108,15 @@ class ChatViewModelTest {
         )
         return ChatViewModel(
             repository,
-            api,
             FakeOnlineConnectivityObserver(),
             app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
             droppedLogStore,
         )
     }
 
-    /** No pending card, empty today/goals — the common "nothing to restore" startup. */
+    /** No pending card — the common "nothing to restore" startup. */
     private fun enqueueEmptyStartup() {
         server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
     }
 
     @Test
@@ -164,8 +161,6 @@ class ChatViewModelTest {
                 """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
             ),
         )
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
         viewModel.send("an egg").join()
@@ -187,8 +182,6 @@ class ChatViewModelTest {
                 """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
             ),
         )
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
         viewModel.send("an egg").join()
@@ -208,8 +201,6 @@ class ChatViewModelTest {
                 """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
             ),
         )
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
         server.enqueue(
             MockResponse().setResponseCode(201).setBody(
                 """{"id":"meal_1","name":"My eggs","kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"n_ingredients":1,"logged_today":false}""",
@@ -226,25 +217,6 @@ class ChatViewModelTest {
         assertFalse(viewModel.savingMeal.value)
         val messages = viewModel.messages.value
         assertTrue(messages.any { it is ChatMsg.Assistant && it.text.contains("Saved") })
-    }
-
-    @Test
-    fun `refreshTodayNow re-fetches today and goals`() = runBlocking {
-        enqueueEmptyStartup()
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        assertEquals(800.0, viewModel.today.value?.kcal)
-
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"kcal":950.0,"protein_g":50.0,"fiber_g":12.0,"n_meals":2,"by_type":[]}""",
-            ),
-        )
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
-
-        viewModel.refreshTodayNow().join()
-
-        assertEquals(950.0, viewModel.today.value?.kcal)
     }
 
     @Test
@@ -280,8 +252,6 @@ class ChatViewModelTest {
     @Test
     fun `init restores pending card`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
 
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
@@ -338,10 +308,6 @@ class ChatViewModelTest {
 
     private companion object {
         const val EMPTY_PENDING_BODY = """{"status":"success","message":"","paused":false,"items":[]}"""
-        const val TODAY_BODY =
-            """{"kcal":800.0,"protein_g":40.0,"fiber_g":10.0,"n_meals":1,"by_type":[]}"""
-        const val GOALS_BODY =
-            """{"tracking_mode":"goals","kcal_goal":2200.0,"protein_goal":140.0,"fiber_goal":30.0,"dietary_prefs":{},"streak_days":0}"""
         const val PAUSED_CARD_BODY = """
             {
               "status": "confirm",

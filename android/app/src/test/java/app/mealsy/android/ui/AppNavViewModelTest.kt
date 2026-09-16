@@ -420,9 +420,9 @@ class StartRouteForTest {
     }
 
     @Test
-    fun `signed in and onboarding not needed routes to chat`() {
+    fun `signed in and onboarding not needed routes to home`() {
         assertEquals(
-            "chat",
+            "home",
             startRouteFor(SessionState.SignedIn("user-1"), OnboardingState.NotNeeded),
         )
     }
@@ -438,5 +438,50 @@ class StartRouteForTest {
     @Test
     fun `loading session state is undecided`() {
         assertEquals(null, startRouteFor(SessionState.Loading, OnboardingState.NotNeeded))
+    }
+}
+
+/**
+ * Exercises [tabRoute] with a hand-built [androidx.navigation.NavDestination]
+ * — a plain-JVM `navigation-common` class, so no Robolectric/Android runtime
+ * is needed here, unlike the Compose-level nav wiring in [AppNav].
+ */
+class TabRouteTest {
+
+    /** Minimal [androidx.navigation.Navigator] just to construct a [androidx.navigation.NavDestination]. */
+    @androidx.navigation.Navigator.Name("fake")
+    private class FakeNavigator : androidx.navigation.Navigator<androidx.navigation.NavDestination>() {
+        override fun createDestination(): androidx.navigation.NavDestination =
+            androidx.navigation.NavDestination(this)
+    }
+
+    private fun destination(route: String?) = FakeNavigator().createDestination().apply { this.route = route }
+
+    @Test
+    fun `home tab route maps to itself`() {
+        assertEquals("home", destination("home").tabRoute())
+    }
+
+    @Test
+    fun `my-meals tab route maps to itself`() {
+        assertEquals("my-meals", destination("my-meals").tabRoute())
+    }
+
+    @Test
+    fun `trends tab route maps to itself`() {
+        assertEquals("trends", destination("trends").tabRoute())
+    }
+
+    @Test
+    fun `chat's parameterized pattern route maps to the plain chat tab`() {
+        assertEquals("chat", destination("chat?quickLog={quickLog}").tabRoute())
+    }
+
+    @Test
+    fun `an unrecognized route maps to null (pill defaults to hidden)`() {
+        assertEquals(null, destination("settings").tabRoute())
+        assertEquals(null, destination("onboarding?startStep={startStep}").tabRoute())
+        assertEquals(null, destination(null).tabRoute())
+        assertEquals(null, (null as androidx.navigation.NavDestination?).tabRoute())
     }
 }

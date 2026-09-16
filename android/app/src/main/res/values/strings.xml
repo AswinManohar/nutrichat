@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Bottom navigation -->
+    <string name="nav_home">Home</string>
     <string name="nav_chat">Chat</string>
     <string name="nav_trends">Trends</string>
     <string name="nav_my_meals">My Meals</string>
-    <string name="nav_settings">Settings</string>
+    <string name="nav_fab_quick_log">Quick log a meal</string>
+
+    <!-- Chat: quick log -->
+    <string name="chat_quick_log_opened">Quick log opened</string>
+
+    <!-- Meal type list placeholder (Phase 3) -->
+    <string name="meals_placeholder_message">That meal list is coming soon.</string>
+    <string name="meals_placeholder_back">Back</string>
 
     <!-- Onboarding: shared chrome -->
     <string name="onboarding_back">Back</string>

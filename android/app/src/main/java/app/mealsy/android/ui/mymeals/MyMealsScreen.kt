@@ -55,9 +55,11 @@ private const val SWIPE_DELETE_THRESHOLD_PX = 300f
  * quick-log (via a meal-type picker sheet), swipe-to-delete with an undo
  * snackbar.
  *
- * [onLoggedNavigateToChat] is called once a quick-log actually succeeds —
- * see [MyMealsViewModel]'s doc for why the today-header refresh happens on
- * the chat screen's `ON_RESUME` rather than here.
+ * [onLoggedNavigateToChat] is called once a quick-log actually succeeds. It
+ * pops back to the previous destination (Home, per the current nav graph) —
+ * Home's own `ON_RESUME` refresh (via `TodayRefreshSignal`) then picks up
+ * the newly-logged meal, so the pop just needs to land somewhere that reacts
+ * to the signal, not specifically back on chat.
  */
 @Composable
 fun MyMealsScreen(

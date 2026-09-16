@@ -45,16 +45,13 @@ sealed interface MyMealsUiState {
  * Drives the My Meals screen: listing saved meals, quick-logging one, and
  * swipe-to-delete with an undo window.
  *
- * Quick-logging a meal only calls `POST /my-meals/{id}/log` — it does not
- * itself refresh [app.mealsy.android.ui.chat.ChatViewModel]'s today header,
- * since that state lives on a different, already-alive `ChatViewModel`
- * instance (Hilt scopes both to the nav graph, not to each other). The
- * simplest correct wiring: [quickLog] returns a [Deferred] the screen awaits
- * before popping back to chat, and `ChatScreen` refreshes its own today
- * header on `ON_RESUME` (see `ChatScreen.kt`) — returning from this screen
- * always triggers that resume, so the header is current by the time the
- * user sees it again without this ViewModel needing to know `ChatViewModel`
- * exists.
+ * Quick-logging a meal only calls `POST /my-meals/{id}/log` and emits
+ * `TodayRefreshSignal.notifyLogged()` (from within [MyMealsRepository]) — it
+ * does not itself refresh any other screen's state directly. [quickLog]
+ * returns a [Deferred] the screen awaits before popping back (to Home, per
+ * the current nav graph); Home observes `TodayRefreshSignal` and refreshes
+ * on `ON_RESUME`, so its totals are current by the time the user sees it
+ * again without this ViewModel needing to know about any other screen.
  *
  * [deleteWithUndo]'s delayed `DELETE` deliberately runs on [appScope], not
  * `viewModelScope`: this `ViewModel` is scoped to the My Meals back-stack

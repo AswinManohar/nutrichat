@@ -4,9 +4,6 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.util.ConnectivityObserver
-import app.mealsy.data.api.GoalsResponse
-import app.mealsy.data.api.MealsyApi
-import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.image.ImageEncoder
 import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.repo.ChatRepository
@@ -35,18 +32,17 @@ sealed interface ChatMsg {
 }
 
 /**
- * Drives the chat screen: sending turns through [ChatRepository], editing
- * and confirming the resulting [ConfirmationCard], and keeping the today
- * header's totals/goals fresh.
+ * Drives the chat screen: sending turns through [ChatRepository], and
+ * editing and confirming the resulting [ConfirmationCard].
  *
- * [MealsyApi] is injected directly (alongside [ChatRepository]) purely to
- * back the today header's `GET /meals/today` / `GET /goals` reads — those
- * aren't part of the confirmation-flow contract [ChatRepository] owns.
+ * Today's totals/goals used to be read here for `ChatScreen`'s now-retired
+ * `TodayHeader` (`GET /meals/today` / `GET /goals`); Home owns that display
+ * now and refreshes itself via `TodayRefreshSignal`, so this view model no
+ * longer needs [app.mealsy.data.api.MealsyApi] at all.
  */
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val repository: ChatRepository,
-    private val api: MealsyApi,
     private val connectivity: ConnectivityObserver,
     private val myMealsRepository: MyMealsRepository,
     private val droppedLogStore: DroppedLogStore,
@@ -63,12 +59,6 @@ class ChatViewModel @Inject constructor(
 
     private val _offline = MutableStateFlow(false)
     val offline: StateFlow<Boolean> = _offline.asStateFlow()
-
-    private val _today = MutableStateFlow<TodayResponse?>(null)
-    val today: StateFlow<TodayResponse?> = _today.asStateFlow()
-
-    private val _goals = MutableStateFlow<GoalsResponse?>(null)
-    val goals: StateFlow<GoalsResponse?> = _goals.asStateFlow()
 
     /**
      * The just-confirmed card, kept around only so [ChatScreen] can offer
@@ -97,9 +87,9 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * The startup job that recovers a pending card and loads the today
-     * header. Exposed only so tests can [Job.join] it deterministically —
-     * production callers don't need to await it, the UI just observes the
+     * The startup job that recovers a pending card and surfaces any dropped
+     * offline logs. Exposed only so tests can [Job.join] it deterministically
+     * — production callers don't need to await it, the UI just observes the
      * resulting state flows.
      */
     val readyJob: Job = viewModelScope.launch {
@@ -133,7 +123,6 @@ class ChatViewModel @Inject constructor(
             // HttpException or anything else on startup recovery isn't fatal
             // and there's no chat transcript yet to report it into.
         }
-        refreshToday()
     }
 
     /**
@@ -246,7 +235,6 @@ class ChatViewModel @Inject constructor(
                         _lastLoggedCard.value = card
                         appendAssistant(outcome.message)
                         _offline.value = false
-                        refreshToday()
                     }
                     is LogOutcome.Queued -> {
                         _pendingCard.value = null
@@ -305,16 +293,6 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Re-fetches the today header's totals/goals. Public (unlike
-     * [refreshToday]) specifically for [ChatScreen]'s `ON_RESUME` hook — the
-     * simplest correct wiring for keeping the header current after a
-     * quick-log on `MyMealsScreen`, since that screen's `MyMealsViewModel`
-     * has no reference to this `ChatViewModel` instance (see
-     * `MyMealsViewModel`'s doc comment for the full rationale).
-     */
-    fun refreshTodayNow(): Job = viewModelScope.launch { refreshToday() }
-
-    /**
      * Saves [lastLoggedCard] as a new My Meal named [name]. Clears the
      * prompt on both success and failure — a 409 (duplicate name) or any
      * other error is reported into the transcript rather than left silently
@@ -349,17 +327,6 @@ class ChatViewModel @Inject constructor(
     /** Dismisses the "Save as My Meal" prompt without saving. */
     fun dismissSaveMealPrompt() {
         _lastLoggedCard.value = null
-    }
-
-    private suspend fun refreshToday() {
-        try {
-            _today.value = api.today()
-            _goals.value = api.goals()
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            // Today header just stays stale/empty; not fatal to the chat flow.
-        }
     }
 
     /** A 429 gets its own copy; every other server error is a generic retry prompt. */

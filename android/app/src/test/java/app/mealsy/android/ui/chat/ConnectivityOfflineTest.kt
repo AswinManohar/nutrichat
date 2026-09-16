@@ -64,8 +64,6 @@ class ConnectivityOfflineTest {
     @Test
     fun `losing connectivity sets the offline banner without any failed request`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-        server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
 
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
@@ -83,7 +81,7 @@ class ConnectivityOfflineTest {
         val connectivity = FakeConnectivityObserver(initial = true)
         val viewModel =
             ChatViewModel(
-                repository, api, connectivity,
+                repository, connectivity,
                 MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
             )
         viewModel.readyJob.join()
@@ -99,8 +97,6 @@ class ConnectivityOfflineTest {
     fun `connectivity restored clears the offline banner (no request needed to unstick it)`() =
         runBlocking {
             server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
-            server.enqueue(MockResponse().setResponseCode(200).setBody(TODAY_BODY))
-            server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
 
             val client = OkHttpClient.Builder()
                 .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
@@ -120,7 +116,7 @@ class ConnectivityOfflineTest {
             val connectivity = FakeConnectivityObserver(initial = true)
             val viewModel =
                 ChatViewModel(
-                    repository, api, connectivity,
+                    repository, connectivity,
                     MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
                 )
             viewModel.readyJob.join()
@@ -139,9 +135,5 @@ class ConnectivityOfflineTest {
 
     private companion object {
         const val EMPTY_PENDING_BODY = """{"status":"success","message":"","paused":false,"items":[]}"""
-        const val TODAY_BODY =
-            """{"kcal":800.0,"protein_g":40.0,"fiber_g":10.0,"n_meals":1,"by_type":[]}"""
-        const val GOALS_BODY =
-            """{"tracking_mode":"goals","kcal_goal":2200.0,"protein_goal":140.0,"fiber_goal":30.0,"dietary_prefs":{},"streak_days":0}"""
     }
 }
