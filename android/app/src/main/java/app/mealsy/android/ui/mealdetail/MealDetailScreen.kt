@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +40,7 @@ import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.ListContainer
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
+import app.mealsy.android.design.components.MealsyDialog
 import app.mealsy.android.design.components.MetaTag
 import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.SegmentedControl
@@ -54,6 +53,7 @@ import app.mealsy.android.design.theme.mealsyScreenPadding
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.android.ui.meals.formatLoggedAtTime
+import app.mealsy.android.ui.mymeals.CustomizeSheet
 import androidx.compose.ui.platform.LocalContext
 
 /**
@@ -78,6 +78,7 @@ fun MealDetailScreen(
     val sheet by viewModel.sheetState.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showLoggedToast by remember { mutableStateOf(false) }
+    var showCustomizeSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -111,7 +112,7 @@ fun MealDetailScreen(
                 state = s,
                 onBack = onBack,
                 onLogAgain = viewModel::openSheet,
-                onEditPortions = viewModel::editPortions,
+                onEditPortions = { showCustomizeSheet = true },
                 onDeleteRequested = { showDeleteDialog = true },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -133,6 +134,17 @@ fun MealDetailScreen(
             onSelectPortion = viewModel::selectSheetPortion,
             onConfirm = viewModel::confirmSheet,
             onDismiss = viewModel::dismissSheet,
+        )
+    }
+
+    if (showCustomizeSheet) {
+        CustomizeSheet(
+            onDismissRequest = { showCustomizeSheet = false },
+            onLogged = {
+                showCustomizeSheet = false
+                showLoggedToast = true
+                onLogged()
+            },
         )
     }
 }
@@ -336,15 +348,23 @@ private fun mealDetailIcon(mealType: String?) = when (mealType) {
 
 @Composable
 private fun DeleteMealDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
+    MealsyDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.meal_detail_delete_dialog_title)) },
-        text = { Text(stringResource(R.string.meal_detail_delete_dialog_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.meal_detail_delete_dialog_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.meal_detail_delete_dialog_cancel)) }
+        title = stringResource(R.string.meal_detail_delete_dialog_title),
+        body = stringResource(R.string.meal_detail_delete_dialog_body),
+        buttons = {
+            MealsyButton(
+                text = stringResource(R.string.meal_detail_delete_dialog_confirm),
+                onClick = onConfirm,
+                style = MealsyButtonStyle.Destructive,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            MealsyButton(
+                text = stringResource(R.string.meal_detail_delete_dialog_cancel),
+                onClick = onDismiss,
+                style = MealsyButtonStyle.Secondary,
+                modifier = Modifier.fillMaxWidth(),
+            )
         },
     )
 }

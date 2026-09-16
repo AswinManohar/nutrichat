@@ -1,23 +1,22 @@
 package app.mealsy.android.ui.mymeals
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -35,17 +35,40 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.mealsy.android.R
+import app.mealsy.android.design.components.Eyebrow
+import app.mealsy.android.design.components.InkToast
+import app.mealsy.android.design.components.InsetDivider
+import app.mealsy.android.design.components.ListContainer
+import app.mealsy.android.design.components.PastelIconCircle
+import app.mealsy.android.design.components.TagChip
+import app.mealsy.android.design.components.TagTone
+import app.mealsy.android.design.icons.MealsyIcons
+import app.mealsy.android.design.mascot.Olli
+import app.mealsy.android.design.mascot.OlliSize
+import app.mealsy.android.design.theme.MealsyTheme
+import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyScreenPadding
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.SavedMeal
+import app.mealsy.domain.CardItem
+import app.mealsy.domain.FoodNameHumanizer
+import app.mealsy.domain.PastelTone
+import app.mealsy.domain.pastelToneFor
+import java.text.NumberFormat
+import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 
 private const val SWIPE_DELETE_THRESHOLD_PX = 300f
+private const val UNDO_TOAST_MS = 4_000L
 
 /**
  * My Meals screen: saved quick-log meals with per-meal macros, tap to open
  * meal detail (which offers its own log-again flow), swipe-to-delete with an
- * undo snackbar.
+ * undo toast.
  *
  * [onLoggedNavigateToChat] is retained for API compatibility with existing
  * call sites but is no longer invoked from a row tap — logging now happens
@@ -64,73 +87,211 @@ fun MyMealsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val hiddenIds by viewModel.hiddenIds.collectAsStateWithLifecycle()
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    MyMealsContent(
+        uiState = uiState,
+        hiddenIds = hiddenIds,
+        onOpenMeal = onOpenMeal,
+        onRetry = viewModel::load,
+        onDeleteWithUndo = viewModel::deleteWithUndo,
+        onUndoDelete = viewModel::undoDelete,
+    )
+}
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text(
-                text = "My Meals",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(16.dp),
+/**
+ * [MyMealsScreen]'s content, taking its state directly rather than a
+ * `ViewModel` so [app.mealsy.android.ui.mymeals.MyMealsGoldenTest] can drive
+ * it with fake/in-memory state (no network), mirroring
+ * [app.mealsy.android.ui.mealdetail.MealDetailContent]'s pattern.
+ */
+@Composable
+internal fun MyMealsContent(
+    uiState: MyMealsUiState,
+    hiddenIds: Set<String>,
+    onOpenMeal: (String) -> Unit,
+    onRetry: () -> Unit,
+    onDeleteWithUndo: (String) -> Unit,
+    onUndoDelete: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var undoTarget by remember { mutableStateOf<SavedMeal?>(null) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().mealsyScreenPadding()) {
+            Eyebrow(text = stringResource(R.string.my_meals_eyebrow))
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.material3.Text(
+                text = stringResource(R.string.my_meals_title),
+                style = MealsyType.display,
+                color = MealsyTheme.colors.ink,
             )
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(10.dp))
 
             when (val state = uiState) {
-                MyMealsUiState.Loading -> LoadingState("Loading your meals…")
-                MyMealsUiState.Empty -> EmptyState()
-                is MyMealsUiState.Error -> ErrorState(state.message, onRetry = viewModel::load)
+                MyMealsUiState.Loading ->
+                    LoadingState(stringResource(R.string.my_meals_loading), modifier = Modifier.fillMaxSize())
+                MyMealsUiState.Empty -> MyMealsEmptyState(modifier = Modifier.fillMaxSize())
+                is MyMealsUiState.Error ->
+                    ErrorState(state.message, onRetry = onRetry, modifier = Modifier.fillMaxSize())
                 is MyMealsUiState.Loaded -> {
                     val visible = state.meals.filterNot { it.id in hiddenIds }
                     if (visible.isEmpty()) {
-                        EmptyState()
+                        MyMealsEmptyState(modifier = Modifier.fillMaxSize())
                     } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(visible, key = { it.id }) { meal ->
-                                SavedMealRow(
-                                    meal = meal,
-                                    onTap = { onOpenMeal(meal.id) },
-                                    onSwipeDelete = {
-                                        viewModel.deleteWithUndo(meal.id)
-                                        scope.launch {
-                                            val result = snackbarHostState.showSnackbar(
-                                                message = "Deleted \"${meal.name}\"",
-                                                actionLabel = "Undo",
-                                            )
-                                            if (result == SnackbarResult.ActionPerformed) {
-                                                viewModel.undoDelete(meal.id)
-                                            }
-                                        }
-                                    },
-                                )
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            item {
+                                ListContainer {
+                                    visible.forEachIndexed { index, meal ->
+                                        SavedMealRow(
+                                            meal = meal,
+                                            onTap = { onOpenMeal(meal.id) },
+                                            onSwipeDelete = {
+                                                onDeleteWithUndo(meal.id)
+                                                undoTarget = meal
+                                                scope.launch {
+                                                    delay(UNDO_TOAST_MS)
+                                                    if (undoTarget?.id == meal.id) undoTarget = null
+                                                }
+                                            },
+                                        )
+                                        if (index != visible.lastIndex) InsetDivider()
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
+        val toastTarget = undoTarget
+        if (toastTarget != null) {
+            UndoToast(
+                onUndo = {
+                    onUndoDelete(toastTarget.id)
+                    undoTarget = null
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The themed undo toast shown after a swipe-delete: [InkToast]'s "Deleted"
+ * copy plus a tappable "Undo" affordance overlaid on the same pill.
+ */
+@Composable
+private fun UndoToast(onUndo: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MealsyTheme.colors
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        InkToast(text = stringResource(R.string.my_meals_deleted_toast))
+        androidx.compose.material3.Surface(
+            shape = app.mealsy.android.design.theme.MealsyShapes.pill,
+            color = colors.ink,
+            modifier = Modifier.clickable(onClick = onUndo),
+        ) {
+            androidx.compose.material3.Text(
+                text = stringResource(R.string.my_meals_undo),
+                style = MealsyType.badge,
+                color = colors.olive,
+                modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun EmptyState() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = "No saved meals yet. Save one from a logged meal in chat.",
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(32.dp),
-        )
+private fun MyMealsEmptyState(modifier: Modifier = Modifier) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Olli(size = OlliSize.Done, bob = true)
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.material3.Text(
+                text = stringResource(R.string.my_meals_empty_body),
+                style = MealsyType.body,
+                color = MealsyTheme.colors.muted,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            )
+        }
     }
 }
 
-/** One saved meal: name, macros, ingredient count. Tap to open meal detail, swipe left to delete. */
+/** Formats [kcal] as tabular, thousands-separated whole kcal, e.g. "1,340". */
+private fun formatKcal(kcal: Double): String =
+    NumberFormat.getIntegerInstance(Locale.US).format(kcal.toInt())
+
+/**
+ * Heuristic for whether [raw] looks like a raw USDA description (and should
+ * be run through [FoodNameHumanizer.humanize]) versus a name the user typed
+ * themselves (shown verbatim): raw USDA strings are either comma-separated
+ * (`"Chicken, broilers or fryers, breast, meat only, cooked, grilled"`) or
+ * fully upper-case with no lowercase letters (`"USUAL BREAKFAST"` would
+ * NOT trip this — it has no comma and is a plausible user title, but a name
+ * like `"CHICKEN, BREAST"` trips both signals).
+ */
+internal fun displayName(raw: String): String {
+    val hasComma = raw.contains(',')
+    val isAllCaps = raw.isNotBlank() && raw.any { it.isLetter() } && raw.none { it.isLowerCase() }
+    return if (hasComma || isAllCaps) FoodNameHumanizer.humanize(raw) else raw
+}
+
+private fun SavedMeal.toCardItem(): CardItem = CardItem(
+    foodName = name,
+    qtyG = 1.0,
+    targetQtyG = 1.0,
+    kcal = kcal,
+    proteinG = proteinG,
+    carbsG = carbsG,
+    fatG = fatG,
+    fiberG = fiberG,
+    fdcId = 0L,
+    estimated = false,
+    extras = JsonObject(emptyMap()),
+)
+
+private fun PastelTone.toTagTone(): TagTone = when (this) {
+    PastelTone.Leaf -> TagTone.Leaf
+    PastelTone.Butter -> TagTone.Butter
+    PastelTone.Powder -> TagTone.Powder
+    PastelTone.Pink -> TagTone.Pink
+}
+
+/**
+ * One saved meal row, styled to match [app.mealsy.android.design.components.ListRow]'s
+ * height/padding/pressed state (composed by hand rather than through
+ * `ListRow` itself, since this row needs a [TagChip] trailing element that
+ * `ListRow`'s `trailingText`/`badgeCount` slots can't express, and `ListRow`
+ * is owned by `:core:ui` — see the Phase 5 T2 report for why it isn't
+ * extended instead). Tap opens meal detail; swipe left past the threshold
+ * deletes (optimistic hide + undo, driven by the caller).
+ */
 @Composable
 private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -> Unit) {
+    val colors = MealsyTheme.colors
     var dragOffset by remember { mutableStateOf(0f) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val background = if (pressed) colors.surfacePressed else androidx.compose.ui.graphics.Color.Transparent
 
-    Card(
+    val kcalText = stringResource(R.string.my_meals_row_kcal, formatKcal(meal.kcal))
+    val description = stringResource(
+        R.string.my_meals_row_description,
+        meal.name,
+        meal.kcal.toInt().toString(),
+        meal.proteinG.toInt().toString(),
+    )
+    val deleteAction = stringResource(R.string.my_meals_delete_action)
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .defaultMinSize(minHeight = 48.dp)
+            .background(background)
             .pointerInput(meal.id) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -140,41 +301,36 @@ private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -
                     onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
                 )
             }
-            // The whole card is one tap-to-log/swipe-to-delete target with
-            // no separately interactive children (unlike CardItemRow's
-            // editable qty field), so clearing and setting one description
-            // is safe here and avoids TalkBack reading three disjoint texts.
+            .pointerInput(meal.id) { detectTapToLog(onTap) }
             .clearAndSetSemantics {
-                contentDescription = "${meal.name}, ${meal.kcal.toInt()} kcal, " +
-                    "${meal.proteinG.toInt()}g protein"
-                customActions = listOf(
-                    CustomAccessibilityAction("Delete meal") { onSwipeDelete(); true },
-                )
-            },
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .pointerInput(meal.id) {
-                    // A plain tap (no drag) opens the meal-type sheet.
-                    detectTapToLog(onTap)
-                },
-        ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(meal.name, style = MaterialTheme.typography.titleMedium)
-                Text("${meal.kcal.toInt()} kcal")
+                contentDescription = description
+                customActions = listOf(CustomAccessibilityAction(deleteAction) { onSwipeDelete(); true })
             }
-            Text(
-                text = "${meal.proteinG.toInt()}g protein · ${meal.nIngredients} ingredients" +
-                    if (meal.loggedToday) " · logged today" else "",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
+            .padding(vertical = 9.dp, horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PastelIconCircle(
+            icon = MealsyIcons.Bowl,
+            tone = pastelToneFor(meal.toCardItem()).toTagTone(),
+            size = 34.dp,
+        )
+        androidx.compose.material3.Text(
+            text = displayName(meal.name),
+            style = MealsyType.body,
+            color = colors.ink,
+            modifier = Modifier.weight(1f),
+        )
+        TagChip(text = kcalText, tone = TagTone.Butter)
+        Icon(
+            imageVector = MealsyIcons.ChevronRight,
+            contentDescription = null,
+            tint = colors.inactive,
+            modifier = Modifier.padding(start = 2.dp).size(13.dp),
+        )
     }
 }
 
 private suspend fun PointerInputScope.detectTapToLog(onTap: () -> Unit) {
-    detectTapGestures(onTap = { onTap() })
+    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onTap() })
 }
