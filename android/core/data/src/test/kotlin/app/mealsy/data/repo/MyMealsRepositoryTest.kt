@@ -244,6 +244,54 @@ class MyMealsRepositoryTest {
     }
 
     @Test
+    fun `detail maps ingredients from the my-meals-id response`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "id": "meal_1",
+                  "name": "Usual breakfast",
+                  "kcal": 450.0,
+                  "protein_g": 28.0,
+                  "carbs_g": 40.0,
+                  "fat_g": 18.0,
+                  "fiber_g": 6.0,
+                  "n_ingredients": 1,
+                  "logged_today": true,
+                  "ingredients": [
+                    {
+                      "fdc_id": 12345,
+                      "food_name": "egg",
+                      "qty_g": 100.0,
+                      "kcal": 155.0,
+                      "protein_g": 13.0,
+                      "carbs_g": 1.1,
+                      "fat_g": 11.0,
+                      "fiber_g": 0.0,
+                      "estimated": false,
+                      "source": "USDA"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = buildRepository().detail("meal_1")
+
+        assertEquals("meal_1", result.meal.id)
+        assertEquals("Usual breakfast", result.meal.name)
+        assertTrue(result.meal.loggedToday)
+        assertEquals(1, result.ingredients.size)
+        assertEquals("egg", result.ingredients[0].foodName)
+        assertEquals(12345L, result.ingredients[0].fdcId)
+
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/my-meals/meal_1", request.path)
+    }
+
+    @Test
     fun `delete sends DELETE to my-meals slash id`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(204))
 

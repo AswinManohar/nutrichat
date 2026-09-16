@@ -407,6 +407,28 @@ data class SavedMealDto(
 )
 
 /**
+ * Full detail for one saved meal, per `MyMealDetail` in
+ * `src/backend/api/my_meals.py` — the same fields as [SavedMealDto] plus the
+ * meal's stored ingredients. `ingredients` reuses [ItemDto]/[ItemDtoSerializer]:
+ * the backend stores each ingredient verbatim (`IngredientIn`, `extra="allow"`),
+ * the same `food_name`/`qty_g`/macro/`fdc_id` shape as a confirm-card item,
+ * plus any extra fields that round-trip via [ItemDto.extras].
+ */
+@Serializable
+data class MyMealDetailDto(
+    val id: String,
+    val name: String,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fat_g") val fatG: Double,
+    @SerialName("fiber_g") val fiberG: Double,
+    @SerialName("n_ingredients") val nIngredients: Int,
+    @SerialName("logged_today") val loggedToday: Boolean = false,
+    val ingredients: List<ItemDto>,
+)
+
+/**
  * Body for `POST /my-meals`. `ingredients` reuses [ItemDto]/[ItemDtoSerializer]
  * — the backend's `IngredientIn` (`src/backend/api/my_meals.py`) declares the
  * same `food_name`/`qty_g`/macro fields and allows (and stores verbatim) any

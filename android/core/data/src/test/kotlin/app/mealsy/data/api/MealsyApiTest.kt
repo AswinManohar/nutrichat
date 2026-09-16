@@ -387,6 +387,63 @@ class MealsyApiTest {
         assertEquals("DELETE", request.method)
         assertEquals("/meals/log/m_789", request.path)
     }
+
+    @Test
+    fun `myMeal fetches the id path and parses ingredients with extras`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "id": "sm_42",
+                  "name": "Chicken bowl",
+                  "kcal": 620.0,
+                  "protein_g": 45.0,
+                  "carbs_g": 55.0,
+                  "fat_g": 18.0,
+                  "fiber_g": 6.0,
+                  "n_ingredients": 1,
+                  "logged_today": true,
+                  "ingredients": [
+                    {
+                      "fdc_id": 54321,
+                      "food_name": "chicken breast grilled",
+                      "qty_g": 150.0,
+                      "match_confidence": 0.95,
+                      "candidates": [],
+                      "kcal": 250.0,
+                      "protein_g": 40.0,
+                      "carbs_g": 0.0,
+                      "fat_g": 8.0,
+                      "fiber_g": 0.0,
+                      "sugar_g": 0.0,
+                      "sat_fat_g": 2.0,
+                      "nutrients": {},
+                      "source": "USDA",
+                      "estimated": false
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val api = buildApi()
+
+        val response = api.myMeal("sm_42")
+
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/my-meals/sm_42", request.path)
+
+        assertEquals("sm_42", response.id)
+        assertEquals("Chicken bowl", response.name)
+        assertTrue(response.loggedToday)
+        assertEquals(1, response.ingredients.size)
+        val ingredient = response.ingredients[0]
+        assertEquals("chicken breast grilled", ingredient.foodName)
+        assertEquals(54321L, ingredient.fdcId)
+        assertEquals("USDA", ingredient.extras["source"]?.jsonPrimitive?.content)
+        assertTrue(ingredient.extras.containsKey("match_confidence"))
+    }
 }
 
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()

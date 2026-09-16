@@ -60,6 +60,9 @@ interface MealsyApi {
     @GET("my-meals")
     suspend fun myMeals(): List<SavedMealDto>
 
+    @GET("my-meals/{id}")
+    suspend fun myMeal(@Path("id") id: String): MyMealDetailDto
+
     @POST("my-meals")
     suspend fun saveMeal(@Body body: SaveMealRequest): SavedMealDto
 

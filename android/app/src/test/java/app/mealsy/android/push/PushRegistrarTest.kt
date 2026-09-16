@@ -45,6 +45,7 @@ private class FakeMealsyApi : MealsyApi {
     override suspend fun trends(days: Int) = error("not used")
     override suspend fun categories(days: Int) = error("not used")
     override suspend fun myMeals() = error("not used")
+    override suspend fun myMeal(id: String) = error("not used")
     override suspend fun saveMeal(body: SaveMealRequest) = error("not used")
     override suspend fun logMyMeal(id: String, body: LogMyMealRequest) = error("not used")
     override suspend fun deleteMyMeal(id: String) = error("not used")

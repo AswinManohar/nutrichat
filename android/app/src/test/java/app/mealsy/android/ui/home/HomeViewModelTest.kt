@@ -14,6 +14,7 @@ import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
 import app.mealsy.data.api.MealsyApi
+import app.mealsy.data.api.MyMealDetailDto
 import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
@@ -71,6 +72,7 @@ private class FakeMealsyApi(
     override suspend fun trends(days: Int): List<DayTrendDto> = notImplemented()
     override suspend fun categories(days: Int): List<CategoryStatDto> = notImplemented()
     override suspend fun myMeals(): List<SavedMealDto> = notImplemented()
+    override suspend fun myMeal(id: String): MyMealDetailDto = notImplemented()
     override suspend fun saveMeal(body: SaveMealRequest): SavedMealDto = notImplemented()
     override suspend fun logMyMeal(id: String, body: LogMyMealRequest): LogItemsResponse = notImplemented()
     override suspend fun deleteMyMeal(id: String): Unit = notImplemented()

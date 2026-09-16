@@ -1,13 +1,16 @@
 package app.mealsy.data.repo
 
 import app.mealsy.data.api.IngredientOverrideDto
+import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.LogMyMealRequest
 import app.mealsy.data.api.MealsyApi
+import app.mealsy.data.api.MyMealDetailDto
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.SavedMealDto
 import app.mealsy.data.api.toSavedIngredientDto
 import app.mealsy.domain.ConfirmationCard
 import javax.inject.Inject
+import kotlinx.serialization.json.JsonObject
 
 /** One saved "quick log" meal, per `MyMealSummary` in `src/backend/api/my_meals.py`. */
 data class SavedMeal(
@@ -25,6 +28,32 @@ data class SavedMeal(
 /** One kept ingredient (by stored index) with its edited gram weight, for a customized quick-log. */
 data class SavedMealOverride(val index: Int, val qtyG: Double)
 
+/** One stored ingredient on a saved meal, carrying any extra backend fields verbatim. */
+data class SavedMealItem(
+    val foodName: String,
+    val qtyG: Double,
+    val kcal: Double,
+    val proteinG: Double,
+    val carbsG: Double,
+    val fatG: Double,
+    val fiberG: Double,
+    val fdcId: Long,
+    val estimated: Boolean,
+    val extras: JsonObject,
+)
+
+/**
+ * Full detail of one saved meal, per `MyMealDetail` in
+ * `src/backend/api/my_meals.py`. A dedicated type rather than reusing
+ * [LoggedMealDetail]/[LoggedMealItem] from [MealsRepository] — [SavedMeal]
+ * carries `name`/`nIngredients`/`loggedToday` instead of `mealType`/
+ * `loggedAt`/`nItems`, so the summary shapes don't line up.
+ */
+data class SavedMealDetail(
+    val meal: SavedMeal,
+    val ingredients: List<SavedMealItem>,
+)
+
 /**
  * Thin wrapper over `GET/POST/DELETE /my-meals` and `POST /my-meals/{id}/log`
  * (`src/backend/api/my_meals.py`). `GET /my-meals` returns a bare JSON array
@@ -36,6 +65,9 @@ class MyMealsRepository @Inject constructor(
     private val todayRefreshSignal: TodayRefreshSignal,
 ) {
     suspend fun list(): List<SavedMeal> = api.myMeals().map { it.toSavedMeal() }
+
+    /** Full detail, including stored ingredients, for the saved meal [id]. */
+    suspend fun detail(id: String): SavedMealDetail = api.myMeal(id).toSavedMealDetail()
 
     /**
      * Saves [fromCard]'s current items (post-edit gram weights and portion)
@@ -97,4 +129,32 @@ private fun SavedMealDto.toSavedMeal(): SavedMeal = SavedMeal(
     fiberG = fiberG,
     nIngredients = nIngredients,
     loggedToday = loggedToday,
+)
+
+private fun MyMealDetailDto.toSavedMealDetail(): SavedMealDetail = SavedMealDetail(
+    meal = SavedMeal(
+        id = id,
+        name = name,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fatG = fatG,
+        fiberG = fiberG,
+        nIngredients = nIngredients,
+        loggedToday = loggedToday,
+    ),
+    ingredients = ingredients.map { it.toSavedMealItem() },
+)
+
+private fun ItemDto.toSavedMealItem(): SavedMealItem = SavedMealItem(
+    foodName = foodName,
+    qtyG = qtyG,
+    kcal = kcal,
+    proteinG = proteinG,
+    carbsG = carbsG,
+    fatG = fatG,
+    fiberG = fiberG,
+    fdcId = fdcId,
+    estimated = estimated,
+    extras = extras,
 )
