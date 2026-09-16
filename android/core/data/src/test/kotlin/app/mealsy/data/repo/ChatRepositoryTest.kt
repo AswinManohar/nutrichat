@@ -531,6 +531,203 @@ class ChatRepositoryTest {
         assertEquals(original, (result as TurnResult.Reply).message)
     }
 
+    // --- Correct/decompose/combine turn helpers ---------------------------
+
+    @Test
+    fun `correctCandidate sends the same wording the web client sends`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"success","message":"Updated.","paused":false,"items":[]}""",
+            ),
+        )
+        val repository = buildRepository()
+        val idBefore = repository.conversationId()
+
+        repository.correctCandidate("chicken breast", "chicken thigh")
+
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"user_input\":\"use chicken thigh instead of chicken breast\""))
+        assertTrue(body.contains("\"conversation_id\":\"$idBefore\""))
+        assertEquals(idBefore, repository.conversationId())
+    }
+
+    @Test
+    fun `decompose sends action=decompose with empty user_input and returns Card`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+        val repository = buildRepository()
+        val idBefore = repository.conversationId()
+
+        val result = repository.decompose()
+
+        assertTrue(result is TurnResult.Card)
+        val request = server.takeRequest()
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"user_input\":\"\""))
+        assertTrue(body.contains("\"action\":\"decompose\""))
+        assertTrue(body.contains("\"conversation_id\":\"$idBefore\""))
+        assertEquals(idBefore, repository.conversationId())
+    }
+
+    @Test
+    fun `combine sends action=combine with empty user_input and returns Card`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+        val repository = buildRepository()
+        val idBefore = repository.conversationId()
+
+        val result = repository.combine()
+
+        assertTrue(result is TurnResult.Card)
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"user_input\":\"\""))
+        assertTrue(body.contains("\"action\":\"combine\""))
+        assertEquals(idBefore, repository.conversationId())
+    }
+
+    @Test
+    fun `correctCandidate recovers via GET meals-pending on IOException`() = runBlocking {
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+        val repository = buildRepository()
+        val idBefore = repository.conversationId()
+
+        val result = repository.correctCandidate("chicken breast", "chicken thigh")
+
+        assertTrue(result is TurnResult.Card)
+        server.takeRequest() // the dropped POST
+        val pendingRequest = server.takeRequest()
+        assertEquals(idBefore, pendingRequest.requestUrl?.queryParameter("conversation_id"))
+        assertEquals(idBefore, repository.conversationId())
+    }
+
+    @Test
+    fun `decompose recovers via GET meals-pending on IOException`() = runBlocking {
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+        val repository = buildRepository()
+
+        val result = repository.decompose()
+
+        assertTrue(result is TurnResult.Card)
+    }
+
+    @Test
+    fun `combine recovers via GET meals-pending on IOException`() = runBlocking {
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))
+        val repository = buildRepository()
+
+        val result = repository.combine()
+
+        assertTrue(result is TurnResult.Card)
+    }
+
+    @Test
+    fun `decompose rethrows when a dropped connection has nothing pending to recover`() = runBlocking {
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"success","message":"","paused":false,"items":[]}""",
+            ),
+        )
+        val repository = buildRepository()
+
+        var threw = false
+        try {
+            repository.decompose()
+        } catch (exc: java.io.IOException) {
+            threw = true
+        }
+
+        assertTrue(threw)
+    }
+
+    @Test
+    fun `combine rethrows when a dropped connection has nothing pending to recover`() = runBlocking {
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"success","message":"","paused":false,"items":[]}""",
+            ),
+        )
+        val repository = buildRepository()
+
+        var threw = false
+        try {
+            repository.combine()
+        } catch (exc: java.io.IOException) {
+            threw = true
+        }
+
+        assertTrue(threw)
+    }
+
+    // --- response_id / coaching feedback -----------------------------------
+
+    @Test
+    fun `Reply responseId is populated when response_id is present`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"success","message":"Great job!","paused":false,"items":[],"response_id":"resp_1"}""",
+            ),
+        )
+        val repository = buildRepository()
+
+        val result = repository.sendTurn("how am I doing?")
+
+        assertTrue(result is TurnResult.Reply)
+        assertEquals("resp_1", (result as TurnResult.Reply).responseId)
+    }
+
+    @Test
+    fun `Reply responseId is null when response_id is absent and does not throw`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"status":"success","message":"Great job!","paused":false,"items":[]}""",
+            ),
+        )
+        val repository = buildRepository()
+
+        val result = repository.sendTurn("how am I doing?")
+
+        assertTrue(result is TurnResult.Reply)
+        assertNull((result as TurnResult.Reply).responseId)
+    }
+
+    @Test
+    fun `submitCoachingFeedback posts rating and comment to the right path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200))
+        val repository = buildRepository()
+
+        repository.submitCoachingFeedback("resp_1", rating = 1, comment = "helpful")
+
+        val request = server.takeRequest()
+        assertTrue(request.path?.contains("coaching/resp_1/feedback") == true)
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"rating\":1"))
+        assertTrue(body.contains("\"comment\":\"helpful\""))
+    }
+
+    @Test
+    fun `submitCoachingFeedback omits a null comment from the wire`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200))
+        val repository = buildRepository()
+
+        repository.submitCoachingFeedback("resp_1", rating = 5)
+
+        val body = server.takeRequest().body.readUtf8()
+        assertFalse(body.contains("comment"))
+    }
+
     private fun pausedCardBody(foodName: String = "egg"): String = """
         {
           "status": "confirm",

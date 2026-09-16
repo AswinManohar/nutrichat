@@ -197,6 +197,86 @@ class MealsyApiTest {
     }
 
     @Test
+    fun `item with all five new keys plus unmodeled keys round-trips losslessly`() {
+        val wire = """
+            {
+              "food_name": "chicken curry", "qty_g": 250, "kcal": 400, "protein_g": 30,
+              "carbs_g": 10, "fat_g": 20, "fiber_g": 3, "fdc_id": 999,
+              "candidates": ["chicken curry", "chicken korma"],
+              "source": "usda", "confidence": 0.87, "source_dish": "curry plate",
+              "is_composite": true,
+              "nutrients": {"sodium": 500}, "sugar_g": 4.2
+            }
+        """.trimIndent()
+
+        val dto = json.decodeFromString(ItemDto.serializer(), wire)
+
+        assertEquals("chicken curry", dto.foodName)
+        assertEquals(listOf("chicken curry", "chicken korma"), dto.candidates)
+        assertEquals("usda", dto.source)
+        assertEquals(0.87, dto.confidence)
+        assertEquals("curry plate", dto.sourceDish)
+        assertEquals(true, dto.isComposite)
+
+        val reEncoded = json.encodeToString(ItemDto.serializer(), dto)
+        val reDecoded = json.decodeFromString(ItemDto.serializer(), reEncoded)
+
+        assertEquals(dto, reDecoded)
+        assertTrue(!reEncoded.contains("\"extras\""))
+        assertTrue(reEncoded.contains("\"sugar_g\":4.2"))
+        assertTrue(reEncoded.contains("\"nutrients\":{\"sodium\":500}"))
+        assertTrue(reEncoded.contains("\"candidates\":[\"chicken curry\",\"chicken korma\"]"))
+        assertTrue(reEncoded.contains("\"source\":\"usda\""))
+        assertTrue(reEncoded.contains("\"confidence\":0.87"))
+        assertTrue(reEncoded.contains("\"source_dish\":\"curry plate\""))
+        assertTrue(reEncoded.contains("\"is_composite\":true"))
+    }
+
+    @Test
+    fun `candidates as objects degrade to a list of names`() {
+        val wire = """
+            {
+              "food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13,
+              "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345,
+              "candidates": [
+                {"food_name": "egg, whole"},
+                {"name": "egg white"},
+                {"nothing_useful": true},
+                "duck egg",
+                42
+              ]
+            }
+        """.trimIndent()
+
+        val dto = json.decodeFromString(ItemDto.serializer(), wire)
+
+        assertEquals(listOf("egg, whole", "egg white", "duck egg"), dto.candidates)
+    }
+
+    @Test
+    fun `item without the five new keys decodes to defaults and encodes no stray keys`() {
+        val wire = """
+            {"food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13,
+             "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345}
+        """.trimIndent()
+
+        val dto = json.decodeFromString(ItemDto.serializer(), wire)
+
+        assertEquals(emptyList<String>(), dto.candidates)
+        assertEquals(null, dto.source)
+        assertEquals(null, dto.confidence)
+        assertEquals(null, dto.sourceDish)
+        assertEquals(false, dto.isComposite)
+
+        val reEncoded = json.encodeToString(ItemDto.serializer(), dto)
+
+        assertTrue(!reEncoded.contains("candidates"))
+        assertTrue(!reEncoded.contains("source"))
+        assertTrue(!reEncoded.contains("confidence"))
+        assertTrue(!reEncoded.contains("is_composite"))
+    }
+
+    @Test
     fun `registerDevice always serializes platform`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(201).setBody("""{"status":"registered"}"""))
         val api = buildApi()
@@ -371,9 +451,13 @@ class MealsyApiTest {
         val item = response.items[0]
         assertEquals("egg whole cooked scrambled", item.foodName)
         assertEquals(12345L, item.fdcId)
-        assertEquals("USDA", item.extras["source"]?.jsonPrimitive?.content)
+        // "source" and "candidates" are now modeled fields, not extras —
+        // "match_confidence" (distinct from the modeled "confidence") still
+        // round-trips through extras since it isn't one of the five new keys.
+        assertEquals("USDA", item.source)
         assertTrue(item.extras.containsKey("match_confidence"))
-        assertTrue(item.extras.containsKey("candidates"))
+        assertTrue(!item.extras.containsKey("candidates"))
+        assertTrue(!item.extras.containsKey("source"))
     }
 
     @Test
@@ -441,8 +525,11 @@ class MealsyApiTest {
         val ingredient = response.ingredients[0]
         assertEquals("chicken breast grilled", ingredient.foodName)
         assertEquals(54321L, ingredient.fdcId)
-        assertEquals("USDA", ingredient.extras["source"]?.jsonPrimitive?.content)
+        // "source" is now a modeled field; "match_confidence" (distinct from
+        // the modeled "confidence") still round-trips through extras.
+        assertEquals("USDA", ingredient.source)
         assertTrue(ingredient.extras.containsKey("match_confidence"))
+        assertTrue(!ingredient.extras.containsKey("source"))
     }
 }
 

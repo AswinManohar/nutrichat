@@ -1,5 +1,6 @@
 package app.mealsy.data.repo
 
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogTurnRequest
@@ -32,7 +33,13 @@ import kotlinx.serialization.json.Json
  * could in principle carry one.
  */
 sealed interface TurnResult {
-    data class Reply(val message: String) : TurnResult
+    /**
+     * @property responseId Wire `response_id`, populated only by the
+     *   coaching backend on the `andorid_prod` branch — always null on this
+     *   branch. UI that gates a feedback affordance on it simply doesn't
+     *   render when it's absent; no client-side fallback is needed.
+     */
+    data class Reply(val message: String, val responseId: String? = null) : TurnResult
     data class Card(val card: ConfirmationCard) : TurnResult
     data class UpgradeRequired(val message: String) : TurnResult
 }
@@ -134,12 +141,60 @@ class ChatRepository @Inject constructor(
 
     suspend fun sendTurn(text: String, imageB64: String? = null): TurnResult {
         val id = conversationId()
+        return postTurn(id, LogTurnRequest(userInput = text, conversationId = id, imageB64 = imageB64))
+    }
+
+    /**
+     * Sends the free-text correction the web client sends when a resolved
+     * food is swapped (`frontend/src/components/chat/ConfirmationCard.tsx`):
+     * the swap needs LLM re-resolution, so it goes back through the paused
+     * graph as a text turn rather than being applied client-side. Delegates
+     * to [sendTurn] so it inherits the same `IOException` -> `GET
+     * /meals/pending` recovery path rather than duplicating it.
+     */
+    suspend fun correctCandidate(from: String, to: String): TurnResult =
+        sendTurn("use $to instead of $from")
+
+    /**
+     * Asks the paused graph to break the composite dish into its
+     * ingredients. Does not rotate the conversation id (the graph stays
+     * paused) and does not clear [pendingConfirmation] except through the
+     * existing "a fresh card supersedes the old id" rule in [toTurnResult] —
+     * clearing it any other way here would let a stale `client_request_id`
+     * leak onto an unrelated confirm and double-log it.
+     */
+    suspend fun decompose(): TurnResult = sendAction("decompose")
+
+    /**
+     * Asks the paused graph to collapse the ingredients back into one item.
+     * Same non-rotation, non-clearing contract as [decompose].
+     */
+    suspend fun combine(): TurnResult = sendAction("combine")
+
+    /**
+     * Shared body for [decompose]/[combine]: posts an empty-text turn
+     * carrying `action`, through the same [postTurn] recovery path
+     * [sendTurn] uses.
+     */
+    private suspend fun sendAction(action: String): TurnResult {
+        val id = conversationId()
+        return postTurn(
+            id,
+            LogTurnRequest(userInput = "", conversationId = id, action = action),
+        )
+    }
+
+    /**
+     * Posts a turn and recovers via `GET /meals/pending` on [IOException],
+     * per the mobile API contract: `POST /meals/log` must never be blindly
+     * retried, since the request may or may not have committed server-side.
+     * Factored out of [sendTurn] so [decompose]/[combine] share the exact
+     * same recovery behaviour rather than a copy that could drift.
+     */
+    private suspend fun postTurn(id: String, request: LogTurnRequest): TurnResult {
         val response = try {
-            api.logTurn(LogTurnRequest(userInput = text, conversationId = id, imageB64 = imageB64))
+            api.logTurn(request)
         } catch (exc: IOException) {
-            // The request may or may not have committed server-side (see the
-            // mobile API contract: POST /meals/log must never be blindly
-            // retried). Recover the actual state instead of guessing.
             val recovered = api.pending(id).toCard()
             if (recovered != null) return TurnResult.Card(recovered)
             throw exc
@@ -149,6 +204,18 @@ class ChatRepository @Inject constructor(
 
     suspend fun recoverPending(): ConfirmationCard? {
         return api.pending(conversationId()).toCard()
+    }
+
+    /**
+     * Submits feedback on a coaching reply's [TurnResult.Reply.responseId].
+     * This endpoint does not exist on this branch's backend — it ships with
+     * the coaching work on `andorid_prod` — so callers must only invoke this
+     * when a turn actually carried a `responseId`. This is a thin pass-
+     * through: no client-side fallback, and failures are not swallowed —
+     * the caller decides how to handle them.
+     */
+    suspend fun submitCoachingFeedback(responseId: String, rating: Int, comment: String? = null) {
+        api.coachingFeedback(responseId, CoachingFeedbackRequest(rating = rating, comment = comment))
     }
 
     suspend fun confirmCard(card: ConfirmationCard): LogOutcome {
@@ -250,10 +317,12 @@ class ChatRepository @Inject constructor(
                 return TurnResult.UpgradeRequired(UPGRADE_SAFE_MESSAGE)
             }
         }
-        return TurnResult.Reply(stripUrls(response.message))
+        return TurnResult.Reply(stripUrls(response.message), response.responseId)
     }
 }
 
+// pendingCandidate is deliberately omitted: it's UI-only state for showing
+// a pending correction and must never reach the wire (see CardItem's KDoc).
 private fun CardItem.toItemDto(): ItemDto = ItemDto(
     foodName = foodName,
     qtyG = qtyG,
@@ -266,4 +335,9 @@ private fun CardItem.toItemDto(): ItemDto = ItemDto(
     fdcId = fdcId,
     estimated = estimated,
     extras = extras,
+    candidates = candidates,
+    source = source,
+    confidence = confidence,
+    sourceDish = sourceDish,
+    isComposite = isComposite,
 )

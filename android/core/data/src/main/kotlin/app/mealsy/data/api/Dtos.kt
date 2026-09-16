@@ -14,9 +14,11 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
@@ -43,6 +45,13 @@ data class LogTurnResponse(
     val paused: Boolean,
     val items: List<ItemDto> = emptyList(),
     val deduplicated: Boolean = false,
+    // Emitted only by the coaching backend on the `andorid_prod` branch;
+    // this branch's backend never sends this key. The default (rather than
+    // a required field) means a missing key decodes cleanly to null instead
+    // of throwing — the shared Json also has `ignoreUnknownKeys = true`, but
+    // that only covers *extra* keys, not a *missing* one, so the default is
+    // what actually protects this field.
+    @SerialName("response_id") val responseId: String? = null,
 )
 
 /**
@@ -55,6 +64,16 @@ data class LogTurnResponse(
  * `source`, etc.) from a `GET`/paused card straight back into
  * `POST /meals/log-items`. On encode, [extras] is flattened back to
  * top-level keys — the wire format never nests an `"extras"` object.
+ *
+ * @property candidates Alternate food names the resolver considered, wire
+ *   key `candidates`. The backend may send either a JSON array of strings or
+ *   an array of candidate objects (each with a `food_name`/`name` string);
+ *   [ItemDtoSerializer] degrades either shape to a plain list of names,
+ *   skipping any element it can't make sense of rather than throwing.
+ * @property source Wire key `source` — where this item's macros came from.
+ * @property confidence Wire key `confidence` — resolver match confidence.
+ * @property sourceDish Wire key `source_dish` — parent composite dish name.
+ * @property isComposite Wire key `is_composite`.
  */
 @Serializable(with = ItemDtoSerializer::class)
 data class ItemDto(
@@ -69,12 +88,18 @@ data class ItemDto(
     val fdcId: Long,
     val estimated: Boolean = false,
     val extras: JsonObject = JsonObject(emptyMap()),
+    val candidates: List<String> = emptyList(),
+    val source: String? = null,
+    val confidence: Double? = null,
+    val sourceDish: String? = null,
+    val isComposite: Boolean = false,
 )
 
 /** Wire keys [ItemDto] models explicitly; everything else round-trips via [ItemDto.extras]. */
 private val ITEM_DTO_KNOWN_KEYS = setOf(
     "food_name", "qty_g", "target_qty_g", "kcal", "protein_g",
     "carbs_g", "fat_g", "fiber_g", "fdc_id", "estimated",
+    "candidates", "source", "confidence", "source_dish", "is_composite",
 )
 
 object ItemDtoSerializer : KSerializer<ItemDto> {
@@ -97,7 +122,43 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
             fdcId = obj.getValue("fdc_id").jsonPrimitive.long,
             estimated = obj["estimated"]?.jsonPrimitive?.booleanOrNull ?: false,
             extras = JsonObject(obj.filterKeys { it !in ITEM_DTO_KNOWN_KEYS }),
+            candidates = obj["candidates"]?.let { parseCandidates(it) } ?: emptyList(),
+            source = obj["source"]?.jsonPrimitive?.contentOrNull,
+            confidence = obj["confidence"]?.jsonPrimitive?.doubleOrNull,
+            sourceDish = obj["source_dish"]?.jsonPrimitive?.contentOrNull,
+            isComposite = obj["is_composite"]?.jsonPrimitive?.booleanOrNull ?: false,
         )
+    }
+
+    /**
+     * Degrades a `candidates` wire value into a plain list of names.
+     *
+     * The backend may send either a JSON array of strings, or an array of
+     * candidate objects (each carrying its name under `food_name` or
+     * `name`). Any element that isn't one of those two shapes — or is a
+     * malformed object missing both keys — is skipped rather than thrown on,
+     * since candidates are a "did you mean" hint, not load-bearing data.
+     */
+    private fun parseCandidates(element: kotlinx.serialization.json.JsonElement): List<String> {
+        val array = element as? JsonArray ?: return emptyList()
+        return array.mapNotNull { entry ->
+            when (entry) {
+                is kotlinx.serialization.json.JsonObject ->
+                    (entry["food_name"] as? JsonPrimitive)?.contentOrNull
+                        ?: (entry["name"] as? JsonPrimitive)?.contentOrNull
+                // A bare JSON number/bool primitive isn't a candidate name;
+                // kotlinx.serialization's JsonPrimitive doesn't expose an
+                // `isString` flag on this version, so a value that parses
+                // cleanly as a number/bool is treated as non-string instead.
+                is JsonPrimitive ->
+                    if (entry.doubleOrNull == null && entry.booleanOrNull == null) {
+                        entry.contentOrNull
+                    } else {
+                        null
+                    }
+                else -> null
+            }
+        }
     }
 
     override fun serialize(encoder: Encoder, value: ItemDto) {
@@ -115,6 +176,19 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
         fields["fiber_g"] = JsonPrimitive(value.fiberG)
         fields["fdc_id"] = JsonPrimitive(value.fdcId)
         fields["estimated"] = JsonPrimitive(value.estimated)
+        // Optional fields are omitted entirely rather than written as
+        // `null`/empty — a decode of a payload that never had them must not
+        // gain stray keys on re-encode (round-trip test (c)).
+        if (value.candidates.isNotEmpty()) {
+            fields["candidates"] = JsonArray(value.candidates.map { JsonPrimitive(it) })
+        }
+        value.source?.let { fields["source"] = JsonPrimitive(it) }
+        value.confidence?.let { fields["confidence"] = JsonPrimitive(it) }
+        value.sourceDish?.let { fields["source_dish"] = JsonPrimitive(it) }
+        // Emitted only when true, symmetric with candidates/source/etc — a
+        // non-composite item never gained this key on decode, so it must not
+        // gain it on re-encode either.
+        if (value.isComposite) fields["is_composite"] = JsonPrimitive(true)
         // Flatten extras back to top level — never nest an "extras" object,
         // and never let a stale extras key shadow a field we set explicitly.
         value.extras.forEach { (key, element) ->
@@ -152,6 +226,11 @@ private fun ItemDto.toCardItem(): CardItem = CardItem(
     fdcId = fdcId,
     estimated = estimated,
     extras = extras,
+    candidates = candidates,
+    source = source,
+    confidence = confidence,
+    sourceDish = sourceDish,
+    isComposite = isComposite,
 )
 
 // ---------------------------------------------------------------------------
@@ -492,3 +571,22 @@ fun CardItem.toSavedIngredientDto(portion: Double): ItemDto {
         extras = extras,
     )
 }
+
+// ---------------------------------------------------------------------------
+// POST /coaching/{id}/feedback
+// ---------------------------------------------------------------------------
+
+/**
+ * Body for `POST /coaching/{id}/feedback`. This endpoint does not exist on
+ * this branch's backend — it ships with the coaching work on `andorid_prod`
+ * — so it is only ever reachable when a turn actually carried a
+ * [LogTurnResponse.responseId]. `comment` follows the shared `Json`'s
+ * `explicitNulls = false` (see [SaveMealRequest]/[LogMyMealRequest] above):
+ * a `null` comment is omitted from the wire rather than sent as `"comment":
+ * null`.
+ */
+@Serializable
+data class CoachingFeedbackRequest(
+    val rating: Int,
+    val comment: String? = null,
+)

@@ -150,7 +150,9 @@ class MealsRepositoryTest {
         assertEquals(1, result.items.size)
         assertEquals("egg whole cooked scrambled", result.items[0].foodName)
         assertEquals(12345L, result.items[0].fdcId)
-        assertTrue(result.items[0].extras.containsKey("source"))
+        // "source" is now a modeled ItemDto field (T1 wave), so it no longer
+        // flows into LoggedMealItem.extras.
+        assertTrue(!result.items[0].extras.containsKey("source"))
 
         val request = server.takeRequest()
         assertEquals("GET", request.method)

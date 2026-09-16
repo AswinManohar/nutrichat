@@ -86,4 +86,12 @@ interface MealsyApi {
 
     @DELETE("account")
     suspend fun deleteAccount()
+
+    /**
+     * Submits feedback on a coaching reply. Does not exist on this branch's
+     * backend (it ships with the coaching work on `andorid_prod`) — callers
+     * must only invoke this when a turn actually carried a `response_id`.
+     */
+    @POST("coaching/{id}/feedback")
+    suspend fun coachingFeedback(@Path("id") id: String, @Body body: CoachingFeedbackRequest)
 }
