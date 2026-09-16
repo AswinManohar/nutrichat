@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Trends screen. Kept in a separate file (rather than strings.xml) per
+         Phase 5 concurrency rules -- Android merges all values/*.xml into R.string. -->
+    <string name="trends_eyebrow">Trends</string>
+    <string name="trends_title_week">Your week</string>
+    <string name="trends_title_month">Your month</string>
+    <string name="trends_segment_week">Week</string>
+    <string name="trends_segment_month">Month</string>
+    <string name="trends_metric_avg_kcal">Avg kcal</string>
+    <string name="trends_metric_avg_protein">Avg protein</string>
+    <string name="trends_metric_days_logged">Days logged</string>
+    <string name="trends_days_logged_value">%1$d of %2$d</string>
+    <string name="trends_kcal_chart_desc">Calories, %1$d days, average %2$s</string>
+    <string name="trends_protein_chart_desc">Protein, %1$d days, average %2$dg</string>
+    <string name="trends_by_category">By category</string>
+    <string name="trends_category_avg">avg %1$s kcal · %2$d×</string>
+    <string name="trends_category_share_desc">%1$s, %2$d percent of total kcal</string>
+    <string name="trends_empty_message">Log a few meals to see trends.</string>
+    <string name="trends_loading">Loading trends…</string>
+    <string name="trends_error">Couldn\'t load trends. Check your connection.</string>
+</resources>

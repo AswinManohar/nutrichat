@@ -3,6 +3,7 @@ package app.mealsy.android.ui.trends
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.repo.DayPoint
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.TrendsRepository
 import kotlinx.coroutines.Dispatchers
@@ -173,5 +174,51 @@ class TrendsViewModelTest {
         viewModel.retry().join()
 
         assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
+    }
+
+    @Test
+    fun `Loaded derives avg kcal, avg protein and days-logged from the window`() = runBlocking {
+        enqueueLoadedResponses()
+        val viewModel = buildViewModel()
+
+        viewModel.readyJob.join()
+
+        val state = viewModel.uiState.value as TrendsUiState.Loaded
+        // TRENDS_BODY has exactly one day: kcal 1800.0, protein_g 95.0.
+        assertEquals(1800, state.avgKcal)
+        assertEquals(95, state.avgProteinG)
+        assertEquals(1, state.daysLoggedCount)
+        assertEquals(7, state.daysInWindow) // WEEK window
+        assertEquals(2200.0, state.kcalGoal)
+    }
+
+    @Test
+    fun `daysInWindow tracks the 30-day window after toggling`() = runBlocking {
+        enqueueLoadedResponses()
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+
+        enqueueLoadedResponses()
+        viewModel.setWindow(TrendsWindow.MONTH)?.join()
+
+        val state = viewModel.uiState.value as TrendsUiState.Loaded
+        assertEquals(30, state.daysInWindow)
+        assertEquals(1, state.daysLoggedCount)
+    }
+
+    @Test
+    fun `averageKcal and averageProteinG return zero for an empty day list, no division by zero`() {
+        assertEquals(0, averageKcal(emptyList()))
+        assertEquals(0, averageProteinG(emptyList()))
+    }
+
+    @Test
+    fun `averageKcal and averageProteinG average across multiple logged days`() {
+        val days = listOf(
+            DayPoint("2026-09-01", kcal = 1800.0, proteinG = 90.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
+            DayPoint("2026-09-02", kcal = 2200.0, proteinG = 110.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
+        )
+        assertEquals(2000, averageKcal(days))
+        assertEquals(100, averageProteinG(days))
     }
 }

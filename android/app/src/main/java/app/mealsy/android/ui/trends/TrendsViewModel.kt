@@ -6,9 +6,11 @@ import app.mealsy.data.repo.CategorySlice
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.TrendData
 import app.mealsy.data.repo.TrendsRepository
+import app.mealsy.data.repo.DayPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,12 +29,43 @@ sealed interface TrendsUiState {
     data object Loading : TrendsUiState
     data object Empty : TrendsUiState
     data class Error(val message: String) : TrendsUiState
+
+    /**
+     * @param proteinGoal The protein daily goal, for the protein chart's dashed reference line.
+     * @param kcalGoal The kcal daily goal, for the kcal chart's dashed reference line.
+     * @param avgKcal The average kcal across [averageKcal] — days *with data* only (see kdoc).
+     * @param avgProteinG The average protein grams across [averageProteinG] — same rule.
+     * @param daysLoggedCount How many days in the window have at least one logged meal
+     *   ([trends]`.days` already omits no-meal days, so this is just its size).
+     * @param daysInWindow The window's total day count (the "Days logged" denominator).
+     */
     data class Loaded(
         val trends: TrendData,
         val categories: List<CategorySlice>,
         val proteinGoal: Double?,
+        val kcalGoal: Double? = null,
+        val avgKcal: Int = averageKcal(trends.days),
+        val avgProteinG: Int = averageProteinG(trends.days),
+        val daysLoggedCount: Int = trends.days.size,
+        val daysInWindow: Int = 7,
     ) : TrendsUiState
 }
+
+/**
+ * Average kcal per logged day.
+ *
+ * Averages over days *with data* (the backend already omits no-meal days
+ * from [DayPoint] lists), not over the full window length — a 30-day window
+ * with 5 logged days reports the average of those 5 days, not a total
+ * diluted by 25 empty days. Returns `0` for an empty list (no division by
+ * zero).
+ */
+internal fun averageKcal(days: List<DayPoint>): Int =
+    if (days.isEmpty()) 0 else (days.sumOf { it.kcal } / days.size).roundToInt()
+
+/** Average protein grams per logged day. Same "days with data" rule as [averageKcal]. */
+internal fun averageProteinG(days: List<DayPoint>): Int =
+    if (days.isEmpty()) 0 else (days.sumOf { it.proteinG } / days.size).roundToInt()
 
 /**
  * Drives the trends screen: fetches `GET /meals/trends` + `GET /meals/categories`
@@ -73,8 +106,8 @@ class TrendsViewModel @Inject constructor(
             try {
                 val trends = trendsRepository.trends(selected.days)
                 val categories = trendsRepository.categories(selected.days)
-                val proteinGoal = try {
-                    goalsRepository.get()?.proteinGoal
+                val goals = try {
+                    goalsRepository.get()
                 } catch (exc: CancellationException) {
                     throw exc
                 } catch (exc: Exception) {
@@ -83,7 +116,13 @@ class TrendsViewModel @Inject constructor(
                 _uiState.value = if (trends.days.isEmpty() && categories.isEmpty()) {
                     TrendsUiState.Empty
                 } else {
-                    TrendsUiState.Loaded(trends, categories, proteinGoal)
+                    TrendsUiState.Loaded(
+                        trends = trends,
+                        categories = categories,
+                        proteinGoal = goals?.proteinGoal,
+                        kcalGoal = goals?.kcalGoal,
+                        daysInWindow = selected.days,
+                    )
                 }
             } catch (exc: CancellationException) {
                 throw exc
