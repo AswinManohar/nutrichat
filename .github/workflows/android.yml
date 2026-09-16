@@ -1,0 +1,42 @@
+name: Android
+
+on:
+  push:
+    paths: ['android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+
+# Notes on constraints this workflow must respect (see android/CLAUDE.md and
+# T6 task spec):
+#   - The build MUST succeed with NEITHER a `google-services.json` NOR an
+#     `android/local.properties` file present. Both are gitignored.
+#     `:core:data` falls back to defaults for API_BASE_URL/SUPABASE_* and the
+#     Firebase Gradle plugins are applied conditionally, so no secrets or a
+#     local.properties step are added here.
+#   - `android/gradlew` is already committed as executable; no `chmod` step
+#     is added unless it's proven necessary.
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: android
+
+      - name: Build, unit test, and verify Roborazzi goldens
+        working-directory: android
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :core:data:test :core:domain:test :core:ui:verifyRoborazziDebug --stacktrace
+
+      - name: Upload Roborazzi diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roborazzi-diffs
+          path: android/core/ui/build/outputs/roborazzi
