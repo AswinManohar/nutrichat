@@ -36,6 +36,7 @@ import app.mealsy.android.R
 import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.Eyebrow
 import app.mealsy.android.design.components.FilterChipPill
+import app.mealsy.android.design.components.formatThousands
 import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.ListContainer
@@ -434,7 +435,7 @@ private fun TargetsSection(
                     value = uiState.kcalGoal.toInt(),
                     step = 50,
                     min = 1000,
-                    valueLabel = { "$it kcal" },
+                    valueLabel = { "${formatThousands(it)} kcal" },
                     onValueChange = { onSetKcalGoal(it.toDouble()) },
                 )
                 InsetDivider()
@@ -608,18 +609,18 @@ internal fun DeleteAccountDialog(
         },
         buttons = {
             MealsyButton(
-                text = stringResource(R.string.settings_delete_account),
-                onClick = onConfirm,
-                enabled = confirmed && !deleting,
-                modifier = Modifier.fillMaxWidth(),
-                style = MealsyButtonStyle.Destructive,
-            )
-            MealsyButton(
                 text = stringResource(R.string.settings_delete_cancel),
                 onClick = onDismiss,
                 enabled = !deleting,
                 modifier = Modifier.fillMaxWidth(),
                 style = MealsyButtonStyle.Secondary,
+            )
+            MealsyButton(
+                text = stringResource(R.string.settings_delete_account),
+                onClick = onConfirm,
+                enabled = confirmed && !deleting,
+                modifier = Modifier.fillMaxWidth(),
+                style = MealsyButtonStyle.Destructive,
             )
         },
     )

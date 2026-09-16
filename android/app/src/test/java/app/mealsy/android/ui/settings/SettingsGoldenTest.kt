@@ -90,4 +90,17 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
             onDismiss = {},
         )
     }
+
+    @Test
+    fun deleteDialog_dark() = captureMealsyDialog("Settings_deleteDialog", true) {
+        DeleteAccountDialog(
+            confirmationText = deleteDialogState.deleteConfirmationText,
+            deleting = false,
+            error = null,
+            confirmed = false,
+            onConfirmationTextChange = {},
+            onConfirm = {},
+            onDismiss = {},
+        )
+    }
 }

@@ -354,15 +354,15 @@ private fun DeleteMealDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
         body = stringResource(R.string.meal_detail_delete_dialog_body),
         buttons = {
             MealsyButton(
-                text = stringResource(R.string.meal_detail_delete_dialog_confirm),
-                onClick = onConfirm,
-                style = MealsyButtonStyle.Destructive,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            MealsyButton(
                 text = stringResource(R.string.meal_detail_delete_dialog_cancel),
                 onClick = onDismiss,
                 style = MealsyButtonStyle.Secondary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            MealsyButton(
+                text = stringResource(R.string.meal_detail_delete_dialog_confirm),
+                onClick = onConfirm,
+                style = MealsyButtonStyle.Destructive,
                 modifier = Modifier.fillMaxWidth(),
             )
         },

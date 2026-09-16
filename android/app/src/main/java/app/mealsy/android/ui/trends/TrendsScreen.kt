@@ -209,6 +209,8 @@ private fun TrendsLoadedContent(
 
     Spacer(modifier = Modifier.height(24.dp))
 
+    Eyebrow(text = stringResource(R.string.trends_chart_calories))
+    Spacer(modifier = Modifier.height(8.dp))
     val kcalDesc = stringResource(
         R.string.trends_kcal_chart_desc,
         state.daysInWindow,
@@ -221,8 +223,10 @@ private fun TrendsLoadedContent(
         contentDescriptionText = kcalDesc,
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(20.dp))
 
+    Eyebrow(text = stringResource(R.string.trends_chart_protein))
+    Spacer(modifier = Modifier.height(8.dp))
     val proteinDesc = stringResource(
         R.string.trends_protein_chart_desc,
         state.daysInWindow,
@@ -342,8 +346,10 @@ private fun ProteinLineChart(
         }
         if (bars.size >= 2 && axisMax > 0f) {
             val path = Path()
+            val horizontalInset = 4.dp.toPx()
+            val plotWidth = size.width - horizontalInset * 2f
             bars.forEachIndexed { index, bar ->
-                val x = index * size.width / (bars.size - 1)
+                val x = horizontalInset + index * plotWidth / (bars.size - 1)
                 val fraction = (bar.proteinG.toFloat() / axisMax).coerceIn(0f, 1f)
                 val y = size.height * (1f - fraction)
                 if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)

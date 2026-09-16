@@ -245,6 +245,8 @@
     <string name="trends_days_logged_value">%1$d of %2$d</string>
     <string name="trends_kcal_chart_desc">Calories, %1$d days, average %2$s</string>
     <string name="trends_protein_chart_desc">Protein, %1$d days, average %2$dg</string>
+    <string name="trends_chart_calories">Calories</string>
+    <string name="trends_chart_protein">Protein</string>
     <string name="trends_by_category">By category</string>
     <string name="trends_category_avg">avg %1$s kcal · %2$d×</string>
     <string name="trends_category_share_desc">%1$s, %2$d percent of total kcal</string>
