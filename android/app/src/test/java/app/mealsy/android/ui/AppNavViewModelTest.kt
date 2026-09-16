@@ -15,6 +15,7 @@ import app.mealsy.data.api.LogMyMealRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
@@ -97,6 +98,9 @@ private class FakeMealsyApi(
     override suspend fun mealLog(id: String): MealLogDetailDto = error("not used")
     override suspend fun deleteMealLog(id: String) = error("not used")
     override suspend fun deleteAccount() = error("not used")
+
+    override suspend fun coachingFeedback(id: String, body: CoachingFeedbackRequest) =
+        error("not used")
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

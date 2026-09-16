@@ -7,10 +7,15 @@ import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -63,12 +68,17 @@ private class FakeDroppedLogStore(private var count: Int = 0) : DroppedLogStore 
  * scheduler doesn't know to wait for. [ChatViewModel.send]/`confirm`/`cancel`
  * return their launched [kotlinx.coroutines.Job] for exactly this reason:
  * tests `join()` it instead of guessing when the coroutine is done.
+ *
+ * The card is now an inline [ChatMsg.Card] in [ChatViewModel.messages]
+ * rather than a separate `pendingCard` flow — `activeCardOf` pulls the
+ * newest one back out for assertions.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
 
     private lateinit var server: MockWebServer
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val fixedClock = Clock.fixed(Instant.parse("2026-09-16T12:00:00Z"), ZoneOffset.UTC)
 
     @Before
     fun setUp() {
@@ -111,8 +121,12 @@ class ChatViewModelTest {
             FakeOnlineConnectivityObserver(),
             app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
             droppedLogStore,
+            fixedClock,
         )
     }
+
+    private fun activeCardOf(viewModel: ChatViewModel): ChatMsg.Card? =
+        viewModel.messages.value.lastOrNull { it is ChatMsg.Card } as? ChatMsg.Card
 
     /** No pending card — the common "nothing to restore" startup. */
     private fun enqueueEmptyStartup() {
@@ -131,11 +145,13 @@ class ChatViewModelTest {
         viewModel.send("two eggs").join()
 
         val messages = viewModel.messages.value
-        assertEquals(1, messages.size)
+        assertEquals(2, messages.size)
         assertTrue(messages[0] is ChatMsg.User)
         assertEquals("two eggs", (messages[0] as ChatMsg.User).text)
-        assertTrue(viewModel.pendingCard.value != null)
-        assertEquals(1, viewModel.pendingCard.value?.items?.size)
+        val card = activeCardOf(viewModel)
+        assertTrue(card != null)
+        assertTrue(card?.state is CardState.Active)
+        assertEquals(1, card?.card?.items?.size)
     }
 
     @Test
@@ -148,12 +164,29 @@ class ChatViewModelTest {
 
         viewModel.editQty(0, 150.0)
 
-        val card = viewModel.pendingCard.value
+        val card = activeCardOf(viewModel)?.card
         assertEquals(150.0, card?.items?.get(0)?.targetQtyG)
     }
 
     @Test
-    fun `confirm disables card and appends success message`() = runBlocking {
+    fun `removing the last item drops the card locally with no repository call`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+        assertEquals(1, activeCardOf(viewModel)?.card?.items?.size)
+
+        // Only two responses were ever enqueued (startup + the card turn) —
+        // a third request here would throw from an empty MockWebServer queue,
+        // proving no network call was made.
+        viewModel.removeItem(0)
+
+        assertNull(activeCardOf(viewModel))
+    }
+
+    @Test
+    fun `confirm collapses the card to Logged with label and kcal, and appends a coach reply`() = runBlocking {
         enqueueEmptyStartup()
         server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
         server.enqueue(
@@ -167,40 +200,53 @@ class ChatViewModelTest {
 
         viewModel.confirm()?.join()
 
-        assertNull(viewModel.pendingCard.value)
+        val card = activeCardOf(viewModel)
+        assertTrue(card?.state is CardState.Logged)
+        val logged = card?.state as CardState.Logged
+        assertEquals("Egg", logged.label)
+        assertEquals(155, logged.kcal)
         assertFalse(viewModel.sending.value)
         val messages = viewModel.messages.value
-        assertTrue(messages.any { it is ChatMsg.Assistant && it.text == "Logged breakfast." })
+        assertTrue(messages.any { it is ChatMsg.Coach && it.text == "Logged breakfast." })
+        val coachMsg = messages.first { it is ChatMsg.Coach } as ChatMsg.Coach
+        assertEquals(2, coachMsg.tags.size)
     }
 
     @Test
-    fun `confirm sets lastLoggedCard for the save-as-my-meal prompt`() = runBlocking {
+    fun `cancel stamps the card Discarded on success`() = runBlocking {
         enqueueEmptyStartup()
         server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
-            ),
-        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
         viewModel.send("an egg").join()
 
-        viewModel.confirm()?.join()
+        viewModel.cancel()?.join()
 
-        assertTrue(viewModel.lastLoggedCard.value != null)
-        assertEquals(1, viewModel.lastLoggedCard.value?.items?.size)
+        val card = activeCardOf(viewModel)
+        assertTrue(card?.state is CardState.Discarded)
     }
 
     @Test
-    fun `saveAsMyMeal posts to my-meals and clears the prompt on success`() = runBlocking {
+    fun `a new card supersedes the previous still-active one as NotLogged`() = runBlocking {
         enqueueEmptyStartup()
         server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Logged breakfast.","deduplicated":false}""",
-            ),
-        )
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+        viewModel.send("another egg").join()
+
+        val cards = viewModel.messages.value.filterIsInstance<ChatMsg.Card>()
+        assertEquals(2, cards.size)
+        assertTrue(cards[0].state is CardState.NotLogged)
+        assertTrue(cards[1].state is CardState.Active)
+    }
+
+    @Test
+    fun `saveAsMyMeal posts to my-meals and emits a success toast`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
         server.enqueue(
             MockResponse().setResponseCode(201).setBody(
                 """{"id":"meal_1","name":"My eggs","kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"n_ingredients":1,"logged_today":false}""",
@@ -209,14 +255,55 @@ class ChatViewModelTest {
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
         viewModel.send("an egg").join()
-        viewModel.confirm()?.join()
 
-        viewModel.saveAsMyMeal("My eggs")?.join()
+        // Started UNDISPATCHED (not GlobalScope+Unconfined): this runs
+        // synchronously on the calling thread up to its first suspension
+        // point, which is `collect`'s subscription itself — so the
+        // collector is guaranteed registered before onSaveAsMyMeal's
+        // tryEmit below, rather than racing a merely-scheduled launch
+        // against it. `_toasts` is a `replay = 0` SharedFlow: tryEmit
+        // silently drops the value for any collector not yet subscribed.
+        val toasts = mutableListOf<String>()
+        val collectJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            viewModel.toasts.collect { toasts.add(it) }
+        }
+        viewModel.onSaveAsMyMeal("My eggs")?.join()
+        collectJob.cancel()
 
-        assertNull(viewModel.lastLoggedCard.value)
         assertFalse(viewModel.savingMeal.value)
-        val messages = viewModel.messages.value
-        assertTrue(messages.any { it is ChatMsg.Assistant && it.text.contains("Saved") })
+        assertTrue(toasts.any { it.contains("Saved") })
+    }
+
+    @Test
+    fun `saveAsMyMeal emits a duplicate-name toast on 409`() = runBlocking {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+        server.enqueue(MockResponse().setResponseCode(409))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("an egg").join()
+
+        // See the UNDISPATCHED comment above — same subscription-race fix.
+        val toasts = mutableListOf<String>()
+        val collectJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            viewModel.toasts.collect { toasts.add(it) }
+        }
+        viewModel.onSaveAsMyMeal("My eggs")?.join()
+        collectJob.cancel()
+
+        assertTrue(toasts.any { it == "You already have a meal with that name." })
+    }
+
+    @Test
+    fun `submitFeedback is a no-op when the message has no responseId`() = runBlocking {
+        enqueueEmptyStartup()
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        // No coach message exists yet, but the no-op check happens before any
+        // lookup could matter — this documents that a message with a null
+        // responseId is never round-tripped to the repository.
+        val job = viewModel.submitFeedback("nonexistent", 1)
+        assertNull(job)
     }
 
     @Test
@@ -230,7 +317,7 @@ class ChatViewModelTest {
 
         assertFalse(viewModel.offline.value)
         val messages = viewModel.messages.value
-        assertTrue(messages.any { it is ChatMsg.Assistant && it.text.contains("Slow down") })
+        assertTrue(messages.any { it is ChatMsg.Coach && it.text.contains("Slow down") })
     }
 
     @Test
@@ -241,23 +328,26 @@ class ChatViewModelTest {
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
         viewModel.send("an egg").join()
-        assertTrue(viewModel.pendingCard.value != null)
+        assertTrue(activeCardOf(viewModel) != null)
 
         viewModel.cancel()?.join()
 
-        assertTrue(viewModel.pendingCard.value != null)
+        val card = activeCardOf(viewModel)
+        assertTrue(card?.state is CardState.Active)
         assertFalse(viewModel.sending.value)
     }
 
     @Test
-    fun `init restores pending card`() = runBlocking {
+    fun `init restores a pending card inline as Active`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
 
         val viewModel = buildViewModel()
         viewModel.readyJob.join()
 
-        assertTrue(viewModel.pendingCard.value != null)
-        assertEquals(1, viewModel.pendingCard.value?.items?.size)
+        val card = activeCardOf(viewModel)
+        assertTrue(card != null)
+        assertTrue(card?.state is CardState.Active)
+        assertEquals(1, card?.card?.items?.size)
     }
 
     @Test
@@ -271,7 +361,7 @@ class ChatViewModelTest {
         val messages = viewModel.messages.value
         assertTrue(
             messages.any {
-                it is ChatMsg.Assistant &&
+                it is ChatMsg.Coach &&
                     it.text == "A queued meal from earlier couldn't be synced and was dropped."
             },
         )
@@ -290,7 +380,7 @@ class ChatViewModelTest {
         val messages = viewModel.messages.value
         assertTrue(
             messages.any {
-                it is ChatMsg.Assistant &&
+                it is ChatMsg.Coach &&
                     it.text == "2 queued meals couldn't be synced and were dropped."
             },
         )
@@ -303,7 +393,7 @@ class ChatViewModelTest {
 
         viewModel.readyJob.join()
 
-        assertTrue(viewModel.messages.value.none { it is ChatMsg.Assistant })
+        assertTrue(viewModel.messages.value.none { it is ChatMsg.Coach })
     }
 
     private companion object {

@@ -15,6 +15,7 @@ import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.MyMealDetailDto
 import app.mealsy.data.api.QuotaResponse
@@ -102,6 +103,8 @@ private class FakeMealsyApi(
     }
 
     override suspend fun deleteAccount(): Unit = notImplemented()
+    override suspend fun coachingFeedback(id: String, body: CoachingFeedbackRequest): Unit =
+        notImplemented()
 
     private fun <T> notImplemented(): T = throw UnsupportedOperationException("not used by this test")
 }

@@ -13,6 +13,7 @@ import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
@@ -108,6 +109,9 @@ private class FakeMealsyApi(
         deleteAccountCallCount++
         onDeleteAccount?.invoke() ?: Unit
     }
+
+    override suspend fun coachingFeedback(id: String, body: CoachingFeedbackRequest) =
+        error("not used")
 }
 
 private fun echoGoals() = GoalsResponse(

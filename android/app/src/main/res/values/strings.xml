@@ -10,6 +10,51 @@
     <!-- Chat: quick log -->
     <string name="chat_quick_log_opened">Quick log opened</string>
 
+    <!-- Chat: header, empty state, input bar -->
+    <string name="chat_coach_title">Coach</string>
+    <string name="chat_coach_subtitle">answers in about 15 seconds</string>
+    <string name="chat_empty_prompt">Tell me what you ate, in plain words.</string>
+    <string name="chat_suggestion_eggs">2 eggs and toast</string>
+    <string name="chat_suggestion_salad">Chicken salad for lunch</string>
+    <string name="chat_suggestion_protein_question">How much protein today?</string>
+    <string name="chat_suggestion_dinner_question">What should I eat tonight?</string>
+    <string name="chat_input_placeholder">Describe a meal</string>
+    <string name="chat_mic_description">Voice input</string>
+    <string name="chat_camera_description">Take a photo</string>
+    <string name="chat_send_description">Send</string>
+    <string name="chat_offline_banner">You\'re offline — free-text logging needs a connection.</string>
+    <string name="chat_photo_description">Photo you sent</string>
+    <string name="chat_thumb_up_description">Helpful</string>
+    <string name="chat_thumb_down_description">Not helpful</string>
+    <string name="chat_card_logged">Logged: %1$s · %2$d kcal</string>
+    <string name="chat_card_not_logged">Not logged</string>
+    <string name="chat_card_discarded">Discarded — nothing logged.</string>
+
+    <!-- Confirm card -->
+    <string name="confirm_card_eyebrow">CONFIRM MEAL</string>
+    <string name="confirm_card_log_this_as">Log this as</string>
+    <string name="confirm_card_portion">Portion</string>
+    <string name="confirm_card_cancel">Cancel</string>
+    <string name="confirm_card_confirm">Confirm &amp; log</string>
+    <string name="confirm_card_not_right_food">Not the right food?</string>
+    <string name="confirm_card_estimated">estimated</string>
+    <string name="confirm_card_check_match">check match</string>
+    <string name="confirm_card_remove_action">Remove %1$s</string>
+    <string name="confirm_card_swap_action">Choose a different food for %1$s</string>
+    <string name="confirm_card_undo">Undo</string>
+    <string name="confirm_card_removed">Removed %1$s</string>
+    <string name="confirm_card_my_meal_name_hint">Name for My Meals…</string>
+    <string name="confirm_card_add_to_my_meals">Add to My Meals</string>
+    <string name="confirm_card_totals_kcal">kcal</string>
+    <string name="confirm_card_totals_protein">Protein</string>
+    <string name="confirm_card_totals_carbs">Carbs</string>
+    <string name="confirm_card_totals_fat">Fat</string>
+    <string name="confirm_card_totals_fiber">Fiber</string>
+    <plurals name="confirm_card_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+
     <!-- Onboarding: shared chrome -->
     <string name="onboarding_back">Back</string>
     <string name="onboarding_step_of_4">%1$d of 4</string>

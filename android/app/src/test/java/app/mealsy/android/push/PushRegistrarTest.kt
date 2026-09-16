@@ -10,6 +10,7 @@ import app.mealsy.data.api.LogMyMealRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.QuotaResponse
@@ -53,6 +54,9 @@ private class FakeMealsyApi : MealsyApi {
     override suspend fun mealLog(id: String): MealLogDetailDto = error("not used")
     override suspend fun deleteMealLog(id: String) = error("not used")
     override suspend fun deleteAccount() = error("not used")
+
+    override suspend fun coachingFeedback(id: String, body: CoachingFeedbackRequest) =
+        error("not used")
 
     override suspend fun registerDevice(body: RegisterDeviceRequest) {
         if (registerDeviceShouldThrow) throw RuntimeException("network down")
