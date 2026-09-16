@@ -1,5 +1,6 @@
 package app.mealsy.android.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -20,17 +21,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import app.mealsy.android.BuildConfig
+import app.mealsy.android.R
 import app.mealsy.android.di.AppVersionCode
 import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
@@ -44,6 +49,7 @@ import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import app.mealsy.data.repo.GoalsRepository
+import app.mealsy.data.repo.ProfileRefresher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -60,9 +66,14 @@ private const val APP_META_TIMEOUT_MS = 3_000L
 private const val ROUTE_LOGIN = "login"
 private const val ROUTE_CHAT = "chat"
 private const val ROUTE_ONBOARDING = "onboarding"
+private const val ARG_START_STEP = "startStep"
+private const val ROUTE_ONBOARDING_PATTERN = "$ROUTE_ONBOARDING?$ARG_START_STEP={$ARG_START_STEP}"
 private const val ROUTE_TRENDS = "trends"
 private const val ROUTE_MY_MEALS = "my-meals"
 private const val ROUTE_SETTINGS = "settings"
+
+/** Builds a navigable route to onboarding starting at [startStep] (0 = welcome). */
+private fun onboardingRoute(startStep: Int): String = "$ROUTE_ONBOARDING?$ARG_START_STEP=$startStep"
 
 /**
  * The four bottom-nav destinations, in display order. [icon] is one of the
@@ -70,13 +81,13 @@ private const val ROUTE_SETTINGS = "settings"
  * per Global Constraints) chosen as a reasonable approximation rather than
  * leaving three of the four tabs unlabeled-by-icon.
  */
-private data class BottomNavDestination(val route: String, val label: String, val icon: ImageVector)
+private data class BottomNavDestination(val route: String, @StringRes val labelRes: Int, val icon: ImageVector)
 
 private val BOTTOM_NAV_DESTINATIONS = listOf(
-    BottomNavDestination(ROUTE_CHAT, "Chat", Icons.Default.Email),
-    BottomNavDestination(ROUTE_TRENDS, "Trends", Icons.Default.DateRange),
-    BottomNavDestination(ROUTE_MY_MEALS, "My Meals", Icons.AutoMirrored.Filled.List),
-    BottomNavDestination(ROUTE_SETTINGS, "Settings", Icons.Default.Settings),
+    BottomNavDestination(ROUTE_CHAT, R.string.nav_chat, Icons.Default.Email),
+    BottomNavDestination(ROUTE_TRENDS, R.string.nav_trends, Icons.Default.DateRange),
+    BottomNavDestination(ROUTE_MY_MEALS, R.string.nav_my_meals, Icons.AutoMirrored.Filled.List),
+    BottomNavDestination(ROUTE_SETTINGS, R.string.nav_settings, Icons.Default.Settings),
 )
 
 /** Result of the startup version-gate check. */
@@ -116,6 +127,7 @@ class AppNavViewModel @Inject constructor(
     @AppVersionCode private val currentVersionCode: Int,
     private val pushRegistrar: PushRegistrar,
     private val goalsRepository: GoalsRepository,
+    private val profileRefresher: ProfileRefresher,
 ) : ViewModel() {
 
     val sessionState: StateFlow<SessionState> = sessionManager.sessionState
@@ -154,6 +166,7 @@ class AppNavViewModel @Inject constructor(
             sessionState.collect { state ->
                 when (state) {
                     is SessionState.SignedIn -> {
+                        profileRefresher.refreshProfileFromMetadata()
                         pushRegistrar.ensureRegistered()
                         checkOnboarding()
                     }
@@ -219,11 +232,34 @@ class AppNavViewModel @Inject constructor(
 }
 
 /**
+ * Pure routing decision extracted so it's unit-testable from a plain JVM test
+ * (composable navigation logic isn't reachable from [AppNavViewModel]'s
+ * tests otherwise). Returns `null` while the decision isn't resolvable yet —
+ * callers must not navigate on a `null` result.
+ */
+internal fun startRouteFor(sessionState: SessionState, onboardingState: OnboardingState): String? =
+    when (sessionState) {
+        SessionState.SignedOut -> onboardingRoute(startStep = 0)
+        is SessionState.SignedIn -> when (onboardingState) {
+            OnboardingState.Needed -> onboardingRoute(startStep = 1)
+            OnboardingState.NotNeeded -> ROUTE_CHAT
+            OnboardingState.Unknown -> null
+        }
+        SessionState.Loading -> null
+    }
+
+/**
  * App-level navigation host.
  *
  * On startup, blocks on the version gate ([AppNavViewModel.gateState]); once
- * clear, routes between `login` and `chat` based on [SessionManager]'s
- * [SessionState] so a sign-in/out anywhere in the tree updates navigation.
+ * clear, routes between the onboarding welcome, `chat`, and onboarding's
+ * later steps based on [SessionManager]'s [SessionState] and
+ * [AppNavViewModel.onboardingState] (see [startRouteFor]) so a sign-in/out
+ * anywhere in the tree updates navigation. Signed-out users land on the
+ * onboarding welcome (step 0), which is the graph's start destination; the
+ * existing `login` route is reached from there via
+ * [app.mealsy.android.ui.onboarding.OnboardingScreen]'s `onNavigateToLogin`
+ * and is otherwise unchanged.
  */
 @Composable
 fun AppNav(navController: NavHostController = rememberNavController()) {
@@ -272,10 +308,11 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                             ?.any { it.route == destination.route } == true,
                                         onClick = {
                                             // popUpTo ROUTE_CHAT (not the graph's start
-                                            // destination, which is ROUTE_LOGIN — removed
-                                            // from the stack on sign-in via `inclusive =
-                                            // true`, making a start-destination popUpTo a
-                                            // no-op here) so ROUTE_CHAT is the tab-root:
+                                            // destination, which is the onboarding welcome
+                                            // route — removed from the stack on sign-in/
+                                            // onboarding-complete via `inclusive = true`,
+                                            // making a start-destination popUpTo a no-op
+                                            // here) so ROUTE_CHAT is the tab-root:
                                             // switching tabs saves/restores each tab's
                                             // state instead of stacking indefinitely, and
                                             // back from any tab returns to chat.
@@ -291,7 +328,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                         icon = {
                                             Icon(destination.icon, contentDescription = null)
                                         },
-                                        label = { Text(destination.label) },
+                                        label = { Text(stringResource(destination.labelRes)) },
                                     )
                                 }
                             }
@@ -300,11 +337,19 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 ) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = ROUTE_LOGIN,
+                        startDestination = onboardingRoute(startStep = 0),
                         modifier = Modifier.padding(innerPadding),
                     ) {
                         composable(ROUTE_LOGIN) { LoginScreen() }
-                        composable(ROUTE_ONBOARDING) {
+                        composable(
+                            ROUTE_ONBOARDING_PATTERN,
+                            arguments = listOf(
+                                navArgument(ARG_START_STEP) {
+                                    type = NavType.IntType
+                                    defaultValue = 0
+                                },
+                            ),
+                        ) {
                             OnboardingScreen(
                                 onDone = {
                                     viewModel.onOnboardingComplete()
@@ -328,25 +373,10 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 }
 
                 LaunchedEffect(sessionState, onboardingState) {
-                    when (sessionState) {
-                        is SessionState.SignedIn -> {
-                            val destination = if (onboardingState is OnboardingState.Needed) {
-                                ROUTE_ONBOARDING
-                            } else {
-                                ROUTE_CHAT
-                            }
-                            navController.navigate(destination) {
-                                popUpTo(navController.graph.id) { inclusive = true }
-                                launchSingleTop = true
-                            }
-                        }
-
-                        SessionState.SignedOut -> navController.navigate(ROUTE_LOGIN) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                            launchSingleTop = true
-                        }
-
-                        SessionState.Loading -> Unit
+                    val destination = startRouteFor(sessionState, onboardingState) ?: return@LaunchedEffect
+                    navController.navigate(destination) {
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             }

@@ -21,7 +21,11 @@ import app.mealsy.data.auth.AuthGateway
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
+import app.mealsy.data.error.ErrorReporter
 import app.mealsy.data.repo.GoalsRepository
+import app.mealsy.data.repo.Profile
+import app.mealsy.data.repo.ProfileRefresher
+import app.mealsy.data.repo.ProfileStore
 import java.io.IOException
 import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlinx.coroutines.CompletableDeferred
@@ -127,11 +131,48 @@ class AppNavViewModelTest {
     /** Default: [MealsyApi.goals] is never called by these gate-only tests (sessionState stays SignedOut). */
     private fun goalsRepository(api: FakeMealsyApi = FakeMealsyApi()) = GoalsRepository(api)
 
+    /** In-memory [ProfileStore] fake — no DataStore/Android framework dependency. */
+    private class FakeProfileStore : ProfileStore {
+        private val state = MutableStateFlow(Profile())
+        override val profile = state
+
+        override suspend fun get(): Profile = state.value
+
+        override suspend fun set(firstName: String?, goalFocus: String?) {
+            state.value = state.value.copy(
+                firstName = firstName ?: state.value.firstName,
+                goalFocus = goalFocus ?: state.value.goalFocus,
+            )
+        }
+
+        override suspend fun clear() {
+            state.value = Profile()
+        }
+    }
+
+    private class RecordingErrorReporter : ErrorReporter {
+        val recorded = mutableListOf<Throwable>()
+        override fun record(t: Throwable) {
+            recorded += t
+        }
+    }
+
+    /**
+     * Default [ProfileRefresher]: reuses [FakeAuthGateway] as the [AuthGateway],
+     * same pattern `ProfileRefresherTest` (`:core:data`) already uses for the
+     * [ProfileStore]/[ErrorReporter] fakes.
+     */
+    private fun profileRefresher(
+        authGateway: AuthGateway = FakeAuthGateway(),
+        profileStore: ProfileStore = FakeProfileStore(),
+        errorReporter: ErrorReporter = RecordingErrorReporter(),
+    ) = ProfileRefresher(authGateway, profileStore, errorReporter)
+
     @Test
     fun `appMeta throws yields fail-open Ready`() = runTest {
         val api = FakeMealsyApi(appMetaResult = { throw RuntimeException("boom") })
         val viewModel = AppNavViewModel(
-            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(), profileRefresher(),
         )
 
         viewModel.gateState.test {
@@ -150,7 +191,7 @@ class AppNavViewModelTest {
             neverResolves.await()
         })
         val viewModel = AppNavViewModel(
-            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(), profileRefresher(),
         )
 
         viewModel.gateState.test {
@@ -166,7 +207,7 @@ class AppNavViewModelTest {
             AppMetaResponse(minSupportedVersionCode = 10, latestVersionCode = 10)
         })
         val viewModel = AppNavViewModel(
-            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+            api, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(), profileRefresher(),
         )
 
         viewModel.gateState.test {
@@ -181,7 +222,7 @@ class AppNavViewModelTest {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 5)
         })
         val atMinVm = AppNavViewModel(
-            atMin, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(),
+            atMin, sessionManager(), currentVersionCode = 5, pushRegistrar(), goalsRepository(), profileRefresher(),
         )
         atMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -192,7 +233,7 @@ class AppNavViewModelTest {
             AppMetaResponse(minSupportedVersionCode = 5, latestVersionCode = 6)
         })
         val aboveMinVm = AppNavViewModel(
-            aboveMin, sessionManager(), currentVersionCode = 6, pushRegistrar(), goalsRepository(),
+            aboveMin, sessionManager(), currentVersionCode = 6, pushRegistrar(), goalsRepository(), profileRefresher(),
         )
         aboveMinVm.gateState.test {
             assertEquals(GateState.Checking, awaitItem())
@@ -212,6 +253,7 @@ class AppNavViewModelTest {
             currentVersionCode = 5,
             pushRegistrar(),
             goalsRepository(goalsApi),
+            profileRefresher(authGateway),
         )
 
         authGateway.sessionState.value = SessionState.SignedIn("user-1")
@@ -237,6 +279,7 @@ class AppNavViewModelTest {
             currentVersionCode = 5,
             pushRegistrar(),
             goalsRepository(goalsApi),
+            profileRefresher(authGateway),
         )
 
         authGateway.sessionState.value = SessionState.SignedIn("user-1")
@@ -255,6 +298,7 @@ class AppNavViewModelTest {
             currentVersionCode = 5,
             pushRegistrar(),
             goalsRepository(goalsApi),
+            profileRefresher(authGateway),
         )
 
         authGateway.sessionState.value = SessionState.SignedIn("user-1")
@@ -271,10 +315,128 @@ class AppNavViewModelTest {
             currentVersionCode = 5,
             pushRegistrar(),
             goalsRepository(),
+            profileRefresher(),
         )
 
         viewModel.onOnboardingComplete()
 
         assertEquals(OnboardingState.NotNeeded, viewModel.onboardingState.value)
+    }
+
+    @Test
+    fun `sign-in refreshes profile metadata`() = runTest {
+        val gateway = TrackingAuthGateway()
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            SessionManager(gateway),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(),
+            profileRefresher(gateway),
+        )
+
+        gateway.sessionState.value = SessionState.SignedIn("user-1")
+        advanceUntilIdle()
+
+        assertEquals(true, gateway.metadataFetched)
+    }
+
+    @Test
+    fun `a failing ProfileRefresher does not prevent onboarding check or push registration`() = runTest {
+        val throwingGateway = object : AuthGateway {
+            override val sessionState = MutableStateFlow<SessionState>(SessionState.SignedOut)
+            override suspend fun signInWithMagicLink(email: String) = Unit
+            override suspend fun signInWithGoogle(activity: android.app.Activity) = Unit
+            override suspend fun refreshCurrentSession(): String? = null
+            override fun currentAccessTokenOrNull(): String? = null
+            override suspend fun signOut() = Unit
+            override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+            override suspend fun currentProfileMetadata(): ProfileMetadata? =
+                throw RuntimeException("metadata fetch failed")
+        }
+        val errorReporter = RecordingErrorReporter()
+        val goalsApi = FakeMealsyApi(goalsResult = {
+            GoalsResponse(
+                trackingMode = "goals",
+                kcalGoal = 2000.0,
+                proteinGoal = 100.0,
+                fiberGoal = 30.0,
+            )
+        })
+        val authGateway = FakeAuthGateway()
+        val viewModel = AppNavViewModel(
+            FakeMealsyApi(appMetaResult = { AppMetaResponse(1, 1) }),
+            SessionManager(authGateway),
+            currentVersionCode = 5,
+            pushRegistrar(),
+            goalsRepository(goalsApi),
+            profileRefresher(throwingGateway, errorReporter = errorReporter),
+        )
+
+        authGateway.sessionState.value = SessionState.SignedIn("user-1")
+        advanceUntilIdle()
+
+        // ProfileRefresher swallowed and reported its own failure...
+        assertEquals(1, errorReporter.recorded.size)
+        // ...and onboardingState still resolved normally, unaffected.
+        assertEquals(OnboardingState.NotNeeded, viewModel.onboardingState.value)
+    }
+
+    /** [AuthGateway] fake that records whether [currentProfileMetadata] was invoked. */
+    private class TrackingAuthGateway : AuthGateway {
+        override val sessionState = MutableStateFlow<SessionState>(SessionState.SignedOut)
+        var metadataFetched = false
+
+        override suspend fun signInWithMagicLink(email: String) = Unit
+        override suspend fun signInWithGoogle(activity: android.app.Activity) = Unit
+        override suspend fun refreshCurrentSession(): String? = null
+        override fun currentAccessTokenOrNull(): String? = null
+        override suspend fun signOut() = Unit
+        override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+
+        override suspend fun currentProfileMetadata(): ProfileMetadata? {
+            metadataFetched = true
+            return ProfileMetadata("Sam", "mindful")
+        }
+    }
+}
+
+class StartRouteForTest {
+
+    @Test
+    fun `signed out routes to onboarding welcome`() {
+        assertEquals(
+            "onboarding?startStep=0",
+            startRouteFor(SessionState.SignedOut, OnboardingState.Unknown),
+        )
+    }
+
+    @Test
+    fun `signed in and onboarding needed routes to onboarding step 1`() {
+        assertEquals(
+            "onboarding?startStep=1",
+            startRouteFor(SessionState.SignedIn("user-1"), OnboardingState.Needed),
+        )
+    }
+
+    @Test
+    fun `signed in and onboarding not needed routes to chat`() {
+        assertEquals(
+            "chat",
+            startRouteFor(SessionState.SignedIn("user-1"), OnboardingState.NotNeeded),
+        )
+    }
+
+    @Test
+    fun `signed in with unresolved onboarding state is undecided`() {
+        assertEquals(
+            null,
+            startRouteFor(SessionState.SignedIn("user-1"), OnboardingState.Unknown),
+        )
+    }
+
+    @Test
+    fun `loading session state is undecided`() {
+        assertEquals(null, startRouteFor(SessionState.Loading, OnboardingState.NotNeeded))
     }
 }
