@@ -88,51 +88,60 @@ fun StatusPill(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(46.dp)
-                .clip(MealsyShapes.pill)
-                .background(colors.oliveTrack)
-                .clearAndSetSemantics { contentDescription = "$eatenLabel, $stateLabel" },
+                .height(46.dp),
         ) {
-            // Olive remainder block, anchored to the right edge.
+            // The clipped track itself. The mascot slot below is a sibling,
+            // not a child, of this clipped box: it deliberately overflows
+            // above the pill's top edge to sit at the bite point, and a
+            // child here would be cut off by [clip].
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .width(oliveWidthDp)
-                    .background(colors.olive),
-            )
+                    .fillMaxSize()
+                    .clip(MealsyShapes.pill)
+                    .background(colors.oliveTrack)
+                    .clearAndSetSemantics { contentDescription = "$eatenLabel, $stateLabel" },
+            ) {
+                // Olive remainder block, anchored to the right edge.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(oliveWidthDp)
+                        .background(colors.olive),
+                )
 
-            // The three-circle "bite" cut into the olive block's left edge.
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val biteX = size.width - oliveWidthDp.toPx()
-                val biteY = size.height / 2f
-                val radii = listOf(7.dp.toPx(), 8.dp.toPx(), 6.dp.toPx())
-                val offsetsY = listOf(-10.dp.toPx(), 0f, 10.dp.toPx())
-                radii.forEachIndexed { index, r ->
-                    drawCircle(
-                        color = colors.oliveTrack,
-                        radius = r,
-                        center = Offset(biteX, (biteY + offsetsY[index]).coerceIn(r, size.height - r)),
-                    )
+                // The three-circle "bite" cut into the olive block's left edge.
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val biteX = size.width - oliveWidthDp.toPx()
+                    val biteY = size.height / 2f
+                    val radii = listOf(7.dp.toPx(), 8.dp.toPx(), 6.dp.toPx())
+                    val offsetsY = listOf(-10.dp.toPx(), 0f, 10.dp.toPx())
+                    radii.forEachIndexed { index, r ->
+                        drawCircle(
+                            color = colors.oliveTrack,
+                            radius = r,
+                            center = Offset(biteX, (biteY + offsetsY[index]).coerceIn(r, size.height - r)),
+                        )
+                    }
                 }
-            }
 
-            Text(
-                text = eatenLabel,
-                style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
-                color = colors.oliveText,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 18.dp),
-            )
-            Text(
-                text = stateLabel,
-                style = MealsyType.body,
-                color = colors.oliveText,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 18.dp),
-            )
+                Text(
+                    text = eatenLabel,
+                    style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
+                    color = colors.oliveText,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 18.dp),
+                )
+                Text(
+                    text = stateLabel,
+                    style = MealsyType.body,
+                    color = colors.oliveText,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 18.dp),
+                )
+            }
 
             if (mascot != null) {
                 val mascotSize = 46.dp

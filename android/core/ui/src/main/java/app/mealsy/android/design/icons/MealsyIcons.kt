@@ -154,7 +154,13 @@ object MealsyIcons {
         get() = _bowl ?: strokedIcon(
             name = "Bowl",
             strokeWidth = 1.8f,
-            pathData = arrayOf("M4 12a8 8 0 0016 0z"),
+            // Written with an explicit space between the two arc flags and
+            // the endpoint coordinates ("0 0 16 0" not "0016 0") because
+            // Compose's PathParser cannot reliably split a concatenated
+            // flag+coordinate run when neither flag is followed by a sign
+            // character - it previously mis-tokenized this arc, rendering
+            // the bowl as disconnected dots instead of a closed curve.
+            pathData = arrayOf("M4 12a8 8 0 0 0 16 0z"),
         ).also { _bowl = it }
 
     private var _bowlBars: ImageVector? = null
@@ -166,8 +172,49 @@ object MealsyIcons {
         get() = _bowlBars ?: strokedIcon(
             name = "BowlBars",
             strokeWidth = 1.8f,
-            pathData = arrayOf("M4 12a8 8 0 0016 0z", "M8 12V7", "M12 12V4", "M16 12V9"),
+            pathData = arrayOf("M4 12a8 8 0 0 0 16 0z", "M8 12V7", "M12 12V4", "M16 12V9"),
         ).also { _bowlBars = it }
+
+    private var _breakfast: ImageVector? = null
+    /** Home "Today's meals" row icon for breakfast: a stroked sun/circle. */
+    val Breakfast: ImageVector
+        get() = _breakfast ?: strokedIcon(
+            name = "Breakfast",
+            pathData = arrayOf(circlePath(cx = 12f, cy = 13f, r = 6f), "M12 7V4M8 4h8"),
+        ).also { _breakfast = it }
+
+    private var _lunch: ImageVector? = null
+    /** Home "Today's meals" row icon for lunch: a stroked bowl with a fork. */
+    val Lunch: ImageVector
+        get() = _lunch ?: strokedIcon(
+            name = "Lunch",
+            pathData = arrayOf("M4 13a8 8 0 0 0 16 0z", "M12 13V6"),
+        ).also { _lunch = it }
+
+    private var _dinner: ImageVector? = null
+    /**
+     * Home "Today's meals" row icon for dinner: a stroked droplet/cloche.
+     * Rebuilt from the design's `S` (smooth-curve) command as an equivalent
+     * explicit `C` cubic with fully space-separated arc flags, since
+     * Compose's [PathParser] mis-tokenizes flag-adjacent digit runs (see the
+     * [Bowl] fix above) and dropped most of this path down to a sliver when
+     * transcribed with the handoff's compact syntax.
+     */
+    val Dinner: ImageVector
+        get() = _dinner ?: strokedIcon(
+            name = "Dinner",
+            pathData = arrayOf(
+                "M12 3a7 7 0 0 1 7 7c0 5 -7 11 -7 11c0 0 -7 -6 -7 -11a7 7 0 0 1 7 -7z",
+            ),
+        ).also { _dinner = it }
+
+    private var _snack: ImageVector? = null
+    /** Home "Today's meals" row icon for snacks: a stroked crescent. */
+    val Snack: ImageVector
+        get() = _snack ?: strokedIcon(
+            name = "Snack",
+            pathData = arrayOf("M17 4a7 7 0 1 1 -9 9a8 8 0 0 0 9 -9z"),
+        ).also { _snack = it }
 
     private var _lineChart: ImageVector? = null
     /** Bottom nav "Trends" tab. */
@@ -302,6 +349,10 @@ object MealsyIcons {
             "Home" to Home,
             "Bowl" to Bowl,
             "BowlBars" to BowlBars,
+            "Breakfast" to Breakfast,
+            "Lunch" to Lunch,
+            "Dinner" to Dinner,
+            "Snack" to Snack,
             "LineChart" to LineChart,
             "Chat" to Chat,
             "Plus" to Plus,
