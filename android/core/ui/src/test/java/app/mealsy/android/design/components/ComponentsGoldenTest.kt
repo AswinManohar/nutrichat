@@ -396,6 +396,18 @@ class ComponentsGoldenTest : ScreenshotTestBase() {
         StatusPillAwareness(eatenLabel = "1,340 kcal logged today", modifier = Modifier.fillMaxWidth())
     }
 
+    // --- StatusPillPlain -----------------------------------------------------
+
+    @Test
+    fun statusPillPlain_light() = captureMealsy("StatusPillPlain", false) {
+        StatusPillPlain(label = "Logged at", value = "8:42 AM", modifier = Modifier.fillMaxWidth())
+    }
+
+    @Test
+    fun statusPillPlain_dark() = captureMealsy("StatusPillPlain", true) {
+        StatusPillPlain(label = "Logged at", value = "8:42 AM", modifier = Modifier.fillMaxWidth())
+    }
+
     // --- ProgressRing ------------------------------------------------------
 
     @Test
