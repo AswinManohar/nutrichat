@@ -26,6 +26,15 @@ import androidx.compose.ui.graphics.Color
  *   progress fill, sparkle icon.
  * @property oliveText Text on olive.
  * @property oliveTrack Progress track, "eaten" part of snack bar, totals strip.
+ * @property oliveTrackLabel Muted label text on [oliveTrack] (e.g. totals
+ *   strip column labels like "PROTEIN") — distinct from [oliveText], which
+ *   is the full-strength text color used on solid [olive].
+ * @property oliveTrackValue Value text on [oliveTrack] (e.g. totals strip
+ *   values like "412" or "28g"). Distinct from [oliveText]: [oliveText] is
+ *   tuned for text on solid, light [olive], and in dark mode it is a
+ *   near-black that is illegible against the dark [oliveTrack] fill. This
+ *   token is tuned specifically for contrast against [oliveTrack] in both
+ *   themes.
  * @property olivePressed Pressed olive.
  * @property userBubble User chat bubble background.
  * @property userBubbleText Text on the user chat bubble.
@@ -65,6 +74,8 @@ class MealsyColors(
     val olive: Color,
     val oliveText: Color,
     val oliveTrack: Color,
+    val oliveTrackLabel: Color,
+    val oliveTrackValue: Color,
     val olivePressed: Color,
     val userBubble: Color,
     val userBubbleText: Color,
@@ -106,6 +117,8 @@ fun lightMealsyColors(): MealsyColors = MealsyColors(
     olive = Color(0xFFA6B565),
     oliveText = Color(0xFF2A3013),
     oliveTrack = Color(0xFFDEE2C3),
+    oliveTrackLabel = Color(0xFF4B5227),
+    oliveTrackValue = Color(0xFF2A3013),
     olivePressed = Color(0xFF96A45B),
     userBubble = Color(0xFFDCE3BE),
     userBubbleText = Color(0xFF2A3013),
@@ -156,6 +169,14 @@ fun darkMealsyColors(): MealsyColors = MealsyColors(
     oliveText = Color(0xFF1E230D),
     // Derived: not in the design's dark sheet.
     oliveTrack = Color(0xFF3C4327),
+    // Derived: not in the design's dark sheet. Muted-olive, legible on the
+    // darker oliveTrack fill above (mirrors the light theme's #4B5227
+    // relationship to its lighter oliveTrack).
+    oliveTrackLabel = Color(0xFFAEBB86),
+    // Derived: not in the design's dark sheet. Light olive that reads
+    // clearly on the dark oliveTrack fill above (#3C4327) — reuses the
+    // light theme's userBubble value, which is already a light-olive tone.
+    oliveTrackValue = Color(0xFFDCE3BE),
     // Derived: not in the design's dark sheet.
     olivePressed = Color(0xFF86944F),
     // Derived: not in the design's dark sheet.

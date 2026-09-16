@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">Mealsy</string>
+
+    <!-- CompositeDishHeader -->
+    <string name="confirm_card_break_into_ingredients">Break into ingredients</string>
+    <string name="confirm_card_log_as_single">Log as single item</string>
+
+    <!-- CandidatePickerSheetContent -->
+    <string name="candidate_sheet_eyebrow">Pick the right food</string>
+    <string name="candidate_sheet_current">Currently: %1$s</string>
 </resources>
