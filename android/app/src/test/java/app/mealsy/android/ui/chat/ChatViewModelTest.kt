@@ -98,17 +98,19 @@ class ChatViewModelTest {
 
     private fun buildViewModel(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatViewModel {
         val api = buildApi()
+        val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
         val repository = ChatRepository(
             api,
             fakeConversationIdStore(),
             NoopPendingLogQueue(),
             json,
+            todayRefreshSignal,
         )
         return ChatViewModel(
             repository,
             api,
             FakeOnlineConnectivityObserver(),
-            app.mealsy.data.repo.MyMealsRepository(api),
+            app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
             droppedLogStore,
         )
     }

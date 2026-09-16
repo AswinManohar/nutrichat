@@ -205,6 +205,60 @@ class MealsyApiTest {
         val recorded = server.takeRequest().body.readUtf8()
         assertTrue(recorded.contains("\"platform\":\"fcm\""))
     }
+
+    @Test
+    fun `today parses carbs_g, fat_g, and by_type n_meals when present`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "kcal": 1450.0,
+                  "protein_g": 88.0,
+                  "carbs_g": 160.0,
+                  "fat_g": 42.0,
+                  "fiber_g": 14.0,
+                  "n_meals": 3,
+                  "by_type": [
+                    {"meal_type": "breakfast", "kcal": 450.0, "summary": "eggs, toast", "n_meals": 1}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val api = buildApi()
+
+        val response = api.today()
+
+        assertEquals(160.0, response.carbsG, 0.0)
+        assertEquals(42.0, response.fatG, 0.0)
+        assertEquals(1, response.byType.single().nMeals)
+    }
+
+    @Test
+    fun `today defaults carbs_g, fat_g, and by_type n_meals for older servers`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "kcal": 1450.0,
+                  "protein_g": 88.0,
+                  "fiber_g": 14.0,
+                  "n_meals": 3,
+                  "by_type": [
+                    {"meal_type": "breakfast", "kcal": 450.0, "summary": "eggs, toast"}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val api = buildApi()
+
+        val response = api.today()
+
+        assertEquals(0.0, response.carbsG, 0.0)
+        assertEquals(0.0, response.fatG, 0.0)
+        assertEquals(0, response.byType.single().nMeals)
+    }
 }
 
 private val MEDIA_TYPE_JSON = "application/json".toMediaType()

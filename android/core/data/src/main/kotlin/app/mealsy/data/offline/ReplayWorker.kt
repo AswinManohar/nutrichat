@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.MealsyApi
+import app.mealsy.data.repo.TodayRefreshSignal
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.io.IOException
@@ -63,6 +64,7 @@ class ReplayWorker @AssistedInject constructor(
     private val json: Json,
     private val failureReporter: ReplayFailureReporter,
     private val droppedLogStore: DroppedLogStore,
+    private val todayRefreshSignal: TodayRefreshSignal,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -111,6 +113,7 @@ class ReplayWorker @AssistedInject constructor(
                 try {
                     api.logItems(request)
                     dao.delete(row.clientRequestId)
+                    todayRefreshSignal.notifyLogged()
                 } catch (exc: IOException) {
                     dao.incrementAttempts(row.clientRequestId)
                     anyRetryable = true

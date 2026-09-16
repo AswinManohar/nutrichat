@@ -76,7 +76,10 @@ class MyMealsViewModelTest {
     }
 
     private fun buildViewModel(): MyMealsViewModel =
-        MyMealsViewModel(MyMealsRepository(buildApi()), appScope)
+        MyMealsViewModel(
+            MyMealsRepository(buildApi(), app.mealsy.data.repo.TodayRefreshSignal()),
+            appScope,
+        )
 
     private val listGoldenJson = """
         [

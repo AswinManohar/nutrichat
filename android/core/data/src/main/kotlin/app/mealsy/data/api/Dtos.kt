@@ -184,10 +184,17 @@ data class LogItemsResponse(
 // GET /meals/today
 // ---------------------------------------------------------------------------
 
+/**
+ * `carbsG`, `fatG`, and [ByTypeDto.nMeals] are additive fields on top of the
+ * original `/meals/today` shape; they default to `0.0`/`0` so responses from
+ * servers older than the extension still parse.
+ */
 @Serializable
 data class TodayResponse(
     val kcal: Double,
     @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double = 0.0,
+    @SerialName("fat_g") val fatG: Double = 0.0,
     @SerialName("fiber_g") val fiberG: Double,
     @SerialName("n_meals") val nMeals: Int,
     @SerialName("by_type") val byType: List<ByTypeDto> = emptyList(),
@@ -198,6 +205,7 @@ data class ByTypeDto(
     @SerialName("meal_type") val mealType: String,
     val kcal: Double,
     val summary: String,
+    @SerialName("n_meals") val nMeals: Int = 0,
 )
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,11 @@ import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import okhttp3.MediaType.Companion.toMediaType
@@ -43,7 +47,9 @@ class MyMealsRepositoryTest {
         server.shutdown()
     }
 
-    private fun buildRepository(): MyMealsRepository {
+    private fun buildRepository(
+        todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
+    ): MyMealsRepository {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
             .build()
@@ -54,7 +60,7 @@ class MyMealsRepositoryTest {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
         val api = retrofit.create(MealsyApi::class.java)
-        return MyMealsRepository(api)
+        return MyMealsRepository(api, todayRefreshSignal)
     }
 
     private val listGoldenJson = """
@@ -184,7 +190,10 @@ class MyMealsRepositoryTest {
             ),
         )
 
-        buildRepository().quickLog("meal_1", "lunch")
+        val signal = TodayRefreshSignal()
+        val emitted = async { withTimeoutOrNull(1_000) { signal.events.first() } }
+        yield() // let the collector above subscribe before the emit fires
+        buildRepository(signal).quickLog("meal_1", "lunch")
 
         val request = server.takeRequest()
         assertEquals("POST", request.method)
@@ -192,6 +201,7 @@ class MyMealsRepositoryTest {
         val body = request.body.readUtf8()
         assertTrue(body.contains("\"meal_type\":\"lunch\""))
         assertFalse(body.contains("ingredients"))
+        assertEquals(Unit, emitted.await())
     }
 
     @Test
@@ -214,7 +224,10 @@ class MyMealsRepositoryTest {
             ),
         )
 
-        buildRepository().logCustomized(
+        val signal = TodayRefreshSignal()
+        val emitted = async { withTimeoutOrNull(1_000) { signal.events.first() } }
+        yield() // let the collector above subscribe before the emit fires
+        buildRepository(signal).logCustomized(
             "meal_1",
             "dinner",
             overrides = listOf(SavedMealOverride(index = 0, qtyG = 120.0)),
@@ -227,6 +240,7 @@ class MyMealsRepositoryTest {
         assertTrue(body.contains("\"portion\":1.5"))
         assertTrue(body.contains("\"index\":0"))
         assertTrue(body.contains("\"qty_g\":120.0"))
+        assertEquals(Unit, emitted.await())
     }
 
     @Test

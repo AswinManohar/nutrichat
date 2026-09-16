@@ -33,6 +33,7 @@ data class SavedMealOverride(val index: Int, val qtyG: Double)
  */
 class MyMealsRepository @Inject constructor(
     private val api: MealsyApi,
+    private val todayRefreshSignal: TodayRefreshSignal,
 ) {
     suspend fun list(): List<SavedMeal> = api.myMeals().map { it.toSavedMeal() }
 
@@ -54,6 +55,7 @@ class MyMealsRepository @Inject constructor(
     /** Quick-logs the saved meal [id] verbatim (1x) at [mealType]. */
     suspend fun quickLog(id: String, mealType: String) {
         api.logMyMeal(id, LogMyMealRequest(mealType = mealType))
+        todayRefreshSignal.notifyLogged()
     }
 
     /**
@@ -76,6 +78,7 @@ class MyMealsRepository @Inject constructor(
                 ingredients = overrides.map { IngredientOverrideDto(index = it.index, qtyG = it.qtyG) },
             ),
         )
+        todayRefreshSignal.notifyLogged()
     }
 
     /** Soft-deletes the saved meal [id]. Not idempotency-keyed — see the mobile API contract's retry rules. */

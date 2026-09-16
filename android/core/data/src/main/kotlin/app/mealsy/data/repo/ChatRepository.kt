@@ -101,6 +101,7 @@ class ChatRepository @Inject constructor(
     private val conversationIdStore: ConversationIdStore,
     private val pendingLogQueue: PendingLogQueue,
     private val json: Json,
+    private val todayRefreshSignal: TodayRefreshSignal,
 ) {
 
     private val conversationIdMutex = Mutex()
@@ -186,6 +187,7 @@ class ChatRepository @Inject constructor(
 
         pendingConfirmation = null
         rotateConversationId()
+        todayRefreshSignal.notifyLogged()
 
         return LogOutcome.Logged(
             mealId = response.mealId,

@@ -77,10 +77,15 @@ class ConnectivityOfflineTest {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
         val api = retrofit.create(MealsyApi::class.java)
-        val repository = ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
+        val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
+        val repository =
+            ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json, todayRefreshSignal)
         val connectivity = FakeConnectivityObserver(initial = true)
         val viewModel =
-            ChatViewModel(repository, api, connectivity, MyMealsRepository(api), NoopDroppedLogStore())
+            ChatViewModel(
+                repository, api, connectivity,
+                MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
+            )
         viewModel.readyJob.join()
 
         assertTrue(!viewModel.offline.value)
@@ -107,11 +112,17 @@ class ConnectivityOfflineTest {
                 .addConverterFactory(json.asConverterFactory(contentType))
                 .build()
             val api = retrofit.create(MealsyApi::class.java)
+            val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
             val repository =
-                ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json)
+                ChatRepository(
+                    api, fakeConversationIdStore(), NoopPendingLogQueue(), json, todayRefreshSignal,
+                )
             val connectivity = FakeConnectivityObserver(initial = true)
             val viewModel =
-                ChatViewModel(repository, api, connectivity, MyMealsRepository(api), NoopDroppedLogStore())
+                ChatViewModel(
+                    repository, api, connectivity,
+                    MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
+                )
             viewModel.readyJob.join()
             assertTrue(!viewModel.offline.value)
 

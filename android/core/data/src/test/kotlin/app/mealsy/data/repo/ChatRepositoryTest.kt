@@ -8,7 +8,11 @@ import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -58,6 +62,7 @@ class ChatRepositoryTest {
     private fun buildRepository(
         store: ConversationIdStore = FakeConversationIdStore(),
         pendingLogQueue: PendingLogQueue = FakePendingLogQueue(),
+        todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
     ): ChatRepository {
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
@@ -76,7 +81,7 @@ class ChatRepositoryTest {
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
         val api = retrofit.create(MealsyApi::class.java)
-        return ChatRepository(api, store, pendingLogQueue, json)
+        return ChatRepository(api, store, pendingLogQueue, json, todayRefreshSignal)
     }
 
     private fun sampleCard(mealType: String = "breakfast") = ConfirmationCard(
@@ -162,12 +167,16 @@ class ChatRepositoryTest {
                 """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":155.0,"protein_g":13.0,"carbs_g":1.1,"fat_g":11.0,"fiber_g":0.0,"message":"Already logged.","deduplicated":true}""",
             ),
         )
-        val repository = buildRepository()
+        val signal = TodayRefreshSignal()
+        val repository = buildRepository(todayRefreshSignal = signal)
+        val emitted = async { withTimeoutOrNull(1_000) { signal.events.first() } }
+        yield() // let the collector above subscribe before confirmCard emits
 
         val outcome = repository.confirmCard(sampleCard()) as LogOutcome.Logged
 
         assertEquals(true, outcome.deduplicated)
         assertEquals("m_1", outcome.mealId)
+        assertEquals(Unit, emitted.await())
     }
 
     // --- Offline replay queue (Task 7) ------------------------------------

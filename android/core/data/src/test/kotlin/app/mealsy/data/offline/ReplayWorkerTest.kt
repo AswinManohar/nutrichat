@@ -9,6 +9,13 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.repo.TodayRefreshSignal
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -105,6 +112,7 @@ class ReplayWorkerTest {
         api: MealsyApi,
         reporter: ReplayFailureReporter = failureReporter,
         store: DroppedLogStore = droppedLogStore,
+        todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
     ): ReplayWorker {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val worker = TestListenableWorkerBuilder<ReplayWorker>(context)
@@ -115,7 +123,7 @@ class ReplayWorkerTest {
                         workerClassName: String,
                         workerParameters: WorkerParameters,
                     ): ListenableWorker = ReplayWorker(
-                        appContext, workerParameters, dao, api, json, reporter, store,
+                        appContext, workerParameters, dao, api, json, reporter, store, todayRefreshSignal,
                     )
                 },
             )
@@ -150,12 +158,22 @@ class ReplayWorkerTest {
             ),
         )
         val dao = FakePendingLogDao().apply { seed(sampleRow()) }
-        val worker = buildWorker(dao, buildApi())
+        val signal = TodayRefreshSignal()
+        val worker = buildWorker(dao, buildApi(), todayRefreshSignal = signal)
+        // Subscribe before startWork() so the buffered emission (extraBufferCapacity=1,
+        // no replay) isn't dropped for lack of a collector — mirrors a screen already
+        // observing TodayRefreshSignal.events when a log completes in production.
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        val emitted = GlobalScope.async(Dispatchers.Default) {
+            withTimeoutOrNull(2_000) { signal.events.first() }
+        }
+        Thread.sleep(50) // let the collector above subscribe before the emit fires
 
         val result = worker.startWork().get()
 
         assertEquals(ListenableWorker.Result.success(), result)
         assertTrue(runBlockingGetAll(dao).isEmpty())
+        assertEquals(Unit, runBlocking { emitted.await() })
     }
 
     @Test
