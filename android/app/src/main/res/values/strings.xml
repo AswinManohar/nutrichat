@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Onboarding: shared chrome -->
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_step_of_4">%1$d of 4</string>
+    <string name="onboarding_step_n_of_4">Step %1$d of 4</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_nothing_to_avoid">Nothing to avoid</string>
+    <string name="onboarding_finish">Finish</string>
+
+    <!-- Onboarding: step 0 — welcome -->
+    <string name="onboarding_welcome_hero">Eat well\nwith a coach who\nlistens</string>
+    <string name="onboarding_welcome_speech_bubble">Hi, I’m Olli</string>
+    <string name="onboarding_welcome_pill">It’s easier together</string>
+    <string name="onboarding_welcome_get_started">Get started</string>
+    <string name="onboarding_welcome_have_account">I already have an account</string>
+
+    <!-- Onboarding: step 1 — name -->
+    <string name="onboarding_name_title">What should I call you?</string>
+    <string name="onboarding_name_subtitle">Just a first name is fine.</string>
+    <string name="onboarding_name_placeholder">Your name</string>
+
+    <!-- Onboarding: step 2 — goal -->
+    <string name="onboarding_goal_title">What are you here for, %1$s?</string>
+    <string name="onboarding_goal_title_no_name">What are you here for?</string>
+    <string name="onboarding_goal_subtitle">I’ll shape my advice around this. You can change it anytime.</string>
+    <string name="onboarding_goal_lose_title">Lose weight steadily</string>
+    <string name="onboarding_goal_lose_subtitle">A gentle deficit, no crash targets</string>
+    <string name="onboarding_goal_maintain_title">Maintain where I am</string>
+    <string name="onboarding_goal_maintain_subtitle">Keep energy and habits consistent</string>
+    <string name="onboarding_goal_build_title">Build muscle</string>
+    <string name="onboarding_goal_build_subtitle">More protein, a small surplus</string>
+    <string name="onboarding_goal_learn_title">Just understand my eating</string>
+    <string name="onboarding_goal_learn_subtitle">No targets, only awareness</string>
+
+    <!-- Onboarding: step 3 — preferences -->
+    <string name="onboarding_prefs_title">Anything you avoid?</string>
+    <string name="onboarding_prefs_subtitle">Pick all that apply — I won’t suggest meals that clash.</string>
+    <string name="onboarding_pref_vegetarian">Vegetarian</string>
+    <string name="onboarding_pref_vegan">Vegan</string>
+    <string name="onboarding_pref_pescatarian">Pescatarian</string>
+    <string name="onboarding_pref_no_dairy">No dairy</string>
+    <string name="onboarding_pref_no_gluten">No gluten</string>
+    <string name="onboarding_pref_low_sodium">Low sodium</string>
+    <string name="onboarding_pref_low_sugar">Low sugar</string>
+    <string name="onboarding_pref_no_nuts">No nuts</string>
+
+    <!-- Onboarding: step 4 — target -->
+    <string name="onboarding_target_title">Your daily target</string>
+    <string name="onboarding_target_why_lose">Based on a steady, sustainable deficit. Adjust if it feels off.</string>
+    <string name="onboarding_target_why_maintain">Matched to typical maintenance needs. Adjust if it feels off.</string>
+    <string name="onboarding_target_why_build">A small surplus with room for protein. Adjust if it feels off.</string>
+    <string name="onboarding_target_why_learn">A reference point, not a rule — you asked for awareness, not targets.</string>
+    <string name="onboarding_target_why_default">A starting point you can adjust.</string>
+    <string name="onboarding_target_daily_calorie_goal">Daily calorie goal</string>
+    <string name="onboarding_target_kcal_value">%1$s kcal</string>
+    <string name="onboarding_target_slider_content_description">Daily calorie goal</string>
+    <string name="onboarding_target_min_kcal">1,400</string>
+    <string name="onboarding_target_max_kcal">3,200</string>
+    <string name="onboarding_target_mindful_note">Awareness only — no daily target</string>
+    <string name="onboarding_target_coach_note_prefs">Noted — I’ll steer around %1$s when suggesting meals.</string>
+    <string name="onboarding_target_coach_note_prefs_more">Noted — I’ll steer around %1$s and more when suggesting meals.</string>
+    <string name="onboarding_target_coach_note_default">I’ll suggest a mix of whole foods and keep portions realistic.</string>
+
+    <!-- Onboarding: step 5 — done -->
+    <string name="onboarding_done_title">Ready when you are, %1$s</string>
+    <string name="onboarding_done_title_no_name">Ready when you are</string>
+    <string name="onboarding_done_subtitle">Tell me what you eat in plain words. I’ll handle the numbers.</string>
+    <string name="onboarding_done_pill">%1$s · %2$s kcal / day</string>
+    <string name="onboarding_done_pill_no_target">%1$s · no target</string>
+    <string name="onboarding_done_error">Could not save your goals. Try again.</string>
+    <string name="onboarding_done_try_again">Try again</string>
+
+    <!-- Onboarding: goal labels shared by step 2 and step 5 -->
+    <string name="onboarding_goal_label_lose">Lose weight</string>
+    <string name="onboarding_goal_label_maintain">Maintain</string>
+    <string name="onboarding_goal_label_build">Build muscle</string>
+    <string name="onboarding_goal_label_learn">Just learning</string>
+</resources>

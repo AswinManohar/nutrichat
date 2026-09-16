@@ -313,6 +313,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                         launchSingleTop = true
                                     }
                                 },
+                                onNavigateToLogin = { navController.navigate(ROUTE_LOGIN) },
                             )
                         }
                         composable(ROUTE_CHAT) { ChatScreen() }

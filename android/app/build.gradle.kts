@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.roborazzi)
 }
 
 val localProperties = Properties().apply {
@@ -101,8 +102,13 @@ android {
             // module tests need Log to no-op rather than throw
             // "not mocked", per ErrorReportingTest's recorder-throws case.
             isReturnDefaultValues = true
+            isIncludeAndroidResources = true
         }
     }
+}
+
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
 }
 
 // Crashlytics's Gradle plugin, like google-services above, needs
@@ -174,6 +180,14 @@ dependencies {
     testImplementation(libs.retrofit.kotlinx.serialization.converter)
     testImplementation(libs.okhttp)
     testImplementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+    testImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }

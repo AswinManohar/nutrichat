@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Debug-build-only host activity for Roborazzi screenshot tests
+             (see app/src/test/java/app/mealsy/android/ui/TestHostActivity.kt
+             and AppScreenshotTestBase). Robolectric's ActivityScenario
+             resolves activities against the merged manifest even for JVM
+             unit tests, so this needs a real (if inert) manifest entry —
+             debug-only keeps it out of release builds entirely. -->
+        <activity
+            android:name="app.mealsy.android.ui.TestHostActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+
+</manifest>
