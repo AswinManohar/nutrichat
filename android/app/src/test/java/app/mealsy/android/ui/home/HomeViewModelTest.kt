@@ -233,15 +233,15 @@ class HomeViewModelTest {
     // --- State label wording ------------------------------------------------
 
     @Test
-    fun stateLabel_leftWording() {
+    fun kcalState_leftWording() {
         val (vm, _) = buildViewModel(todayResponse = today(kcal = 1340.0), goals = goalsResponse(kcalGoal = 1900.0))
-        assertEquals("560 left", vm.uiState.value.stateLabel)
+        assertEquals(HomeKcalState.Left("560"), vm.uiState.value.kcalState)
     }
 
     @Test
-    fun stateLabel_overWording() {
+    fun kcalState_overWording() {
         val (vm, _) = buildViewModel(todayResponse = today(kcal = 2020.0), goals = goalsResponse(kcalGoal = 1900.0))
-        assertEquals("120 over", vm.uiState.value.stateLabel)
+        assertEquals(HomeKcalState.Over("120"), vm.uiState.value.kcalState)
     }
 
     // --- Mindful variant ------------------------------------------------------
@@ -251,7 +251,7 @@ class HomeViewModelTest {
         val (vm, _) = buildViewModel(goals = null)
         val state = vm.uiState.value
         assertTrue(state.mindful)
-        assertEquals("no target", state.stateLabel)
+        assertEquals(HomeKcalState.NoTarget, state.kcalState)
         assertTrue(state.coachNote is HomeCoachNote.Mindful)
     }
 
@@ -389,7 +389,7 @@ class HomeViewModelTest {
         api.todayResponse = today(kcal = 1500.0)
         signal.notifyLogged()
         assertFalse(vm.uiState.value.loading)
-        assertEquals("1,500 kcal eaten", vm.uiState.value.eatenLabel)
+        assertEquals("1,500", vm.uiState.value.eatenKcal)
     }
 
     // --- Error / retry ------------------------------------------------------

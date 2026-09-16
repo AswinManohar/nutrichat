@@ -141,12 +141,14 @@ private fun HomeLoaded(
 
         Spacer(modifier = Modifier.height(44.dp))
 
+        val eatenLabel = stringResource(R.string.home_eaten_label, state.eatenKcal)
+        val stateLabel = kcalStateText(state.kcalState)
         if (state.mindful) {
-            StatusPillAwareness(eatenLabel = state.eatenLabel, stateLabel = state.stateLabel)
+            StatusPillAwareness(eatenLabel = eatenLabel, stateLabel = stateLabel)
         } else {
             StatusPill(
-                eatenLabel = state.eatenLabel,
-                stateLabel = state.stateLabel,
+                eatenLabel = eatenLabel,
+                stateLabel = stateLabel,
                 eatenFraction = state.eatenFraction,
             )
         }
@@ -226,6 +228,14 @@ private fun greetingFor(dayPart: DayPart, firstName: String?): String {
             firstName,
         )
     }
+}
+
+/** Resolves the status pill's trailing state text against `strings.xml`. */
+@Composable
+private fun kcalStateText(state: HomeKcalState): String = when (state) {
+    is HomeKcalState.Left -> stringResource(R.string.home_state_left, state.kcal)
+    is HomeKcalState.Over -> stringResource(R.string.home_state_over, state.kcal)
+    HomeKcalState.NoTarget -> stringResource(R.string.home_state_no_target)
 }
 
 private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {

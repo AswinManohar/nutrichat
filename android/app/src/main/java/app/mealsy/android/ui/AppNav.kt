@@ -78,6 +78,9 @@ private fun onboardingRoute(startStep: Int): String = "$ROUTE_ONBOARDING?$ARG_ST
 /** Builds a navigable route to the meal-type placeholder for [mealType] (e.g. "breakfast"). */
 private fun mealTypeRoute(mealType: String): String = "$ROUTE_MEAL_TYPE/$mealType"
 
+/** Builds the FAB's quick-log chat route — chat with [ARG_QUICK_LOG] forced true. */
+private fun quickLogChatRoute(): String = "$ROUTE_CHAT?$ARG_QUICK_LOG=true"
+
 /**
  * The four bottom-nav tab destinations, in display order, per the "Bottom
  * nav + FAB" spec: Home, Meals (My Meals), Trends, Chat. Settings is
@@ -449,15 +452,20 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 }
                             },
                             onFabClick = {
-                                // Deliberately no `restoreState`/saved-state popUpTo here:
-                                // the FAB always navigates to a fresh "chat?quickLog=true"
-                                // URI (distinct from the tab's plain "chat"), and skipping
-                                // restoreState means a tap while already on chat still
-                                // pushes a new backstack entry with the arg set, so
-                                // ChatScreen's LaunchedEffect(quickLog) re-fires even
-                                // though the destination pattern is unchanged.
-                                navController.navigate("$ROUTE_CHAT?$ARG_QUICK_LOG=true") {
-                                    launchSingleTop = false
+                                // popUpTo(ROUTE_HOME) (inclusive = false) removes any existing
+                                // chat entry — including one from a prior FAB tap or the chat
+                                // tab — before the new one is pushed, so repeated taps can't
+                                // grow the back stack past `home -> chat`. restoreState is
+                                // deliberately false (unlike the tab nav below): a saved chat
+                                // entry would be restored as-is, and the freshly-popped chat
+                                // destination needs a brand-new backstack entry (a new
+                                // rememberSaveable scope) so ChatScreen's LaunchedEffect(quickLog)
+                                // re-fires the one-shot quick-log focus + toast even when the
+                                // user is already on chat.
+                                navController.navigate(quickLogChatRoute()) {
+                                    popUpTo(ROUTE_HOME) { saveState = true; inclusive = false }
+                                    launchSingleTop = true
+                                    restoreState = false
                                 }
                             },
                             modifier = Modifier.align(Alignment.BottomCenter),

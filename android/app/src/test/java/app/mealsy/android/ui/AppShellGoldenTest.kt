@@ -9,6 +9,7 @@ import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.ui.home.DayPart
 import app.mealsy.android.ui.home.HomeCoachNote
 import app.mealsy.android.ui.home.HomeContent
+import app.mealsy.android.ui.home.HomeKcalState
 import app.mealsy.android.ui.home.HomeMealRow
 import app.mealsy.android.ui.home.HomeUiState
 import org.junit.Test
@@ -34,8 +35,8 @@ class AppShellGoldenTest : AppScreenshotTestBase() {
         dayPart = DayPart.Afternoon,
         firstName = "Alex",
         mindful = false,
-        eatenLabel = "1,340 kcal eaten",
-        stateLabel = "560 left",
+        eatenKcal = "1,340",
+        kcalState = HomeKcalState.Left("560"),
         eatenFraction = 1340f / 1900f,
         proteinValue = "86g",
         carbsValue = "152g",

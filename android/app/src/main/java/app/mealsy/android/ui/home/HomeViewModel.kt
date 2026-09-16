@@ -1,5 +1,6 @@
 package app.mealsy.android.ui.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.design.components.TagTone
@@ -37,6 +38,9 @@ private const val AFTERNOON_END_HOUR = 17
 /** A protein gap of at least this many grams is worth a coach note (see [HomeCoachNote.ProteinGap]). */
 private const val PROTEIN_GAP_THRESHOLD_G = 15
 
+/** Logcat tag for [HomeViewModel]'s non-network load failures. */
+private const val TAG = "HomeViewModel"
+
 /**
  * A resolved coach-note variant for Home's [app.mealsy.android.design.components.CoachNote].
  *
@@ -69,6 +73,24 @@ sealed interface HomeCoachNote {
  */
 data class HomeMealRow(val mealType: String, val tone: TagTone, val count: Int?)
 
+/**
+ * The resolved variant for Home's status pill "state" text (the pill's
+ * trailing label, e.g. "560 left"), kept as semantic data — day-part-free,
+ * unlike [HomeCoachNote], but still just a formatted-number wrapper rather
+ * than resolved text — so [HomeScreen] owns the translatable copy in
+ * `strings.xml` (mirrors [HomeCoachNote]).
+ */
+sealed interface HomeKcalState {
+    /** [kcal] calories remain under the daily calorie goal (already formatted, e.g. "560"). */
+    data class Left(val kcal: String) : HomeKcalState
+
+    /** The daily calorie goal has been exceeded by [kcal] calories (already formatted, absolute value). */
+    data class Over(val kcal: String) : HomeKcalState
+
+    /** Mindful tracking mode (no numeric calorie target). */
+    data object NoTarget : HomeKcalState
+}
+
 /** The fixed, always-present meal types shown on Home, in display order with their pastel tones. */
 private val MEAL_ROW_ORDER: List<Pair<String, TagTone>> = listOf(
     "breakfast" to TagTone.Butter,
@@ -91,8 +113,8 @@ data class HomeUiState(
     val dayPart: DayPart = DayPart.Afternoon,
     val firstName: String? = null,
     val mindful: Boolean = false,
-    val eatenLabel: String = "",
-    val stateLabel: String = "",
+    val eatenKcal: String = "",
+    val kcalState: HomeKcalState = HomeKcalState.NoTarget,
     val eatenFraction: Float = 0f,
     val proteinValue: String = "",
     val carbsValue: String = "",
@@ -164,6 +186,9 @@ class HomeViewModel @Inject constructor(
         } catch (exc: IOException) {
             _uiState.update { it.copy(loading = false, refreshing = false, error = true) }
         } catch (exc: Exception) {
+            // Non-network failure (e.g. a non-404 HTTP error from goals()) — log what it
+            // was rather than swallowing it silently, then surface the same error state.
+            Log.w(TAG, "loadOnce failed: ${exc::class.simpleName}: ${exc.message}")
             _uiState.update { it.copy(loading = false, refreshing = false, error = true) }
         }
     }
@@ -180,14 +205,14 @@ class HomeViewModel @Inject constructor(
             (today.kcal / kcalGoal).toFloat().coerceIn(0f, 1f)
         }
 
-        val stateLabel = if (mindful || kcalGoal == null) {
-            "no target"
+        val kcalState = if (mindful || kcalGoal == null) {
+            HomeKcalState.NoTarget
         } else {
             val remaining = kcalGoal - today.kcal
             if (remaining >= 0) {
-                "${kcalFormat.format(remaining.roundToInt())} left"
+                HomeKcalState.Left(kcalFormat.format(remaining.roundToInt()))
             } else {
-                "${kcalFormat.format(-remaining.roundToInt())} over"
+                HomeKcalState.Over(kcalFormat.format(-remaining.roundToInt()))
             }
         }
 
@@ -219,8 +244,8 @@ class HomeViewModel @Inject constructor(
             dayPart = dayPart,
             firstName = firstName?.trim()?.takeIf { it.isNotBlank() },
             mindful = mindful,
-            eatenLabel = "${kcalFormat.format(today.kcal.roundToInt())} kcal eaten",
-            stateLabel = stateLabel,
+            eatenKcal = kcalFormat.format(today.kcal.roundToInt()),
+            kcalState = kcalState,
             eatenFraction = eatenFraction,
             proteinValue = "${today.proteinG.roundToInt()}g",
             carbsValue = "${today.carbsG.roundToInt()}g",
