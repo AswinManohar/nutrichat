@@ -4,6 +4,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import app.mealsy.android.design.theme.MealsyTheme
@@ -56,5 +57,29 @@ abstract class AppScreenshotTestBase {
         }
         val suffix = if (darkTheme) "dark" else "light"
         composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix.png")
+    }
+
+    /**
+     * Like [captureMealsy], but for content that renders into a `Popup`/`Dialog`
+     * compose root (e.g. `ModalBottomSheet`) — [androidx.compose.ui.test.isDialog]
+     * finds that separate root instead of the main screen root, which would
+     * otherwise capture an empty frame.
+     */
+    protected fun captureMealsyDialog(
+        name: String,
+        darkTheme: Boolean,
+        content: @Composable () -> Unit,
+    ) {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MealsyTheme(darkTheme = darkTheme) {
+                    Surface(color = MealsyTheme.colors.canvas) {
+                        content()
+                    }
+                }
+            }
+        }
+        val suffix = if (darkTheme) "dark" else "light"
+        composeRule.onNode(isDialog()).captureRoboImage("src/test/screenshots/${name}_$suffix.png")
     }
 }
