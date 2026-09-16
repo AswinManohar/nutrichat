@@ -525,6 +525,8 @@ async def log_meal(
             kcal=totals["kcal"],
             protein_g=totals["protein_g"],
             fiber_g=totals["fiber_g"],
+            carbs_g=totals["carbs_g"],
+            fat_g=totals["fat_g"],
         )
         # Best-effort embedding for history search; a broker outage (e.g. Redis
         # down) must never fail the meal log the user just confirmed.

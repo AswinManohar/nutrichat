@@ -33,6 +33,8 @@ class TodayTotals(BaseModel):
 
     kcal: float = 0.0
     protein_g: float = 0.0
+    carbs_g: float = 0.0
+    fat_g: float = 0.0
     fiber_g: float = 0.0
     n_meals: int = 0
 
@@ -86,6 +88,8 @@ async def get_today_totals(user_id: str) -> TodayTotals:
             select(
                 func.coalesce(func.sum(MealLog.kcal), 0.0),
                 func.coalesce(func.sum(MealLog.protein_g), 0.0),
+                func.coalesce(func.sum(MealLog.carbs_g), 0.0),
+                func.coalesce(func.sum(MealLog.fat_g), 0.0),
                 func.coalesce(func.sum(MealLog.fiber_g), 0.0),
                 func.count(MealLog.meal_id),
             ).where(
@@ -95,18 +99,25 @@ async def get_today_totals(user_id: str) -> TodayTotals:
                 MealLog.deleted_at.is_(None),
             )
         )
-        kcal, protein_g, fiber_g, n_meals = result.one()
+        kcal, protein_g, carbs_g, fat_g, fiber_g, n_meals = result.one()
 
     return TodayTotals(
         kcal=float(kcal),
         protein_g=float(protein_g),
+        carbs_g=float(carbs_g),
+        fat_g=float(fat_g),
         fiber_g=float(fiber_g),
         n_meals=int(n_meals),
     )
 
 
 async def increment_today(
-    user_id: str, kcal: float, protein_g: float, fiber_g: float
+    user_id: str,
+    kcal: float,
+    protein_g: float,
+    fiber_g: float,
+    carbs_g: float = 0.0,
+    fat_g: float = 0.0,
 ) -> TodayTotals:
     """
     Pipelines increment transactions preventing double-submits.
@@ -118,6 +129,8 @@ async def increment_today(
     async with client.pipeline(transaction=True) as pipe:
         pipe.hincrbyfloat(key, "kcal", kcal)
         pipe.hincrbyfloat(key, "protein_g", protein_g)
+        pipe.hincrbyfloat(key, "carbs_g", carbs_g)
+        pipe.hincrbyfloat(key, "fat_g", fat_g)
         pipe.hincrbyfloat(key, "fiber_g", fiber_g)
         pipe.hincrby(key, "n_meals", 1)
         pipe.expire(key, _TODAY_KEY_TTL_S)  # Safety-net TTL; midnight cron also deletes
@@ -127,8 +140,10 @@ async def increment_today(
     return TodayTotals(
         kcal=float(results[0]),
         protein_g=float(results[1]),
-        fiber_g=float(results[2]),
-        n_meals=int(results[3]),
+        carbs_g=float(results[2]),
+        fat_g=float(results[3]),
+        fiber_g=float(results[4]),
+        n_meals=int(results[5]),
     )
 
 

@@ -48,7 +48,8 @@ async def _get_today_by_type(
         db: Active async DB session.
 
     Returns:
-        List of dicts with keys meal_type, kcal (float), summary (str).
+        List of dicts with keys meal_type, kcal (float), summary (str),
+        n_meals (int, count of meal_log rows of that meal_type today).
     """
     today_start, today_end = current_day_bounds()
 
@@ -80,8 +81,10 @@ async def _get_today_by_type(
                 "meal_type": meal_type,
                 "kcal": 0.0,
                 "summary": summary,
+                "n_meals": 0,
             }
         by_type[meal_type]["kcal"] += float(meal_kcal or 0)
+        by_type[meal_type]["n_meals"] += 1
 
     return list(by_type.values())
 
@@ -316,7 +319,8 @@ async def get_today(user_id: str = Depends(get_current_user_id)) -> dict:
         user_id: Injected by the Supabase auth dependency.
 
     Returns:
-        Dict with kcal, protein_g, fiber_g, n_meals, and by_type list.
+        Dict with kcal, protein_g, carbs_g, fat_g, fiber_g, n_meals, and
+        by_type list.
     """
     totals = await get_today_totals(user_id)
     session_factory = get_session()
