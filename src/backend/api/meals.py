@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,9 +23,8 @@ from backend.api.my_meals import _scaled_result
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog
 from backend.db.redis_client import (
-    _DAY_RESET_HOUR,
-    _DAY_TZ,
     current_day_bounds,
+    day_bounds_for_date,
     get_today_totals,
 )
 from backend.db.session import get_session
@@ -423,28 +422,6 @@ async def get_trends(
         ]
 
 
-def _day_bounds_for_date(day: date) -> tuple[datetime, datetime]:
-    """Return the nutrition-day [start, end) UTC window for a calendar date.
-
-    ``current_day_bounds`` only derives "today" from the current instant.
-    To express an arbitrary past date under the same reset-hour/timezone
-    rule, we hand it a synthetic `now` set to exactly `reset_hour` on the
-    target local date: since `current_day_bounds` computes
-    ``day_date = (now_local - reset_hour).date()``, that construction makes
-    `day_date` land exactly on `day` regardless of the configured reset
-    hour (0-23).
-
-    Args:
-        day: The calendar date (in the configured nutrition-day timezone)
-            whose window is requested.
-
-    Returns:
-        ``(start_utc, end_utc)`` covering that nutrition day.
-    """
-    synthetic_now = datetime.combine(day, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
-    return current_day_bounds(now=synthetic_now)
-
-
 class MealLogSummary(BaseModel):
     """Summary of one logged meal, for the logged-meal list view."""
 
@@ -468,6 +445,25 @@ class MealLogDetail(MealLogSummary):
     items: list[dict]
 
     model_config = ConfigDict(extra="forbid")
+
+
+def _entities_list(entities_raw: list | str | None) -> list:
+    """Normalize a MealLog.entities value to a list.
+
+    The JSONB column is usually deserialized to a list already, but some
+    paths (see _get_today_by_type) store or return it as a JSON string.
+
+    Args:
+        entities_raw: The raw value read from MealLog.entities.
+
+    Returns:
+        The parsed list of item dicts, or [] if entities_raw is falsy.
+    """
+    return (
+        entities_raw
+        if isinstance(entities_raw, list)
+        else json.loads(entities_raw or "[]")
+    )
 
 
 @router.get("/log")
@@ -496,7 +492,7 @@ async def list_meal_logs(
         raise HTTPException(status_code=422, detail="Invalid meal_type")
 
     day_start, day_end = (
-        current_day_bounds() if date_ is None else _day_bounds_for_date(date_)
+        current_day_bounds() if date_ is None else day_bounds_for_date(date_)
     )
 
     filters = [
@@ -530,25 +526,6 @@ async def list_meal_logs(
         )
         for row in rows
     ]
-
-
-def _entities_list(entities_raw: list | str | None) -> list:
-    """Normalize a MealLog.entities value to a list.
-
-    The JSONB column is usually deserialized to a list already, but some
-    paths (see _get_today_by_type) store or return it as a JSON string.
-
-    Args:
-        entities_raw: The raw value read from MealLog.entities.
-
-    Returns:
-        The parsed list of item dicts, or [] if entities_raw is falsy.
-    """
-    return (
-        entities_raw
-        if isinstance(entities_raw, list)
-        else json.loads(entities_raw or "[]")
-    )
 
 
 @router.get("/log/{meal_id}")

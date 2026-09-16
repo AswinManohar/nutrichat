@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import redis.asyncio as redis
@@ -68,6 +68,28 @@ def current_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]
     end_local = start_local + timedelta(days=1)
     utc = ZoneInfo("UTC")
     return start_local.astimezone(utc), end_local.astimezone(utc)
+
+
+def day_bounds_for_date(day: date) -> tuple[datetime, datetime]:
+    """Return the nutrition-day [start, end) UTC window for a calendar date.
+
+    ``current_day_bounds`` only derives "today" from the current instant.
+    To express an arbitrary past date under the same reset-hour/timezone
+    rule, we hand it a synthetic `now` set to exactly `reset_hour` on the
+    target local date: since `current_day_bounds` computes
+    ``day_date = (now_local - reset_hour).date()``, that construction makes
+    `day_date` land exactly on `day` regardless of the configured reset
+    hour (0-23).
+
+    Args:
+        day: The calendar date (in the configured nutrition-day timezone)
+            whose window is requested.
+
+    Returns:
+        ``(start_utc, end_utc)`` covering that nutrition day.
+    """
+    synthetic_now = datetime.combine(day, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
+    return current_day_bounds(now=synthetic_now)
 
 
 async def get_today_totals(user_id: str) -> TodayTotals:

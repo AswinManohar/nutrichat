@@ -109,13 +109,13 @@ def test_list_with_explicit_date_uses_day_bounds_for_date(
     )
 
     captured = {}
-    real_bounds = meals_api._day_bounds_for_date
+    real_bounds = meals_api.day_bounds_for_date
 
     def _spy(day):
         captured["day"] = day
         return real_bounds(day)
 
-    monkeypatch.setattr(meals_api, "_day_bounds_for_date", _spy)
+    monkeypatch.setattr(meals_api, "day_bounds_for_date", _spy)
 
     resp = client.get("/meals/log", params={"date": "2026-09-10"})
 
