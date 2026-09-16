@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +26,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyTheme
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * The floating "log a meal" action button, centered on and overlapping
@@ -51,7 +51,7 @@ fun OliveFab(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.94f else 1f,
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = mealsyTween(durationMillis = 120),
         label = "oliveFabScale",
     )
 

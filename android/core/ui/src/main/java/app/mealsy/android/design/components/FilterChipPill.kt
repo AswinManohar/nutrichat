@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
@@ -18,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * A multi-select filter chip, used for onboarding's dietary-preference
@@ -38,12 +38,12 @@ fun FilterChipPill(
     val colors = MealsyTheme.colors
     val backgroundColor by animateColorAsState(
         targetValue = if (selected) colors.ink else Color.Transparent,
-        animationSpec = tween(150),
+        animationSpec = mealsyTween(150),
         label = "filter-chip-bg",
     )
     val textColor by animateColorAsState(
         targetValue = if (selected) colors.canvas else colors.ink,
-        animationSpec = tween(150),
+        animationSpec = mealsyTween(150),
         label = "filter-chip-text",
     )
 

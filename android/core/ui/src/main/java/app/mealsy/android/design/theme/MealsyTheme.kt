@@ -123,12 +123,14 @@ fun MealsyTheme(
     }
 
     CompositionLocalProvider(LocalMealsyColors provides mealsyColors) {
-        MaterialTheme(
-            colorScheme = colorScheme,
-            typography = typography,
-            shapes = shapes,
-            content = content,
-        )
+        ProvideReducedMotion {
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = typography,
+                shapes = shapes,
+                content = content,
+            )
+        }
     }
 }
 

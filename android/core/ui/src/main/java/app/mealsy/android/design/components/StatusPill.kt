@@ -1,8 +1,8 @@
 package app.mealsy.android.design.components
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
 import kotlin.math.roundToInt
 
 /**
@@ -73,7 +74,7 @@ fun StatusPill(
     val remainingState: State<Float> = if (animate) {
         animateFloatAsState(
             targetValue = targetRemaining,
-            animationSpec = tween(durationMillis = 320),
+            animationSpec = mealsyTween(durationMillis = 320, easing = FastOutSlowInEasing),
             label = "statusPillRemaining",
         )
     } else {

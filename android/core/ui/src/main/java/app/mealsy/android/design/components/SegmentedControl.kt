@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * Mealsy's segmented control, used for the meal-type selector in the confirm
@@ -59,7 +59,7 @@ fun <T> SegmentedControl(
                 val isSelected = option == selected
                 val backgroundColor by animateColorAsState(
                     targetValue = if (isSelected) colors.ink else Color.Transparent,
-                    animationSpec = tween(150),
+                    animationSpec = mealsyTween(150),
                     label = "segment-bg",
                 )
                 val textColor = if (isSelected) colors.canvas else colors.muted

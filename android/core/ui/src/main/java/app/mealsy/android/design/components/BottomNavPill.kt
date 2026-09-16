@@ -1,6 +1,7 @@
 package app.mealsy.android.design.components
 
 import android.content.res.Configuration
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * One destination in a [BottomNavPill].
@@ -181,10 +184,15 @@ private fun NavIcon(
     colors: app.mealsy.android.design.theme.MealsyColors,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val tint by animateColorAsState(
+        targetValue = if (isSelected) colors.navActive else colors.navInactive,
+        animationSpec = mealsyTween(150),
+        label = "navIconTint",
+    )
     Icon(
         imageVector = item.icon,
         contentDescription = item.label,
-        tint = if (isSelected) colors.navActive else colors.navInactive,
+        tint = tint,
         modifier = Modifier
             .size(22.dp)
             .clickable(

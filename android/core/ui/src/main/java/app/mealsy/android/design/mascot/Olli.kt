@@ -24,6 +24,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.R
+import app.mealsy.android.design.theme.LocalReducedMotion
 import app.mealsy.android.design.theme.MealsyTheme
 import coil.ImageLoader
 import coil.compose.rememberAsyncImagePainter
@@ -79,7 +80,13 @@ fun Olli(
         }
     }
 
-    val bobModifier = if (bob && animationsEnabled && !inInspection) {
+    // LocalReducedMotion already folds in LocalInspectionMode (see
+    // ReducedMotion.kt), so this also stays static under `@Preview` and
+    // Roborazzi; animationsEnabled additionally covers the system-wide
+    // "Remove animations" setting even when Olli is rendered outside
+    // MealsyTheme (LocalReducedMotion then falls back to its `false` default).
+    val reducedMotion = LocalReducedMotion.current
+    val bobModifier = if (bob && animationsEnabled && !inInspection && !reducedMotion) {
         Modifier.olliBob()
     } else {
         Modifier

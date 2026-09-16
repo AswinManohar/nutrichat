@@ -1,8 +1,8 @@
 package app.mealsy.android.design.components
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +22,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * A flat linear progress bar used on onboarding step headers.
@@ -49,7 +50,7 @@ fun MealsyProgressBar(
     val animatedProgress by if (animate) {
         animateFloatAsState(
             targetValue = clamped,
-            animationSpec = tween(durationMillis = 350),
+            animationSpec = mealsyTween(durationMillis = 350, easing = FastOutSlowInEasing),
             label = "mealsyProgressBar",
         )
     } else {

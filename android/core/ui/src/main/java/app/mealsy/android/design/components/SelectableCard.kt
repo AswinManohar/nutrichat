@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,6 +25,7 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * A selectable option card, used for onboarding's goal-selection step.
@@ -50,7 +50,7 @@ fun SelectableCard(
     val colors = MealsyTheme.colors
     val borderColor by animateColorAsState(
         targetValue = if (selected) colors.ink else Color.Transparent,
-        animationSpec = tween(150),
+        animationSpec = mealsyTween(150),
         label = "selectable-card-border",
     )
 

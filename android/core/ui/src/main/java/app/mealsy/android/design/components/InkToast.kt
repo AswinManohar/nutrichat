@@ -25,6 +25,7 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.motionDurationMs
 
 /**
  * A short-lived confirmation toast, e.g. `Quick log opened` after tapping
@@ -42,10 +43,11 @@ import app.mealsy.android.design.theme.MealsyType
 @Composable
 fun InkToast(text: String, modifier: Modifier = Modifier, visible: Boolean = true) {
     val colors = MealsyTheme.colors
+    val durationMs = motionDurationMs(250)
     AnimatedVisibility(
         visible = visible,
-        enter = slideInVertically(animationSpec = tween(250)) { it / 2 } + fadeIn(tween(250)),
-        exit = slideOutVertically(animationSpec = tween(250)) { it / 2 } + fadeOut(tween(250)),
+        enter = slideInVertically(animationSpec = tween(durationMs)) { it / 2 } + fadeIn(tween(durationMs)),
+        exit = slideOutVertically(animationSpec = tween(durationMs)) { it / 2 } + fadeOut(tween(durationMs)),
         modifier = modifier,
     ) {
         Surface(
