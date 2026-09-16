@@ -16,11 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -308,14 +303,14 @@ private fun NameStep(state: OnboardingUiState, onName: (String) -> Unit) {
 
 // --- Step 2: Goal ----------------------------------------------------------
 
-private data class GoalCardSpec(
+internal data class GoalCardSpec(
     val goal: OnboardingGoal,
     val tone: TagTone,
     val titleRes: Int,
     val subtitleRes: Int,
 )
 
-private val GOAL_CARD_SPECS = listOf(
+internal val GOAL_CARD_SPECS = listOf(
     GoalCardSpec(OnboardingGoal.Lose, TagTone.Butter, R.string.onboarding_goal_lose_title, R.string.onboarding_goal_lose_subtitle),
     GoalCardSpec(OnboardingGoal.Maintain, TagTone.Leaf, R.string.onboarding_goal_maintain_title, R.string.onboarding_goal_maintain_subtitle),
     GoalCardSpec(OnboardingGoal.Build, TagTone.Powder, R.string.onboarding_goal_build_title, R.string.onboarding_goal_build_subtitle),
@@ -352,7 +347,7 @@ private fun GoalStep(state: OnboardingUiState, onSelectGoal: (OnboardingGoal) ->
 
 // --- Step 3: Preferences ---------------------------------------------------
 
-private val PREF_LABELS: Map<DietaryPref, Int> = mapOf(
+internal val PREF_LABELS: Map<DietaryPref, Int> = mapOf(
     DietaryPref.Vegetarian to R.string.onboarding_pref_vegetarian,
     DietaryPref.Vegan to R.string.onboarding_pref_vegan,
     DietaryPref.Pescatarian to R.string.onboarding_pref_pescatarian,
@@ -557,120 +552,3 @@ private fun DoneStep(state: OnboardingUiState, animate: Boolean, onRetry: () -> 
     }
 }
 
-/**
- * `internal` (rather than `private`) so [app.mealsy.android.ui.settings.SettingsScreen]
- * can reuse these same step composables for editing goals post-onboarding —
- * see Task 13's "Goals" section.
- */
-@Composable
-internal fun TrackingModeStep(selected: String, onSelect: (String) -> Unit) {
-    Column {
-        Text(text = "How do you want to track?", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TrackingModeOption(
-            label = "Goals — track calories, protein, fiber",
-            value = "goals",
-            selected = selected == "goals",
-            onSelect = onSelect,
-        )
-        TrackingModeOption(
-            label = "Mindful — log meals without numeric targets",
-            value = "mindful",
-            selected = selected == "mindful",
-            onSelect = onSelect,
-        )
-    }
-}
-
-@Composable
-private fun TrackingModeOption(
-    label: String,
-    value: String,
-    selected: Boolean,
-    onSelect: (String) -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-    ) {
-        RadioButton(selected = selected, onClick = { onSelect(value) })
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = label)
-    }
-}
-
-@Composable
-internal fun NumericGoalsStep(
-    kcalGoal: Double,
-    proteinGoal: Double,
-    fiberGoal: Double,
-    onKcalGoalChange: (Double) -> Unit,
-    onProteinGoalChange: (Double) -> Unit,
-    onFiberGoalChange: (Double) -> Unit,
-) {
-    Column {
-        Text(text = "Daily goals", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        GoalStepper(
-            label = "Calories (kcal)",
-            value = kcalGoal,
-            step = 50.0,
-            onChange = onKcalGoalChange,
-        )
-        GoalStepper(
-            label = "Protein (g)",
-            value = proteinGoal,
-            step = 5.0,
-            onChange = onProteinGoalChange,
-        )
-        GoalStepper(
-            label = "Fiber (g)",
-            value = fiberGoal,
-            step = 5.0,
-            onChange = onFiberGoalChange,
-        )
-    }
-}
-
-@Composable
-internal fun GoalStepper(label: String, value: Double, step: Double, onChange: (Double) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(text = label, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = { onChange((value - step).coerceAtLeast(0.0)) }) { Text("-") }
-        Text(
-            text = value.toInt().toString(),
-            modifier = Modifier.padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        OutlinedButton(onClick = { onChange(value + step) }) { Text("+") }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun DietaryPrefsStep(selected: Set<String>, onToggle: (String) -> Unit) {
-    Column {
-        Text(text = "Dietary preferences", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DIETARY_PREF_OPTIONS.forEach { pref ->
-                FilterChip(
-                    selected = pref in selected,
-                    onClick = { onToggle(pref) },
-                    label = { Text(pref.replace('_', ' ')) },
-                    colors = FilterChipDefaults.filterChipColors(),
-                )
-            }
-        }
-    }
-}

@@ -19,12 +19,17 @@ import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.TodayResponse
+import app.mealsy.android.ui.onboarding.OnboardingGoal
+import app.mealsy.data.api.GoalRequest
 import app.mealsy.data.auth.AuthGateway
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import app.mealsy.data.repo.GoalsRepository
+import app.mealsy.data.repo.Profile
+import app.mealsy.data.repo.ProfileStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -56,9 +61,33 @@ private class FakeAuthGateway(
         sessionState.value = SessionState.SignedOut
     }
 
-    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+    var lastUpdatedProfileMetadata: Pair<String, String>? = null
+        private set
+
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+        lastUpdatedProfileMetadata = firstName to goalFocus
+    }
 
     override suspend fun currentProfileMetadata(): ProfileMetadata? = null
+}
+
+/** In-memory [ProfileStore] fake, same convention as `OnboardingViewModelTest`'s. */
+private class FakeProfileStore(initial: Profile = Profile()) : ProfileStore {
+    private val state = MutableStateFlow(initial)
+    override val profile: Flow<Profile> = state
+
+    override suspend fun get(): Profile = state.value
+
+    override suspend fun set(firstName: String?, goalFocus: String?) {
+        state.value = state.value.copy(
+            firstName = firstName ?: state.value.firstName,
+            goalFocus = goalFocus ?: state.value.goalFocus,
+        )
+    }
+
+    override suspend fun clear() {
+        state.value = Profile()
+    }
 }
 
 /**
@@ -86,7 +115,19 @@ private class FakeMealsyApi(
         onGoals?.invoke() ?: error("onGoals not configured for this test")
 
     override suspend fun createGoals(body: GoalRequest): GoalsResponse = error("not used")
-    override suspend fun updateGoals(body: GoalRequest): GoalsResponse = error("not used")
+
+    val updateGoalsCalls = mutableListOf<GoalRequest>()
+
+    override suspend fun updateGoals(body: GoalRequest): GoalsResponse {
+        updateGoalsCalls += body
+        return GoalsResponse(
+            trackingMode = body.trackingMode,
+            kcalGoal = body.kcalGoal,
+            proteinGoal = body.proteinGoal,
+            fiberGoal = body.fiberGoal,
+            dietaryPrefs = body.dietaryPrefs,
+        )
+    }
     override suspend fun quota(): QuotaResponse = error("not used")
     override suspend fun registerDevice(body: RegisterDeviceRequest) = Unit
     override suspend fun deleteDevice(token: String) = Unit
@@ -160,6 +201,7 @@ class SettingsViewModelTest {
         authGateway: FakeAuthGateway = FakeAuthGateway(),
         onSignOut: suspend () -> Unit = {},
         tokenStore: FakeDeviceTokenStore = FakeDeviceTokenStore(),
+        profileStore: FakeProfileStore = FakeProfileStore(),
         fcmToken: String? = null,
     ): Quad<SettingsViewModel, FakeMealsyApi, FakeAuthGateway, FakeDeviceTokenStore> {
         val sessionManager = SessionManager(authGateway, onSignOut)
@@ -177,6 +219,7 @@ class SettingsViewModelTest {
             api = api,
             pushRegistrar = pushRegistrar,
             tokenStore = tokenStore,
+            profileStore = profileStore,
             currentVersionCode = 1,
             versionName = "1.0",
         )
@@ -335,5 +378,123 @@ class SettingsViewModelTest {
         assertFalse(sharedTokenStore.isRemindersDisabled())
         assertEquals("token-a", sharedTokenStore.getLastSentToken())
         assertTrue(viewModel.uiState.value.reminderEnabled)
+    }
+
+    @Test
+    fun `editing the name writes both ProfileStore and updateProfileMetadata`() = runTest {
+        val authGateway = FakeAuthGateway()
+        val profileStore = FakeProfileStore(Profile(firstName = "Sam", goalFocus = "maintain"))
+        val (viewModel, _, _) = viewModel(authGateway = authGateway, profileStore = profileStore)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.startEditingName()
+        viewModel.setNameDraft("Alex")
+        viewModel.saveName()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Alex", viewModel.uiState.value.firstName)
+        assertFalse(viewModel.uiState.value.editingName)
+        assertEquals("Alex", profileStore.get().firstName)
+        assertEquals("Alex" to "maintain", authGateway.lastUpdatedProfileMetadata)
+    }
+
+    @Test
+    fun `changing goalFocus writes goal_focus and only prompts for a new kcal default in goals mode`() = runTest {
+        val authGateway = FakeAuthGateway()
+        val profileStore = FakeProfileStore()
+        val api = FakeMealsyApi(onGoals = ::echoGoals)
+        val (viewModel, _, _) = viewModel(api = api, authGateway = authGateway, profileStore = profileStore)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.selectGoalFocus(OnboardingGoal.Build)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(OnboardingGoal.Build.key, viewModel.uiState.value.goalFocus)
+        assertEquals("" to OnboardingGoal.Build.key, authGateway.lastUpdatedProfileMetadata)
+        assertEquals(OnboardingGoal.Build.key, profileStore.get().goalFocus)
+        assertEquals(OnboardingGoal.Build, viewModel.uiState.value.kcalPromptGoal)
+
+        // In mindful mode, changing the goal focus must not surface the kcal prompt.
+        val mindfulApi = FakeMealsyApi(
+            onGoals = { GoalsResponse(trackingMode = "mindful") },
+        )
+        val (mindfulViewModel, _, _) = viewModel(api = mindfulApi)
+        dispatcher.scheduler.advanceUntilIdle()
+        mindfulViewModel.selectGoalFocus(OnboardingGoal.Learn)
+        dispatcher.scheduler.advanceUntilIdle()
+        assertNull(mindfulViewModel.uiState.value.kcalPromptGoal)
+    }
+
+    @Test
+    fun `toggling track daily targets off sends mindful with nulled goals, on restores or defaults`() = runTest {
+        val api = FakeMealsyApi(onGoals = ::echoGoals)
+        val (viewModel, capturedApi, _) = viewModel(api = api)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.setTrackingEnabled(false)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val offRequest = capturedApi.updateGoalsCalls.last()
+        assertEquals("mindful", offRequest.trackingMode)
+        assertNull(offRequest.kcalGoal)
+        assertNull(offRequest.proteinGoal)
+        assertNull(offRequest.fiberGoal)
+        assertEquals("mindful", viewModel.uiState.value.trackingMode)
+
+        viewModel.setTrackingEnabled(true)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val onRequest = capturedApi.updateGoalsCalls.last()
+        assertEquals("goals", onRequest.trackingMode)
+        // Restored from the goals fetched at load time (echoGoals: 2000/100/30).
+        assertEquals(2000.0, onRequest.kcalGoal)
+        assertEquals(100.0, onRequest.proteinGoal)
+        assertEquals(30.0, onRequest.fiberGoal)
+
+        // With no prior goals at all, toggling on falls back to 2000/100/30.
+        val neverHadGoalsApi = FakeMealsyApi(onGoals = { error("404") })
+        val (freshViewModel, freshApi, _) = viewModel(api = neverHadGoalsApi)
+        dispatcher.scheduler.advanceUntilIdle()
+        freshViewModel.setTrackingEnabled(true)
+        dispatcher.scheduler.advanceUntilIdle()
+        val fallbackRequest = freshApi.updateGoalsCalls.last()
+        assertEquals(2000.0, fallbackRequest.kcalGoal)
+        assertEquals(100.0, fallbackRequest.proteinGoal)
+        assertEquals(30.0, fallbackRequest.fiberGoal)
+    }
+
+    @Test
+    fun `rapid stepper edits are debounced into a single PUT with the final value`() = runTest {
+        val api = FakeMealsyApi(onGoals = ::echoGoals)
+        val (viewModel, capturedApi, _) = viewModel(api = api)
+        dispatcher.scheduler.advanceUntilIdle()
+        capturedApi.updateGoalsCalls.clear()
+
+        viewModel.setKcalGoal(2050.0)
+        dispatcher.scheduler.advanceTimeBy(200)
+        viewModel.setKcalGoal(2100.0)
+        dispatcher.scheduler.advanceTimeBy(200)
+        viewModel.setKcalGoal(2150.0)
+        dispatcher.scheduler.advanceTimeBy(GOALS_SAVE_DEBOUNCE_MS + 100)
+
+        assertEquals(1, capturedApi.updateGoalsCalls.size)
+        assertEquals(2150.0, capturedApi.updateGoalsCalls.single().kcalGoal)
+    }
+
+    @Test
+    fun `toggling a dietary pref sends the full dietary_prefs set`() = runTest {
+        val api = FakeMealsyApi(onGoals = ::echoGoals)
+        val (viewModel, capturedApi, _) = viewModel(api = api)
+        dispatcher.scheduler.advanceUntilIdle()
+        capturedApi.updateGoalsCalls.clear()
+
+        viewModel.toggleDietaryPref("vegetarian")
+        dispatcher.scheduler.advanceTimeBy(GOALS_SAVE_DEBOUNCE_MS + 100)
+        viewModel.toggleDietaryPref("gluten_free")
+        dispatcher.scheduler.advanceTimeBy(GOALS_SAVE_DEBOUNCE_MS + 100)
+
+        val lastPrefs = capturedApi.updateGoalsCalls.last().dietaryPrefs.keys
+        assertTrue("vegetarian" in lastPrefs)
+        assertTrue("gluten_free" in lastPrefs)
     }
 }

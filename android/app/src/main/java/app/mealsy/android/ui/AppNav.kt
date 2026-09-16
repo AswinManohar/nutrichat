@@ -438,7 +438,9 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 onOpenMeal = { id -> navController.navigate(myMealRoute(id)) },
                             )
                         }
-                        composable(ROUTE_SETTINGS) { SettingsScreen() }
+                        composable(ROUTE_SETTINGS) {
+                            SettingsScreen(onBack = { navController.popBackStack() })
+                        }
                         composable(
                             ROUTE_MEAL_TYPE_PATTERN,
                             arguments = listOf(navArgument(ARG_MEAL_TYPE) { type = NavType.StringType }),
