@@ -354,9 +354,6 @@ class MealDetailViewModel @Inject constructor(
         }
     }
 
-    /** Edit portions (My-Meal mode) opens the same sheet for now. TODO(Phase 5): full per-ingredient customizer. */
-    fun editPortions() = openSheet()
-
     // -- Delete (logged mode only) --------------------------------------
 
     fun delete() {

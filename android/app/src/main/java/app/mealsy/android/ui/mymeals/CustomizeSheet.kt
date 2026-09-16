@@ -364,11 +364,31 @@ internal fun CustomizeSheetContent(
 
         TotalsStrip(
             entries = listOf(
-                TotalsStripEntry("kcal", totals.kcal.roundToInt().toString(), totals.kcal == 0.0),
-                TotalsStripEntry("Protein", "${totals.proteinG.roundToInt()}g", totals.proteinG == 0.0),
-                TotalsStripEntry("Carbs", "${totals.carbsG.roundToInt()}g", totals.carbsG == 0.0),
-                TotalsStripEntry("Fat", "${totals.fatG.roundToInt()}g", totals.fatG == 0.0),
-                TotalsStripEntry("Fiber", "${totals.fiberG.roundToInt()}g", totals.fiberG == 0.0),
+                TotalsStripEntry(
+                    stringResource(app.mealsy.android.R.string.confirm_card_totals_kcal),
+                    totals.kcal.roundToInt().toString(),
+                    totals.kcal == 0.0,
+                ),
+                TotalsStripEntry(
+                    stringResource(app.mealsy.android.R.string.confirm_card_totals_protein),
+                    "${totals.proteinG.roundToInt()}g",
+                    totals.proteinG == 0.0,
+                ),
+                TotalsStripEntry(
+                    stringResource(app.mealsy.android.R.string.confirm_card_totals_carbs),
+                    "${totals.carbsG.roundToInt()}g",
+                    totals.carbsG == 0.0,
+                ),
+                TotalsStripEntry(
+                    stringResource(app.mealsy.android.R.string.confirm_card_totals_fat),
+                    "${totals.fatG.roundToInt()}g",
+                    totals.fatG == 0.0,
+                ),
+                TotalsStripEntry(
+                    stringResource(app.mealsy.android.R.string.confirm_card_totals_fiber),
+                    "${totals.fiberG.roundToInt()}g",
+                    totals.fiberG == 0.0,
+                ),
             ),
             modifier = Modifier.fillMaxWidth(),
         )
