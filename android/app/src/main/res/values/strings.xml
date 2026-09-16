@@ -117,4 +117,51 @@
     <string name="home_coach_target_reached">You\'ve reached today\'s target. A light evening keeps things steady.</string>
     <string name="home_coach_mindful">You\'ve logged %1$d meals today. Keep noticing what fills you up.</string>
 
+    <!-- Meal-type list -->
+    <string name="meal_type_back">Back</string>
+    <string name="meal_type_loading">Loading meals…</string>
+    <string name="meal_type_generic_label">Logged meal</string>
+    <string name="meal_type_kcal_chip">%1$d kcal</string>
+    <string name="meal_type_empty">Nothing logged for %1$s yet.</string>
+    <string name="meal_type_deleted_message">Meal deleted</string>
+    <string name="meal_type_deleted_undo_label">Undo</string>
+
+    <!-- Meal detail -->
+    <string name="meal_detail_back">Back</string>
+    <string name="meal_detail_loading">Loading meal…</string>
+    <string name="meal_detail_error">Could not load this meal.</string>
+    <string name="meal_detail_my_meal_eyebrow">My meal</string>
+    <string name="meal_detail_header">%1$s · %2$s</string>
+    <string name="meal_detail_kcal_chip">%1$d kcal</string>
+    <string name="meal_detail_protein_chip">%1$dg protein</string>
+    <string name="meal_detail_usda_verified">USDA verified</string>
+    <string name="meal_detail_estimated">estimated</string>
+    <string name="meal_detail_status_fits_label">Fits today\'s budget</string>
+    <string name="meal_detail_status_fits_value">%1$d kcal remaining</string>
+    <string name="meal_detail_status_over_label">Over today\'s target</string>
+    <string name="meal_detail_status_over_value">%1$d kcal over</string>
+    <string name="meal_detail_status_logged_label">Logged</string>
+    <string name="meal_detail_status_no_target">no target</string>
+    <string name="meal_detail_whats_in_it">What\'s in it</string>
+    <string name="meal_detail_item_meta">%1$dg · %2$d kcal</string>
+    <string name="meal_detail_coach_protein">Most of the protein here comes from the %1$s.</string>
+    <string name="meal_detail_coach_estimate">One item is an estimate, so the numbers are approximate.</string>
+    <string name="meal_detail_log_again">Log again</string>
+    <string name="meal_detail_delete">Delete</string>
+    <string name="meal_detail_log_this_meal">Log this meal</string>
+    <string name="meal_detail_edit_portions">Edit portions</string>
+    <string name="meal_detail_delete_dialog_title">Delete this meal</string>
+    <string name="meal_detail_delete_dialog_body">This removes it from today\'s log. This cannot be undone.</string>
+    <string name="meal_detail_delete_dialog_confirm">Delete</string>
+    <string name="meal_detail_delete_dialog_cancel">Cancel</string>
+    <string name="meal_detail_sheet_log_as">Log this as</string>
+    <string name="meal_detail_sheet_portion">Portion</string>
+    <string name="meal_detail_sheet_confirm">Confirm &amp; log</string>
+    <string name="meal_detail_logged_toast">Logged</string>
+    <string name="meal_detail_error_log">Couldn\'t log that. Try again.</string>
+    <string name="meal_detail_portion_half">0.5×</string>
+    <string name="meal_detail_portion_one">1×</string>
+    <string name="meal_detail_portion_one_half">1.5×</string>
+    <string name="meal_detail_portion_two">2×</string>
+
 </resources>
