@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Login screen -->
+    <string name="login_title">Welcome back</string>
+    <string name="login_email_placeholder">Email address</string>
+    <string name="login_email_field_description">Email address</string>
+    <string name="login_send_magic_link">Send magic link</string>
+    <string name="login_continue_with_google">Continue with Google</string>
+    <string name="login_awaiting_email">Check your email for a magic link.</string>
+
+    <!-- Update-required gate -->
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_body">This version of Mealsy is no longer supported. Update to continue.</string>
+    <string name="update_required_cta">Update on Play Store</string>
+</resources>
