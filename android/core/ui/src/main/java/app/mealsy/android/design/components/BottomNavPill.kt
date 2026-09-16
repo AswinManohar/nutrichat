@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -49,15 +50,18 @@ data class MealsyNavItem(
 /**
  * The floating ink bottom navigation pill, per "Bottom nav + FAB" in
  * `Mealsy Design System.html`. Floats 26dp above the bottom edge with 16dp
- * side margins, inner padding 15dp vertical / 30dp horizontal. Four 22dp
- * stroked icons; active tint `navActive`, inactive `navInactive`. In dark
- * mode the pill keeps its ink background and gains a 1dp `navBorder`
- * hairline.
+ * side margins, max width 340dp (centered when the available width is
+ * wider), inner padding 14dp vertical / 28dp horizontal. Four 22dp stroked
+ * icons; active tint `navActive`, inactive `navInactive`. In dark mode the
+ * pill keeps its ink background and gains a 1dp `navBorder` hairline.
  *
- * The optional [fab] slot (typically an [OliveFab]) is centered
- * horizontally and overlaps the pill's top edge. When [fab] is non-null,
+ * The optional [fab] slot (typically an [OliveFab]) is centered on the
+ * pill's own centre point, both horizontally and vertically — it overhangs
+ * evenly above and below the pill, matching the reference HTML where the
+ * FAB is `position: absolute; left: 50%; top: 50%; transform:
+ * translate(-50%, -50%)` relative to the pill. When [fab] is non-null,
  * [items] is split into a left half and a right half (the first half gets
- * the extra item for an odd count) with a reserved 72dp centre gap between
+ * the extra item for an odd count) with a reserved 56dp centre gap between
  * them so the FAB drops in without clipping or crowding any icon. Each half
  * spreads its icons evenly across its share of the row. When [fab] is null,
  * all icons spread evenly across the full width with no gap.
@@ -84,18 +88,22 @@ fun BottomNavPill(
 
     Box(
         modifier = modifier
+            .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .padding(bottom = 26.dp),
-        contentAlignment = Alignment.BottomCenter,
+        contentAlignment = Alignment.Center,
     ) {
         Surface(
             color = colors.navBar,
             shape = MealsyShapes.pill,
-            modifier = Modifier.then(borderModifier),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 340.dp)
+                .then(borderModifier),
         ) {
             Row(
                 modifier = Modifier
-                    .padding(vertical = 15.dp, horizontal = 30.dp)
+                    .padding(vertical = 14.dp, horizontal = 28.dp)
                     .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -110,7 +118,7 @@ fun BottomNavPill(
                         colors = colors,
                         modifier = Modifier.weight(1f),
                     )
-                    Box(modifier = Modifier.width(72.dp))
+                    Box(modifier = Modifier.width(56.dp))
                     NavHalf(
                         items = right,
                         selectedRoute = selectedRoute,
@@ -129,10 +137,10 @@ fun BottomNavPill(
                 }
             }
         }
+        // Centered on the pill's own centre point (both axes), not its top
+        // edge — matches the reference HTML's `translate(-50%, -50%)` FAB.
         if (fab != null) {
-            Box(modifier = Modifier.padding(bottom = 26.dp)) {
-                fab()
-            }
+            fab()
         }
     }
 }
