@@ -77,4 +77,36 @@
     <string name="onboarding_done_error">Could not save your goals. Try again.</string>
     <string name="onboarding_done_try_again">Try again</string>
 
+    <!-- Home dashboard -->
+    <string name="home_greeting_morning">Good morning</string>
+    <string name="home_greeting_afternoon">Good afternoon</string>
+    <string name="home_greeting_evening">Good evening</string>
+    <string name="home_greeting_morning_named">Good morning, %1$s</string>
+    <string name="home_greeting_afternoon_named">Good afternoon, %1$s</string>
+    <string name="home_greeting_evening_named">Good evening, %1$s</string>
+    <string name="home_settings">Settings</string>
+    <string name="home_todays_meals">Today\'s meals</string>
+    <string name="home_meal_breakfast">Breakfast</string>
+    <string name="home_meal_lunch">Lunch</string>
+    <string name="home_meal_dinner">Dinner</string>
+    <string name="home_meal_snack">Snacks</string>
+    <string name="home_meal_not_yet">not yet</string>
+    <string name="home_metric_protein">Protein</string>
+    <string name="home_metric_carbs">Carbs</string>
+    <string name="home_metric_fat">Fat</string>
+    <string name="home_loading">Loading today…</string>
+    <string name="home_error">Could not load today. Check your connection.</string>
+    <string name="home_eaten_label">%1$s kcal eaten</string>
+    <string name="home_state_left">%1$s left</string>
+    <string name="home_state_over">%1$s over</string>
+    <string name="home_state_no_target">no target</string>
+
+    <!-- Home dashboard: coach notes -->
+    <string name="home_coach_protein_gap_afternoon">You\'re %1$dg short on protein today. Greek yogurt this afternoon would close the gap.</string>
+    <string name="home_coach_protein_gap_morning">You\'re %1$dg short on protein today. An egg at lunch would close the gap.</string>
+    <string name="home_coach_protein_gap_evening">You\'re %1$dg short on protein today. A glass of milk tonight would close the gap.</string>
+    <string name="home_coach_kcal_remaining">%1$d kcal available for the rest of today. A normal dinner fits comfortably.</string>
+    <string name="home_coach_target_reached">You\'ve reached today\'s target. A light evening keeps things steady.</string>
+    <string name="home_coach_mindful">You\'ve logged %1$d meals today. Keep noticing what fills you up.</string>
+
 </resources>

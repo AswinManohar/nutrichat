@@ -5,6 +5,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import java.time.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -56,4 +57,14 @@ object AppModule {
     @ApplicationScope
     fun provideApplicationScope(): CoroutineScope =
         CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * The system clock in the device's default time zone, injected into
+     * [app.mealsy.android.ui.home.HomeViewModel] so its day-part/date-label
+     * logic is deterministic under test (a fixed [Clock] there) while using
+     * real wall-clock time in production.
+     */
+    @Provides
+    @Singleton
+    fun provideClock(): Clock = Clock.systemDefaultZone()
 }

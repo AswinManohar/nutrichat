@@ -161,20 +161,25 @@ fun StatusPill(
  * track with no olive remainder block and no bite.
  *
  * @param eatenLabel The single line of text shown, e.g. "1,340 kcal logged today".
+ * @param stateLabel Optional right-aligned label, e.g. "no target" (Home's
+ *   mindful variant). `null` (the default) renders exactly as before this
+ *   parameter was added, so every existing caller/golden is byte-identical.
  */
 @Composable
 fun StatusPillAwareness(
     eatenLabel: String,
     modifier: Modifier = Modifier,
+    stateLabel: String? = null,
 ) {
     val colors = MealsyTheme.colors
+    val description = if (stateLabel != null) "$eatenLabel, $stateLabel" else eatenLabel
     Surface(
         color = colors.oliveTrack,
         shape = MealsyShapes.pill,
         modifier = modifier
             .fillMaxWidth()
             .height(46.dp)
-            .clearAndSetSemantics { contentDescription = eatenLabel },
+            .clearAndSetSemantics { contentDescription = description },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Text(
@@ -185,6 +190,16 @@ fun StatusPillAwareness(
                     .align(Alignment.CenterStart)
                     .padding(start = 18.dp),
             )
+            if (stateLabel != null) {
+                Text(
+                    text = stateLabel,
+                    style = MealsyType.body,
+                    color = colors.oliveText.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 18.dp),
+                )
+            }
         }
     }
 }
