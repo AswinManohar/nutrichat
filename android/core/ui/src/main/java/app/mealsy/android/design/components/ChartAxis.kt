@@ -32,8 +32,7 @@ fun niceAxisMax(maxValue: Float): Float {
         else -> 500f
     }
     val ceilingSteps = kotlin.math.ceil(maxValue / step)
-    val roundedUp = ceilingSteps * step
-    return if (roundedUp <= maxValue) roundedUp + step else roundedUp
+    return ceilingSteps * step
 }
 
 /**

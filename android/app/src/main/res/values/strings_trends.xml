@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Trends screen. Kept in a separate file (rather than strings.xml) per
-         Phase 5 concurrency rules -- Android merges all values/*.xml into R.string. -->
+         Phase 5 concurrency rules; Android merges all values/*.xml into R.string. -->
     <string name="trends_eyebrow">Trends</string>
     <string name="trends_title_week">Your week</string>
     <string name="trends_title_month">Your month</string>

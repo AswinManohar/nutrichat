@@ -20,7 +20,6 @@ import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.android.ui.onboarding.OnboardingGoal
-import app.mealsy.data.api.GoalRequest
 import app.mealsy.data.auth.AuthGateway
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager

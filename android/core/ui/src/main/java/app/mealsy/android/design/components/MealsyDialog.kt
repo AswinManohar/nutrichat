@@ -10,11 +10,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
@@ -47,11 +48,18 @@ fun MealsyDialog(
     buttons: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = MealsyTheme.colors
-    Dialog(onDismissRequest = onDismissRequest) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        // `usePlatformDefaultWidth = false` avoids Compose's default dialog
+        // window sizing pass, which never settles under Robolectric/Espresso
+        // (AppNotIdleException) — the dialog's own `fillMaxWidth()` modifier
+        // already constrains its width, so the platform default isn't needed.
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
             modifier = modifier
                 .fillMaxWidth()
-                .semantics { contentDescription = title },
+                .padding(horizontal = 24.dp),
             shape = MealsyShapes.card,
             color = colors.surface,
             tonalElevation = 0.dp,
@@ -63,7 +71,16 @@ fun MealsyDialog(
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(text = title, style = MealsyType.section, color = colors.ink)
+                // `heading()` (rather than a root contentDescription equal
+                // to the title) avoids TalkBack announcing the title twice:
+                // once for the dialog's accessibility label and once when
+                // it reads this Text.
+                Text(
+                    text = title,
+                    style = MealsyType.section,
+                    color = colors.ink,
+                    modifier = Modifier.semantics { heading() },
+                )
                 if (body != null) {
                     Text(text = body, style = MealsyType.body, color = colors.muted)
                 }

@@ -3,6 +3,7 @@ package app.mealsy.android.ui.mymeals
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -237,7 +238,14 @@ private fun formatKcal(kcal: Double): String =
 internal fun displayName(raw: String): String {
     val hasComma = raw.contains(',')
     val isAllCaps = raw.isNotBlank() && raw.any { it.isLetter() } && raw.none { it.isLowerCase() }
-    return if (hasComma || isAllCaps) FoodNameHumanizer.humanize(raw) else raw
+    return when {
+        // All-caps input carries no case information to preserve, so lower
+        // it first: this keeps a no-comma blob like "CHICKEN BREAST" from
+        // surviving humanize()'s sentence-case-only pass-through unchanged.
+        isAllCaps -> FoodNameHumanizer.humanize(raw.lowercase())
+        hasComma -> FoodNameHumanizer.humanize(raw)
+        else -> raw
+    }
 }
 
 private fun SavedMeal.toCardItem(): CardItem = CardItem(
@@ -332,5 +340,5 @@ private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -
 }
 
 private suspend fun PointerInputScope.detectTapToLog(onTap: () -> Unit) {
-    androidx.compose.foundation.gestures.detectTapGestures(onTap = { onTap() })
+    detectTapGestures(onTap = { onTap() })
 }

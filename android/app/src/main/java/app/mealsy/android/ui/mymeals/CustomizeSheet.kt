@@ -178,7 +178,7 @@ private fun SavedMealItem.toCustomizeIngredient(index: Int): CustomizeIngredient
 }
 
 /** Rendering state for [CustomizeSheet]. */
-private sealed interface CustomizeUiState {
+internal sealed interface CustomizeUiState {
     data object Loading : CustomizeUiState
     data class Error(val message: String) : CustomizeUiState
     data class Loaded(val state: CustomizeSheetState, val submitting: Boolean) : CustomizeUiState
@@ -206,7 +206,7 @@ class CustomizeSheetViewModel @Inject constructor(
     }
 
     private val _uiState = MutableStateFlow<CustomizeUiState>(CustomizeUiState.Loading)
-    val uiState: StateFlow<CustomizeUiState> = _uiState.asStateFlow()
+    internal val uiState: StateFlow<CustomizeUiState> = _uiState.asStateFlow()
 
     private val _logged = Channel<Unit>(Channel.BUFFERED)
     val logged = _logged.receiveAsFlow()

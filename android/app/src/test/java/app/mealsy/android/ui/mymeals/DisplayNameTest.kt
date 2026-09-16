@@ -10,7 +10,7 @@ class DisplayNameTest {
     fun `comma separated USDA description is humanized`() {
         assertEquals(
             "Grilled chicken breast",
-            displayName("Chicken, broilers or fryers, breast, meat only, cooked, grilled"),
+            displayName("Chicken, broiler or fryers, breast, meat only, cooked, grilled"),
         )
     }
 

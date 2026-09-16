@@ -25,7 +25,7 @@ class ChartAxisTest {
     @Test
     fun `niceAxisMax rounds kcal-scale values to the nearest 200`() {
         assertEquals(400f, niceAxisMax(210f), 1e-6f)
-        assertEquals(400f, niceAxisMax(200f), 1e-6f)
+        assertEquals(200f, niceAxisMax(200f), 1e-6f)
     }
 
     @Test
