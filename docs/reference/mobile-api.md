@@ -144,13 +144,102 @@ Response:
 {
   "kcal": 1450.0,
   "protein_g": 88.0,
+  "carbs_g": 160.0,
+  "fat_g": 42.0,
   "fiber_g": 14.0,
   "n_meals": 3,
   "by_type": [
-    { "meal_type": "breakfast", "kcal": 450.0, "summary": "eggs, toast" }
+    {
+      "meal_type": "breakfast",
+      "kcal": 450.0,
+      "summary": "eggs, toast",
+      "n_meals": 1
+    }
   ]
 }
 ```
+
+`carbs_g`, `fat_g`, and `by_type[].n_meals` are additive fields; older
+clients that ignore unknown fields continue to work unchanged.
+
+## `GET /meals/log?date=YYYY-MM-DD&meal_type=`
+
+Lists the caller's logged meals for a single nutrition day, owner-only,
+soft-deleted meals excluded.
+
+- `date` (optional): calendar date in the configured nutrition-day
+  timezone, using the same reset-hour/timezone window as
+  `GET /meals/today`. Defaults to today when omitted. A malformed value
+  returns 422.
+- `meal_type` (optional): filters to one category. Must be one of the
+  known meal categories, or the server returns 422.
+
+Response: a JSON array ordered by `logged_at` ascending.
+
+```json
+[
+  {
+    "meal_id": "m_789",
+    "meal_type": "breakfast",
+    "logged_at": "2026-09-16T06:12:00Z",
+    "label": "Eggs on toast",
+    "kcal": 450.0,
+    "protein_g": 28.0,
+    "carbs_g": 38.0,
+    "fat_g": 20.0,
+    "fiber_g": 4.0,
+    "n_items": 2
+  }
+]
+```
+
+## `GET /meals/log/{meal_id}`
+
+Full detail for one logged meal, including its resolved items.
+
+Response: the same fields as a `GET /meals/log` entry, plus `items` — the
+stored entities array verbatim (the same item shape used when logging via
+`POST /meals/log-items`).
+
+```json
+{
+  "meal_id": "m_789",
+  "meal_type": "breakfast",
+  "logged_at": "2026-09-16T06:12:00Z",
+  "label": "Eggs on toast",
+  "kcal": 450.0,
+  "protein_g": 28.0,
+  "carbs_g": 38.0,
+  "fat_g": 20.0,
+  "fiber_g": 4.0,
+  "n_items": 2,
+  "items": [
+    {
+      "fdc_id": 12345,
+      "food_name": "egg whole cooked scrambled",
+      "qty_g": 100.0,
+      "match_confidence": 0.92,
+      "candidates": [],
+      "kcal": 156.0,
+      "protein_g": 12.4,
+      "carbs_g": 1.2,
+      "fat_g": 10.8,
+      "fiber_g": 0.0,
+      "sugar_g": 1.0,
+      "sat_fat_g": 3.3,
+      "nutrients": {},
+      "source": "USDA",
+      "estimated": false,
+      "source_dish": null,
+      "is_composite": false
+    }
+  ]
+}
+```
+
+404 (`{"detail": "Meal not found"}`) covers three cases identically — the
+meal doesn't exist, belongs to another user, or was soft-deleted — so
+existence is never leaked.
 
 ## `GET /meals/trends?days=91`
 
