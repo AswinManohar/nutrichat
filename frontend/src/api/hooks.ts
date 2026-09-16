@@ -238,3 +238,10 @@ export const useUpgradeQuota = () => {
     },
   })
 }
+
+/** Permanently delete the caller's account and all associated data (204 on success). */
+export const useDeleteAccount = () => {
+  return useMutation<void, ApiError, void>({
+    mutationFn: () => apiClient.delete<void>('/account'),
+  })
+}

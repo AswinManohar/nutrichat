@@ -13,7 +13,7 @@ import { PreferenceChips } from '../components/onboarding/PreferenceChips'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { useAuthStore } from '../stores/authStore'
-import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send, Zap } from 'lucide-react'
+import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send, Zap, Trash2 } from 'lucide-react'
 import { useMascotStore } from '../stores/mascotStore'
 
 export const SettingsPage: React.FC = () => {
@@ -434,6 +434,16 @@ export const SettingsPage: React.FC = () => {
             >
               <LogOut className="w-4 h-4" />
               Sign Out from Account
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/account/delete')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 border-danger/30 text-danger hover:bg-danger/10 hover:border-danger/40"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete account
             </Button>
           </CardContent>
         </Card>

@@ -8,6 +8,7 @@ import { MyMealsPage } from './pages/MyMealsPage'
 import { TrendsPage } from './pages/TrendsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UpgradePage } from './pages/UpgradePage'
+import { DeleteAccountPage } from './pages/DeleteAccountPage'
 import { ProtectedLayout } from './components/layout/ProtectedLayout'
 
 function App() {
@@ -17,6 +18,11 @@ function App() {
         <Routes>
           {/* Public Auth Portal */}
           <Route path="/login" element={<LoginPage />} />
+
+          {/* Public account-deletion page (Google Play data-safety URL).
+              Not wrapped in ProtectedLayout — it must render without auth
+              and branches internally on the auth store's session state. */}
+          <Route path="/account/delete" element={<DeleteAccountPage />} />
 
           {/* Protected Area (Auth gated & Onboarding checked) */}
           <Route element={<ProtectedLayout />}>
