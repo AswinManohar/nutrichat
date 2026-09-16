@@ -34,7 +34,8 @@ import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.home.HomeScreen
 import app.mealsy.android.ui.login.LoginScreen
-import app.mealsy.android.ui.meals.MealTypeListPlaceholderScreen
+import app.mealsy.android.ui.mealdetail.MealDetailScreen
+import app.mealsy.android.ui.meals.MealTypeListScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingScreen
 import app.mealsy.android.ui.settings.SettingsScreen
@@ -71,12 +72,24 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_MEAL_TYPE = "meals"
 private const val ARG_MEAL_TYPE = "mealType"
 private const val ROUTE_MEAL_TYPE_PATTERN = "$ROUTE_MEAL_TYPE/{$ARG_MEAL_TYPE}"
+private const val ROUTE_MEAL = "meal"
+private const val ARG_MEAL_ID = "mealId"
+private const val ROUTE_MEAL_PATTERN = "$ROUTE_MEAL/{$ARG_MEAL_ID}"
+private const val ROUTE_MY_MEAL = "my-meal"
+private const val ARG_ID = "id"
+private const val ROUTE_MY_MEAL_PATTERN = "$ROUTE_MY_MEAL/{$ARG_ID}"
 
 /** Builds a navigable route to onboarding starting at [startStep] (0 = welcome). */
 private fun onboardingRoute(startStep: Int): String = "$ROUTE_ONBOARDING?$ARG_START_STEP=$startStep"
 
-/** Builds a navigable route to the meal-type placeholder for [mealType] (e.g. "breakfast"). */
+/** Builds a navigable route to the meal-type list for [mealType] (e.g. "breakfast"). */
 private fun mealTypeRoute(mealType: String): String = "$ROUTE_MEAL_TYPE/$mealType"
+
+/** Builds a navigable route to the meal-detail screen (logged mode) for [mealId]. */
+private fun mealRoute(mealId: String): String = "$ROUTE_MEAL/$mealId"
+
+/** Builds a navigable route to the meal-detail screen (My-Meal mode) for [id]. */
+private fun myMealRoute(id: String): String = "$ROUTE_MY_MEAL/$id"
 
 /** Builds the FAB's quick-log chat route — chat with [ARG_QUICK_LOG] forced true. */
 private fun quickLogChatRoute(): String = "$ROUTE_CHAT?$ARG_QUICK_LOG=true"
@@ -420,14 +433,40 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             // picks up a quick-log now, not this pop specifically — but
                             // popping back (rather than a plain nav) still avoids leaving
                             // a redundant My Meals entry on the back stack.
-                            MyMealsScreen(onLoggedNavigateToChat = { navController.popBackStack() })
+                            MyMealsScreen(
+                                onLoggedNavigateToChat = { navController.popBackStack() },
+                                onOpenMeal = { id -> navController.navigate(myMealRoute(id)) },
+                            )
                         }
                         composable(ROUTE_SETTINGS) { SettingsScreen() }
                         composable(
                             ROUTE_MEAL_TYPE_PATTERN,
                             arguments = listOf(navArgument(ARG_MEAL_TYPE) { type = NavType.StringType }),
                         ) {
-                            MealTypeListPlaceholderScreen(onBack = { navController.popBackStack() })
+                            MealTypeListScreen(
+                                onBack = { navController.popBackStack() },
+                                onOpenMeal = { mealId -> navController.navigate(mealRoute(mealId)) },
+                            )
+                        }
+                        composable(
+                            ROUTE_MEAL_PATTERN,
+                            arguments = listOf(navArgument(ARG_MEAL_ID) { type = NavType.StringType }),
+                        ) {
+                            MealDetailScreen(
+                                onBack = { navController.popBackStack() },
+                                onDeleted = { navController.popBackStack() },
+                                onLogged = { navController.popBackStack() },
+                            )
+                        }
+                        composable(
+                            ROUTE_MY_MEAL_PATTERN,
+                            arguments = listOf(navArgument(ARG_ID) { type = NavType.StringType }),
+                        ) {
+                            MealDetailScreen(
+                                onBack = { navController.popBackStack() },
+                                onDeleted = { navController.popBackStack() },
+                                onLogged = { navController.popBackStack() },
+                            )
                         }
                     }
 

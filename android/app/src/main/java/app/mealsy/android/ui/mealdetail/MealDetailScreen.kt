@@ -138,7 +138,7 @@ fun MealDetailScreen(
 }
 
 @Composable
-private fun MealDetailContent(
+internal fun MealDetailContent(
     state: MealDetailUiState.Loaded,
     onBack: () -> Unit,
     onLogAgain: () -> Unit,
@@ -249,7 +249,7 @@ private fun MealDetailContent(
         when (state.mode) {
             is MealDetailMode.Logged -> {
                 MealsyButton(
-                    text = stringResource(R.string.meal_detail_log_this_meal),
+                    text = stringResource(R.string.meal_detail_log_again),
                     onClick = onLogAgain,
                     style = MealsyButtonStyle.Primary,
                     modifier = Modifier.fillMaxWidth(),
@@ -354,7 +354,7 @@ private val MEAL_TYPE_OPTIONS = listOf("breakfast", "lunch", "dinner", "snack")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LogAgainSheet(
+internal fun LogAgainSheet(
     sheet: LogAgainSheetState,
     isMyMeal: Boolean,
     onSelectMealType: (String) -> Unit,

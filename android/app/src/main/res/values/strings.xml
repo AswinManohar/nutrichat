@@ -10,10 +10,6 @@
     <!-- Chat: quick log -->
     <string name="chat_quick_log_opened">Quick log opened</string>
 
-    <!-- Meal type list placeholder (Phase 3) -->
-    <string name="meals_placeholder_message">That meal list is coming soon.</string>
-    <string name="meals_placeholder_back">Back</string>
-
     <!-- Onboarding: shared chrome -->
     <string name="onboarding_back">Back</string>
     <string name="onboarding_step_of_4">%1$d of 4</string>
