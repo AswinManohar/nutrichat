@@ -13,8 +13,14 @@ def _state(entities: list[dict]) -> dict:
 
 
 def _entity(name: str, composite: bool, qty: float = 200) -> dict:
-    return {"food_name": name, "qty_g": qty, "unit": "g",
-            "confidence": 1.0, "is_composite": composite, "source_dish": None}
+    return {
+        "food_name": name,
+        "qty_g": qty,
+        "unit": "g",
+        "confidence": 1.0,
+        "is_composite": composite,
+        "source_dish": None,
+    }
 
 
 async def test_only_composite_decomposes_order_preserved() -> None:
@@ -43,8 +49,10 @@ async def test_empty_decompose_keeps_dish() -> None:
 
 async def test_flag_off_is_passthrough() -> None:
     state = _state([_entity("chicken biryani", True)])
-    with patch("backend.agent.graph._auto_decompose_enabled", return_value=False), \
-         patch("backend.agent.graph.decompose_to_entities") as deco:
+    with (
+        patch("backend.agent.graph._auto_decompose_enabled", return_value=False),
+        patch("backend.agent.graph.decompose_to_entities") as deco,
+    ):
         out = await auto_decompose_node(state)
     deco.assert_not_called()
     assert [e["food_name"] for e in out["entities"]] == ["chicken biryani"]

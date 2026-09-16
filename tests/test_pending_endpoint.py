@@ -124,7 +124,12 @@ def test_log_thread_id_namespaced_with_user_id(client: TestClient) -> None:
         meals_api,
         "handle_message",
         new=AsyncMock(
-            return_value={"status": "success", "message": "", "paused": False, "items": []}
+            return_value={
+                "status": "success",
+                "message": "",
+                "paused": False,
+                "items": [],
+            }
         ),
     ) as mock_handle:
         resp = client.post(
@@ -145,7 +150,12 @@ def test_log_same_conversation_id_different_users_different_threads(
         meals_api,
         "handle_message",
         new=AsyncMock(
-            return_value={"status": "success", "message": "", "paused": False, "items": []}
+            return_value={
+                "status": "success",
+                "message": "",
+                "paused": False,
+                "items": [],
+            }
         ),
     ) as mock_handle:
         client.post(
@@ -170,12 +180,20 @@ def test_log_same_conversation_id_different_users_different_threads(
 def test_log_default_conversation_id_reaches_same_thread_as_pending_default(
     client: TestClient,
 ) -> None:
-    """No conversation_id on POST /meals/log must map to GET .../pending?conversation_id=default."""
+    """Omitting conversation_id on POST /meals/log maps to the default pending thread.
+
+    That is, GET .../pending?conversation_id=default.
+    """
     with patch.object(
         meals_api,
         "handle_message",
         new=AsyncMock(
-            return_value={"status": "success", "message": "", "paused": False, "items": []}
+            return_value={
+                "status": "success",
+                "message": "",
+                "paused": False,
+                "items": [],
+            }
         ),
     ) as mock_handle:
         client.post(

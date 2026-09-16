@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from backend.agent.graph import combine_node, _route_response
+from backend.agent.graph import _route_response, combine_node
 
 
 def _ing(name: str, dish: str | None, qty: float = 100) -> dict:
-    return {"food_name": name, "qty_g": qty, "unit": "g",
-            "confidence": 1.0, "is_composite": False, "source_dish": dish}
+    return {
+        "food_name": name,
+        "qty_g": qty,
+        "unit": "g",
+        "confidence": 1.0,
+        "is_composite": False,
+        "source_dish": dish,
+    }
 
 
 def test_route_response_combine() -> None:
@@ -15,11 +21,13 @@ def test_route_response_combine() -> None:
 
 
 async def test_combine_collapses_group_keeps_standalone() -> None:
-    state = {"entities": [
-        _ing("basmati rice cooked", "chicken biryani"),
-        _ing("chicken thigh", "chicken biryani"),
-        _ing("apple", None),
-    ]}
+    state = {
+        "entities": [
+            _ing("basmati rice cooked", "chicken biryani"),
+            _ing("chicken thigh", "chicken biryani"),
+            _ing("apple", None),
+        ]
+    }
     out = await combine_node(state)
     names = [e["food_name"] for e in out["entities"]]
     assert names == ["chicken biryani", "apple"]

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage
 
-from backend.agent.orchestrator import _IntentResult, _classify_intent, handle_message
+from backend.agent.orchestrator import _classify_intent, _IntentResult, handle_message
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +19,9 @@ def _mock_fact_task():
 async def test_classify_intent_log_signal_no_llm():
     mock_llm = MagicMock()
     with patch("backend.agent.orchestrator._intent_llm", mock_llm):
-        intent = await _classify_intent("I had 2 scrambled eggs for breakfast", "user-1")
+        intent = await _classify_intent(
+            "I had 2 scrambled eggs for breakfast", "user-1"
+        )
 
     assert intent == "log_meal"
     mock_llm.ainvoke.assert_not_called()
@@ -84,7 +86,8 @@ async def test_classify_intent_ambiguous_uses_llm_fallback():
     with (
         patch("backend.agent.orchestrator._intent_llm", mock_llm),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
         ),
     ):
         intent = await _classify_intent("coffee", "user-1")
@@ -141,7 +144,8 @@ async def test_handle_message_image_always_meal_logging():
             "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
         patch(
-            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
         ),
     ):
         result = await handle_message(
@@ -166,7 +170,8 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
             return_value="coaching",
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
         ),
         patch(
             "backend.agent.orchestrator._coaching_agent.handle",
@@ -200,7 +205,8 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
             return_value="log_meal",
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
         ),
         patch(
             "backend.agent.orchestrator._coaching_agent.handle", new_callable=AsyncMock
@@ -225,7 +231,8 @@ async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
             return_value="log_meal",
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit", new=AsyncMock(return_value=True)
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
         ),
     ):
         await handle_message("user-1", "I had 2 eggs", "thread-1", None)

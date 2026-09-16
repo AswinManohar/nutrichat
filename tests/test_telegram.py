@@ -65,7 +65,9 @@ _PAUSED_ITEMS = [
 ]
 
 
-def _mock_callback(chat_id: int, data: str, text: str = "Here's what I found:\n\n- ..."):
+def _mock_callback(
+    chat_id: int, data: str, text: str = "Here's what I found:\n\n- ..."
+):
     callback = MagicMock()
     callback.data = data
     callback.message.chat.id = chat_id
@@ -588,7 +590,6 @@ async def test_qty_plus_updates_state_and_rerenders(fake_redis):
     assert new_edit["qty"]["0"] == 125.0  # 100g + 25g
 
     callback.message.edit_text.assert_awaited_once()
-    text, _ = callback.message.edit_text.call_args[0], callback.message.edit_text.call_args[1]
     rendered = callback.message.edit_text.call_args[0][0]
     assert "125g" in rendered
     # Macros rescaled linearly: 196 kcal * 1.25 = 245

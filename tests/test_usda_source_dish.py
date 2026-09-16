@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from backend.agent.graph import usda_batch_node
 from backend.agent.tools.usda import USDAResult
 
@@ -31,11 +29,22 @@ def _result(food_name: str) -> USDAResult:
 async def test_source_dish_propagated_onto_results() -> None:
     state = {
         "entities": [
-            {"food_name": "basmati rice", "qty_g": 150, "unit": "g",
-             "confidence": 1.0, "is_composite": False,
-             "source_dish": "chicken biryani"},
-            {"food_name": "apple", "qty_g": 150, "unit": "g",
-             "confidence": 1.0, "is_composite": False, "source_dish": None},
+            {
+                "food_name": "basmati rice",
+                "qty_g": 150,
+                "unit": "g",
+                "confidence": 1.0,
+                "is_composite": False,
+                "source_dish": "chicken biryani",
+            },
+            {
+                "food_name": "apple",
+                "qty_g": 150,
+                "unit": "g",
+                "confidence": 1.0,
+                "is_composite": False,
+                "source_dish": None,
+            },
         ]
     }
     fake = AsyncMock(return_value=[_result("rice white cooked"), _result("apple raw")])

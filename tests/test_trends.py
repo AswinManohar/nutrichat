@@ -7,8 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.api import meals as meals_api
 from backend.agent.tools.meals import _is_junk, _junk_flags
+from backend.api import meals as meals_api
 
 _USER = "00000000-0000-0000-0000-000000000001"
 

@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import quota as quota_router_module
 from backend.auth.supabase import get_current_user_id
-from backend.db.models import UserGoal
 
 
 def _make_app() -> FastAPI:
@@ -44,19 +42,27 @@ def test_quota_requires_auth():
 def test_quota_free_user_under_limit(monkeypatch):
     app = _make_app()
     app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(quota_router_module, "get_session", _mock_session(_mock_goal(34, 50)))
+    monkeypatch.setattr(
+        quota_router_module, "get_session", _mock_session(_mock_goal(34, 50))
+    )
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
     assert resp.json() == {
-        "used": 34, "limit": 50, "remaining": 16, "exhausted": False, "tier": "free"
+        "used": 34,
+        "limit": 50,
+        "remaining": 16,
+        "exhausted": False,
+        "tier": "free",
     }
 
 
 def test_quota_paid_user(monkeypatch):
     app = _make_app()
     app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(quota_router_module, "get_session", _mock_session(_mock_goal(80, 150)))
+    monkeypatch.setattr(
+        quota_router_module, "get_session", _mock_session(_mock_goal(80, 150))
+    )
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
@@ -69,7 +75,9 @@ def test_quota_paid_user(monkeypatch):
 def test_quota_exhausted_user(monkeypatch):
     app = _make_app()
     app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(quota_router_module, "get_session", _mock_session(_mock_goal(50, 50)))
+    monkeypatch.setattr(
+        quota_router_module, "get_session", _mock_session(_mock_goal(50, 50))
+    )
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
@@ -86,5 +94,9 @@ def test_quota_no_goal_row_returns_free_defaults(monkeypatch):
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
     assert resp.json() == {
-        "used": 0, "limit": 50, "remaining": 50, "exhausted": False, "tier": "free"
+        "used": 0,
+        "limit": 50,
+        "remaining": 50,
+        "exhausted": False,
+        "tier": "free",
     }

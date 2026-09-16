@@ -207,7 +207,10 @@ def test_reset_day_keys_resets_all_users():
 
 def test_build_nutrient_checkup_upserts_active_users():
     user_rows = MagicMock()
-    user_rows.all.return_value = [MagicMock(user_id="user-1"), MagicMock(user_id="user-2")]
+    user_rows.all.return_value = [
+        MagicMock(user_id="user-1"),
+        MagicMock(user_id="user-2"),
+    ]
 
     session = MagicMock()
     session.execute = AsyncMock(side_effect=[user_rows, MagicMock(), MagicMock()])

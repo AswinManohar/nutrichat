@@ -18,9 +18,13 @@ def _meal(name_normalized: str) -> SimpleNamespace:
 
 def test_contiguous_sublist() -> None:
     assert _contiguous_sublist(["chicken", "biryani"], ["chicken", "biryani"])
-    assert _contiguous_sublist(["i", "had", "chicken", "biryani"], ["chicken", "biryani"])
+    assert _contiguous_sublist(
+        ["i", "had", "chicken", "biryani"], ["chicken", "biryani"]
+    )
     # Non-contiguous tokens do not match.
-    assert not _contiguous_sublist(["chicken", "curry", "biryani"], ["chicken", "biryani"])
+    assert not _contiguous_sublist(
+        ["chicken", "curry", "biryani"], ["chicken", "biryani"]
+    )
     # Needle longer than haystack, or empty needle.
     assert not _contiguous_sublist(["rice"], ["fried", "rice"])
     assert not _contiguous_sublist(["rice"], [])

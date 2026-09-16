@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import base64
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -64,8 +63,8 @@ def _auth(user_id: str = _USER_A):
     return _fake_get_integration_user
 
 
-_T0 = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
-_T1 = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+_T1 = datetime(2026, 6, 2, 12, 0, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

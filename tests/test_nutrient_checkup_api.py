@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,7 +63,7 @@ def test_get_nutrient_checkup_returns_latest_row(client: TestClient) -> None:
             "This week, your Protein intake is at 200% of the daily target — "
             "you're well above the daily target."
         ),
-        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
     session = MagicMock()
@@ -107,7 +107,7 @@ def test_get_nutrient_checkup_tolerates_legacy_row_without_rda_pct(
         },
         notable_nutrients=[],
         summary_text=None,
-        generated_at=datetime(2026, 6, 10, 1, 30, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 6, 10, 1, 30, tzinfo=UTC),
     )
     session = MagicMock()
     exec_result = MagicMock()
@@ -144,7 +144,7 @@ def test_pending_nudge_returns_summary_when_unseen(client: TestClient) -> None:
         notable_nutrients=[{"name": "Fiber", "rda_pct": 50.0, "status": "under"}],
         summary_text="This week, your Fiber intake is at 50% of the daily target.",
         chat_nudge_seen_at=None,
-        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
     session = MagicMock()
@@ -170,8 +170,8 @@ def test_pending_nudge_returns_none_when_already_seen(client: TestClient) -> Non
         nutrients={},
         notable_nutrients=[],
         summary_text="This week, your Fiber intake is at 50% of the daily target.",
-        chat_nudge_seen_at=datetime(2026, 6, 15, 8, 0, tzinfo=timezone.utc),
-        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=timezone.utc),
+        chat_nudge_seen_at=datetime(2026, 6, 15, 8, 0, tzinfo=UTC),
+        generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
     session = MagicMock()

@@ -1,4 +1,5 @@
 """Tests for checkpointer pool sizing (no live DB needed)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -26,8 +27,9 @@ def pool_kwargs():
     fake_saver = AsyncMock()
     fake_saver.setup = AsyncMock()
 
-    with patch.object(cp, "AsyncConnectionPool", FakePool), patch.object(
-        cp, "AsyncPostgresSaver", lambda pool: fake_saver
+    with (
+        patch.object(cp, "AsyncConnectionPool", FakePool),
+        patch.object(cp, "AsyncPostgresSaver", lambda pool: fake_saver),
     ):
         yield captured
 

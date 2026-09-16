@@ -9,8 +9,9 @@ from backend.workers.tasks import _embed_meal_summary
 
 
 def _meal(label, entities) -> SimpleNamespace:
-    return SimpleNamespace(meal_type="dinner", label=label, entities=entities,
-                           embedding=None)
+    return SimpleNamespace(
+        meal_type="dinner", label=label, entities=entities, embedding=None
+    )
 
 
 async def _run_with(meal):
@@ -26,15 +27,19 @@ async def _run_with(meal):
         captured["text"] = text
         return [0.0] * 768
 
-    with patch("backend.workers.tasks.get_session", return_value=lambda: ctx), \
-         patch("backend.workers.tasks.embed_text", side_effect=fake_embed):
+    with (
+        patch("backend.workers.tasks.get_session", return_value=lambda: ctx),
+        patch("backend.workers.tasks.embed_text", side_effect=fake_embed),
+    ):
         await _embed_meal_summary("meal-1")
     return captured["text"]
 
 
 async def test_uses_label_when_present() -> None:
-    meal = _meal("chicken biryani, apple",
-                 [{"food_name": "basmati rice cooked"}, {"food_name": "apple raw"}])
+    meal = _meal(
+        "chicken biryani, apple",
+        [{"food_name": "basmati rice cooked"}, {"food_name": "apple raw"}],
+    )
     text = await _run_with(meal)
     assert "chicken biryani" in text and text.startswith("dinner:")
 

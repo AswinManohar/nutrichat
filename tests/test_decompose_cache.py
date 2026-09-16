@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from backend.agent.graph import decompose_node
 from backend.agent.tools.meals import FoodEntity
 
@@ -24,7 +22,9 @@ def _entity(name: str, qty: float = 200) -> dict:
 def _state(entities: list[dict], decomposed_entities: list[dict] | None = None) -> dict:
     return {
         "entities": entities,
-        "decomposed_entities": decomposed_entities if decomposed_entities is not None else [],
+        "decomposed_entities": (
+            decomposed_entities if decomposed_entities is not None else []
+        ),
         "messages": [],
     }
 
@@ -43,7 +43,10 @@ async def test_cache_miss_calls_llm_and_warms_cache() -> None:
         out = await decompose_node(state)
 
     mock_decompose.assert_called_once()
-    assert [e["food_name"] for e in out["entities"]] == ["basmati rice", "chicken thigh"]
+    assert [e["food_name"] for e in out["entities"]] == [
+        "basmati rice",
+        "chicken thigh",
+    ]
     assert [e["food_name"] for e in out["decomposed_entities"]] == [
         "basmati rice",
         "chicken thigh",
@@ -60,7 +63,10 @@ async def test_cache_hit_skips_llm() -> None:
         out = await decompose_node(state)
 
     mock_decompose.assert_not_called()
-    assert [e["food_name"] for e in out["entities"]] == ["basmati rice", "chicken thigh"]
+    assert [e["food_name"] for e in out["entities"]] == [
+        "basmati rice",
+        "chicken thigh",
+    ]
     assert out["action"] is None
 
 
@@ -77,4 +83,5 @@ async def test_failed_decompose_does_not_populate_cache() -> None:
 async def test_decomposed_entities_in_agent_state_type() -> None:
     """AgentState TypedDict must include decomposed_entities key."""
     from backend.agent.graph import AgentState
+
     assert "decomposed_entities" in AgentState.__annotations__

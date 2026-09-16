@@ -6,8 +6,14 @@ from backend.agent.tools.meals import _meal_label
 
 
 def _e(food_name: str, dish: str | None) -> dict:
-    return {"food_name": food_name, "qty_g": 100, "unit": "g",
-            "confidence": 1.0, "is_composite": False, "source_dish": dish}
+    return {
+        "food_name": food_name,
+        "qty_g": 100,
+        "unit": "g",
+        "confidence": 1.0,
+        "is_composite": False,
+        "source_dish": dish,
+    }
 
 
 def test_label_dedups_dish_keeps_order() -> None:
