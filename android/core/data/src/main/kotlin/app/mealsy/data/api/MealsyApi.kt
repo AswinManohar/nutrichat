@@ -69,6 +69,18 @@ interface MealsyApi {
     @DELETE("my-meals/{id}")
     suspend fun deleteMyMeal(@Path("id") id: String)
 
+    @GET("meals/log")
+    suspend fun listMealLogs(
+        @Query("date") date: String? = null,
+        @Query("meal_type") mealType: String? = null,
+    ): List<MealLogSummaryDto>
+
+    @GET("meals/log/{meal_id}")
+    suspend fun mealLog(@Path("meal_id") id: String): MealLogDetailDto
+
+    @DELETE("meals/log/{meal_id}")
+    suspend fun deleteMealLog(@Path("meal_id") id: String)
+
     @DELETE("account")
     suspend fun deleteAccount()
 }

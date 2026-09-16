@@ -2,6 +2,7 @@ package app.mealsy.data.api
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -258,6 +259,133 @@ class MealsyApiTest {
         assertEquals(0.0, response.carbsG, 0.0)
         assertEquals(0.0, response.fatG, 0.0)
         assertEquals(0, response.byType.single().nMeals)
+    }
+
+    @Test
+    fun `listMealLogs sends date and meal_type query params`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+        val api = buildApi()
+
+        api.listMealLogs(date = "2026-09-16", mealType = "breakfast")
+
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/meals/log?date=2026-09-16&meal_type=breakfast", request.path)
+    }
+
+    @Test
+    fun `listMealLogs omits null query params`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+        val api = buildApi()
+
+        api.listMealLogs()
+
+        val request = server.takeRequest()
+        assertEquals("/meals/log", request.path)
+    }
+
+    @Test
+    fun `listMealLogs parses a summary with a null label`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                [
+                  {
+                    "meal_id": "m_789",
+                    "meal_type": "breakfast",
+                    "logged_at": "2026-09-16T06:12:00Z",
+                    "label": null,
+                    "kcal": 450.0,
+                    "protein_g": 28.0,
+                    "carbs_g": 38.0,
+                    "fat_g": 20.0,
+                    "fiber_g": 4.0,
+                    "n_items": 2
+                  }
+                ]
+                """.trimIndent(),
+            ),
+        )
+        val api = buildApi()
+
+        val response = api.listMealLogs()
+
+        assertEquals(1, response.size)
+        assertEquals("m_789", response[0].mealId)
+        assertEquals(null, response[0].label)
+        assertEquals(2, response[0].nItems)
+    }
+
+    @Test
+    fun `mealLog fetches the meal_id path and parses items with extras`() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "meal_id": "m_789",
+                  "meal_type": "breakfast",
+                  "logged_at": "2026-09-16T06:12:00Z",
+                  "label": "Eggs on toast",
+                  "kcal": 450.0,
+                  "protein_g": 28.0,
+                  "carbs_g": 38.0,
+                  "fat_g": 20.0,
+                  "fiber_g": 4.0,
+                  "n_items": 1,
+                  "items": [
+                    {
+                      "fdc_id": 12345,
+                      "food_name": "egg whole cooked scrambled",
+                      "qty_g": 100.0,
+                      "match_confidence": 0.92,
+                      "candidates": [],
+                      "kcal": 156.0,
+                      "protein_g": 12.4,
+                      "carbs_g": 1.2,
+                      "fat_g": 10.8,
+                      "fiber_g": 0.0,
+                      "sugar_g": 1.0,
+                      "sat_fat_g": 3.3,
+                      "nutrients": {},
+                      "source": "USDA",
+                      "estimated": false,
+                      "source_dish": null,
+                      "is_composite": false
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val api = buildApi()
+
+        val response = api.mealLog("m_789")
+
+        val request = server.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/meals/log/m_789", request.path)
+
+        assertEquals("m_789", response.mealId)
+        assertEquals("Eggs on toast", response.label)
+        assertEquals(1, response.items.size)
+        val item = response.items[0]
+        assertEquals("egg whole cooked scrambled", item.foodName)
+        assertEquals(12345L, item.fdcId)
+        assertEquals("USDA", item.extras["source"]?.jsonPrimitive?.content)
+        assertTrue(item.extras.containsKey("match_confidence"))
+        assertTrue(item.extras.containsKey("candidates"))
+    }
+
+    @Test
+    fun `deleteMealLog sends DELETE to meals-log slash id`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        val api = buildApi()
+
+        api.deleteMealLog("m_789")
+
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/meals/log/m_789", request.path)
     }
 }
 

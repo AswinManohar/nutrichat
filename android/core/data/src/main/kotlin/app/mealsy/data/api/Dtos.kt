@@ -337,6 +337,54 @@ data class CategoryStatDto(
 )
 
 // ---------------------------------------------------------------------------
+// GET /meals/log, GET /meals/log/{meal_id}
+// ---------------------------------------------------------------------------
+
+/**
+ * One logged meal, per `MealLogSummary` in `src/backend/api/meals.py`.
+ * `GET /meals/log` returns a bare JSON array of these ordered by
+ * `logged_at` ascending (same bare-array contract as trends/categories/
+ * my-meals above).
+ */
+@Serializable
+data class MealLogSummaryDto(
+    @SerialName("meal_id") val mealId: String,
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("logged_at") val loggedAt: String,
+    val label: String? = null,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fat_g") val fatG: Double,
+    @SerialName("fiber_g") val fiberG: Double,
+    @SerialName("n_items") val nItems: Int,
+)
+
+/**
+ * Full detail for one logged meal, per `MealLogDetail` in
+ * `src/backend/api/meals.py` — the same fields as [MealLogSummaryDto] plus
+ * the meal's resolved items. `items` reuses [ItemDto]/[ItemDtoSerializer]:
+ * the stored entities carry the same `food_name`/`qty_g`/macro/`fdc_id`
+ * shape as a confirm-card item, plus extra fields (`candidates`,
+ * `match_confidence`, `source`, `nutrients`, `source_dish`, `is_composite`,
+ * ...) that round-trip verbatim via [ItemDto.extras].
+ */
+@Serializable
+data class MealLogDetailDto(
+    @SerialName("meal_id") val mealId: String,
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("logged_at") val loggedAt: String,
+    val label: String? = null,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fat_g") val fatG: Double,
+    @SerialName("fiber_g") val fiberG: Double,
+    @SerialName("n_items") val nItems: Int,
+    val items: List<ItemDto>,
+)
+
+// ---------------------------------------------------------------------------
 // GET/POST/DELETE /my-meals, POST /my-meals/{id}/log
 // ---------------------------------------------------------------------------
 
