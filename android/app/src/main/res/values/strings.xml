@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Common -->
+    <string name="common_retry">Retry</string>
+
     <!-- Bottom navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_chat">Chat</string>
@@ -204,5 +207,106 @@
     <string name="meal_detail_portion_one">1×</string>
     <string name="meal_detail_portion_one_half">1.5×</string>
     <string name="meal_detail_portion_two">2×</string>
+
+    <!-- My Meals screen -->
+    <string name="my_meals_eyebrow">MY MEALS</string>
+    <string name="my_meals_title">Saved meals</string>
+    <string name="my_meals_loading">Loading your meals…</string>
+    <string name="my_meals_empty_body">Save a meal from a confirm card and it shows up here.</string>
+    <string name="my_meals_row_kcal">%1$s kcal</string>
+    <string name="my_meals_row_description">%1$s, %2$s kcal, %3$sg protein</string>
+    <string name="my_meals_delete_action">Delete meal</string>
+    <string name="my_meals_deleted_toast">Deleted</string>
+    <string name="my_meals_undo">Undo</string>
+
+    <!-- Customize sheet ("Edit portions") -->
+    <string name="customize_sheet_log_as">Log this as</string>
+    <string name="customize_sheet_portion">Portion</string>
+    <string name="customize_sheet_remove_ingredient">Remove %1$s</string>
+    <string name="customize_sheet_confirm">Log meal</string>
+    <string name="customize_sheet_logged_toast">Logged</string>
+    <string name="customize_sheet_loading">Loading this meal…</string>
+    <string name="customize_sheet_error">Couldn\'t load this meal.</string>
+    <string name="customize_sheet_portion_half">0.5×</string>
+    <string name="customize_sheet_portion_one">1×</string>
+    <string name="customize_sheet_portion_one_half">1.5×</string>
+    <string name="customize_sheet_portion_two">2×</string>
+    <string name="customize_sheet_stepper_description">%1$s grams</string>
+
+    <!-- Trends screen -->
+    <string name="trends_eyebrow">Trends</string>
+    <string name="trends_title_week">Your week</string>
+    <string name="trends_title_month">Your month</string>
+    <string name="trends_segment_week">Week</string>
+    <string name="trends_segment_month">Month</string>
+    <string name="trends_metric_avg_kcal">Avg kcal</string>
+    <string name="trends_metric_avg_protein">Avg protein</string>
+    <string name="trends_metric_days_logged">Days logged</string>
+    <string name="trends_days_logged_value">%1$d of %2$d</string>
+    <string name="trends_kcal_chart_desc">Calories, %1$d days, average %2$s</string>
+    <string name="trends_protein_chart_desc">Protein, %1$d days, average %2$dg</string>
+    <string name="trends_by_category">By category</string>
+    <string name="trends_category_avg">avg %1$s kcal · %2$d×</string>
+    <string name="trends_category_share_desc">%1$s, %2$d percent of total kcal</string>
+    <string name="trends_empty_message">Log a few meals to see trends.</string>
+    <string name="trends_loading">Loading trends…</string>
+    <string name="trends_error">Couldn\'t load trends. Check your connection.</string>
+
+    <!-- Settings screen -->
+    <string name="settings_eyebrow">Settings</string>
+    <string name="settings_back">Back</string>
+
+    <string name="settings_section_profile">Profile</string>
+    <string name="settings_name">Name</string>
+    <string name="settings_name_placeholder">Your name</string>
+    <string name="settings_goal">Goal</string>
+    <string name="settings_goal_sheet_title">Change your goal</string>
+    <string name="settings_kcal_prompt_title">Update your calorie target</string>
+    <string name="settings_kcal_prompt_body">%1$s usually pairs with a different daily calorie target.</string>
+    <string name="settings_kcal_prompt_keep">Keep my target</string>
+    <string name="settings_kcal_prompt_use_default">Use %1$s kcal</string>
+
+    <string name="settings_section_targets">Targets</string>
+    <string name="settings_track_targets">Track daily targets</string>
+    <string name="settings_calories">Calories</string>
+    <string name="settings_protein">Protein</string>
+    <string name="settings_fiber">Fiber</string>
+
+    <string name="settings_section_preferences">Preferences</string>
+
+    <string name="settings_section_reminders">Reminders</string>
+    <string name="settings_daily_summary">Daily summary at 07:00</string>
+
+    <string name="settings_section_about">About</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_update_available">A newer version is available.</string>
+
+    <string name="settings_section_account">Account</string>
+    <string name="settings_sign_out">Sign out</string>
+
+    <string name="settings_danger_zone">Danger zone</string>
+    <string name="settings_delete_account">Delete account</string>
+    <string name="settings_delete_dialog_body">This permanently deletes your account and all logged meals, goals, and saved meals. This cannot be undone.</string>
+    <string name="settings_delete_confirm_placeholder">Type DELETE to confirm</string>
+    <string name="settings_delete_cancel">Cancel</string>
+    <string name="settings_saved_toast">Saved</string>
+
+    <string name="settings_edit_name">Edit name</string>
+    <string name="settings_save">Save</string>
+    <string name="settings_cancel">Cancel</string>
+
+    <!-- Login screen -->
+    <string name="login_title">Welcome back</string>
+    <string name="login_email_placeholder">Email address</string>
+    <string name="login_email_field_description">Email address</string>
+    <string name="login_send_magic_link">Send magic link</string>
+    <string name="login_continue_with_google">Continue with Google</string>
+    <string name="login_awaiting_email">Check your email for a magic link.</string>
+
+    <!-- Update-required gate -->
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_body">This version of Mealsy is no longer supported. Update to continue.</string>
+    <string name="update_required_cta">Update on Play Store</string>
 
 </resources>
