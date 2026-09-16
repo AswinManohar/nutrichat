@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,8 +55,12 @@ data class MealsyNavItem(
  * hairline.
  *
  * The optional [fab] slot (typically an [OliveFab]) is centered
- * horizontally and overlaps the pill's top edge, per the design's FAB
- * placement between the second and third nav items.
+ * horizontally and overlaps the pill's top edge. When [fab] is non-null,
+ * [items] is split into a left half and a right half (the first half gets
+ * the extra item for an odd count) with a reserved 72dp centre gap between
+ * them so the FAB drops in without clipping or crowding any icon. Each half
+ * spreads its icons evenly across its share of the row. When [fab] is null,
+ * all icons spread evenly across the full width with no gap.
  *
  * @param items The nav destinations, rendered in order.
  * @param selectedRoute The currently active [MealsyNavItem.route].
@@ -89,20 +94,38 @@ fun BottomNavPill(
             modifier = Modifier.then(borderModifier),
         ) {
             Row(
-                modifier = Modifier.padding(vertical = 15.dp, horizontal = 30.dp),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .padding(vertical = 15.dp, horizontal = 30.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items.forEachIndexed { index, item ->
-                    NavIcon(
-                        item = item,
-                        isSelected = item.route == selectedRoute,
+                if (fab != null) {
+                    val half = (items.size + 1) / 2
+                    val left = items.take(half)
+                    val right = items.drop(half)
+                    NavHalf(
+                        items = left,
+                        selectedRoute = selectedRoute,
                         onSelect = onSelect,
                         colors = colors,
+                        modifier = Modifier.weight(1f),
                     )
-                    // Reserve room for the overlapping FAB between item 2 and 3.
-                    if (fab != null && index == 1) {
-                        Box(modifier = Modifier.width(56.dp))
-                    }
+                    Box(modifier = Modifier.width(72.dp))
+                    NavHalf(
+                        items = right,
+                        selectedRoute = selectedRoute,
+                        onSelect = onSelect,
+                        colors = colors,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    NavHalf(
+                        items = items,
+                        selectedRoute = selectedRoute,
+                        onSelect = onSelect,
+                        colors = colors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
@@ -110,6 +133,34 @@ fun BottomNavPill(
             Box(modifier = Modifier.padding(bottom = 26.dp)) {
                 fab()
             }
+        }
+    }
+}
+
+/**
+ * One side of the nav pill: [items] spread evenly across [modifier]'s width
+ * via [androidx.compose.foundation.layout.Arrangement.SpaceEvenly].
+ */
+@Composable
+private fun NavHalf(
+    items: List<MealsyNavItem>,
+    selectedRoute: String,
+    onSelect: (String) -> Unit,
+    colors: app.mealsy.android.design.theme.MealsyColors,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEach { item ->
+            NavIcon(
+                item = item,
+                isSelected = item.route == selectedRoute,
+                onSelect = onSelect,
+                colors = colors,
+            )
         }
     }
 }
