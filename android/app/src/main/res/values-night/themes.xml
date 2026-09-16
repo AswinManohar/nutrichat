@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Dark mode override: status/nav bar icons switch to light-on-dark. -->
+    <style name="Theme.Mealsy.Main" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/mealsy_canvas</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- XML mirror of MealsyColors.canvas (dark). See values/colors.xml. -->
+    <color name="mealsy_canvas">#201F1A</color>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- XML mirror of MealsyColors.canvas (light). XML themes (splash screen,
+         status/nav bar) can't read the Compose token, so this one value is
+         sanctioned duplication — keep in sync with core/ui's theme tokens. -->
+    <color name="mealsy_canvas">#F6F1E1</color>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Android 12+ splash screen theme. postSplashScreenTheme hands off to
+         Theme.Mealsy.Main once the splash is dismissed. -->
+    <style name="Theme.Mealsy" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/mealsy_canvas</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_olli</item>
+        <item name="postSplashScreenTheme">@style/Theme.Mealsy.Main</item>
+    </style>
+
+    <style name="Theme.Mealsy.Main" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/mealsy_canvas</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+</resources>

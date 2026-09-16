@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ themed-icon monochrome layer: white on transparent, same
+     bowl mark and placement as ic_launcher_foreground.xml. The OS applies
+     its own tint, so no colour distinction between bowl and bars is kept. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="21"
+        android:translateY="21"
+        android:scaleX="2.75"
+        android:scaleY="2.75">
+        <path
+            android:pathData="M4 12a8 8 0 0016 0z"
+            android:fillColor="#FFFFFFFF" />
+        <path
+            android:pathData="M8 12V7M12 12V4M16 12V9"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000" />
+    </group>
+</vector>

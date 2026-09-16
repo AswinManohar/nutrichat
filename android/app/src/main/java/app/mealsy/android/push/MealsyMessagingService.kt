@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
 import app.mealsy.android.MainActivity
+import app.mealsy.android.R
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
@@ -83,7 +84,7 @@ class MealsyMessagingService : FirebaseMessagingService() {
         )
 
         val notification = NotificationCompat.Builder(this, DAILY_SUMMARY_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_mealsy)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome notification small icon. Android tints status-bar icons, so
+     this must be pure white on transparent (alpha-only), traced from the
+     Mealsy bowl mark in design-handoff/Mealsy Design System.html. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M4 12a8 8 0 0016 0z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M8 12V7M12 12V4M16 12V9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>
