@@ -25,54 +25,16 @@ import retrofit2.HttpException
  * `tracking_mode == "goals"`. These are this client's own sensible starting
  * point (not a backend contract).
  *
- * These four names are legacy from the onboarding flow's earlier 3-step
- * numeric-goals model. They are no longer used by [OnboardingViewModel]
- * itself (see the six-state flow below) but [app.mealsy.android.ui.settings.SettingsViewModel]
- * still imports them for its own "edit goals" screen, so they stay declared
- * in this file/package rather than being deleted.
+ * Not used by [OnboardingViewModel] itself (see the six-state flow below,
+ * which derives its own targets from the chosen [OnboardingGoal]) — kept
+ * here as the one shared home for these values since
+ * [app.mealsy.android.ui.settings.SettingsViewModel] needs them as its
+ * "restore on toggle-on" fallback when no goals have ever been saved.
  */
 const val DEFAULT_TRACKING_MODE: String = "goals"
 const val DEFAULT_KCAL_GOAL: Double = 2000.0
 const val DEFAULT_PROTEIN_GOAL: Double = 100.0
 const val DEFAULT_FIBER_GOAL: Double = 30.0
-
-/**
- * Stepper floors, same legacy status as the `DEFAULT_*` constants above —
- * kept only because [app.mealsy.android.ui.settings.SettingsViewModel]
- * still depends on them for its numeric goal steppers.
- */
-const val MIN_KCAL_GOAL: Double = 50.0
-const val MIN_PROTEIN_GOAL: Double = 5.0
-const val MIN_FIBER_GOAL: Double = 5.0
-
-/**
- * Preset dietary preference chips from the old 3-step flow. Legacy, same
- * status as the constants above — [DietaryPrefsStep] (still used by
- * [app.mealsy.android.ui.settings.SettingsScreen]) is the only remaining
- * reference. The new onboarding flow's own preferences live in [DietaryPref].
- */
-val DIETARY_PREF_OPTIONS: List<String> = listOf(
-    "vegetarian", "vegan", "gluten_free", "dairy_free", "halal", "kosher",
-)
-
-/**
- * Mirrors the backend's `gt=0` requirement (`GoalCreate`/`GoalUpdate` in
- * `src/backend/api/goals.py`) client-side, with a specific message. Legacy,
- * same status as the constants above — [app.mealsy.android.ui.settings.SettingsViewModel]
- * is this function's only remaining caller; the new onboarding flow never
- * lets a non-positive value reach [Goals] in the first place (the kcal
- * slider is clamped to `1400..3200`).
- */
-internal fun goalsSubmissionError(goals: Goals): String? {
-    if (goals.trackingMode != "goals") return null
-    val invalid = listOfNotNull(
-        "Calories".takeIf { (goals.kcalGoal ?: 0.0) <= 0.0 },
-        "Protein".takeIf { (goals.proteinGoal ?: 0.0) <= 0.0 },
-        "Fiber".takeIf { (goals.fiberGoal ?: 0.0) <= 0.0 },
-    )
-    if (invalid.isEmpty()) return null
-    return "${invalid.joinToString(", ")} goal must be greater than 0."
-}
 
 /**
  * A goal focus chosen on onboarding step 2.
