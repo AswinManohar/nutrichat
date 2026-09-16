@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -22,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,12 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-private const val PAGE_COUNT = 3
-
 /**
- * 3-step goal-setup pager: tracking mode -> numeric goals -> dietary prefs.
- * "Skip for now" is always available and posts backend-required defaults
- * ([OnboardingViewModel.skip]) so a user can reach chat immediately.
+ * TEMPORARY STUB — this composable is being rewritten against the new
+ * six-state [OnboardingViewModel] API (see [OnboardingUiState]) by a
+ * separate pass right after this one. This body only exists so the module
+ * compiles; it is not the intended UI. [TrackingModeStep], [NumericGoalsStep],
+ * [GoalStepper] and [DietaryPrefsStep] below are untouched — they're still
+ * used by [app.mealsy.android.ui.settings.SettingsScreen].
  */
 @Composable
 fun OnboardingScreen(
@@ -45,80 +42,34 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
 
     LaunchedEffect(uiState.done) {
         if (uiState.done) onDone()
     }
 
-    LaunchedEffect(uiState.step) {
-        if (pagerState.currentPage != uiState.step) {
-            pagerState.animateScrollToPage(uiState.step)
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text(text = "Set up your goals", style = MaterialTheme.typography.headlineSmall)
+        Text(text = "Onboarding step ${uiState.step}", style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-            userScrollEnabled = false,
-        ) { page ->
-            when (page) {
-                0 -> TrackingModeStep(uiState.trackingMode, viewModel::setTrackingMode)
-                1 -> NumericGoalsStep(
-                    kcalGoal = uiState.kcalGoal,
-                    proteinGoal = uiState.proteinGoal,
-                    fiberGoal = uiState.fiberGoal,
-                    onKcalGoalChange = viewModel::setKcalGoal,
-                    onProteinGoalChange = viewModel::setProteinGoal,
-                    onFiberGoalChange = viewModel::setFiberGoal,
-                )
-                else -> DietaryPrefsStep(uiState.dietaryPrefs, viewModel::toggleDietaryPref)
-            }
-        }
-
-        if (uiState.error != null) {
+        if (uiState.error) {
             Text(
-                text = uiState.error.orEmpty(),
+                text = "Something went wrong.",
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            if (uiState.step > 0) {
-                OutlinedButton(onClick = viewModel::prevStep, enabled = !uiState.saving) {
-                    Text("Back")
-                }
-            } else {
-                Spacer(modifier = Modifier.wrapContentWidth())
-            }
-
-            if (uiState.step < PAGE_COUNT - 1) {
-                Button(onClick = viewModel::nextStep, enabled = !uiState.saving) {
-                    Text("Next")
-                }
-            } else if (uiState.saving) {
-                CircularProgressIndicator(modifier = Modifier.padding(8.dp))
-            } else {
-                Button(onClick = viewModel::save) {
-                    Text("Save")
+            Button(onClick = viewModel::retry) { Text("Retry") }
+        } else if (uiState.saving) {
+            CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                OutlinedButton(onClick = viewModel::back) { Text("Back") }
+                Button(onClick = viewModel::next, enabled = uiState.continueEnabled) {
+                    Text(uiState.continueLabel.name)
                 }
             }
-        }
-
-        TextButton(
-            onClick = viewModel::skip,
-            enabled = !uiState.saving,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Skip for now")
         }
     }
 }
