@@ -76,6 +76,9 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
     fun mindfulMode_light() = captureMealsy("Settings_mindfulMode", false) { render(mindfulModeState) }
 
     @Test
+    fun mindfulMode_dark() = captureMealsy("Settings_mindfulMode", true) { render(mindfulModeState) }
+
+    @Test
     fun deleteDialog_light() = captureMealsyDialog("Settings_deleteDialog", false) {
         DeleteAccountDialog(
             confirmationText = deleteDialogState.deleteConfirmationText,
