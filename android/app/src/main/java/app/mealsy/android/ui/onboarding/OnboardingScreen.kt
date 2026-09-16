@@ -175,7 +175,7 @@ private fun WelcomeStep(
                     bob = animate,
                 )
                 SpeechBubble(
-                    text = stringResource(R.string.onboarding_welcome_speech_bubble),
+                    text = stringResource(R.string.onboarding_welcome_speech_bubble).uppercase(),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(start = 173.dp, top = 0.dp),
@@ -183,7 +183,7 @@ private fun WelcomeStep(
             }
 
             OutlinePill(
-                text = stringResource(R.string.onboarding_welcome_pill),
+                text = stringResource(R.string.onboarding_welcome_pill).uppercase(),
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(top = 18.dp, bottom = 10.dp),
@@ -389,10 +389,10 @@ private fun PrefsStep(state: OnboardingUiState, onTogglePref: (DietaryPref) -> U
 
 @Composable
 private fun goalLabel(goal: OnboardingGoal?): String = when (goal) {
-    OnboardingGoal.Lose -> stringResource(R.string.onboarding_goal_label_lose)
-    OnboardingGoal.Maintain -> stringResource(R.string.onboarding_goal_label_maintain)
-    OnboardingGoal.Build -> stringResource(R.string.onboarding_goal_label_build)
-    OnboardingGoal.Learn -> stringResource(R.string.onboarding_goal_label_learn)
+    OnboardingGoal.Lose -> stringResource(R.string.onboarding_goal_lose_title)
+    OnboardingGoal.Maintain -> stringResource(R.string.onboarding_goal_maintain_title)
+    OnboardingGoal.Build -> stringResource(R.string.onboarding_goal_build_title)
+    OnboardingGoal.Learn -> stringResource(R.string.onboarding_goal_learn_title)
     null -> ""
 }
 

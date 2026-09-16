@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Bottom navigation -->
+    <string name="nav_chat">Chat</string>
+    <string name="nav_trends">Trends</string>
+    <string name="nav_my_meals">My Meals</string>
+    <string name="nav_settings">Settings</string>
+
     <!-- Onboarding: shared chrome -->
     <string name="onboarding_back">Back</string>
     <string name="onboarding_step_of_4">%1$d of 4</string>
@@ -9,7 +15,7 @@
     <string name="onboarding_finish">Finish</string>
 
     <!-- Onboarding: step 0 — welcome -->
-    <string name="onboarding_welcome_hero">Eat well\nwith a coach who\nlistens</string>
+    <string name="onboarding_welcome_hero">Eat well\nwith a\ncoach who\nlistens</string>
     <string name="onboarding_welcome_speech_bubble">Hi, I’m Olli</string>
     <string name="onboarding_welcome_pill">It’s easier together</string>
     <string name="onboarding_welcome_get_started">Get started</string>
@@ -71,9 +77,4 @@
     <string name="onboarding_done_error">Could not save your goals. Try again.</string>
     <string name="onboarding_done_try_again">Try again</string>
 
-    <!-- Onboarding: goal labels shared by step 2 and step 5 -->
-    <string name="onboarding_goal_label_lose">Lose weight</string>
-    <string name="onboarding_goal_label_maintain">Maintain</string>
-    <string name="onboarding_goal_label_build">Build muscle</string>
-    <string name="onboarding_goal_label_learn">Just learning</string>
 </resources>
