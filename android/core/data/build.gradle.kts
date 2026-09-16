@@ -27,7 +27,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        minSdk = 26
+        // Animated WebP rendering for the Olli mascot needs ImageDecoder (API 28).
+        minSdk = 28
 
         buildConfigField(
             "String",

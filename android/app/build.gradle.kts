@@ -21,7 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "app.mealsy.android"
-        minSdk = 26
+        // Animated WebP rendering for the Olli mascot needs ImageDecoder (API 28).
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -116,8 +117,11 @@ if (file("google-services.json").exists()) {
 dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
+    implementation(project(":core:ui"))
 
     implementation(libs.androidx.core.ktx)
+    // Dependency only for now — T5 wires up Theme.Mealsy + installSplashScreen().
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

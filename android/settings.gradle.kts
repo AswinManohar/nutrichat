@@ -19,3 +19,4 @@ rootProject.name = "mealsy-android"
 include(":app")
 include(":core:domain")
 include(":core:data")
+include(":core:ui")
