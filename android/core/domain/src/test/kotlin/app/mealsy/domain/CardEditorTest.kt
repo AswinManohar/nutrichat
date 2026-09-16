@@ -203,14 +203,17 @@ class CardEditorTest {
 
     @Test
     fun `defaultMealCategory boundaries`() {
-        assertEquals("breakfast", defaultMealCategory(java.time.LocalTime.of(9, 0)))
-        assertEquals("breakfast", defaultMealCategory(java.time.LocalTime.of(10, 29)))
-        assertEquals("lunch", defaultMealCategory(java.time.LocalTime.of(10, 30)))
+        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(4, 59)))
+        assertEquals("breakfast", defaultMealCategory(java.time.LocalTime.of(5, 0)))
+        assertEquals("breakfast", defaultMealCategory(java.time.LocalTime.of(10, 59)))
+        assertEquals("lunch", defaultMealCategory(java.time.LocalTime.of(11, 0)))
         assertEquals("lunch", defaultMealCategory(java.time.LocalTime.of(14, 59)))
-        assertEquals("dinner", defaultMealCategory(java.time.LocalTime.of(15, 0)))
-        assertEquals("dinner", defaultMealCategory(java.time.LocalTime.of(19, 59)))
-        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(20, 0)))
+        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(15, 0)))
+        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(16, 59)))
+        assertEquals("dinner", defaultMealCategory(java.time.LocalTime.of(17, 0)))
+        assertEquals("dinner", defaultMealCategory(java.time.LocalTime.of(21, 59)))
+        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(22, 0)))
         assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(23, 59)))
-        assertEquals("breakfast", defaultMealCategory(java.time.LocalTime.of(0, 0)))
+        assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(0, 0)))
     }
 }

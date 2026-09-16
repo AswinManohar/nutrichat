@@ -13,6 +13,15 @@
         android:name="android.hardware.camera.any"
         android:required="false" />
 
+    <!-- Needed for RecognizerIntent.ACTION_RECOGNIZE_SPEECH to resolve on
+         API 30+ (package visibility), so the mic button on the composer is
+         shown instead of hidden when no speech-recognition app is visible. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MealsyApp"
         android:allowBackup="false"

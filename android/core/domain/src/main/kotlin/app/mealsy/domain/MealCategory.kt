@@ -7,17 +7,20 @@ import java.time.LocalTime
  * Pre-selects a meal type from the local clock, matching the backend's
  * `meal_type` vocabulary (`breakfast` / `lunch` / `dinner` / `snack`).
  *
- * Boundaries: before 10:30 -> `breakfast`, before 15:00 -> `lunch`, before
- * 20:00 -> `dinner`, otherwise `snack`. This intentionally diverges from the
- * web client's `defaultMealCategory` (`frontend/src/components/chat/meal-categories.ts`),
- * which also has a `brunch` bucket — the Android client's `meal_type`
- * vocabulary has no `brunch`, so this is the binding rule for Android per
- * the T1 build brief.
+ * Boundaries mirror the web client's `defaultMealCategory`
+ * (`frontend/src/components/chat/meal-categories.ts`), with its `brunch`
+ * hour (11:00-11:59) folded into `lunch` since the Android client's
+ * `meal_type` vocabulary has no `brunch`:
+ * `[05:00, 11:00)` -> `breakfast`, `[11:00, 15:00)` -> `lunch`,
+ * `[15:00, 17:00)` -> `snack`, `[17:00, 22:00)` -> `dinner`, otherwise
+ * (`[22:00, 24:00)` and `[00:00, 05:00)`) -> `snack`.
  */
 fun defaultMealCategory(now: LocalTime): String = when {
-    now.isBefore(LocalTime.of(10, 30)) -> "breakfast"
+    now.isBefore(LocalTime.of(5, 0)) -> "snack"
+    now.isBefore(LocalTime.of(11, 0)) -> "breakfast"
     now.isBefore(LocalTime.of(15, 0)) -> "lunch"
-    now.isBefore(LocalTime.of(20, 0)) -> "dinner"
+    now.isBefore(LocalTime.of(17, 0)) -> "snack"
+    now.isBefore(LocalTime.of(22, 0)) -> "dinner"
     else -> "snack"
 }
 

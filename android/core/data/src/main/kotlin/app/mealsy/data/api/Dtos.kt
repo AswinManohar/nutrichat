@@ -569,6 +569,8 @@ fun CardItem.toSavedIngredientDto(portion: Double): ItemDto {
         fdcId = fdcId,
         estimated = estimated,
         extras = extras,
+        candidates = candidates,
+        source = source,
     )
 }
 
