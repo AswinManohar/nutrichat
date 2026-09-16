@@ -37,6 +37,8 @@ import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.StatusPill
 import app.mealsy.android.design.components.StatusPillAwareness
 import app.mealsy.android.design.icons.MealsyIcons
+import app.mealsy.android.design.mascot.Olli
+import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
@@ -150,6 +152,7 @@ private fun HomeLoaded(
                 eatenLabel = eatenLabel,
                 stateLabel = stateLabel,
                 eatenFraction = state.eatenFraction,
+                mascot = { Olli(size = OlliSize.Bite) },
             )
         }
 
@@ -191,7 +194,13 @@ private fun HomeLoaded(
                 ListRow(
                     label = stringResource(mealTypeLabelRes(row.mealType)),
                     onClick = { onOpenMealType(row.mealType) },
-                    leading = { PastelIconCircle(icon = MealsyIcons.Bowl, tone = row.tone, contentDescription = null) },
+                    leading = {
+                        PastelIconCircle(
+                            icon = mealTypeIcon(row.mealType),
+                            tone = row.tone,
+                            contentDescription = null,
+                        )
+                    },
                     badgeCount = row.count,
                     trailingText = if (row.count == null) stringResource(R.string.home_meal_not_yet) else null,
                 )
@@ -236,6 +245,14 @@ private fun kcalStateText(state: HomeKcalState): String = when (state) {
     is HomeKcalState.Left -> stringResource(R.string.home_state_left, state.kcal)
     is HomeKcalState.Over -> stringResource(R.string.home_state_over, state.kcal)
     HomeKcalState.NoTarget -> stringResource(R.string.home_state_no_target)
+}
+
+/** Resolves a meal-type wire key to its distinct "Today's meals" row icon. */
+private fun mealTypeIcon(mealType: String) = when (mealType) {
+    "breakfast" -> MealsyIcons.Breakfast
+    "lunch" -> MealsyIcons.Lunch
+    "dinner" -> MealsyIcons.Dinner
+    else -> MealsyIcons.Snack
 }
 
 private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {

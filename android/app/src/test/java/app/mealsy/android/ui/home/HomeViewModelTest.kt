@@ -11,6 +11,8 @@ import app.mealsy.data.api.LogItemsResponse
 import app.mealsy.data.api.LogMyMealRequest
 import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
+import app.mealsy.data.api.MealLogDetailDto
+import app.mealsy.data.api.MealLogSummaryDto
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
@@ -72,6 +74,9 @@ private class FakeMealsyApi(
     override suspend fun saveMeal(body: SaveMealRequest): SavedMealDto = notImplemented()
     override suspend fun logMyMeal(id: String, body: LogMyMealRequest): LogItemsResponse = notImplemented()
     override suspend fun deleteMyMeal(id: String): Unit = notImplemented()
+    override suspend fun listMealLogs(date: String?, mealType: String?): List<MealLogSummaryDto> = notImplemented()
+    override suspend fun mealLog(id: String): MealLogDetailDto = notImplemented()
+    override suspend fun deleteMealLog(id: String): Unit = notImplemented()
     override suspend fun deleteAccount(): Unit = notImplemented()
 
     private fun <T> notImplemented(): T = throw UnsupportedOperationException("not used by HomeViewModel tests")
