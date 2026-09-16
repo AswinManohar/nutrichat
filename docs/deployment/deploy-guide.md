@@ -108,6 +108,14 @@ netlify deploy --build --prod
 mv .env.local.bak .env.local 2>/dev/null || true
 ```
 
+The frontend also serves `/account/delete` — a public route required for the
+Play Store's data-safety account-deletion URL (used by the Android app
+listing). Authenticated visitors can delete their account there;
+unauthenticated visitors see a sign-in prompt. It calls the backend's
+`DELETE /account` endpoint, which requires `SUPABASE_SERVICE_ROLE_KEY` set
+in the production backend environment — without it the endpoint returns 502
+and deletes nothing.
+
 **Verify** the live site serves the new build and points at the Railway backend:
 
 ```bash

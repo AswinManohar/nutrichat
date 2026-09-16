@@ -54,12 +54,24 @@ filter) to resume the app after sign-in.
 ```bash
 cd android
 ./gradlew :app:assembleDebug      # debug build, installs against API_BASE_URL
-./gradlew :app:assembleRelease    # release build (minified, shrunk resources)
+./gradlew :app:bundleRelease      # release AAB — the artifact Play requires
+./gradlew :app:assembleRelease    # release APK — sideload/QA only, NOT the Play artifact
+```
+
+Both release tasks share the same `release` build type (minified, shrunk
+resources, `signingConfig` from env vars below), so the same "Release
+signing" setup applies to whichever one you run. `bundleRelease` produces
+the Android App Bundle at:
+
+```
+app/build/outputs/bundle/release/app-release.aab
 ```
 
 Release builds fall back to the debug keystore when no signing env vars are
-set (see "Release signing" below), so `assembleRelease` builds locally
-without any extra setup — it just won't be Play-signed.
+set (see "Release signing" below), so both tasks build locally without any
+extra setup — the output just won't be Play-signed. Use `assembleRelease`
+(APK) only for local sideload/manual QA on a device; upload the AAB from
+`bundleRelease` to Play.
 
 ### Release signing
 
@@ -71,17 +83,88 @@ export MEALSY_KEYSTORE_PATH=/path/to/release.keystore
 export MEALSY_KEYSTORE_PASSWORD=...
 export MEALSY_KEY_ALIAS=...
 export MEALSY_KEY_PASSWORD=...
-./gradlew :app:assembleRelease
+./gradlew :app:bundleRelease
 ```
 
-If any of the four are unset, the release build type signs with the debug
-keystore instead — never commit a real keystore or these values to the repo.
+If **any** of the four are unset or blank, the release build type silently
+falls back to signing with the debug keystore instead — the build still
+succeeds and still produces an `.aab`, but it is not signed with your
+upload key and Play will reject it (or worse, accept the wrong signer).
+Before uploading to Play:
+
+- Confirm all four env vars are set and non-blank in the shell that invokes
+  Gradle.
+- Verify the signer of the produced AAB (e.g. `apksigner verify --print-certs`
+  against the AAB's embedded APK, or inspect the bundle with `bundletool`)
+  before uploading, rather than trusting that the env vars took effect.
+
+Never commit a real keystore or these values to the repo, and never print
+their values in logs or documentation.
+
+**Play App Signing.** Play uses a two-key model:
+
+- **Upload key** — the keystore referenced by `MEALSY_KEYSTORE_*` above.
+  You sign every release build (both APK and AAB) with this key locally.
+- **App signing key** — held by Google. When you upload an AAB signed with
+  your upload key, Google Play re-signs it with the app signing key before
+  distributing it to devices; end users never see your upload-key signature.
+
+This means the local keystore in `MEALSY_KEYSTORE_PATH` is your *upload*
+key, not the key end users' installs are ultimately signed with — losing it
+means requesting an upload-key reset from Google, not losing the app.
+
+**`versionCode` / `versionName`.** Both live in `app/build.gradle.kts`
+(`defaultConfig`), currently `versionCode = 1`, `versionName = "1.0"`.
+
+- `versionCode` — a plain integer Play uses to order releases. It must be
+  **monotonically increasing** on every Play upload: bump it by at least 1
+  each time, never reuse a value, never decrease it. Play rejects an
+  upload whose `versionCode` isn't strictly greater than the current one.
+- `versionName` — the user-facing string (semver, e.g. `"1.1.0"`). Play
+  doesn't enforce anything about it; bump it to communicate the release to
+  users/support, independent of the `versionCode` bump.
+
+**R8 mapping / Crashlytics.** The `com.google.gms.google-services` and
+`com.google.firebase.crashlytics` Gradle plugins are applied only when
+`android/app/google-services.json` exists (see Setup step 2). Until that
+file is present, R8's deobfuscation mapping is **not** uploaded to
+Crashlytics on a release build — crash stack traces from a release binary
+built before Firebase is configured will show obfuscated symbols.
+
+### App update gate (backend)
+
+The backend exposes `GET /meta/app` (`src/backend/api/meta.py`), driven by
+two env vars read at request time:
+
+| Var | Meaning | Default |
+|---|---|---|
+| `ANDROID_MIN_VERSION_CODE` | Floor `versionCode`. Clients below this must block and force an upgrade. | `1` |
+| `ANDROID_LATEST_VERSION_CODE` | The newest available `versionCode`. Clients between min and latest may show a soft "update available" nudge rather than blocking. | `1` |
+
+Raise both in the Railway backend environment in step with every Play
+release that bumps `versionCode` in `app/build.gradle.kts` — otherwise the
+gate keeps quoting a stale floor/latest and either blocks users
+unnecessarily or fails to nudge them toward a release that's actually live.
 
 ### CI
 
-There is no `.github/` directory in this repo yet, so no GitHub Actions
-workflow is configured. When CI is set up, wire in:
-`./gradlew :app:assembleRelease :app:testDebugUnitTest :core:data:test`.
+`.github/workflows/android.yml` runs on pushes and PRs that touch
+`android/**` or the workflow file itself. It:
+
+- Sets up Temurin JDK 21 and Gradle (`gradle/actions/setup-gradle@v4`).
+- Runs `./gradlew :app:assembleDebug :app:testDebugUnitTest :core:data:test
+  :core:domain:test :core:ui:verifyRoborazziDebug --stacktrace` — a debug
+  build, unit tests across `:app`/`:core:data`/`:core:domain`, and
+  Roborazzi golden verification for `:core:ui`.
+- Uploads Roborazzi diff artifacts (`android/core/ui/build/outputs/roborazzi`)
+  on failure, for inspecting screenshot mismatches.
+- Deliberately runs with **no** `google-services.json` or
+  `local.properties` present, matching the constraint that the build must
+  succeed without either.
+
+It does **not** build, sign, or upload a release artifact (no
+`assembleRelease`/`bundleRelease` step) — release builds and Play uploads
+are a manual, local step per "Release signing" above.
 
 ## Launch QA
 
@@ -109,6 +192,24 @@ not treat them as verified until someone runs them.
       Firebase console (add a temporary `throw RuntimeException("Test crash")`
       behind a debug-only button, trigger it, remove it before shipping)
 
+## Store listing assets
+
+- **Phone screenshots** — generated from the `:core:ui` Roborazzi goldens in
+  `android/core/ui/src/test/screenshots/`, rendered at the design's
+  reference width (390dp, per `ScreenshotTestBase`'s `w390dp-h844dp-xhdpi`
+  qualifier) on the theme's cream canvas background
+  (`MealsyTheme.colors.canvas`). Component goldens (e.g. `MealsyButton_*`,
+  `ChatBubble_*`, `TotalsStrip_*`, `Olli_*`) are component-level captures,
+  not full-screen shots — use them as visual reference for composing actual
+  screen-level Play screenshots (e.g. chat, confirmation card, trends), not
+  as the Play screenshots themselves.
+- **Feature graphic** (1024x500) — should feature Olli the mascot (see
+  `design/mascot/Olli.kt` in `:core:ui`), consistent with the in-app
+  branding.
+- **App icon** — 512x512, per Play's standard icon requirement.
+- **Short description** / **full description** — standard Play listing
+  copy fields; not yet drafted here.
+
 ## Play data-safety form (draft)
 
 Draft answers for the Play Console "Data safety" section (spec §4.12).
@@ -125,7 +226,10 @@ category names and required disclosures change between Play releases.
 - **Data sharing:** No data is shared with third parties.
 - **Data deletion:** Users can delete their account and all associated data
   in-app via Settings → Delete account, which calls the backend
-  `DELETE /account` endpoint.
+  `DELETE /account` endpoint. A public web account-deletion URL,
+  `https://<frontend-host>/account/delete`, is also required for the Play
+  listing's data-safety section (Play requires a public URL, not just an
+  in-app path) — see "Known launch prerequisites" below.
 - **Data encrypted in transit:** Yes (HTTPS/TLS to the backend and to
   Supabase; FCM tokens and push payloads likewise sent over TLS).
 - **Data retention:** Meal and nutrition data is retained until the user
@@ -145,8 +249,14 @@ Play, none of which this task can complete from here:
   calls into.
 - Privacy policy live at the URL configured as `PRIVACY_POLICY_URL` —
   required both in-app and for the Play Store listing (spec §5).
-- Web account-deletion page calling `DELETE /account` — required for the
-  Play listing's data-safety deletion URL; not yet built (in-app deletion
-  via Settings → Delete account is the only working path today).
+- Web account-deletion page at `https://<frontend-host>/account/delete` —
+  required for the Play listing's data-safety deletion URL. Served by the
+  Mealsy web frontend and requires `SUPABASE_SERVICE_ROLE_KEY` set in the
+  production backend environment; without it, `DELETE /account` returns
+  502 and deletes nothing (in-app deletion via Settings → Delete account
+  hits the same endpoint and has the same requirement).
+- Raise `ANDROID_MIN_VERSION_CODE` / `ANDROID_LATEST_VERSION_CODE` in the
+  Railway backend environment to match the `versionCode` being uploaded
+  (see "App update gate (backend)" above).
 - Eval gate (`eval/run_eval.py`) run and green against the backend version
   the app is targeting, per repo root eval-harness convention.
