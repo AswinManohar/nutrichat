@@ -76,6 +76,16 @@ class MyMealsViewModel @Inject constructor(
     private val _hiddenIds = MutableStateFlow<Set<String>>(emptySet())
     val hiddenIds: StateFlow<Set<String>> = _hiddenIds.asStateFlow()
 
+    /**
+     * Ids whose delayed `DELETE` hasn't fired yet — i.e. still genuinely
+     * undoable. The screen drives its undo toast's visibility off this
+     * (rather than running its own independent timer) so the toast can
+     * never outlive, or disappear before, this `ViewModel`'s actual undo
+     * window: see [deleteWithUndo]/[undoDelete]/[commitDelete].
+     */
+    private val _pendingUndoIds = MutableStateFlow<Set<String>>(emptySet())
+    val pendingUndoIds: StateFlow<Set<String>> = _pendingUndoIds.asStateFlow()
+
     private val pendingDeleteJobs = mutableMapOf<String, Job>()
 
     /** Exposed only so tests can [Job.join] the initial load deterministically. */
@@ -125,6 +135,7 @@ class MyMealsViewModel @Inject constructor(
     fun deleteWithUndo(id: String) {
         pendingDeleteJobs.remove(id)?.cancel()
         _hiddenIds.value = _hiddenIds.value + id
+        _pendingUndoIds.value = _pendingUndoIds.value + id
         pendingDeleteJobs[id] = appScope.launch {
             delay(undoWindowMs)
             commitDelete(id)
@@ -135,6 +146,7 @@ class MyMealsViewModel @Inject constructor(
     fun undoDelete(id: String) {
         pendingDeleteJobs.remove(id)?.cancel()
         _hiddenIds.value = _hiddenIds.value - id
+        _pendingUndoIds.value = _pendingUndoIds.value - id
     }
 
     /**
@@ -178,6 +190,7 @@ class MyMealsViewModel @Inject constructor(
         }
         withContext(Dispatchers.Main.immediate) {
             pendingDeleteJobs.remove(id)
+            _pendingUndoIds.value = _pendingUndoIds.value - id
             val current = _uiState.value
             if (current is MyMealsUiState.Loaded) {
                 val remaining = current.meals.filterNot { it.id == id }

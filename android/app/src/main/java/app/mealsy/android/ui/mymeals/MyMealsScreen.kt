@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,12 +58,9 @@ import app.mealsy.domain.PastelTone
 import app.mealsy.domain.pastelToneFor
 import java.text.NumberFormat
 import java.util.Locale
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 
 private const val SWIPE_DELETE_THRESHOLD_PX = 300f
-private const val UNDO_TOAST_MS = 4_000L
 
 /**
  * My Meals screen: saved quick-log meals with per-meal macros, tap to open
@@ -87,10 +83,12 @@ fun MyMealsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val hiddenIds by viewModel.hiddenIds.collectAsStateWithLifecycle()
+    val pendingUndoIds by viewModel.pendingUndoIds.collectAsStateWithLifecycle()
 
     MyMealsContent(
         uiState = uiState,
         hiddenIds = hiddenIds,
+        pendingUndoIds = pendingUndoIds,
         onOpenMeal = onOpenMeal,
         onRetry = viewModel::load,
         onDeleteWithUndo = viewModel::deleteWithUndo,
@@ -112,9 +110,18 @@ internal fun MyMealsContent(
     onRetry: () -> Unit,
     onDeleteWithUndo: (String) -> Unit,
     onUndoDelete: (String) -> Unit,
+    pendingUndoIds: Set<String> = emptySet(),
 ) {
-    val scope = rememberCoroutineScope()
-    var undoTarget by remember { mutableStateOf<SavedMeal?>(null) }
+    // The most recently swiped meal, kept only so the toast has a name/id to
+    // render — its *visibility* is driven by [pendingUndoIds] (the
+    // ViewModel's own undo window), not by a timer of this composable's own.
+    // Running an independent screen-level timer here previously could drift
+    // from `MyMealsViewModel.undoWindowMs` (e.g. shrunk by tests, or simply
+    // by having two hardcoded durations to keep in sync), letting the toast
+    // disappear before the delete was actually committed, or worse, stay
+    // visible after the delete already fired — see MyMealsScreen's undo
+    // review (Phase 5 cleanup).
+    var lastSwiped by remember { mutableStateOf<SavedMeal?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().mealsyScreenPadding()) {
@@ -147,11 +154,7 @@ internal fun MyMealsContent(
                                             onTap = { onOpenMeal(meal.id) },
                                             onSwipeDelete = {
                                                 onDeleteWithUndo(meal.id)
-                                                undoTarget = meal
-                                                scope.launch {
-                                                    delay(UNDO_TOAST_MS)
-                                                    if (undoTarget?.id == meal.id) undoTarget = null
-                                                }
+                                                lastSwiped = meal
                                             },
                                         )
                                         if (index != visible.lastIndex) InsetDivider()
@@ -164,12 +167,12 @@ internal fun MyMealsContent(
             }
         }
 
-        val toastTarget = undoTarget
+        val toastTarget = lastSwiped?.takeIf { it.id in pendingUndoIds }
         if (toastTarget != null) {
             UndoToast(
                 onUndo = {
                     onUndoDelete(toastTarget.id)
-                    undoTarget = null
+                    lastSwiped = null
                 },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
             )
