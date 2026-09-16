@@ -35,7 +35,19 @@ interface AuthGateway {
     fun currentAccessTokenOrNull(): String?
 
     suspend fun signOut()
+
+    /** Writes `{first_name, goal_focus}` into Supabase user metadata. */
+    suspend fun updateProfileMetadata(firstName: String, goalFocus: String)
+
+    /**
+     * Reads `{first_name, goal_focus}` back from the current user's
+     * metadata, or null when signed out.
+     */
+    suspend fun currentProfileMetadata(): ProfileMetadata?
 }
+
+/** First name and goal focus as stored in Supabase user metadata (plan Assumption 1). */
+data class ProfileMetadata(val firstName: String?, val goalFocus: String?)
 
 /**
  * Seam for Task 9's best-effort FCM device deregistration on sign-out.
@@ -104,6 +116,14 @@ class SessionManager(
             authGateway.currentAccessTokenOrNull()
         }
     }
+
+    /** Pass-through to [AuthGateway.updateProfileMetadata]. */
+    suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+        authGateway.updateProfileMetadata(firstName, goalFocus)
+    }
+
+    /** Pass-through to [AuthGateway.currentProfileMetadata]. */
+    suspend fun currentProfileMetadata(): ProfileMetadata? = authGateway.currentProfileMetadata()
 
     suspend fun signOut() {
         // onSignOut (Task 9: best-effort FCM device deregistration) needs

@@ -11,4 +11,7 @@ abstract class RepoModule {
 
     @Binds
     abstract fun bindConversationIdStore(impl: DataStoreConversationIdStore): ConversationIdStore
+
+    @Binds
+    abstract fun bindProfileStore(impl: DataStoreProfileStore): ProfileStore
 }

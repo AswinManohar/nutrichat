@@ -4,6 +4,7 @@ import android.app.Activity
 import app.cash.turbine.test
 import app.mealsy.android.ui.isUpdateRequired
 import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,10 @@ private class FakeAuthGateway : AuthGateway {
     override fun currentAccessTokenOrNull(): String? = null
 
     override suspend fun signOut() = Unit
+
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

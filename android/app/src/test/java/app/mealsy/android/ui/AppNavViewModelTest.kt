@@ -18,6 +18,7 @@ import app.mealsy.data.api.QuotaResponse
 import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import app.mealsy.data.repo.GoalsRepository
@@ -48,6 +49,10 @@ private class FakeAuthGateway : AuthGateway {
     override suspend fun refreshCurrentSession(): String? = null
     override fun currentAccessTokenOrNull(): String? = null
     override suspend fun signOut() = Unit
+
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
 /**

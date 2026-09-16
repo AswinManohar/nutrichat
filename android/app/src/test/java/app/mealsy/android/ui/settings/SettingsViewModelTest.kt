@@ -17,6 +17,7 @@ import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import app.mealsy.data.repo.GoalsRepository
@@ -51,6 +52,10 @@ private class FakeAuthGateway(
         signOutCallCount++
         sessionState.value = SessionState.SignedOut
     }
+
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
 /**

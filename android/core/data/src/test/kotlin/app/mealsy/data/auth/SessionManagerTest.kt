@@ -51,6 +51,14 @@ private class FakeAuthGateway(
         signOutCallCount++
         sessionState.value = SessionState.SignedOut
     }
+
+    var profileMetadata: ProfileMetadata? = null
+
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+        profileMetadata = ProfileMetadata(firstName, goalFocus)
+    }
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? = profileMetadata
 }
 
 class SessionManagerTest {

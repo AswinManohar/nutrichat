@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import javax.inject.Inject
 
 /**
@@ -55,6 +58,32 @@ class SupabaseAuthGateway @Inject constructor(private val auth: Auth) : AuthGate
 
     override suspend fun signOut() {
         auth.signOut(SignOutScope.LOCAL)
+    }
+
+    // supabase-kt 2.6.0's `UserUpdateBuilder.data` is a plain
+    // `JsonObject` property, but the builder also exposes an overload of
+    // `data(...)` that takes a `JsonObjectBuilder` lambda (used below via
+    // `data { put(...) }`) so individual keys can be set without first
+    // building a whole `JsonObject` by hand. Supabase's `PUT /user`
+    // endpoint merges the given `data` object into the existing
+    // `user_metadata` server-side rather than replacing it, so this never
+    // clobbers `full_name` (written by the web signup flow) or any other
+    // pre-existing key — it only ever touches `first_name`/`goal_focus`.
+    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+        auth.updateUser {
+            data {
+                put("first_name", firstName)
+                put("goal_focus", goalFocus)
+            }
+        }
+    }
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? {
+        val metadata = auth.currentUserOrNull()?.userMetadata ?: return null
+        return ProfileMetadata(
+            firstName = metadata["first_name"]?.jsonPrimitive?.contentOrNull,
+            goalFocus = metadata["goal_focus"]?.jsonPrimitive?.contentOrNull,
+        )
     }
 
     private fun SessionStatus.toSessionState(): SessionState = when (this) {
