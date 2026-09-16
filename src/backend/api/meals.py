@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,7 +22,12 @@ from backend.agent.tools.meals import log_meal as persist_meal
 from backend.api.my_meals import _scaled_result
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog
-from backend.db.redis_client import current_day_bounds, get_today_totals
+from backend.db.redis_client import (
+    _DAY_RESET_HOUR,
+    _DAY_TZ,
+    current_day_bounds,
+    get_today_totals,
+)
 from backend.db.session import get_session
 from backend.ratelimit import user_rate_limiter
 
@@ -416,3 +421,180 @@ async def get_trends(
             )
             for row in result.all()
         ]
+
+
+def _day_bounds_for_date(day: date) -> tuple[datetime, datetime]:
+    """Return the nutrition-day [start, end) UTC window for a calendar date.
+
+    ``current_day_bounds`` only derives "today" from the current instant.
+    To express an arbitrary past date under the same reset-hour/timezone
+    rule, we hand it a synthetic `now` set to exactly `reset_hour` on the
+    target local date: since `current_day_bounds` computes
+    ``day_date = (now_local - reset_hour).date()``, that construction makes
+    `day_date` land exactly on `day` regardless of the configured reset
+    hour (0-23).
+
+    Args:
+        day: The calendar date (in the configured nutrition-day timezone)
+            whose window is requested.
+
+    Returns:
+        ``(start_utc, end_utc)`` covering that nutrition day.
+    """
+    synthetic_now = datetime.combine(day, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
+    return current_day_bounds(now=synthetic_now)
+
+
+class MealLogSummary(BaseModel):
+    """Summary of one logged meal, for the logged-meal list view."""
+
+    meal_id: str
+    meal_type: str
+    logged_at: datetime
+    label: str | None
+    kcal: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    fiber_g: float
+    n_items: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MealLogDetail(MealLogSummary):
+    """Full detail of one logged meal, including its resolved items."""
+
+    items: list[dict]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.get("/log")
+async def list_meal_logs(
+    date_: date | None = Query(default=None, alias="date"),
+    meal_type: str | None = Query(default=None),
+    user_id: str = Depends(get_current_user_id),
+) -> list[MealLogSummary]:
+    """List the authenticated user's logged meals for a single day.
+
+    Args:
+        date_: Calendar date to list, in the configured nutrition-day
+            timezone. Defaults to today (same nutrition-day window used by
+            GET /meals/today) when omitted.
+        meal_type: Optional filter to a single meal category.
+        user_id: Injected by the Supabase auth dependency.
+
+    Returns:
+        Meals owned by the caller, not soft-deleted, within the requested
+        nutrition-day window, ordered by logged_at ascending.
+
+    Raises:
+        HTTPException 422: If meal_type is not a recognized category.
+    """
+    if meal_type is not None and meal_type not in MEAL_CATEGORIES:
+        raise HTTPException(status_code=422, detail="Invalid meal_type")
+
+    day_start, day_end = (
+        current_day_bounds() if date_ is None else _day_bounds_for_date(date_)
+    )
+
+    filters = [
+        MealLog.user_id == user_id,
+        MealLog.logged_at >= day_start,
+        MealLog.logged_at < day_end,
+        MealLog.deleted_at.is_(None),
+    ]
+    if meal_type is not None:
+        filters.append(MealLog.meal_type == meal_type)
+
+    session_factory = get_session()
+    async with session_factory() as db:
+        result = await db.execute(
+            select(MealLog).where(*filters).order_by(MealLog.logged_at.asc())
+        )
+        rows = result.scalars().all()
+
+    return [
+        MealLogSummary(
+            meal_id=row.meal_id,
+            meal_type=row.meal_type,
+            logged_at=row.logged_at,
+            label=row.label,
+            kcal=row.kcal,
+            protein_g=row.protein_g,
+            carbs_g=row.carbs_g,
+            fat_g=row.fat_g,
+            fiber_g=row.fiber_g,
+            n_items=len(_entities_list(row.entities)),
+        )
+        for row in rows
+    ]
+
+
+def _entities_list(entities_raw: list | str | None) -> list:
+    """Normalize a MealLog.entities value to a list.
+
+    The JSONB column is usually deserialized to a list already, but some
+    paths (see _get_today_by_type) store or return it as a JSON string.
+
+    Args:
+        entities_raw: The raw value read from MealLog.entities.
+
+    Returns:
+        The parsed list of item dicts, or [] if entities_raw is falsy.
+    """
+    return (
+        entities_raw
+        if isinstance(entities_raw, list)
+        else json.loads(entities_raw or "[]")
+    )
+
+
+@router.get("/log/{meal_id}")
+async def get_meal_log(
+    meal_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> MealLogDetail:
+    """Return full detail, including resolved items, for one logged meal.
+
+    Args:
+        meal_id: The meal_log row's id.
+        user_id: Injected by the Supabase auth dependency.
+
+    Returns:
+        The meal's summary fields plus its verbatim resolved item list.
+
+    Raises:
+        HTTPException 404: If no matching, non-deleted meal owned by this
+            user exists. The same 404 covers "doesn't exist", "belongs to
+            another user", and "soft-deleted", so existence is never leaked.
+    """
+    session_factory = get_session()
+    async with session_factory() as db:
+        result = await db.execute(
+            select(MealLog).where(
+                MealLog.meal_id == meal_id,
+                MealLog.user_id == user_id,
+                MealLog.deleted_at.is_(None),
+            )
+        )
+        row = result.scalar_one_or_none()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Meal not found")
+
+    entities = _entities_list(row.entities)
+    return MealLogDetail(
+        meal_id=row.meal_id,
+        meal_type=row.meal_type,
+        logged_at=row.logged_at,
+        label=row.label,
+        kcal=row.kcal,
+        protein_g=row.protein_g,
+        carbs_g=row.carbs_g,
+        fat_g=row.fat_g,
+        fiber_g=row.fiber_g,
+        n_items=len(entities),
+        items=entities,
+    )
