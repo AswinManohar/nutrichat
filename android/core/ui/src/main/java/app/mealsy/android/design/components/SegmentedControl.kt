@@ -64,15 +64,16 @@ fun <T> SegmentedControl(
                 )
                 val textColor = if (isSelected) colors.canvas else colors.muted
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(backgroundColor, MealsyShapes.pill)
-                        .semantics {
-                            role = Role.RadioButton
-                            this.selected = isSelected
-                        }
-                        .clickable { onSelect(option) }
-                        .padding(vertical = 8.dp),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .background(backgroundColor, MealsyShapes.pill)
+                            .semantics {
+                                role = Role.RadioButton
+                                this.selected = isSelected
+                            }
+                            .clickable { onSelect(option) }
+                            .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(

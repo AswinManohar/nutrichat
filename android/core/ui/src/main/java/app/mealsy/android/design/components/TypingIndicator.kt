@@ -44,24 +44,26 @@ fun TypingIndicator(modifier: Modifier = Modifier) {
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200),
-            repeatMode = RepeatMode.Reverse,
-        ),
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1200),
+                repeatMode = RepeatMode.Reverse,
+            ),
         label = "typingIndicatorPhase",
     )
 
     val baseAlphas = listOf(1.0f, 0.7f, 0.4f)
-    val alphas = if (isPreview) {
-        baseAlphas
-    } else {
-        // Stagger by rotating which dot currently holds the brightest slot.
-        listOf(
-            baseAlphas[0] * (0.6f + 0.4f * phase),
-            baseAlphas[1] * (0.6f + 0.4f * (1f - phase)),
-            baseAlphas[2],
-        )
-    }
+    val alphas =
+        if (isPreview) {
+            baseAlphas
+        } else {
+            // Stagger by rotating which dot currently holds the brightest slot.
+            listOf(
+                baseAlphas[0] * (0.6f + 0.4f * phase),
+                baseAlphas[1] * (0.6f + 0.4f * (1f - phase)),
+                baseAlphas[2],
+            )
+        }
 
     Surface(
         color = colors.surface,
@@ -73,12 +75,13 @@ fun TypingIndicator(modifier: Modifier = Modifier) {
         ) {
             alphas.forEachIndexed { index, dotAlpha ->
                 androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .padding(start = if (index == 0) 0.dp else 6.dp)
-                        .size(6.dp)
-                        .alpha(dotAlpha)
-                        .clip(CircleShape)
-                        .background(colors.inactive),
+                    modifier =
+                        Modifier
+                            .padding(start = if (index == 0) 0.dp else 6.dp)
+                            .size(6.dp)
+                            .alpha(dotAlpha)
+                            .clip(CircleShape)
+                            .background(colors.inactive),
                 )
             }
         }

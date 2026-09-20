@@ -15,7 +15,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class OfflineModule {
-
     @Binds
     abstract fun bindPendingLogQueue(impl: RoomPendingLogQueue): PendingLogQueue
 
@@ -28,23 +27,27 @@ abstract class OfflineModule {
     companion object {
         @Provides
         @Singleton
-        fun provideMealsyDb(@ApplicationContext context: Context): MealsyDb =
-            Room.databaseBuilder(context, MealsyDb::class.java, "mealsy-offline.db").build()
+        fun provideMealsyDb(
+            @ApplicationContext context: Context,
+        ): MealsyDb = Room.databaseBuilder(context, MealsyDb::class.java, "mealsy-offline.db").build()
 
         @Provides
         fun providePendingLogDao(db: MealsyDb): PendingLogDao = db.pendingLogDao()
 
         @Provides
         @Singleton
-        fun provideWorkManager(@ApplicationContext context: Context): WorkManager =
-            WorkManager.getInstance(context)
+        fun provideWorkManager(
+            @ApplicationContext context: Context,
+        ): WorkManager = WorkManager.getInstance(context)
     }
 }
 
-class WorkManagerReplayEnqueuer @javax.inject.Inject constructor(
-    private val workManager: WorkManager,
-) : ReplayWorkEnqueuer {
-    override fun enqueueReplay() {
-        ReplayWorker.enqueue(workManager)
+class WorkManagerReplayEnqueuer
+    @javax.inject.Inject
+    constructor(
+        private val workManager: WorkManager,
+    ) : ReplayWorkEnqueuer {
+        override fun enqueueReplay() {
+            ReplayWorker.enqueue(workManager)
+        }
     }
-}

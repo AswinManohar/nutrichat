@@ -26,7 +26,10 @@ import app.mealsy.android.design.theme.MealsyType
  * @param modifier The modifier applied to the text.
  */
 @Composable
-fun FoodRowMeta(text: String, modifier: Modifier = Modifier) {
+fun FoodRowMeta(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     Text(text = text, style = MealsyType.label, color = colors.muted, modifier = modifier)
 }

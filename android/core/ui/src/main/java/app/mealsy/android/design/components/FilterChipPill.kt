@@ -48,21 +48,26 @@ fun FilterChipPill(
     )
 
     Surface(
-        modifier = modifier.toggleable(
-            value = selected,
-            role = Role.Checkbox,
-            onValueChange = { onClick() },
-        ),
+        modifier =
+            modifier.toggleable(
+                value = selected,
+                role = Role.Checkbox,
+                onValueChange = { onClick() },
+            ),
         shape = MealsyShapes.pill,
         color = backgroundColor,
         border = if (selected) null else BorderStroke(1.dp, colors.hairline),
     ) {
         Text(
             text = text,
-            style = MealsyType.badge.copy(fontSize = androidx.compose.ui.unit.TextUnit(
-                13f,
-                androidx.compose.ui.unit.TextUnitType.Sp,
-            )),
+            style =
+                MealsyType.badge.copy(
+                    fontSize =
+                        androidx.compose.ui.unit.TextUnit(
+                            13f,
+                            androidx.compose.ui.unit.TextUnitType.Sp,
+                        ),
+                ),
             color = textColor,
             modifier = Modifier.padding(vertical = 10.dp, horizontal = 17.dp),
         )

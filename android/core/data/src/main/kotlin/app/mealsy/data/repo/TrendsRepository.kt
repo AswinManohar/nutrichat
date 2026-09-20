@@ -39,34 +39,37 @@ data class CategorySlice(
  * there is no envelope object on the wire, so an empty list is a normal,
  * non-error "nothing logged in this window" result, not a failure.
  */
-class TrendsRepository @Inject constructor(
-    private val api: MealsyApi,
-) {
-    suspend fun trends(days: Int): TrendData = TrendData(api.trends(days).map { it.toDayPoint() })
+class TrendsRepository
+    @Inject
+    constructor(
+        private val api: MealsyApi,
+    ) {
+        suspend fun trends(days: Int): TrendData = TrendData(api.trends(days).map { it.toDayPoint() })
 
-    suspend fun categories(days: Int): List<CategorySlice> =
-        api.categories(days).map { it.toCategorySlice() }
-}
+        suspend fun categories(days: Int): List<CategorySlice> = api.categories(days).map { it.toCategorySlice() }
+    }
 
-private fun DayTrendDto.toDayPoint(): DayPoint = DayPoint(
-    date = date,
-    kcal = kcal,
-    proteinG = proteinG,
-    carbsG = carbsG,
-    fiberG = fiberG,
-    nMeals = nMeals,
-    junkMeals = junkMeals,
-)
+private fun DayTrendDto.toDayPoint(): DayPoint =
+    DayPoint(
+        date = date,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fiberG = fiberG,
+        nMeals = nMeals,
+        junkMeals = junkMeals,
+    )
 
-private fun CategoryStatDto.toCategorySlice(): CategorySlice = CategorySlice(
-    mealType = mealType,
-    nMeals = nMeals,
-    daysLogged = daysLogged,
-    avgKcal = avgKcal,
-    avgProteinG = avgProteinG,
-    avgCarbsG = avgCarbsG,
-    avgFatG = avgFatG,
-    avgFiberG = avgFiberG,
-    totalKcal = totalKcal,
-    shareKcalPct = shareKcalPct,
-)
+private fun CategoryStatDto.toCategorySlice(): CategorySlice =
+    CategorySlice(
+        mealType = mealType,
+        nMeals = nMeals,
+        daysLogged = daysLogged,
+        avgKcal = avgKcal,
+        avgProteinG = avgProteinG,
+        avgCarbsG = avgCarbsG,
+        avgFatG = avgFatG,
+        avgFiberG = avgFiberG,
+        totalKcal = totalKcal,
+        shareKcalPct = shareKcalPct,
+    )

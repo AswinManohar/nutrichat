@@ -13,8 +13,10 @@ import org.robolectric.RobolectricTestRunner
 /** [ImageEncoder] against real Robolectric-backed [Bitmap]/JPEG codecs. */
 @RunWith(RobolectricTestRunner::class)
 class ImageEncoderTest {
-
-    private fun solidBitmap(width: Int, height: Int): Bitmap {
+    private fun solidBitmap(
+        width: Int,
+        height: Int,
+    ): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(Color.RED)
         return bitmap

@@ -10,15 +10,15 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -52,7 +52,6 @@ import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
-import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.components.SegmentedControl
@@ -62,6 +61,7 @@ import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.design.components.TotalsStrip
 import app.mealsy.android.design.components.TotalsStripEntry
 import app.mealsy.android.design.components.TypingIndicator
+import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
@@ -116,12 +116,13 @@ private fun groupByDish(items: List<CardItem>): List<ItemGroup> {
 }
 
 /** Maps a domain [PastelTone] onto the `:core:ui` [TagTone] palette. */
-private fun PastelTone.toTagTone(): TagTone = when (this) {
-    PastelTone.Leaf -> TagTone.Leaf
-    PastelTone.Butter -> TagTone.Butter
-    PastelTone.Powder -> TagTone.Powder
-    PastelTone.Pink -> TagTone.Pink
-}
+private fun PastelTone.toTagTone(): TagTone =
+    when (this) {
+        PastelTone.Leaf -> TagTone.Leaf
+        PastelTone.Butter -> TagTone.Butter
+        PastelTone.Powder -> TagTone.Powder
+        PastelTone.Pink -> TagTone.Pink
+    }
 
 /**
  * The editable meal confirmation card: item rows (grouped by composite dish),
@@ -311,9 +312,10 @@ private fun MealTypeSection(
     // domain.defaultMealCategory) so the value it confirms matches what this
     // card shows; "Lunch" here is only a last-resort render fallback, never
     // a decision this composable makes on its own.
-    val selected = MEAL_TYPE_OPTIONS.firstOrNull {
-        it.equals(mealType, ignoreCase = true)
-    } ?: "Lunch"
+    val selected =
+        MEAL_TYPE_OPTIONS.firstOrNull {
+            it.equals(mealType, ignoreCase = true)
+        } ?: "Lunch"
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -338,8 +340,9 @@ private fun PortionSection(
     onPortionChange: (Double) -> Unit,
 ) {
     val colors = MealsyTheme.colors
-    val selectedLabel = PORTION_OPTIONS.firstOrNull { it.second == portion }?.first
-        ?: PORTION_OPTIONS[1].first
+    val selectedLabel =
+        PORTION_OPTIONS.firstOrNull { it.second == portion }?.first
+            ?: PORTION_OPTIONS[1].first
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -392,17 +395,21 @@ private fun ActionsRow(
 }
 
 @Composable
-private fun SaveAsMyMealSection(savingMeal: Boolean, onSave: (String) -> Unit) {
+private fun SaveAsMyMealSection(
+    savingMeal: Boolean,
+    onSave: (String) -> Unit,
+) {
     val colors = MealsyTheme.colors
     var name by rememberSaveable { mutableStateOf("") }
 
     Column {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.hairline)
-                .padding(bottom = 16.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.hairline)
+                    .padding(bottom = 16.dp),
         )
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -441,6 +448,7 @@ private fun SaveAsMyMealSection(savingMeal: Boolean, onSave: (String) -> Unit) {
 @Composable
 private fun totalsEntries(card: ConfirmationCard): List<TotalsStripEntry> {
     val totals = CardEditor.totals(card)
+
     fun macro(value: Double) = "${value.roundToInt()}g"
     return listOf(
         TotalsStripEntry(
@@ -540,17 +548,29 @@ private fun ItemRow(
     val disabled = busy || swapping || item.pendingCandidate != null
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp)
-            .semantics {
-                customActions = buildList {
-                    add(CustomAccessibilityAction(removeLabel) { onRemoved(item.foodName, index); true })
-                    if (item.candidates.size > 1) {
-                        add(CustomAccessibilityAction(swapLabel) { onOpenCandidateSheet(); true })
-                    }
-                }
-            },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp)
+                .semantics {
+                    customActions =
+                        buildList {
+                            add(
+                                CustomAccessibilityAction(removeLabel) {
+                                    onRemoved(item.foodName, index)
+                                    true
+                                },
+                            )
+                            if (item.candidates.size > 1) {
+                                add(
+                                    CustomAccessibilityAction(swapLabel) {
+                                        onOpenCandidateSheet()
+                                        true
+                                    },
+                                )
+                            }
+                        }
+                },
     ) {
         if (item.pendingCandidate != null || swapping) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -582,7 +602,10 @@ private fun ItemRow(
                 ItemMetaLine(item = item, card = card)
             }
             RemoveButton(
-                onClick = { onRemoved(item.foodName, index); callbacks.onRemoveItem(index) },
+                onClick = {
+                    onRemoved(item.foodName, index)
+                    callbacks.onRemoveItem(index)
+                },
                 enabled = !disabled,
             )
         }
@@ -595,10 +618,11 @@ private fun ItemRow(
             if (item.candidates.size > 1) {
                 Text(
                     text = stringResource(R.string.confirm_card_not_right_food),
-                    style = MealsyType.label.copy(
-                        fontSize = 12.sp,
-                        textDecoration = TextDecoration.Underline,
-                    ),
+                    style =
+                        MealsyType.label.copy(
+                            fontSize = 12.sp,
+                            textDecoration = TextDecoration.Underline,
+                        ),
                     color = colors.muted,
                     modifier = Modifier.clickable(enabled = !disabled) { onOpenCandidateSheet() },
                 )
@@ -626,7 +650,10 @@ private fun ItemRow(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ItemMetaLine(item: CardItem, card: ConfirmationCard) {
+private fun ItemMetaLine(
+    item: CardItem,
+    card: ConfirmationCard,
+) {
     val colors = MealsyTheme.colors
     val factor = if (item.qtyG != 0.0) (item.targetQtyG / item.qtyG) * card.portion else 0.0
     val kcal = item.kcal * factor
@@ -673,15 +700,19 @@ private fun CheckMatchTag() {
 }
 
 @Composable
-private fun RemoveButton(onClick: () -> Unit, enabled: Boolean) {
+private fun RemoveButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
     val colors = MealsyTheme.colors
     var pressed by remember { mutableStateOf(false) }
     val tint = if (pressed) colors.terracotta else colors.muted
     Box(
-        modifier = Modifier
-            .size(24.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .clickable(enabled = enabled) { onClick() },
+        modifier =
+            Modifier
+                .size(24.dp)
+                .alpha(if (enabled) 1f else 0.35f)
+                .clickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Text(text = "×", style = MealsyType.body.copy(fontSize = 16.sp), color = tint)
@@ -694,7 +725,11 @@ private fun RemoveButton(onClick: () -> Unit, enabled: Boolean) {
  * its ink-pill styling locally — see [ConfirmCardView]'s class doc.
  */
 @Composable
-private fun UndoToast(text: String, onUndo: () -> Unit, modifier: Modifier = Modifier) {
+private fun UndoToast(
+    text: String,
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     Surface(shape = MealsyShapes.pill, color = colors.ink, modifier = modifier) {
         Row(
@@ -746,51 +781,70 @@ private fun ConfirmCardViewDarkPreview() {
     }
 }
 
-private fun previewCard(): ConfirmationCard = ConfirmationCard(
-    message = "",
-    mealType = "lunch",
-    portion = 1.0,
-    items = listOf(
-        CardItem(
-            foodName = "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
-            qtyG = 150.0,
-            targetQtyG = 150.0,
-            kcal = 231.0,
-            proteinG = 43.0,
-            carbsG = 0.0,
-            fatG = 5.0,
-            fiberG = 0.0,
-            fdcId = 1L,
-            estimated = false,
-            candidates = listOf("Chicken breast", "Chicken thigh"),
-            confidence = 0.9,
-        ),
-        CardItem(
-            foodName = "Rice, white, long-grain, regular, cooked",
-            qtyG = 200.0,
-            targetQtyG = 200.0,
-            kcal = 260.0,
-            proteinG = 5.0,
-            carbsG = 56.0,
-            fatG = 0.4,
-            fiberG = 1.0,
-            fdcId = 2L,
-            estimated = true,
-            confidence = 0.4,
-        ),
-    ),
-)
+private fun previewCard(): ConfirmationCard =
+    ConfirmationCard(
+        message = "",
+        mealType = "lunch",
+        portion = 1.0,
+        items =
+            listOf(
+                CardItem(
+                    foodName = "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+                    qtyG = 150.0,
+                    targetQtyG = 150.0,
+                    kcal = 231.0,
+                    proteinG = 43.0,
+                    carbsG = 0.0,
+                    fatG = 5.0,
+                    fiberG = 0.0,
+                    fdcId = 1L,
+                    estimated = false,
+                    candidates = listOf("Chicken breast", "Chicken thigh"),
+                    confidence = 0.9,
+                ),
+                CardItem(
+                    foodName = "Rice, white, long-grain, regular, cooked",
+                    qtyG = 200.0,
+                    targetQtyG = 200.0,
+                    kcal = 260.0,
+                    proteinG = 5.0,
+                    carbsG = 56.0,
+                    fatG = 0.4,
+                    fiberG = 1.0,
+                    fdcId = 2L,
+                    estimated = true,
+                    confidence = 0.4,
+                ),
+            ),
+    )
 
-private fun previewCallbacks(): ConfirmCardCallbacks = object : ConfirmCardCallbacks {
-    override fun onMealTypeChange(mealType: String) = Unit
-    override fun onPortionChange(portion: Double) = Unit
-    override fun onQtyChange(index: Int, newQtyG: Double) = Unit
-    override fun onRemoveItem(index: Int) = Unit
-    override fun onUndoRemove() = Unit
-    override fun onSwapCandidate(index: Int, newName: String) = Unit
-    override fun onDecompose() = Unit
-    override fun onCombine() = Unit
-    override fun onConfirm() = Unit
-    override fun onCancel() = Unit
-    override fun onSaveAsMyMeal(name: String) = Unit
-}
+private fun previewCallbacks(): ConfirmCardCallbacks =
+    object : ConfirmCardCallbacks {
+        override fun onMealTypeChange(mealType: String) = Unit
+
+        override fun onPortionChange(portion: Double) = Unit
+
+        override fun onQtyChange(
+            index: Int,
+            newQtyG: Double,
+        ) = Unit
+
+        override fun onRemoveItem(index: Int) = Unit
+
+        override fun onUndoRemove() = Unit
+
+        override fun onSwapCandidate(
+            index: Int,
+            newName: String,
+        ) = Unit
+
+        override fun onDecompose() = Unit
+
+        override fun onCombine() = Unit
+
+        override fun onConfirm() = Unit
+
+        override fun onCancel() = Unit
+
+        override fun onSaveAsMyMeal(name: String) = Unit
+    }

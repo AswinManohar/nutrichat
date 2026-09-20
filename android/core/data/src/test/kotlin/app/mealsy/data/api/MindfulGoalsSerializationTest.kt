@@ -19,21 +19,22 @@ import org.junit.Test
  * for `tracking_mode == "mindful"` either way.
  */
 class MindfulGoalsSerializationTest {
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     @Test
     fun `mindful goals omit the three numeric goal keys on the wire`() {
-        val goals = Goals(
-            trackingMode = "mindful",
-            kcalGoal = null,
-            proteinGoal = null,
-            fiberGoal = null,
-            dietaryPrefs = mapOf("vegan" to true),
-        )
+        val goals =
+            Goals(
+                trackingMode = "mindful",
+                kcalGoal = null,
+                proteinGoal = null,
+                fiberGoal = null,
+                dietaryPrefs = mapOf("vegan" to true),
+            )
 
         val encoded = json.encodeToString(GoalRequest.serializer(), goals.toGoalRequest())
 
@@ -44,13 +45,14 @@ class MindfulGoalsSerializationTest {
 
     @Test
     fun `mindful goals round-trip through GoalRequest unchanged`() {
-        val goals = Goals(
-            trackingMode = "mindful",
-            kcalGoal = null,
-            proteinGoal = null,
-            fiberGoal = null,
-            dietaryPrefs = mapOf("vegan" to true),
-        )
+        val goals =
+            Goals(
+                trackingMode = "mindful",
+                kcalGoal = null,
+                proteinGoal = null,
+                fiberGoal = null,
+                dietaryPrefs = mapOf("vegan" to true),
+            )
 
         val request = goals.toGoalRequest()
 

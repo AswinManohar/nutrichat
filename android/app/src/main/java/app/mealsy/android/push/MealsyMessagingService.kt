@@ -13,11 +13,11 @@ import app.mealsy.android.R
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /** Notification channel for backend-sent coaching/summary pushes. */
 const val DAILY_SUMMARY_CHANNEL_ID = "daily-summary"
@@ -49,7 +49,6 @@ const val EXTRA_OPEN_CHAT = "app.mealsy.android.push.OPEN_CHAT"
  */
 @AndroidEntryPoint
 class MealsyMessagingService : FirebaseMessagingService() {
-
     @Inject
     lateinit var pushRegistrar: PushRegistrar
 
@@ -72,24 +71,27 @@ class MealsyMessagingService : FirebaseMessagingService() {
         val body = message.notification?.body ?: message.data["body"].orEmpty()
         val openChat = message.data["deeplink"] == DEEPLINK_CHAT
 
-        val contentIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(EXTRA_OPEN_CHAT, openChat)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            contentIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val contentIntent =
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra(EXTRA_OPEN_CHAT, openChat)
+            }
+        val pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                contentIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
 
-        val notification = NotificationCompat.Builder(this, DAILY_SUMMARY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_mealsy)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
+        val notification =
+            NotificationCompat.Builder(this, DAILY_SUMMARY_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_mealsy)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
 
         try {
             // POST_NOTIFICATIONS (API 33+) is requested at first chat entry
@@ -104,11 +106,12 @@ class MealsyMessagingService : FirebaseMessagingService() {
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService<NotificationManager>() ?: return
-        val channel = NotificationChannel(
-            DAILY_SUMMARY_CHANNEL_ID,
-            "Daily summary",
-            NotificationManager.IMPORTANCE_DEFAULT,
-        )
+        val channel =
+            NotificationChannel(
+                DAILY_SUMMARY_CHANNEL_ID,
+                "Daily summary",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
         manager.createNotificationChannel(channel)
     }
 

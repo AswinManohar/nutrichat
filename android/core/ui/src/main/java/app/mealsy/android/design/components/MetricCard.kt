@@ -26,7 +26,11 @@ import app.mealsy.android.design.theme.MealsyType
  * @param modifier The modifier applied to the card.
  */
 @Composable
-fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
+fun MetricCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     Surface(
         modifier = modifier,
@@ -48,9 +52,10 @@ private fun MetricCardLightPreview() {
     MealsyTheme {
         androidx.compose.material3.Surface(color = MealsyTheme.colors.canvas) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 MetricCard(label = "Protein", value = "86g", modifier = Modifier.weight(1f))
@@ -71,9 +76,10 @@ private fun MetricCardDarkPreview() {
     MealsyTheme(darkTheme = true) {
         androidx.compose.material3.Surface(color = MealsyTheme.colors.canvas) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 MetricCard(label = "Protein", value = "86g", modifier = Modifier.weight(1f))

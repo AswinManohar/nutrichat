@@ -14,29 +14,29 @@ import org.junit.Test
 
 /** One grid golden covering every [MealsyIcons] vector, light and dark. */
 class MealsyIconsGoldenTest : ScreenshotTestBase() {
-
-    private val allIcons: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> = listOf(
-        "Home" to MealsyIcons.Home,
-        "Bowl" to MealsyIcons.Bowl,
-        "BowlBars" to MealsyIcons.BowlBars,
-        "Breakfast" to MealsyIcons.Breakfast,
-        "Lunch" to MealsyIcons.Lunch,
-        "Dinner" to MealsyIcons.Dinner,
-        "Snack" to MealsyIcons.Snack,
-        "LineChart" to MealsyIcons.LineChart,
-        "Chat" to MealsyIcons.Chat,
-        "Plus" to MealsyIcons.Plus,
-        "ChevronRight" to MealsyIcons.ChevronRight,
-        "ChevronLeft" to MealsyIcons.ChevronLeft,
-        "Check" to MealsyIcons.Check,
-        "Close" to MealsyIcons.Close,
-        "Sparkle" to MealsyIcons.Sparkle,
-        "Mic" to MealsyIcons.Mic,
-        "Send" to MealsyIcons.Send,
-        "Gear" to MealsyIcons.Gear,
-        "Camera" to MealsyIcons.Camera,
-        "Squiggle" to MealsyIcons.Squiggle,
-    )
+    private val allIcons: List<Pair<String, androidx.compose.ui.graphics.vector.ImageVector>> =
+        listOf(
+            "Home" to MealsyIcons.Home,
+            "Bowl" to MealsyIcons.Bowl,
+            "BowlBars" to MealsyIcons.BowlBars,
+            "Breakfast" to MealsyIcons.Breakfast,
+            "Lunch" to MealsyIcons.Lunch,
+            "Dinner" to MealsyIcons.Dinner,
+            "Snack" to MealsyIcons.Snack,
+            "LineChart" to MealsyIcons.LineChart,
+            "Chat" to MealsyIcons.Chat,
+            "Plus" to MealsyIcons.Plus,
+            "ChevronRight" to MealsyIcons.ChevronRight,
+            "ChevronLeft" to MealsyIcons.ChevronLeft,
+            "Check" to MealsyIcons.Check,
+            "Close" to MealsyIcons.Close,
+            "Sparkle" to MealsyIcons.Sparkle,
+            "Mic" to MealsyIcons.Mic,
+            "Send" to MealsyIcons.Send,
+            "Gear" to MealsyIcons.Gear,
+            "Camera" to MealsyIcons.Camera,
+            "Squiggle" to MealsyIcons.Squiggle,
+        )
 
     @Composable
     private fun Grid() {

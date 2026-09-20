@@ -4,13 +4,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.assertContentDescriptionEquals
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -36,7 +34,6 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
 class SemanticsTest {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
@@ -112,10 +109,11 @@ class SemanticsTest {
 
     @Test
     fun bottomNavPill_itemsAreTabsWithSelectedState() {
-        val items = listOf(
-            MealsyNavItem(MealsyIcons.Home, "Home", "home"),
-            MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
-        )
+        val items =
+            listOf(
+                MealsyNavItem(MealsyIcons.Home, "Home", "home"),
+                MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
+            )
         composeRule.setContent {
             MealsyTheme {
                 Surface {

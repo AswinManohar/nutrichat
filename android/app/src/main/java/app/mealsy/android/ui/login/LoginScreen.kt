@@ -1,7 +1,6 @@
 package app.mealsy.android.ui.login
 
 import android.app.Activity
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -80,9 +79,10 @@ fun LoginContent(
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.canvas) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = statusBarTop + 24.dp, start = 24.dp, end = 24.dp, bottom = 24.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = statusBarTop + 24.dp, start = 24.dp, end = 24.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Olli(size = 150.dp)
@@ -111,25 +111,28 @@ fun LoginContent(
                         value = email,
                         onValueChange = onEmailChange,
                         placeholder = stringResource(R.string.login_email_placeholder),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = emailFieldDescription },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Done,
-                        ),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = emailFieldDescription },
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Done,
+                            ),
                         keyboardActions = KeyboardActions(onDone = { onSubmitEmail() }),
                     )
 
                     if (uiState is LoginUiState.Error) {
                         Text(
-                            text = stringResource(
-                                when (uiState.kind) {
-                                    LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
-                                    LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
-                                    LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
-                                },
-                            ),
+                            text =
+                                stringResource(
+                                    when (uiState.kind) {
+                                        LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
+                                        LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
+                                        LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
+                                    },
+                                ),
                             style = MealsyType.body,
                             color = colors.muted,
                             modifier = Modifier.padding(top = 8.dp),
@@ -139,18 +142,20 @@ fun LoginContent(
                     MealsyButton(
                         text = stringResource(R.string.login_send_magic_link),
                         onClick = onSubmitEmail,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
                     )
 
                     MealsyButton(
                         text = stringResource(R.string.login_continue_with_google),
                         onClick = onSignInWithGoogle,
                         style = MealsyButtonStyle.Secondary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
                     )
                 }
             }

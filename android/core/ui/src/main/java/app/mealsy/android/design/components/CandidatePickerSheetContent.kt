@@ -88,27 +88,32 @@ fun CandidatePickerSheetContent(
  * current candidate instead of a chevron.
  */
 @Composable
-private fun CandidateRow(name: String, isCurrent: Boolean, onClick: () -> Unit) {
+private fun CandidateRow(
+    name: String,
+    isCurrent: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = MealsyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val background = if (pressed) colors.surfacePressed else Color.Transparent
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(background)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .semantics {
-                role = Role.Button
-                selected = isCurrent
-                contentDescription = if (isCurrent) "$name, current selection" else name
-            }
-            .padding(vertical = 14.dp, horizontal = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(background)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .semantics {
+                    role = Role.Button
+                    selected = isCurrent
+                    contentDescription = if (isCurrent) "$name, current selection" else name
+                }
+                .padding(vertical = 14.dp, horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -131,12 +136,13 @@ private fun CandidatePickerSheetContentLightPreview() {
         Surface(color = MealsyTheme.colors.surface) {
             CandidatePickerSheetContent(
                 currentName = "Vinaigrette dressing",
-                candidates = listOf(
-                    "Vinaigrette dressing",
-                    "Balsamic vinaigrette",
-                    "Italian dressing",
-                    "Red wine vinaigrette",
-                ),
+                candidates =
+                    listOf(
+                        "Vinaigrette dressing",
+                        "Balsamic vinaigrette",
+                        "Italian dressing",
+                        "Red wine vinaigrette",
+                    ),
                 onSelect = {},
                 modifier = Modifier.padding(top = 20.dp),
             )

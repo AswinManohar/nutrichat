@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -72,9 +71,10 @@ fun PillInput(
         border = BorderStroke(borderWidth, borderColor),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 15.dp, horizontal = 20.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 15.dp, horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
@@ -90,9 +90,10 @@ fun PillInput(
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { focused = it.isFocused },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focused = it.isFocused },
                     enabled = enabled,
                     singleLine = singleLine,
                     textStyle = MealsyType.button.copy(color = colors.ink),

@@ -30,25 +30,30 @@ import app.mealsy.android.design.theme.MealsyTheme
  *   typically constrain width via [Modifier.fillMaxWidth] or a fixed width.
  */
 @Composable
-fun ShareBar(fraction: Float, modifier: Modifier = Modifier) {
+fun ShareBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     val clamped = fraction.coerceIn(0f, 1f)
 
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .clearAndSetSemantics {},
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clearAndSetSemantics {},
         shape = MealsyShapes.pill,
         color = colors.oliveTrack,
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(clamped)
-                    .align(Alignment.CenterStart)
-                    .background(colors.leaf, MealsyShapes.pill),
+                modifier =
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(clamped)
+                        .align(Alignment.CenterStart)
+                        .background(colors.leaf, MealsyShapes.pill),
             )
         }
     }

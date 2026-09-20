@@ -24,41 +24,42 @@ import androidx.compose.ui.unit.dp
 private data class Swatch(val name: String, val color: androidx.compose.ui.graphics.Color)
 
 /** Builds the ordered swatch list for the current [MealsyColors]. */
-private fun swatchesFor(c: MealsyColors): List<Swatch> = listOf(
-    Swatch("canvas", c.canvas),
-    Swatch("surface", c.surface),
-    Swatch("surfacePressed", c.surfacePressed),
-    Swatch("divider", c.divider),
-    Swatch("hairline", c.hairline),
-    Swatch("ink", c.ink),
-    Swatch("inkPressed", c.inkPressed),
-    Swatch("muted", c.muted),
-    Swatch("inactive", c.inactive),
-    Swatch("olive", c.olive),
-    Swatch("oliveText", c.oliveText),
-    Swatch("oliveTrack", c.oliveTrack),
-    Swatch("olivePressed", c.olivePressed),
-    Swatch("userBubble", c.userBubble),
-    Swatch("userBubbleText", c.userBubbleText),
-    Swatch("butter", c.butter),
-    Swatch("butterText", c.butterText),
-    Swatch("pink", c.pink),
-    Swatch("pinkText", c.pinkText),
-    Swatch("leaf", c.leaf),
-    Swatch("leafText", c.leafText),
-    Swatch("powder", c.powder),
-    Swatch("powderText", c.powderText),
-    Swatch("terracotta", c.terracotta),
-    Swatch("terracottaText", c.terracottaText),
-    Swatch("terracottaOutlineText", c.terracottaOutlineText),
-    Swatch("navBar", c.navBar),
-    Swatch("navActive", c.navActive),
-    Swatch("navInactive", c.navInactive),
-    Swatch("navBorder", c.navBorder),
-    Swatch("fab", c.fab),
-    Swatch("fabIcon", c.fabIcon),
-    Swatch("fabShadow", c.fabShadow),
-)
+private fun swatchesFor(c: MealsyColors): List<Swatch> =
+    listOf(
+        Swatch("canvas", c.canvas),
+        Swatch("surface", c.surface),
+        Swatch("surfacePressed", c.surfacePressed),
+        Swatch("divider", c.divider),
+        Swatch("hairline", c.hairline),
+        Swatch("ink", c.ink),
+        Swatch("inkPressed", c.inkPressed),
+        Swatch("muted", c.muted),
+        Swatch("inactive", c.inactive),
+        Swatch("olive", c.olive),
+        Swatch("oliveText", c.oliveText),
+        Swatch("oliveTrack", c.oliveTrack),
+        Swatch("olivePressed", c.olivePressed),
+        Swatch("userBubble", c.userBubble),
+        Swatch("userBubbleText", c.userBubbleText),
+        Swatch("butter", c.butter),
+        Swatch("butterText", c.butterText),
+        Swatch("pink", c.pink),
+        Swatch("pinkText", c.pinkText),
+        Swatch("leaf", c.leaf),
+        Swatch("leafText", c.leafText),
+        Swatch("powder", c.powder),
+        Swatch("powderText", c.powderText),
+        Swatch("terracotta", c.terracotta),
+        Swatch("terracottaText", c.terracottaText),
+        Swatch("terracottaOutlineText", c.terracottaOutlineText),
+        Swatch("navBar", c.navBar),
+        Swatch("navActive", c.navActive),
+        Swatch("navInactive", c.navInactive),
+        Swatch("navBorder", c.navBorder),
+        Swatch("fab", c.fab),
+        Swatch("fabIcon", c.fabIcon),
+        Swatch("fabShadow", c.fabShadow),
+    )
 
 /** Formats a color as an `#AARRGGBB` hex string for the swatch label. */
 private fun androidx.compose.ui.graphics.Color.toHexLabel(): String {
@@ -77,9 +78,10 @@ private fun androidx.compose.ui.graphics.Color.toHexLabel(): String {
 fun MealsyTokenSheet() {
     val colors = MealsyTheme.colors
     Column(
-        modifier = Modifier
-            .background(colors.canvas)
-            .padding(16.dp),
+        modifier =
+            Modifier
+                .background(colors.canvas)
+                .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Color tokens", style = MealsyType.section, color = colors.ink)
@@ -130,9 +132,10 @@ fun MealsyTokenSheet() {
 @Composable
 private fun Box(color: androidx.compose.ui.graphics.Color) {
     androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .size(24.dp)
-            .background(color, RoundedCornerShape(4.dp)),
+        modifier =
+            Modifier
+                .size(24.dp)
+                .background(color, RoundedCornerShape(4.dp)),
     )
 }
 

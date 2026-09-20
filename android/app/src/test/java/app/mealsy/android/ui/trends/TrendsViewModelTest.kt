@@ -6,6 +6,7 @@ import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.repo.DayPoint
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.TrendsRepository
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -22,7 +23,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 private const val TRENDS_BODY = """
 [
@@ -49,9 +49,12 @@ private const val GOALS_BODY = """
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TrendsViewModelTest {
-
     private lateinit var server: MockWebServer
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     @Before
     fun setUp() {
@@ -67,20 +70,21 @@ class TrendsViewModelTest {
     }
 
     private fun buildApi(): MealsyApi {
-        val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
-            .build()
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                .build()
         val contentType = "application/json".toMediaType()
-        val retrofit = Retrofit.Builder()
-            .baseUrl(server.url("/"))
-            .client(client)
-            .addConverterFactory(json.asConverterFactory(contentType))
-            .build()
+        val retrofit =
+            Retrofit.Builder()
+                .baseUrl(server.url("/"))
+                .client(client)
+                .addConverterFactory(json.asConverterFactory(contentType))
+                .build()
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildViewModel(api: MealsyApi = buildApi()): TrendsViewModel =
-        TrendsViewModel(TrendsRepository(api), GoalsRepository(api))
+    private fun buildViewModel(api: MealsyApi = buildApi()): TrendsViewModel = TrendsViewModel(TrendsRepository(api), GoalsRepository(api))
 
     private fun enqueueLoadedResponses() {
         server.enqueue(MockResponse().setResponseCode(200).setBody(TRENDS_BODY))
@@ -95,116 +99,124 @@ class TrendsViewModelTest {
     }
 
     @Test
-    fun `initial load defaults to the 7-day window and lands Loaded`() = runBlocking {
-        enqueueLoadedResponses()
-        val viewModel = buildViewModel()
+    fun `initial load defaults to the 7-day window and lands Loaded`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
 
-        viewModel.readyJob.join()
+            viewModel.readyJob.join()
 
-        assertEquals(TrendsWindow.WEEK, viewModel.window.value)
-        val state = viewModel.uiState.value
-        assertTrue(state is TrendsUiState.Loaded)
-        state as TrendsUiState.Loaded
-        assertEquals(1, state.trends.days.size)
-        assertEquals(1, state.categories.size)
-        assertEquals(140.0, state.proteinGoal)
+            assertEquals(TrendsWindow.WEEK, viewModel.window.value)
+            val state = viewModel.uiState.value
+            assertTrue(state is TrendsUiState.Loaded)
+            state as TrendsUiState.Loaded
+            assertEquals(1, state.trends.days.size)
+            assertEquals(1, state.categories.size)
+            assertEquals(140.0, state.proteinGoal)
 
-        val request = server.takeRequest()
-        assertTrue(request.path?.contains("days=7") == true)
-    }
-
-    @Test
-    fun `empty arrays map to Empty state`() = runBlocking {
-        enqueueEmptyResponses()
-        val viewModel = buildViewModel()
-
-        viewModel.readyJob.join()
-
-        assertEquals(TrendsUiState.Empty, viewModel.uiState.value)
-    }
+            val request = server.takeRequest()
+            assertTrue(request.path?.contains("days=7") == true)
+        }
 
     @Test
-    fun `toggling to 30-day window refetches with the new days param`() = runBlocking {
-        enqueueLoadedResponses()
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        server.takeRequest() // trends(7)
-        server.takeRequest() // categories(7)
-        server.takeRequest() // goals
+    fun `empty arrays map to Empty state`() =
+        runBlocking {
+            enqueueEmptyResponses()
+            val viewModel = buildViewModel()
 
-        enqueueLoadedResponses()
-        viewModel.setWindow(TrendsWindow.MONTH)?.join()
+            viewModel.readyJob.join()
 
-        assertEquals(TrendsWindow.MONTH, viewModel.window.value)
-        val request = server.takeRequest()
-        assertTrue(request.path?.contains("days=30") == true)
-        assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
-    }
+            assertEquals(TrendsUiState.Empty, viewModel.uiState.value)
+        }
 
     @Test
-    fun `re-selecting the current window is a no-op`() = runBlocking {
-        enqueueLoadedResponses()
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
+    fun `toggling to 30-day window refetches with the new days param`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // trends(7)
+            server.takeRequest() // categories(7)
+            server.takeRequest() // goals
 
-        val job = viewModel.setWindow(TrendsWindow.WEEK)
+            enqueueLoadedResponses()
+            viewModel.setWindow(TrendsWindow.MONTH)?.join()
 
-        assertEquals(null, job)
-        assertEquals(0, server.requestCount - 3) // no extra requests beyond the initial 3
-    }
-
-    @Test
-    fun `a network failure maps to Error state`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(500))
-        val viewModel = buildViewModel()
-
-        viewModel.readyJob.join()
-
-        assertTrue(viewModel.uiState.value is TrendsUiState.Error)
-    }
+            assertEquals(TrendsWindow.MONTH, viewModel.window.value)
+            val request = server.takeRequest()
+            assertTrue(request.path?.contains("days=30") == true)
+            assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
+        }
 
     @Test
-    fun `retry after an error refetches and can land Loaded`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(500))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        assertTrue(viewModel.uiState.value is TrendsUiState.Error)
+    fun `re-selecting the current window is a no-op`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
 
-        enqueueLoadedResponses()
-        viewModel.retry().join()
+            val job = viewModel.setWindow(TrendsWindow.WEEK)
 
-        assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
-    }
-
-    @Test
-    fun `Loaded derives avg kcal, avg protein and days-logged from the window`() = runBlocking {
-        enqueueLoadedResponses()
-        val viewModel = buildViewModel()
-
-        viewModel.readyJob.join()
-
-        val state = viewModel.uiState.value as TrendsUiState.Loaded
-        // TRENDS_BODY has exactly one day: kcal 1800.0, protein_g 95.0.
-        assertEquals(1800, state.avgKcal)
-        assertEquals(95, state.avgProteinG)
-        assertEquals(1, state.daysLoggedCount)
-        assertEquals(7, state.daysInWindow) // WEEK window
-        assertEquals(2200.0, state.kcalGoal)
-    }
+            assertEquals(null, job)
+            assertEquals(0, server.requestCount - 3) // no extra requests beyond the initial 3
+        }
 
     @Test
-    fun `daysInWindow tracks the 30-day window after toggling`() = runBlocking {
-        enqueueLoadedResponses()
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
+    fun `a network failure maps to Error state`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(500))
+            val viewModel = buildViewModel()
 
-        enqueueLoadedResponses()
-        viewModel.setWindow(TrendsWindow.MONTH)?.join()
+            viewModel.readyJob.join()
 
-        val state = viewModel.uiState.value as TrendsUiState.Loaded
-        assertEquals(30, state.daysInWindow)
-        assertEquals(1, state.daysLoggedCount)
-    }
+            assertTrue(viewModel.uiState.value is TrendsUiState.Error)
+        }
+
+    @Test
+    fun `retry after an error refetches and can land Loaded`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(500))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            assertTrue(viewModel.uiState.value is TrendsUiState.Error)
+
+            enqueueLoadedResponses()
+            viewModel.retry().join()
+
+            assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
+        }
+
+    @Test
+    fun `Loaded derives avg kcal, avg protein and days-logged from the window`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+
+            viewModel.readyJob.join()
+
+            val state = viewModel.uiState.value as TrendsUiState.Loaded
+            // TRENDS_BODY has exactly one day: kcal 1800.0, protein_g 95.0.
+            assertEquals(1800, state.avgKcal)
+            assertEquals(95, state.avgProteinG)
+            assertEquals(1, state.daysLoggedCount)
+            assertEquals(7, state.daysInWindow) // WEEK window
+            assertEquals(2200.0, state.kcalGoal)
+        }
+
+    @Test
+    fun `daysInWindow tracks the 30-day window after toggling`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+
+            enqueueLoadedResponses()
+            viewModel.setWindow(TrendsWindow.MONTH)?.join()
+
+            val state = viewModel.uiState.value as TrendsUiState.Loaded
+            assertEquals(30, state.daysInWindow)
+            assertEquals(1, state.daysLoggedCount)
+        }
 
     @Test
     fun `averageKcal and averageProteinG return zero for an empty day list, no division by zero`() {
@@ -214,10 +226,11 @@ class TrendsViewModelTest {
 
     @Test
     fun `averageKcal and averageProteinG average across multiple logged days`() {
-        val days = listOf(
-            DayPoint("2026-09-01", kcal = 1800.0, proteinG = 90.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
-            DayPoint("2026-09-02", kcal = 2200.0, proteinG = 110.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
-        )
+        val days =
+            listOf(
+                DayPoint("2026-09-01", kcal = 1800.0, proteinG = 90.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
+                DayPoint("2026-09-02", kcal = 2200.0, proteinG = 110.0, carbsG = 0.0, fiberG = 0.0, nMeals = 3, junkMeals = 0),
+            )
         assertEquals(2000, averageKcal(days))
         assertEquals(100, averageProteinG(days))
     }

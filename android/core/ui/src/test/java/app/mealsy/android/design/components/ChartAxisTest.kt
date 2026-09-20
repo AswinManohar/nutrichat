@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChartAxisTest {
-
     @Test
     fun `niceAxisMax returns zero for a nonpositive series`() {
         assertEquals(0f, niceAxisMax(0f), 1e-6f)

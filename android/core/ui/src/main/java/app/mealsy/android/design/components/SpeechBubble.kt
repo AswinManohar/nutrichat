@@ -25,14 +25,18 @@ import app.mealsy.android.design.theme.MealsyType
  * @param modifier The modifier applied to the bubble's container.
  */
 @Composable
-fun SpeechBubble(text: String, modifier: Modifier = Modifier) {
+fun SpeechBubble(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
-    val shape = RoundedCornerShape(
-        topStart = 16.dp,
-        topEnd = 16.dp,
-        bottomEnd = 16.dp,
-        bottomStart = 4.dp,
-    )
+    val shape =
+        RoundedCornerShape(
+            topStart = 16.dp,
+            topEnd = 16.dp,
+            bottomEnd = 16.dp,
+            bottomStart = 4.dp,
+        )
 
     Surface(
         modifier = modifier,
@@ -41,10 +45,11 @@ fun SpeechBubble(text: String, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = text,
-            style = MealsyType.label.copy(
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.06.em,
-            ),
+            style =
+                MealsyType.label.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.06.em,
+                ),
             color = colors.ink,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
         )

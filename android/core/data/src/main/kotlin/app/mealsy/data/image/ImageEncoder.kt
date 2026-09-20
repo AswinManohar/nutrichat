@@ -13,7 +13,6 @@ import kotlin.math.roundToInt
  * JPEG bytes.
  */
 object ImageEncoder {
-
     /** Longest edge a bitmap is downscaled to before JPEG encoding. */
     private const val MAX_DIMENSION_PX = 1024
 
@@ -42,7 +41,10 @@ object ImageEncoder {
      * CameraX itself isn't exercisable under Robolectric, but this part of
      * the pipeline is.
      */
-    fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {
+    fun rotate(
+        bitmap: Bitmap,
+        degrees: Int,
+    ): Bitmap {
         if (degrees % 360 == 0) return bitmap
         val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)

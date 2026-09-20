@@ -1,13 +1,12 @@
 package app.mealsy.android.ui.trends
 
 import app.mealsy.data.repo.DayPoint
-import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
 
 /** Unit tests for [buildTrendsDayBars]/[trendsDayLabels], the Trends chart's pure date logic. */
 class TrendsChartHelpersTest {
-
     private val today = LocalDate.of(2026, 9, 16) // a Wednesday
 
     @Test
@@ -21,9 +20,10 @@ class TrendsChartHelpersTest {
 
     @Test
     fun `missing days render as zero-value bars rather than being skipped`() {
-        val days = listOf(
-            DayPoint("2026-09-16", kcal = 2000.0, proteinG = 100.0, carbsG = 0.0, fiberG = 0.0, nMeals = 2, junkMeals = 0),
-        )
+        val days =
+            listOf(
+                DayPoint("2026-09-16", kcal = 2000.0, proteinG = 100.0, carbsG = 0.0, fiberG = 0.0, nMeals = 2, junkMeals = 0),
+            )
         val bars = buildTrendsDayBars(TrendsWindow.WEEK, days, today)
 
         assertEquals(7, bars.size)

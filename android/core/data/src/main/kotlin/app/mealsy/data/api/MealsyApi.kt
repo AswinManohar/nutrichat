@@ -19,13 +19,19 @@ import retrofit2.http.Query
  */
 interface MealsyApi {
     @POST("meals/log")
-    suspend fun logTurn(@Body body: LogTurnRequest): LogTurnResponse
+    suspend fun logTurn(
+        @Body body: LogTurnRequest,
+    ): LogTurnResponse
 
     @GET("meals/pending")
-    suspend fun pending(@Query("conversation_id") id: String): LogTurnResponse
+    suspend fun pending(
+        @Query("conversation_id") id: String,
+    ): LogTurnResponse
 
     @POST("meals/log-items")
-    suspend fun logItems(@Body body: LogItemsRequest): LogItemsResponse
+    suspend fun logItems(
+        @Body body: LogItemsRequest,
+    ): LogItemsResponse
 
     @GET("meals/today")
     suspend fun today(): TodayResponse
@@ -34,43 +40,64 @@ interface MealsyApi {
     suspend fun goals(): GoalsResponse
 
     @POST("goals")
-    suspend fun createGoals(@Body body: GoalRequest): GoalsResponse
+    suspend fun createGoals(
+        @Body body: GoalRequest,
+    ): GoalsResponse
 
     @PUT("goals")
-    suspend fun updateGoals(@Body body: GoalRequest): GoalsResponse
+    suspend fun updateGoals(
+        @Body body: GoalRequest,
+    ): GoalsResponse
 
     @GET("quota")
     suspend fun quota(): QuotaResponse
 
     @POST("devices/register")
-    suspend fun registerDevice(@Body body: RegisterDeviceRequest)
+    suspend fun registerDevice(
+        @Body body: RegisterDeviceRequest,
+    )
 
     @DELETE("devices/{token}")
-    suspend fun deleteDevice(@Path("token") token: String)
+    suspend fun deleteDevice(
+        @Path("token") token: String,
+    )
 
     @GET("meta/app")
     suspend fun appMeta(): AppMetaResponse
 
     @GET("meals/trends")
-    suspend fun trends(@Query("days") days: Int): List<DayTrendDto>
+    suspend fun trends(
+        @Query("days") days: Int,
+    ): List<DayTrendDto>
 
     @GET("meals/categories")
-    suspend fun categories(@Query("days") days: Int): List<CategoryStatDto>
+    suspend fun categories(
+        @Query("days") days: Int,
+    ): List<CategoryStatDto>
 
     @GET("my-meals")
     suspend fun myMeals(): List<SavedMealDto>
 
     @GET("my-meals/{id}")
-    suspend fun myMeal(@Path("id") id: String): MyMealDetailDto
+    suspend fun myMeal(
+        @Path("id") id: String,
+    ): MyMealDetailDto
 
     @POST("my-meals")
-    suspend fun saveMeal(@Body body: SaveMealRequest): SavedMealDto
+    suspend fun saveMeal(
+        @Body body: SaveMealRequest,
+    ): SavedMealDto
 
     @POST("my-meals/{id}/log")
-    suspend fun logMyMeal(@Path("id") id: String, @Body body: LogMyMealRequest): LogItemsResponse
+    suspend fun logMyMeal(
+        @Path("id") id: String,
+        @Body body: LogMyMealRequest,
+    ): LogItemsResponse
 
     @DELETE("my-meals/{id}")
-    suspend fun deleteMyMeal(@Path("id") id: String)
+    suspend fun deleteMyMeal(
+        @Path("id") id: String,
+    )
 
     @GET("meals/log")
     suspend fun listMealLogs(
@@ -79,10 +106,14 @@ interface MealsyApi {
     ): List<MealLogSummaryDto>
 
     @GET("meals/log/{meal_id}")
-    suspend fun mealLog(@Path("meal_id") id: String): MealLogDetailDto
+    suspend fun mealLog(
+        @Path("meal_id") id: String,
+    ): MealLogDetailDto
 
     @DELETE("meals/log/{meal_id}")
-    suspend fun deleteMealLog(@Path("meal_id") id: String)
+    suspend fun deleteMealLog(
+        @Path("meal_id") id: String,
+    )
 
     @DELETE("account")
     suspend fun deleteAccount()
@@ -93,5 +124,8 @@ interface MealsyApi {
      * must only invoke this when a turn actually carried a `response_id`.
      */
     @POST("coaching/{id}/feedback")
-    suspend fun coachingFeedback(@Path("id") id: String, @Body body: CoachingFeedbackRequest)
+    suspend fun coachingFeedback(
+        @Path("id") id: String,
+        @Body body: CoachingFeedbackRequest,
+    )
 }

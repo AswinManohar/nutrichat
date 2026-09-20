@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -55,67 +54,75 @@ fun MealsySlider(
 ) {
     val colors = MealsyTheme.colors
     val floatRange = valueRange.first.toFloat()..valueRange.last.toFloat()
-    val steps = remember(valueRange, step) {
-        ((valueRange.last - valueRange.first) / step - 1).coerceAtLeast(0)
-    }
+    val steps =
+        remember(valueRange, step) {
+            ((valueRange.last - valueRange.first) / step - 1).coerceAtLeast(0)
+        }
 
     Slider(
         value = value.toFloat(),
         onValueChange = { raw ->
-            val quantized = (Math.round((raw - valueRange.first) / step.toFloat()) * step) +
-                valueRange.first
+            val quantized =
+                (Math.round((raw - valueRange.first) / step.toFloat()) * step) +
+                    valueRange.first
             onValueChange(quantized.coerceIn(valueRange.first, valueRange.last))
         },
         valueRange = floatRange,
         steps = steps,
         enabled = enabled,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .then(
-                if (contentDescription != null) {
-                    Modifier.semantics { this.contentDescription = contentDescription }
-                } else {
-                    Modifier
-                },
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .alpha(if (enabled) 1f else 0.35f)
+                .then(
+                    if (contentDescription != null) {
+                        Modifier.semantics { this.contentDescription = contentDescription }
+                    } else {
+                        Modifier
+                    },
+                ),
         track = { sliderState ->
-            val fraction = if (sliderState.valueRange.endInclusive > sliderState.valueRange.start) {
-                (sliderState.value - sliderState.valueRange.start) /
-                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
-            } else {
-                0f
-            }
+            val fraction =
+                if (sliderState.valueRange.endInclusive > sliderState.valueRange.start) {
+                    (sliderState.value - sliderState.valueRange.start) /
+                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                } else {
+                    0f
+                }
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(colors.divider, CircleShape),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .background(colors.divider, CircleShape),
             ) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                        .height(6.dp)
-                        .background(colors.olive, CircleShape),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                            .height(6.dp)
+                            .background(colors.olive, CircleShape),
                 )
             }
         },
         thumb = {
             Surface(
-                modifier = Modifier
-                    .padding(top = 2.dp)
-                    .size(24.dp),
+                modifier =
+                    Modifier
+                        .padding(top = 2.dp)
+                        .size(24.dp),
                 shape = CircleShape,
                 color = colors.canvas,
                 border = androidx.compose.foundation.BorderStroke(2.dp, colors.ink),
             ) {}
         },
-        colors = SliderDefaults.colors(
-            thumbColor = colors.canvas,
-            activeTrackColor = colors.olive,
-            inactiveTrackColor = colors.divider,
-        ),
+        colors =
+            SliderDefaults.colors(
+                thumbColor = colors.canvas,
+                activeTrackColor = colors.olive,
+                inactiveTrackColor = colors.divider,
+            ),
     )
 }
 

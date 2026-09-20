@@ -12,9 +12,9 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonEncoder
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -96,18 +96,20 @@ data class ItemDto(
 )
 
 /** Wire keys [ItemDto] models explicitly; everything else round-trips via [ItemDto.extras]. */
-private val ITEM_DTO_KNOWN_KEYS = setOf(
-    "food_name", "qty_g", "target_qty_g", "kcal", "protein_g",
-    "carbs_g", "fat_g", "fiber_g", "fdc_id", "estimated",
-    "candidates", "source", "confidence", "source_dish", "is_composite",
-)
+private val ITEM_DTO_KNOWN_KEYS =
+    setOf(
+        "food_name", "qty_g", "target_qty_g", "kcal", "protein_g",
+        "carbs_g", "fat_g", "fiber_g", "fdc_id", "estimated",
+        "candidates", "source", "confidence", "source_dish", "is_composite",
+    )
 
 object ItemDtoSerializer : KSerializer<ItemDto> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ItemDto")
 
     override fun deserialize(decoder: Decoder): ItemDto {
-        val jsonDecoder = decoder as? JsonDecoder
-            ?: error("ItemDtoSerializer only supports JSON")
+        val jsonDecoder =
+            decoder as? JsonDecoder
+                ?: error("ItemDtoSerializer only supports JSON")
         val obj = jsonDecoder.decodeJsonElement().jsonObject
 
         return ItemDto(
@@ -161,9 +163,13 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
         }
     }
 
-    override fun serialize(encoder: Encoder, value: ItemDto) {
-        val jsonEncoder = encoder as? JsonEncoder
-            ?: error("ItemDtoSerializer only supports JSON")
+    override fun serialize(
+        encoder: Encoder,
+        value: ItemDto,
+    ) {
+        val jsonEncoder =
+            encoder as? JsonEncoder
+                ?: error("ItemDtoSerializer only supports JSON")
 
         val fields = LinkedHashMap<String, kotlinx.serialization.json.JsonElement>()
         fields["food_name"] = JsonPrimitive(value.foodName)
@@ -214,24 +220,25 @@ fun LogTurnResponse.toCard(): ConfirmationCard? {
     )
 }
 
-private fun ItemDto.toCardItem(): CardItem = CardItem(
-    foodName = foodName,
-    qtyG = qtyG,
-    targetQtyG = targetQtyG ?: qtyG,
-    kcal = kcal,
-    proteinG = proteinG,
-    carbsG = carbsG,
-    fatG = fatG,
-    fiberG = fiberG,
-    fdcId = fdcId,
-    estimated = estimated,
-    extras = extras,
-    candidates = candidates,
-    source = source,
-    confidence = confidence,
-    sourceDish = sourceDish,
-    isComposite = isComposite,
-)
+private fun ItemDto.toCardItem(): CardItem =
+    CardItem(
+        foodName = foodName,
+        qtyG = qtyG,
+        targetQtyG = targetQtyG ?: qtyG,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fatG = fatG,
+        fiberG = fiberG,
+        fdcId = fdcId,
+        estimated = estimated,
+        extras = extras,
+        candidates = candidates,
+        source = source,
+        confidence = confidence,
+        sourceDish = sourceDish,
+        isComposite = isComposite,
+    )
 
 // ---------------------------------------------------------------------------
 // POST /meals/log-items
@@ -318,24 +325,26 @@ data class GoalRequest(
     @SerialName("first_meal_time") val firstMealTime: String? = null,
 )
 
-fun GoalsResponse.toGoals(): Goals = Goals(
-    trackingMode = trackingMode,
-    kcalGoal = kcalGoal,
-    proteinGoal = proteinGoal,
-    fiberGoal = fiberGoal,
-    dietaryPrefs = dietaryPrefs.mapValues { (_, v) -> v.jsonPrimitive.booleanOrNull ?: true },
-    firstMealTime = firstMealTime,
-    streakDays = streakDays,
-)
+fun GoalsResponse.toGoals(): Goals =
+    Goals(
+        trackingMode = trackingMode,
+        kcalGoal = kcalGoal,
+        proteinGoal = proteinGoal,
+        fiberGoal = fiberGoal,
+        dietaryPrefs = dietaryPrefs.mapValues { (_, v) -> v.jsonPrimitive.booleanOrNull ?: true },
+        firstMealTime = firstMealTime,
+        streakDays = streakDays,
+    )
 
-fun Goals.toGoalRequest(): GoalRequest = GoalRequest(
-    trackingMode = trackingMode,
-    kcalGoal = kcalGoal,
-    proteinGoal = proteinGoal,
-    fiberGoal = fiberGoal,
-    dietaryPrefs = JsonObject(dietaryPrefs.mapValues { (_, v) -> JsonPrimitive(v) }),
-    firstMealTime = firstMealTime,
-)
+fun Goals.toGoalRequest(): GoalRequest =
+    GoalRequest(
+        trackingMode = trackingMode,
+        kcalGoal = kcalGoal,
+        proteinGoal = proteinGoal,
+        fiberGoal = fiberGoal,
+        dietaryPrefs = JsonObject(dietaryPrefs.mapValues { (_, v) -> JsonPrimitive(v) }),
+        firstMealTime = firstMealTime,
+    )
 
 // ---------------------------------------------------------------------------
 // GET /quota

@@ -4,9 +4,9 @@ import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
 import app.mealsy.data.api.MealsyApi
+import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
 import javax.inject.Inject
-import kotlinx.serialization.json.JsonObject
 
 /** One logged meal, per `MealLogSummary` in `src/backend/api/meals.py`. */
 data class LoggedMeal(
@@ -54,49 +54,39 @@ data class LoggedMealDetail(
  * timeout. A successful delete notifies [todayRefreshSignal] so the Home
  * dashboard (and any other today-derived screen) refetches its totals.
  */
-class MealsRepository @Inject constructor(
-    private val api: MealsyApi,
-    private val todayRefreshSignal: TodayRefreshSignal,
-) {
-    /**
-     * Lists the caller's logged meals for [date] (defaults to today),
-     * optionally filtered to [mealType].
-     */
-    suspend fun listForDay(
-        date: LocalDate = LocalDate.now(),
-        mealType: String? = null,
-    ): List<LoggedMeal> = api.listMealLogs(date = date.toString(), mealType = mealType)
-        .map { it.toLoggedMeal() }
+class MealsRepository
+    @Inject
+    constructor(
+        private val api: MealsyApi,
+        private val todayRefreshSignal: TodayRefreshSignal,
+    ) {
+        /**
+         * Lists the caller's logged meals for [date] (defaults to today),
+         * optionally filtered to [mealType].
+         */
+        suspend fun listForDay(
+            date: LocalDate = LocalDate.now(),
+            mealType: String? = null,
+        ): List<LoggedMeal> =
+            api.listMealLogs(date = date.toString(), mealType = mealType)
+                .map { it.toLoggedMeal() }
 
-    /** Full detail, including resolved items, for the logged meal [id]. */
-    suspend fun detail(id: String): LoggedMealDetail = api.mealLog(id).toLoggedMealDetail()
+        /** Full detail, including resolved items, for the logged meal [id]. */
+        suspend fun detail(id: String): LoggedMealDetail = api.mealLog(id).toLoggedMealDetail()
 
-    /**
-     * Soft-deletes the logged meal [id] and signals that today's totals
-     * changed. Not idempotency-keyed — see the mobile API contract's retry
-     * rules.
-     */
-    suspend fun delete(id: String) {
-        api.deleteMealLog(id)
-        todayRefreshSignal.notifyLogged()
+        /**
+         * Soft-deletes the logged meal [id] and signals that today's totals
+         * changed. Not idempotency-keyed — see the mobile API contract's retry
+         * rules.
+         */
+        suspend fun delete(id: String) {
+            api.deleteMealLog(id)
+            todayRefreshSignal.notifyLogged()
+        }
     }
-}
 
-private fun MealLogSummaryDto.toLoggedMeal(): LoggedMeal = LoggedMeal(
-    mealId = mealId,
-    mealType = mealType,
-    loggedAt = loggedAt,
-    label = label,
-    kcal = kcal,
-    proteinG = proteinG,
-    carbsG = carbsG,
-    fatG = fatG,
-    fiberG = fiberG,
-    nItems = nItems,
-)
-
-private fun MealLogDetailDto.toLoggedMealDetail(): LoggedMealDetail = LoggedMealDetail(
-    meal = LoggedMeal(
+private fun MealLogSummaryDto.toLoggedMeal(): LoggedMeal =
+    LoggedMeal(
         mealId = mealId,
         mealType = mealType,
         loggedAt = loggedAt,
@@ -107,19 +97,36 @@ private fun MealLogDetailDto.toLoggedMealDetail(): LoggedMealDetail = LoggedMeal
         fatG = fatG,
         fiberG = fiberG,
         nItems = nItems,
-    ),
-    items = items.map { it.toLoggedMealItem() },
-)
+    )
 
-private fun ItemDto.toLoggedMealItem(): LoggedMealItem = LoggedMealItem(
-    foodName = foodName,
-    qtyG = qtyG,
-    kcal = kcal,
-    proteinG = proteinG,
-    carbsG = carbsG,
-    fatG = fatG,
-    fiberG = fiberG,
-    fdcId = fdcId,
-    estimated = estimated,
-    extras = extras,
-)
+private fun MealLogDetailDto.toLoggedMealDetail(): LoggedMealDetail =
+    LoggedMealDetail(
+        meal =
+            LoggedMeal(
+                mealId = mealId,
+                mealType = mealType,
+                loggedAt = loggedAt,
+                label = label,
+                kcal = kcal,
+                proteinG = proteinG,
+                carbsG = carbsG,
+                fatG = fatG,
+                fiberG = fiberG,
+                nItems = nItems,
+            ),
+        items = items.map { it.toLoggedMealItem() },
+    )
+
+private fun ItemDto.toLoggedMealItem(): LoggedMealItem =
+    LoggedMealItem(
+        foodName = foodName,
+        qtyG = qtyG,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fatG = fatG,
+        fiberG = fiberG,
+        fdcId = fdcId,
+        estimated = estimated,
+        extras = extras,
+    )

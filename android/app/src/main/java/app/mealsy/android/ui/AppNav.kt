@@ -14,7 +14,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDestination
-import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -46,7 +45,6 @@ import app.mealsy.data.auth.SessionState
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.ProfileRefresher
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.io.IOException
 import javax.inject.Inject
 
 private const val APP_META_TIMEOUT_MS = 3_000L
@@ -104,12 +103,13 @@ private fun bottomNavItems(
     mealsLabel: String,
     trendsLabel: String,
     chatLabel: String,
-): List<MealsyNavItem> = listOf(
-    MealsyNavItem(MealsyIcons.Home, homeLabel, ROUTE_HOME),
-    MealsyNavItem(MealsyIcons.BowlBars, mealsLabel, ROUTE_MY_MEALS),
-    MealsyNavItem(MealsyIcons.LineChart, trendsLabel, ROUTE_TRENDS),
-    MealsyNavItem(MealsyIcons.Chat, chatLabel, ROUTE_CHAT),
-)
+): List<MealsyNavItem> =
+    listOf(
+        MealsyNavItem(MealsyIcons.Home, homeLabel, ROUTE_HOME),
+        MealsyNavItem(MealsyIcons.BowlBars, mealsLabel, ROUTE_MY_MEALS),
+        MealsyNavItem(MealsyIcons.LineChart, trendsLabel, ROUTE_TRENDS),
+        MealsyNavItem(MealsyIcons.Chat, chatLabel, ROUTE_CHAT),
+    )
 
 /**
  * Maps a live [NavDestination] back to the bottom-nav tab route it belongs
@@ -120,18 +120,21 @@ private fun bottomNavItems(
  * so the chat tab needs an explicit pattern match rather than an equality
  * check against [ROUTE_CHAT].
  */
-internal fun NavDestination?.tabRoute(): String? = when (this?.route) {
-    ROUTE_HOME -> ROUTE_HOME
-    ROUTE_MY_MEALS -> ROUTE_MY_MEALS
-    ROUTE_TRENDS -> ROUTE_TRENDS
-    ROUTE_CHAT_PATTERN -> ROUTE_CHAT
-    else -> null
-}
+internal fun NavDestination?.tabRoute(): String? =
+    when (this?.route) {
+        ROUTE_HOME -> ROUTE_HOME
+        ROUTE_MY_MEALS -> ROUTE_MY_MEALS
+        ROUTE_TRENDS -> ROUTE_TRENDS
+        ROUTE_CHAT_PATTERN -> ROUTE_CHAT
+        else -> null
+    }
 
 /** Result of the startup version-gate check. */
 sealed interface GateState {
     data object Checking : GateState
+
     data object Ready : GateState
+
     data object UpdateRequired : GateState
 }
 
@@ -144,13 +147,17 @@ sealed interface GateState {
  */
 sealed interface OnboardingState {
     data object Unknown : OnboardingState
+
     data object Needed : OnboardingState
+
     data object NotNeeded : OnboardingState
 }
 
 /** Returns true when the installed build is older than the backend's minimum supported version. */
-fun isUpdateRequired(currentVersionCode: Int, minSupportedVersionCode: Int): Boolean =
-    currentVersionCode < minSupportedVersionCode
+fun isUpdateRequired(
+    currentVersionCode: Int,
+    minSupportedVersionCode: Int,
+): Boolean = currentVersionCode < minSupportedVersionCode
 
 /**
  * `currentVersionCode` is [BuildConfig.VERSION_CODE] in production, bound via [AppVersionCode]
@@ -159,115 +166,118 @@ fun isUpdateRequired(currentVersionCode: Int, minSupportedVersionCode: Int): Boo
  * the gate's fail-open/fail-closed branches plain-JVM-testable without Robolectric.
  */
 @HiltViewModel
-class AppNavViewModel @Inject constructor(
-    private val api: MealsyApi,
-    sessionManager: SessionManager,
-    @AppVersionCode private val currentVersionCode: Int,
-    private val pushRegistrar: PushRegistrar,
-    private val goalsRepository: GoalsRepository,
-    private val profileRefresher: ProfileRefresher,
-) : ViewModel() {
+class AppNavViewModel
+    @Inject
+    constructor(
+        private val api: MealsyApi,
+        sessionManager: SessionManager,
+        @AppVersionCode private val currentVersionCode: Int,
+        private val pushRegistrar: PushRegistrar,
+        private val goalsRepository: GoalsRepository,
+        private val profileRefresher: ProfileRefresher,
+    ) : ViewModel() {
+        val sessionState: StateFlow<SessionState> = sessionManager.sessionState
 
-    val sessionState: StateFlow<SessionState> = sessionManager.sessionState
+        private val _gateState = MutableStateFlow<GateState>(GateState.Checking)
+        val gateState: StateFlow<GateState> = _gateState.asStateFlow()
 
-    private val _gateState = MutableStateFlow<GateState>(GateState.Checking)
-    val gateState: StateFlow<GateState> = _gateState.asStateFlow()
+        private val _onboardingState = MutableStateFlow<OnboardingState>(OnboardingState.Unknown)
+        val onboardingState: StateFlow<OnboardingState> = _onboardingState.asStateFlow()
 
-    private val _onboardingState = MutableStateFlow<OnboardingState>(OnboardingState.Unknown)
-    val onboardingState: StateFlow<OnboardingState> = _onboardingState.asStateFlow()
+        /**
+         * Guards [checkOnboarding] against re-running for every [SessionState.SignedIn]
+         * emission (e.g. a token refresh producing a new, distinct `SignedIn` value)
+         * — the onboarding check should run once per sign-in, not once per emission.
+         * Reset on sign-out so a different user signing in on the same process gets
+         * a fresh check.
+         */
+        private var onboardingChecked = false
 
-    /**
-     * Guards [checkOnboarding] against re-running for every [SessionState.SignedIn]
-     * emission (e.g. a token refresh producing a new, distinct `SignedIn` value)
-     * — the onboarding check should run once per sign-in, not once per emission.
-     * Reset on sign-out so a different user signing in on the same process gets
-     * a fresh check.
-     */
-    private var onboardingChecked = false
+        init {
+            checkGate()
+            observeSignIn()
+        }
 
-    init {
-        checkGate()
-        observeSignIn()
-    }
-
-    /**
-     * FCM registration (Task 9) needs a signed-in user (`POST /devices/register`
-     * requires auth), so it's driven from [sessionState] here rather than at
-     * app startup — this is the "sensible place" the task brief calls for,
-     * chosen because [AppNavViewModel] already observes [sessionState] for
-     * routing and outlives any single screen. The onboarding check (Task 10)
-     * rides along the same collector for the same reason — it also needs a
-     * signed-in user's token (`GET /goals` requires auth).
-     */
-    private fun observeSignIn() {
-        viewModelScope.launch {
-            sessionState.collect { state ->
-                when (state) {
-                    is SessionState.SignedIn -> {
-                        profileRefresher.refreshProfileFromMetadata()
-                        pushRegistrar.ensureRegistered()
-                        checkOnboarding()
+        /**
+         * FCM registration (Task 9) needs a signed-in user (`POST /devices/register`
+         * requires auth), so it's driven from [sessionState] here rather than at
+         * app startup — this is the "sensible place" the task brief calls for,
+         * chosen because [AppNavViewModel] already observes [sessionState] for
+         * routing and outlives any single screen. The onboarding check (Task 10)
+         * rides along the same collector for the same reason — it also needs a
+         * signed-in user's token (`GET /goals` requires auth).
+         */
+        private fun observeSignIn() {
+            viewModelScope.launch {
+                sessionState.collect { state ->
+                    when (state) {
+                        is SessionState.SignedIn -> {
+                            profileRefresher.refreshProfileFromMetadata()
+                            pushRegistrar.ensureRegistered()
+                            checkOnboarding()
+                        }
+                        SessionState.SignedOut -> {
+                            onboardingChecked = false
+                            _onboardingState.value = OnboardingState.Unknown
+                        }
+                        SessionState.Loading -> Unit
                     }
-                    SessionState.SignedOut -> {
-                        onboardingChecked = false
-                        _onboardingState.value = OnboardingState.Unknown
-                    }
-                    SessionState.Loading -> Unit
                 }
             }
         }
-    }
 
-    private suspend fun checkOnboarding() {
-        if (onboardingChecked) return
-        onboardingChecked = true
-        _onboardingState.value = try {
-            if (goalsRepository.get() == null) OnboardingState.Needed else OnboardingState.NotNeeded
-        } catch (exc: IOException) {
-            // Offline — don't brick startup waiting on a goals check that can't
-            // complete; treat as "already onboarded" and let the user into chat.
-            // (A user genuinely mid-onboarding will just see the onboarding
-            // screen again once they have connectivity and re-open the app.)
-            OnboardingState.NotNeeded
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            OnboardingState.NotNeeded
-        }
-    }
-
-    /**
-     * Called once [app.mealsy.android.ui.onboarding.OnboardingScreen] finishes
-     * (save or skip both succeeded). Without this, [onboardingState] would stay
-     * [OnboardingState.Needed] for the rest of the process, and a later distinct
-     * [SessionState.SignedIn] emission (e.g. a token refresh) would route the
-     * user straight back to onboarding.
-     */
-    fun onOnboardingComplete() {
-        _onboardingState.value = OnboardingState.NotNeeded
-    }
-
-    private fun checkGate() {
-        viewModelScope.launch {
-            _gateState.value = try {
-                val meta = withTimeout(APP_META_TIMEOUT_MS) { api.appMeta() }
-                if (isUpdateRequired(currentVersionCode, meta.minSupportedVersionCode)) {
-                    GateState.UpdateRequired
-                } else {
-                    GateState.Ready
+        private suspend fun checkOnboarding() {
+            if (onboardingChecked) return
+            onboardingChecked = true
+            _onboardingState.value =
+                try {
+                    if (goalsRepository.get() == null) OnboardingState.Needed else OnboardingState.NotNeeded
+                } catch (exc: IOException) {
+                    // Offline — don't brick startup waiting on a goals check that can't
+                    // complete; treat as "already onboarded" and let the user into chat.
+                    // (A user genuinely mid-onboarding will just see the onboarding
+                    // screen again once they have connectivity and re-open the app.)
+                    OnboardingState.NotNeeded
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    OnboardingState.NotNeeded
                 }
-            } catch (exc: TimeoutCancellationException) {
-                // 3s timeout — treat as a failed check, per the spec "failure = proceed".
-                GateState.Ready
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                // appMeta() unreachable/erroring — same "failure = proceed" contract.
-                GateState.Ready
+        }
+
+        /**
+         * Called once [app.mealsy.android.ui.onboarding.OnboardingScreen] finishes
+         * (save or skip both succeeded). Without this, [onboardingState] would stay
+         * [OnboardingState.Needed] for the rest of the process, and a later distinct
+         * [SessionState.SignedIn] emission (e.g. a token refresh) would route the
+         * user straight back to onboarding.
+         */
+        fun onOnboardingComplete() {
+            _onboardingState.value = OnboardingState.NotNeeded
+        }
+
+        private fun checkGate() {
+            viewModelScope.launch {
+                _gateState.value =
+                    try {
+                        val meta = withTimeout(APP_META_TIMEOUT_MS) { api.appMeta() }
+                        if (isUpdateRequired(currentVersionCode, meta.minSupportedVersionCode)) {
+                            GateState.UpdateRequired
+                        } else {
+                            GateState.Ready
+                        }
+                    } catch (exc: TimeoutCancellationException) {
+                        // 3s timeout — treat as a failed check, per the spec "failure = proceed".
+                        GateState.Ready
+                    } catch (exc: CancellationException) {
+                        throw exc
+                    } catch (exc: Exception) {
+                        // appMeta() unreachable/erroring — same "failure = proceed" contract.
+                        GateState.Ready
+                    }
             }
         }
     }
-}
 
 /**
  * Pure routing decision extracted so it's unit-testable from a plain JVM test
@@ -275,14 +285,18 @@ class AppNavViewModel @Inject constructor(
  * tests otherwise). Returns `null` while the decision isn't resolvable yet —
  * callers must not navigate on a `null` result.
  */
-internal fun startRouteFor(sessionState: SessionState, onboardingState: OnboardingState): String? =
+internal fun startRouteFor(
+    sessionState: SessionState,
+    onboardingState: OnboardingState,
+): String? =
     when (sessionState) {
         SessionState.SignedOut -> onboardingRoute(startStep = 0)
-        is SessionState.SignedIn -> when (onboardingState) {
-            OnboardingState.Needed -> onboardingRoute(startStep = 1)
-            OnboardingState.NotNeeded -> ROUTE_HOME
-            OnboardingState.Unknown -> null
-        }
+        is SessionState.SignedIn ->
+            when (onboardingState) {
+                OnboardingState.Needed -> onboardingRoute(startStep = 1)
+                OnboardingState.NotNeeded -> ROUTE_HOME
+                OnboardingState.Unknown -> null
+            }
         SessionState.Loading -> null
     }
 
@@ -303,12 +317,13 @@ internal fun MealsyBottomBar(
     onFabClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val items = bottomNavItems(
-        homeLabel = stringResource(R.string.nav_home),
-        mealsLabel = stringResource(R.string.nav_my_meals),
-        trendsLabel = stringResource(R.string.nav_trends),
-        chatLabel = stringResource(R.string.nav_chat),
-    )
+    val items =
+        bottomNavItems(
+            homeLabel = stringResource(R.string.nav_home),
+            mealsLabel = stringResource(R.string.nav_my_meals),
+            trendsLabel = stringResource(R.string.nav_trends),
+            chatLabel = stringResource(R.string.nav_chat),
+        )
     BottomNavPill(
         items = items,
         selectedRoute = selectedRoute,
@@ -391,12 +406,13 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         composable(ROUTE_LOGIN) { LoginScreen() }
                         composable(
                             ROUTE_ONBOARDING_PATTERN,
-                            arguments = listOf(
-                                navArgument(ARG_START_STEP) {
-                                    type = NavType.IntType
-                                    defaultValue = 0
-                                },
-                            ),
+                            arguments =
+                                listOf(
+                                    navArgument(ARG_START_STEP) {
+                                        type = NavType.IntType
+                                        defaultValue = 0
+                                    },
+                                ),
                         ) {
                             OnboardingScreen(
                                 onDone = {
@@ -417,12 +433,13 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         }
                         composable(
                             ROUTE_CHAT_PATTERN,
-                            arguments = listOf(
-                                navArgument(ARG_QUICK_LOG) {
-                                    type = NavType.BoolType
-                                    defaultValue = false
-                                },
-                            ),
+                            arguments =
+                                listOf(
+                                    navArgument(ARG_QUICK_LOG) {
+                                        type = NavType.BoolType
+                                        defaultValue = false
+                                    },
+                                ),
                         ) { chatEntry ->
                             val quickLog = chatEntry.arguments?.getBoolean(ARG_QUICK_LOG) ?: false
                             ChatScreen(quickLog = quickLog)
@@ -504,7 +521,10 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 // re-fires the one-shot quick-log focus + toast even when the
                                 // user is already on chat.
                                 navController.navigate(quickLogChatRoute()) {
-                                    popUpTo(ROUTE_HOME) { saveState = true; inclusive = false }
+                                    popUpTo(ROUTE_HOME) {
+                                        saveState = true
+                                        inclusive = false
+                                    }
                                     launchSingleTop = true
                                     restoreState = false
                                 }

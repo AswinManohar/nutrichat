@@ -21,29 +21,30 @@ import org.junit.Test
  * rather than private to `AppNav.kt`).
  */
 class AppShellGoldenTest : AppScreenshotTestBase() {
+    private val partialMeals =
+        listOf(
+            HomeMealRow("breakfast", TagTone.Butter, 2),
+            HomeMealRow("lunch", TagTone.Leaf, 1),
+            HomeMealRow("dinner", TagTone.Pink, null),
+            HomeMealRow("snack", TagTone.Powder, 1),
+        )
 
-    private val partialMeals = listOf(
-        HomeMealRow("breakfast", TagTone.Butter, 2),
-        HomeMealRow("lunch", TagTone.Leaf, 1),
-        HomeMealRow("dinner", TagTone.Pink, null),
-        HomeMealRow("snack", TagTone.Powder, 1),
-    )
-
-    private fun partialState() = HomeUiState(
-        loading = false,
-        dateLabel = "WEDNESDAY, SEP 16",
-        dayPart = DayPart.Afternoon,
-        firstName = "Alex",
-        mindful = false,
-        eatenKcal = "1,340",
-        kcalState = HomeKcalState.Left("560"),
-        eatenFraction = 1340f / 1900f,
-        proteinValue = "86g",
-        carbsValue = "152g",
-        fatValue = "48g",
-        meals = partialMeals,
-        coachNote = HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon),
-    )
+    private fun partialState() =
+        HomeUiState(
+            loading = false,
+            dateLabel = "WEDNESDAY, SEP 16",
+            dayPart = DayPart.Afternoon,
+            firstName = "Alex",
+            mindful = false,
+            eatenKcal = "1,340",
+            kcalState = HomeKcalState.Left("560"),
+            eatenFraction = 1340f / 1900f,
+            proteinValue = "86g",
+            carbsValue = "152g",
+            fatValue = "48g",
+            meals = partialMeals,
+            coachNote = HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon),
+        )
 
     @Composable
     private fun render() {
@@ -65,8 +66,8 @@ class AppShellGoldenTest : AppScreenshotTestBase() {
     }
 
     @Test
-    fun AppShell_home_light() = captureMealsy("AppShell_home", false) { render() }
+    fun appShellHomeLight() = captureMealsy("AppShell_home", false) { render() }
 
     @Test
-    fun AppShell_home_dark() = captureMealsy("AppShell_home", true) { render() }
+    fun appShellHomeDark() = captureMealsy("AppShell_home", true) { render() }
 }

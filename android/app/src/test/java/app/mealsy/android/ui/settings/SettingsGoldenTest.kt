@@ -13,30 +13,32 @@ import org.junit.Test
  * `HomeScreenGoldenTest`/`OnboardingScreenGoldenTest`.
  */
 class SettingsGoldenTest : AppScreenshotTestBase() {
+    private val goalsModeState =
+        SettingsUiState(
+            goalsLoading = false,
+            firstName = "Alex",
+            goalFocus = "maintain",
+            trackingMode = "goals",
+            kcalGoal = 2200.0,
+            proteinGoal = 110.0,
+            fiberGoal = 30.0,
+            dietaryPrefs = setOf("vegetarian", "gluten_free"),
+            reminderEnabled = true,
+            versionName = "1.0",
+            versionCode = 1,
+        )
 
-    private val goalsModeState = SettingsUiState(
-        goalsLoading = false,
-        firstName = "Alex",
-        goalFocus = "maintain",
-        trackingMode = "goals",
-        kcalGoal = 2200.0,
-        proteinGoal = 110.0,
-        fiberGoal = 30.0,
-        dietaryPrefs = setOf("vegetarian", "gluten_free"),
-        reminderEnabled = true,
-        versionName = "1.0",
-        versionCode = 1,
-    )
+    private val mindfulModeState =
+        goalsModeState.copy(
+            trackingMode = "mindful",
+            dietaryPrefs = emptySet(),
+            reminderEnabled = false,
+        )
 
-    private val mindfulModeState = goalsModeState.copy(
-        trackingMode = "mindful",
-        dietaryPrefs = emptySet(),
-        reminderEnabled = false,
-    )
-
-    private val deleteDialogState = goalsModeState.copy(
-        deleteConfirmationText = "DEL",
-    )
+    private val deleteDialogState =
+        goalsModeState.copy(
+            deleteConfirmationText = "DEL",
+        )
 
     @Composable
     private fun render(state: SettingsUiState) {
@@ -70,12 +72,10 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
     fun goalsMode_light() = captureMealsy("Settings_goalsMode", false) { render(goalsModeState) }
 
     @Test
-    fun goalsMode_light_fontScale130() =
-        captureMealsy("Settings_goalsMode", false, 1.3f) { render(goalsModeState) }
+    fun goalsMode_light_fontScale130() = captureMealsy("Settings_goalsMode", false, 1.3f) { render(goalsModeState) }
 
     @Test
-    fun goalsMode_light_fontScale200() =
-        captureMealsy("Settings_goalsMode", false, 2.0f) { render(goalsModeState) }
+    fun goalsMode_light_fontScale200() = captureMealsy("Settings_goalsMode", false, 2.0f) { render(goalsModeState) }
 
     @Test
     fun goalsMode_dark() = captureMealsy("Settings_goalsMode", true) { render(goalsModeState) }
@@ -87,28 +87,30 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
     fun mindfulMode_dark() = captureMealsy("Settings_mindfulMode", true) { render(mindfulModeState) }
 
     @Test
-    fun deleteDialog_light() = captureMealsyDialog("Settings_deleteDialog", false) {
-        DeleteAccountDialog(
-            confirmationText = deleteDialogState.deleteConfirmationText,
-            deleting = false,
-            error = null,
-            confirmed = false,
-            onConfirmationTextChange = {},
-            onConfirm = {},
-            onDismiss = {},
-        )
-    }
+    fun deleteDialog_light() =
+        captureMealsyDialog("Settings_deleteDialog", false) {
+            DeleteAccountDialog(
+                confirmationText = deleteDialogState.deleteConfirmationText,
+                deleting = false,
+                error = null,
+                confirmed = false,
+                onConfirmationTextChange = {},
+                onConfirm = {},
+                onDismiss = {},
+            )
+        }
 
     @Test
-    fun deleteDialog_dark() = captureMealsyDialog("Settings_deleteDialog", true) {
-        DeleteAccountDialog(
-            confirmationText = deleteDialogState.deleteConfirmationText,
-            deleting = false,
-            error = null,
-            confirmed = false,
-            onConfirmationTextChange = {},
-            onConfirm = {},
-            onDismiss = {},
-        )
-    }
+    fun deleteDialog_dark() =
+        captureMealsyDialog("Settings_deleteDialog", true) {
+            DeleteAccountDialog(
+                confirmationText = deleteDialogState.deleteConfirmationText,
+                deleting = false,
+                error = null,
+                confirmed = false,
+                onConfirmationTextChange = {},
+                onConfirm = {},
+                onDismiss = {},
+            )
+        }
 }

@@ -80,43 +80,48 @@ fun MealsyButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val backgroundColor = when (style) {
-        MealsyButtonStyle.Primary -> if (pressed) colors.inkPressed else colors.ink
-        MealsyButtonStyle.Secondary -> if (pressed) colors.surface else Color.Transparent
-        MealsyButtonStyle.Destructive -> colors.terracotta
-        MealsyButtonStyle.DestructiveOutline -> Color.Transparent
-    }
-    val textColor = when (style) {
-        MealsyButtonStyle.Primary -> colors.canvas
-        MealsyButtonStyle.Secondary -> colors.ink
-        MealsyButtonStyle.Destructive -> colors.terracottaText
-        MealsyButtonStyle.DestructiveOutline -> colors.terracottaOutlineText
-    }
-    val border = when (style) {
-        MealsyButtonStyle.Secondary -> BorderStroke(1.dp, colors.hairline)
-        MealsyButtonStyle.DestructiveOutline -> BorderStroke(1.dp, colors.terracottaOutlineText)
-        else -> null
-    }
+    val backgroundColor =
+        when (style) {
+            MealsyButtonStyle.Primary -> if (pressed) colors.inkPressed else colors.ink
+            MealsyButtonStyle.Secondary -> if (pressed) colors.surface else Color.Transparent
+            MealsyButtonStyle.Destructive -> colors.terracotta
+            MealsyButtonStyle.DestructiveOutline -> Color.Transparent
+        }
+    val textColor =
+        when (style) {
+            MealsyButtonStyle.Primary -> colors.canvas
+            MealsyButtonStyle.Secondary -> colors.ink
+            MealsyButtonStyle.Destructive -> colors.terracottaText
+            MealsyButtonStyle.DestructiveOutline -> colors.terracottaOutlineText
+        }
+    val border =
+        when (style) {
+            MealsyButtonStyle.Secondary -> BorderStroke(1.dp, colors.hairline)
+            MealsyButtonStyle.DestructiveOutline -> BorderStroke(1.dp, colors.terracottaOutlineText)
+            else -> null
+        }
 
     Surface(
-        modifier = modifier
-            .height(50.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .semantics { this.contentDescription = contentDescription ?: text }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = onClick,
-            ),
+        modifier =
+            modifier
+                .height(50.dp)
+                .alpha(if (enabled) 1f else 0.35f)
+                .semantics { this.contentDescription = contentDescription ?: text }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                ),
         shape = MealsyShapes.pill,
         color = backgroundColor,
         border = border,
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -147,9 +152,10 @@ private fun MealsyButtonLightPreview() {
 @Composable
 private fun Column() {
     androidx.compose.foundation.layout.Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(20.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         MealsyButton(text = "Get started", onClick = {}, style = MealsyButtonStyle.Primary)

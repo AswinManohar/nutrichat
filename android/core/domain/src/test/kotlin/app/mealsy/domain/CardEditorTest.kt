@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CardEditorTest {
-
     private fun item(
         foodName: String = "Chicken breast",
         qtyG: Double = 100.0,
@@ -18,25 +17,27 @@ class CardEditorTest {
         fatG: Double = 5.0,
         fiberG: Double = 0.0,
         fdcId: Long = 1L,
-    ): CardItem = CardItem(
-        foodName = foodName,
-        qtyG = qtyG,
-        targetQtyG = targetQtyG,
-        kcal = kcal,
-        proteinG = proteinG,
-        carbsG = carbsG,
-        fatG = fatG,
-        fiberG = fiberG,
-        fdcId = fdcId,
-        extras = JsonObject(emptyMap()),
-    )
+    ): CardItem =
+        CardItem(
+            foodName = foodName,
+            qtyG = qtyG,
+            targetQtyG = targetQtyG,
+            kcal = kcal,
+            proteinG = proteinG,
+            carbsG = carbsG,
+            fatG = fatG,
+            fiberG = fiberG,
+            fdcId = fdcId,
+            extras = JsonObject(emptyMap()),
+        )
 
     @Test
     fun `removeItem drops the row`() {
-        val card = ConfirmationCard(
-            message = "Logged",
-            items = listOf(item(foodName = "A"), item(foodName = "B")),
-        )
+        val card =
+            ConfirmationCard(
+                message = "Logged",
+                items = listOf(item(foodName = "A"), item(foodName = "B")),
+            )
 
         val result = CardEditor.removeItem(card, 0)
 
@@ -58,10 +59,11 @@ class CardEditorTest {
 
     @Test
     fun `totals scale linearly with targetQtyG`() {
-        val card = ConfirmationCard(
-            message = "Logged",
-            items = listOf(item(qtyG = 100.0, targetQtyG = 100.0, kcal = 200.0)),
-        )
+        val card =
+            ConfirmationCard(
+                message = "Logged",
+                items = listOf(item(qtyG = 100.0, targetQtyG = 100.0, kcal = 200.0)),
+            )
 
         val edited = CardEditor.editQty(card, 0, 150.0)
         val totals = CardEditor.totals(edited)
@@ -71,10 +73,11 @@ class CardEditorTest {
 
     @Test
     fun `totals scale with portion`() {
-        val card = ConfirmationCard(
-            message = "Logged",
-            items = listOf(item(qtyG = 100.0, targetQtyG = 100.0, kcal = 200.0, proteinG = 30.0)),
-        )
+        val card =
+            ConfirmationCard(
+                message = "Logged",
+                items = listOf(item(qtyG = 100.0, targetQtyG = 100.0, kcal = 200.0, proteinG = 30.0)),
+            )
 
         val halved = CardEditor.setPortion(card, 0.5)
         val totals = CardEditor.totals(halved)
@@ -94,21 +97,23 @@ class CardEditorTest {
 
     @Test
     fun `totals fills all five macros under grams edit times portion`() {
-        val card = ConfirmationCard(
-            message = "Logged",
-            items = listOf(
-                item(
-                    qtyG = 100.0,
-                    targetQtyG = 100.0,
-                    kcal = 200.0,
-                    proteinG = 30.0,
-                    carbsG = 10.0,
-                    fatG = 5.0,
-                    fiberG = 2.0,
-                ),
-            ),
-            portion = 1.0,
-        )
+        val card =
+            ConfirmationCard(
+                message = "Logged",
+                items =
+                    listOf(
+                        item(
+                            qtyG = 100.0,
+                            targetQtyG = 100.0,
+                            kcal = 200.0,
+                            proteinG = 30.0,
+                            carbsG = 10.0,
+                            fatG = 5.0,
+                            fiberG = 2.0,
+                        ),
+                    ),
+                portion = 1.0,
+            )
 
         val edited = CardEditor.editQty(card, 0, 200.0)
         val halved = CardEditor.setPortion(edited, 0.5)
@@ -124,10 +129,11 @@ class CardEditorTest {
 
     @Test
     fun `totals treats a zero qtyG item as a zero factor instead of NaN`() {
-        val card = ConfirmationCard(
-            message = "Logged",
-            items = listOf(item(qtyG = 0.0, targetQtyG = 100.0, kcal = 200.0)),
-        )
+        val card =
+            ConfirmationCard(
+                message = "Logged",
+                items = listOf(item(qtyG = 0.0, targetQtyG = 100.0, kcal = 200.0)),
+            )
 
         val totals = CardEditor.totals(card)
 
@@ -156,8 +162,9 @@ class CardEditorTest {
 
     @Test
     fun `pastelToneFor picks Powder for estimated items regardless of macros`() {
-        val estimatedHighFat = item(kcal = 100.0, proteinG = 0.0, carbsG = 0.0, fatG = 20.0)
-            .copy(estimated = true)
+        val estimatedHighFat =
+            item(kcal = 100.0, proteinG = 0.0, carbsG = 0.0, fatG = 20.0)
+                .copy(estimated = true)
 
         assertEquals(PastelTone.Powder, pastelToneFor(estimatedHighFat))
     }

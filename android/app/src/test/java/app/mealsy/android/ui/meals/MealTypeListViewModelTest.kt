@@ -7,6 +7,7 @@ import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.repo.MealsRepository
 import app.mealsy.data.repo.TodayRefreshSignal
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,7 +29,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 /**
  * Drives [MealTypeListViewModel] against a real [MockWebServer], mirroring
@@ -36,10 +36,13 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MealTypeListViewModelTest {
-
     private lateinit var server: MockWebServer
     private lateinit var appScope: CoroutineScope
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     @Before
     fun setUp() {
@@ -59,29 +62,33 @@ class MealTypeListViewModelTest {
     }
 
     private fun buildApi(): MealsyApi {
-        val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
-            .build()
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                .build()
         val contentType = "application/json".toMediaType()
-        val retrofit = Retrofit.Builder()
-            .baseUrl(server.url("/"))
-            .client(client)
-            .addConverterFactory(json.asConverterFactory(contentType))
-            .build()
+        val retrofit =
+            Retrofit.Builder()
+                .baseUrl(server.url("/"))
+                .client(client)
+                .addConverterFactory(json.asConverterFactory(contentType))
+                .build()
         return retrofit.create(MealsyApi::class.java)
     }
 
     private fun buildViewModel(
         mealType: String = "lunch",
         todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
-    ): MealTypeListViewModel = MealTypeListViewModel(
-        savedStateHandle = SavedStateHandle(mapOf("mealType" to mealType)),
-        repository = MealsRepository(buildApi(), todayRefreshSignal),
-        todayRefreshSignal = todayRefreshSignal,
-        appScope = appScope,
-    )
+    ): MealTypeListViewModel =
+        MealTypeListViewModel(
+            savedStateHandle = SavedStateHandle(mapOf("mealType" to mealType)),
+            repository = MealsRepository(buildApi(), todayRefreshSignal),
+            todayRefreshSignal = todayRefreshSignal,
+            appScope = appScope,
+        )
 
-    private val listGoldenJson = """
+    private val listGoldenJson =
+        """
         [
           {
             "meal_id": "m_1",
@@ -96,121 +103,129 @@ class MealTypeListViewModelTest {
             "n_items": 2
           }
         ]
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
-    fun `load populates the list on success`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
+    fun `load populates the list on success`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
 
-        val state = viewModel.uiState.value
-        assertTrue(state is MealTypeListUiState.Loaded)
-        assertEquals(1, (state as MealTypeListUiState.Loaded).meals.size)
-        assertEquals("m_1", state.meals[0].mealId)
-    }
-
-    @Test
-    fun `load maps an empty array to Empty`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-
-        assertEquals(MealTypeListUiState.Empty, viewModel.uiState.value)
-    }
+            val state = viewModel.uiState.value
+            assertTrue(state is MealTypeListUiState.Loaded)
+            assertEquals(1, (state as MealTypeListUiState.Loaded).meals.size)
+            assertEquals("m_1", state.meals[0].mealId)
+        }
 
     @Test
-    fun `a server error maps to Error state`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(500))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
+    fun `load maps an empty array to Empty`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
 
-        assertTrue(viewModel.uiState.value is MealTypeListUiState.Error)
-    }
-
-    @Test
-    fun `retry after an error reloads and can land Loaded`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(500))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        assertTrue(viewModel.uiState.value is MealTypeListUiState.Error)
-
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        viewModel.load().join()
-
-        assertTrue(viewModel.uiState.value is MealTypeListUiState.Loaded)
-    }
+            assertEquals(MealTypeListUiState.Empty, viewModel.uiState.value)
+        }
 
     @Test
-    fun `refresh on TodayRefreshSignal reloads the list`() = runBlocking {
-        val signal = TodayRefreshSignal()
-        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
-        val viewModel = buildViewModel(todayRefreshSignal = signal)
-        viewModel.readyJob.join()
-        assertEquals(MealTypeListUiState.Empty, viewModel.uiState.value)
+    fun `a server error maps to Error state`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(500))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
 
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        signal.notifyLogged()
-        // Give the Unconfined-dispatched collector a moment to process the signal.
-        delay(50)
-
-        assertTrue(viewModel.uiState.value is MealTypeListUiState.Loaded)
-    }
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Error)
+        }
 
     @Test
-    fun `deleteWithUndo hides the meal immediately but does not DELETE until the window elapses`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        server.takeRequest() // the initial GET
+    fun `retry after an error reloads and can land Loaded`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(500))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Error)
 
-        viewModel.deleteWithUndo("m_1")
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            viewModel.load().join()
 
-        assertTrue("m_1" in viewModel.hiddenIds.value)
-        assertEquals(1, server.requestCount)
-
-        server.enqueue(MockResponse().setResponseCode(204))
-        delay(mealTypeUndoWindowMs + 200)
-
-        val deleteRequest = server.takeRequest()
-        assertEquals("DELETE", deleteRequest.method)
-        assertEquals("/meals/log/m_1", deleteRequest.path)
-    }
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Loaded)
+        }
 
     @Test
-    fun `undoDelete cancels the pending delete so no DELETE ever lands`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
+    fun `refresh on TodayRefreshSignal reloads the list`() =
+        runBlocking {
+            val signal = TodayRefreshSignal()
+            server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+            val viewModel = buildViewModel(todayRefreshSignal = signal)
+            viewModel.readyJob.join()
+            assertEquals(MealTypeListUiState.Empty, viewModel.uiState.value)
 
-        viewModel.deleteWithUndo("m_1")
-        assertTrue("m_1" in viewModel.hiddenIds.value)
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            signal.notifyLogged()
+            // Give the Unconfined-dispatched collector a moment to process the signal.
+            delay(50)
 
-        viewModel.undoDelete("m_1")
-        assertFalse("m_1" in viewModel.hiddenIds.value)
-
-        delay(mealTypeUndoWindowMs + 200)
-        assertEquals(1, server.requestCount) // only the initial GET
-    }
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Loaded)
+        }
 
     @Test
-    fun `onCleared flushes a pending delete immediately`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
-        val viewModel = buildViewModel()
-        viewModel.readyJob.join()
-        server.takeRequest() // the initial GET
+    fun `deleteWithUndo hides the meal immediately but does not DELETE until the window elapses`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
 
-        viewModel.deleteWithUndo("m_1")
-        server.enqueue(MockResponse().setResponseCode(204))
+            viewModel.deleteWithUndo("m_1")
 
-        val store = ViewModelStore()
-        store.put("meal-type-list", viewModel)
-        store.clear()
+            assertTrue("m_1" in viewModel.hiddenIds.value)
+            assertEquals(1, server.requestCount)
 
-        delay(200)
+            server.enqueue(MockResponse().setResponseCode(204))
+            delay(mealTypeUndoWindowMs + 200)
 
-        val deleteRequest = server.takeRequest()
-        assertEquals("DELETE", deleteRequest.method)
-        assertEquals("/meals/log/m_1", deleteRequest.path)
-    }
+            val deleteRequest = server.takeRequest()
+            assertEquals("DELETE", deleteRequest.method)
+            assertEquals("/meals/log/m_1", deleteRequest.path)
+        }
+
+    @Test
+    fun `undoDelete cancels the pending delete so no DELETE ever lands`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+
+            viewModel.deleteWithUndo("m_1")
+            assertTrue("m_1" in viewModel.hiddenIds.value)
+
+            viewModel.undoDelete("m_1")
+            assertFalse("m_1" in viewModel.hiddenIds.value)
+
+            delay(mealTypeUndoWindowMs + 200)
+            assertEquals(1, server.requestCount) // only the initial GET
+        }
+
+    @Test
+    fun `onCleared flushes a pending delete immediately`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
+
+            viewModel.deleteWithUndo("m_1")
+            server.enqueue(MockResponse().setResponseCode(204))
+
+            val store = ViewModelStore()
+            store.put("meal-type-list", viewModel)
+            store.clear()
+
+            delay(200)
+
+            val deleteRequest = server.takeRequest()
+            assertEquals("DELETE", deleteRequest.method)
+            assertEquals("/meals/log/m_1", deleteRequest.path)
+        }
 }

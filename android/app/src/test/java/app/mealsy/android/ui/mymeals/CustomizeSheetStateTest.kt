@@ -9,39 +9,42 @@ import org.junit.Test
 
 /** Unit tests for [CustomizeSheetState]'s pure edit/removal/totals logic. */
 class CustomizeSheetStateTest {
-
     private fun ingredient(
         index: Int,
         qtyG: Double,
         kcal: Double,
         proteinG: Double = 0.0,
-    ): CustomizeIngredient = CustomizeIngredient(
-        index = index,
-        item = CardItem(
-            foodName = "food-$index",
-            qtyG = qtyG,
-            targetQtyG = qtyG,
-            kcal = kcal,
-            proteinG = proteinG,
-            carbsG = 0.0,
-            fatG = 0.0,
-            fiberG = 0.0,
-            fdcId = index.toLong(),
-            estimated = false,
-            extras = JsonObject(emptyMap()),
-        ),
-        humanizedName = "Food $index",
-        rawNameIfDifferent = null,
-    )
+    ): CustomizeIngredient =
+        CustomizeIngredient(
+            index = index,
+            item =
+                CardItem(
+                    foodName = "food-$index",
+                    qtyG = qtyG,
+                    targetQtyG = qtyG,
+                    kcal = kcal,
+                    proteinG = proteinG,
+                    carbsG = 0.0,
+                    fatG = 0.0,
+                    fiberG = 0.0,
+                    fdcId = index.toLong(),
+                    estimated = false,
+                    extras = JsonObject(emptyMap()),
+                ),
+            humanizedName = "Food $index",
+            rawNameIfDifferent = null,
+        )
 
-    private fun initialState() = CustomizeSheetState.initial(
-        ingredients = listOf(
-            ingredient(index = 0, qtyG = 100.0, kcal = 200.0, proteinG = 10.0),
-            ingredient(index = 1, qtyG = 50.0, kcal = 100.0, proteinG = 5.0),
-            ingredient(index = 2, qtyG = 80.0, kcal = 150.0, proteinG = 8.0),
-        ),
-        mealType = "lunch",
-    )
+    private fun initialState() =
+        CustomizeSheetState.initial(
+            ingredients =
+                listOf(
+                    ingredient(index = 0, qtyG = 100.0, kcal = 200.0, proteinG = 10.0),
+                    ingredient(index = 1, qtyG = 50.0, kcal = 100.0, proteinG = 5.0),
+                    ingredient(index = 2, qtyG = 80.0, kcal = 150.0, proteinG = 8.0),
+                ),
+            mealType = "lunch",
+        )
 
     @Test
     fun `removing a row omits it from the payload without renumbering remaining indices`() {
@@ -78,14 +81,15 @@ class CustomizeSheetStateTest {
     fun `totals equal CardEditor totals over the kept scaled items`() {
         val state = initialState().withRemoved(1).withQty(0, 200).withPortion(0.5)
 
-        val expected = app.mealsy.domain.CardEditor.totals(
-            app.mealsy.domain.ConfirmationCard(
-                message = "",
-                items = state.keptIngredients.map { it.item },
-                mealType = state.mealType,
-                portion = state.portion,
-            ),
-        )
+        val expected =
+            app.mealsy.domain.CardEditor.totals(
+                app.mealsy.domain.ConfirmationCard(
+                    message = "",
+                    items = state.keptIngredients.map { it.item },
+                    mealType = state.mealType,
+                    portion = state.portion,
+                ),
+            )
 
         assertEquals(expected.kcal, state.totals.kcal, 0.0001)
         assertEquals(expected.proteinG, state.totals.proteinG, 0.0001)

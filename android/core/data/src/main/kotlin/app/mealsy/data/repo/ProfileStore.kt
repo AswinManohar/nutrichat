@@ -38,7 +38,10 @@ interface ProfileStore {
      * (e.g. a partial [app.mealsy.data.auth.ProfileMetadata]) must not wipe
      * out the other one already on disk. Use [clear] to remove both.
      */
-    suspend fun set(firstName: String?, goalFocus: String?)
+    suspend fun set(
+        firstName: String?,
+        goalFocus: String?,
+    )
 
     /** Removes both cached fields. */
     suspend fun clear()
@@ -51,28 +54,32 @@ private val FIRST_NAME_KEY = stringPreferencesKey("first_name")
 private val GOAL_FOCUS_KEY = stringPreferencesKey("goal_focus")
 
 @Singleton
-class DataStoreProfileStore @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : ProfileStore {
+class DataStoreProfileStore
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+    ) : ProfileStore {
+        override val profile: Flow<Profile> =
+            context.profileDataStore.data.map { prefs ->
+                Profile(firstName = prefs[FIRST_NAME_KEY], goalFocus = prefs[GOAL_FOCUS_KEY])
+            }
 
-    override val profile: Flow<Profile> =
-        context.profileDataStore.data.map { prefs ->
-            Profile(firstName = prefs[FIRST_NAME_KEY], goalFocus = prefs[GOAL_FOCUS_KEY])
+        override suspend fun get(): Profile = profile.first()
+
+        override suspend fun set(
+            firstName: String?,
+            goalFocus: String?,
+        ) {
+            context.profileDataStore.edit { prefs ->
+                if (firstName != null) prefs[FIRST_NAME_KEY] = firstName
+                if (goalFocus != null) prefs[GOAL_FOCUS_KEY] = goalFocus
+            }
         }
 
-    override suspend fun get(): Profile = profile.first()
-
-    override suspend fun set(firstName: String?, goalFocus: String?) {
-        context.profileDataStore.edit { prefs ->
-            if (firstName != null) prefs[FIRST_NAME_KEY] = firstName
-            if (goalFocus != null) prefs[GOAL_FOCUS_KEY] = goalFocus
+        override suspend fun clear() {
+            context.profileDataStore.edit { prefs ->
+                prefs.remove(FIRST_NAME_KEY)
+                prefs.remove(GOAL_FOCUS_KEY)
+            }
         }
     }
-
-    override suspend fun clear() {
-        context.profileDataStore.edit { prefs ->
-            prefs.remove(FIRST_NAME_KEY)
-            prefs.remove(GOAL_FOCUS_KEY)
-        }
-    }
-}

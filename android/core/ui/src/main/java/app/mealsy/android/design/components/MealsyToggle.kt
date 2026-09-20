@@ -54,22 +54,24 @@ fun MealsyToggle(
     )
 
     Box(
-        modifier = modifier
-            .size(width = 46.dp, height = 28.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .toggleable(
-                value = checked,
-                enabled = enabled,
-                role = Role.Switch,
-                onValueChange = onCheckedChange,
-            )
-            .background(trackColor, MealsyShapes.pill)
-            .padding(3.dp),
+        modifier =
+            modifier
+                .size(width = 46.dp, height = 28.dp)
+                .alpha(if (enabled) 1f else 0.35f)
+                .toggleable(
+                    value = checked,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                )
+                .background(trackColor, MealsyShapes.pill)
+                .padding(3.dp),
     ) {
         Surface(
-            modifier = Modifier
-                .offset(x = thumbOffset)
-                .size(22.dp),
+            modifier =
+                Modifier
+                    .offset(x = thumbOffset)
+                    .size(22.dp),
             shape = CircleShape,
             color = colors.canvas,
         ) {}

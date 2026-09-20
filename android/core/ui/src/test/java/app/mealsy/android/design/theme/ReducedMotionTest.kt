@@ -6,7 +6,6 @@ import org.junit.Test
 
 /** Plain JVM coverage for [isReducedMotion]; no Robolectric needed. */
 class ReducedMotionTest {
-
     @Test
     fun bothScalesNormal_isNotReduced() {
         assertFalse(isReducedMotion(animatorScale = 1f, transitionScale = 1f))

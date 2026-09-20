@@ -1,11 +1,11 @@
 package app.mealsy.data.repo
 
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Process-wide "today's totals changed" fan-out.
@@ -21,18 +21,21 @@ import kotlinx.coroutines.flow.asSharedFlow
  * this without a binding module since there is no interface to bind it to.
  */
 @Singleton
-class TodayRefreshSignal @Inject constructor() {
-    private val _events = MutableSharedFlow<Unit>(
-        replay = 0,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+class TodayRefreshSignal
+    @Inject
+    constructor() {
+        private val _events =
+            MutableSharedFlow<Unit>(
+                replay = 0,
+                extraBufferCapacity = 1,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            )
 
-    /** Emits once per successful meal log; carries no payload, refetch is up to the collector. */
-    val events: SharedFlow<Unit> = _events.asSharedFlow()
+        /** Emits once per successful meal log; carries no payload, refetch is up to the collector. */
+        val events: SharedFlow<Unit> = _events.asSharedFlow()
 
-    /** Signals that a meal was logged, so today-derived screens should refetch. */
-    fun notifyLogged() {
-        _events.tryEmit(Unit)
+        /** Signals that a meal was logged, so today-derived screens should refetch. */
+        fun notifyLogged() {
+            _events.tryEmit(Unit)
+        }
     }
-}

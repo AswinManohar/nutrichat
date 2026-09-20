@@ -14,9 +14,11 @@ data class Totals(
  * card rather than mutating the input.
  */
 object CardEditor {
-
     /** Returns a copy of [card] with the item at [index] removed. */
-    fun removeItem(card: ConfirmationCard, index: Int): ConfirmationCard {
+    fun removeItem(
+        card: ConfirmationCard,
+        index: Int,
+    ): ConfirmationCard {
         val items = card.items.toMutableList()
         items.removeAt(index)
         return card.copy(items = items)
@@ -28,7 +30,11 @@ object CardEditor {
      *
      * @throws IllegalArgumentException if [newQtyG] is not positive.
      */
-    fun editQty(card: ConfirmationCard, index: Int, newQtyG: Double): ConfirmationCard {
+    fun editQty(
+        card: ConfirmationCard,
+        index: Int,
+        newQtyG: Double,
+    ): ConfirmationCard {
         require(newQtyG > 0) { "newQtyG must be positive, was $newQtyG" }
         val items = card.items.toMutableList()
         items[index] = items[index].copy(targetQtyG = newQtyG)
@@ -36,7 +42,10 @@ object CardEditor {
     }
 
     /** Returns a copy of [card] with its overall [ConfirmationCard.portion] set. */
-    fun setPortion(card: ConfirmationCard, portion: Double): ConfirmationCard {
+    fun setPortion(
+        card: ConfirmationCard,
+        portion: Double,
+    ): ConfirmationCard {
         return card.copy(portion = portion)
     }
 
@@ -56,11 +65,12 @@ object CardEditor {
         var fatG = 0.0
         var fiberG = 0.0
         for (item in card.items) {
-            val factor = if (item.qtyG != 0.0) {
-                (item.targetQtyG / item.qtyG) * card.portion
-            } else {
-                0.0
-            }
+            val factor =
+                if (item.qtyG != 0.0) {
+                    (item.targetQtyG / item.qtyG) * card.portion
+                } else {
+                    0.0
+                }
             kcal += item.kcal * factor
             proteinG += item.proteinG * factor
             carbsG += item.carbsG * factor
@@ -83,7 +93,11 @@ object CardEditor {
      *
      * No-op (returns [card] unchanged) if [index] is out of range.
      */
-    fun replaceCandidate(card: ConfirmationCard, index: Int, newName: String): ConfirmationCard {
+    fun replaceCandidate(
+        card: ConfirmationCard,
+        index: Int,
+        newName: String,
+    ): ConfirmationCard {
         if (index !in card.items.indices) return card
         val items = card.items.toMutableList()
         items[index] = items[index].copy(pendingCandidate = newName)

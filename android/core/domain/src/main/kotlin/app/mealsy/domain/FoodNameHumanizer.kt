@@ -68,38 +68,40 @@ package app.mealsy.domain
  * over and only re-applies sentence casing, which is idempotent.
  */
 object FoodNameHumanizer {
-
-    private val COOKING_METHODS = setOf(
-        "raw", "cooked", "grilled", "roasted", "boiled", "fried", "baked",
-        "broiled", "steamed", "braised", "scrambled", "poached", "toasted",
-        "sauteed", "sautéed", "microwaved", "canned", "dried", "frozen",
-    )
+    private val COOKING_METHODS =
+        setOf(
+            "raw", "cooked", "grilled", "roasted", "boiled", "fried", "baked",
+            "broiled", "steamed", "braised", "scrambled", "poached", "toasted",
+            "sauteed", "sautéed", "microwaved", "canned", "dried", "frozen",
+        )
 
     // Includes both the singular and plural USDA forms of "broiler or
     // fryers" ("broiler or fryers" vs. "broilers or fryers") since FDC
     // descriptions use either depending on the source dataset.
-    private val NOISE_SEGMENTS = setOf(
-        "broiler or fryers", "broilers or fryers", "meat only", "meat and skin",
-        "skinless", "boneless", "flesh and skin", "commercially prepared",
-        "all types", "nfs", "ns as to form", "prepared", "without salt",
-        "with salt", "enriched", "unenriched", "regular", "long-grain",
-        "large", "medium", "small", "salad or cooking", "plain",
-    )
+    private val NOISE_SEGMENTS =
+        setOf(
+            "broiler or fryers", "broilers or fryers", "meat only", "meat and skin",
+            "skinless", "boneless", "flesh and skin", "commercially prepared",
+            "all types", "nfs", "ns as to form", "prepared", "without salt",
+            "with salt", "enriched", "unenriched", "regular", "long-grain",
+            "large", "medium", "small", "salad or cooking", "plain",
+        )
 
-    private val SUFFIX_PARTS = setOf(
-        "breast", "thigh", "wing", "leg", "drumstick", "loin", "tenderloin",
-        "fillet", "filet", "shank", "rib", "ribs", "flesh", "skin",
-        "with skin", "without skin", "kernels", "florets",
-    )
+    private val SUFFIX_PARTS =
+        setOf(
+            "breast", "thigh", "wing", "leg", "drumstick", "loin", "tenderloin",
+            "fillet", "filet", "shank", "rib", "ribs", "flesh", "skin",
+            "with skin", "without skin", "kernels", "florets",
+        )
 
     /** Returns a short, human-readable title for [raw]. See rules above. */
     fun humanize(raw: String): String {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return trimmed
-        if (!trimmed.contains(',')) return _sentenceCase(trimmed)
+        if (!trimmed.contains(',')) return sentenceCase(trimmed)
 
         val segments = trimmed.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-        if (segments.isEmpty()) return _sentenceCase(trimmed)
+        if (segments.isEmpty()) return sentenceCase(trimmed)
 
         val noun = segments.first().lowercase()
         val descriptors = segments.drop(1)
@@ -134,11 +136,11 @@ object FoodNameHumanizer {
         }
 
         val parts = listOfNotNull(cookingMethod, prefixDescriptor, noun, suffixPart)
-        return _sentenceCase(parts.joinToString(" "))
+        return sentenceCase(parts.joinToString(" "))
     }
 
     /** Capitalises the first letter of [text], leaving the rest untouched. */
-    private fun _sentenceCase(text: String): String {
+    private fun sentenceCase(text: String): String {
         if (text.isEmpty()) return text
         return text[0].uppercaseChar() + text.substring(1)
     }

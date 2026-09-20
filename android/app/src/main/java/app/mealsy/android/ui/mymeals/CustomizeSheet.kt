@@ -15,8 +15,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,8 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import app.mealsy.android.R
 import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.InkToast
@@ -54,10 +52,6 @@ import app.mealsy.domain.FoodNameHumanizer
 import app.mealsy.domain.Totals
 import app.mealsy.domain.defaultMealCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.io.IOException
-import java.time.Clock
-import javax.inject.Inject
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +59,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonObject
+import java.io.IOException
+import java.time.Clock
+import javax.inject.Inject
+import kotlin.math.roundToInt
 
 private val PORTION_OPTIONS = listOf(0.5, 1.0, 1.5, 2.0)
 private val MEAL_TYPE_OPTIONS = listOf("breakfast", "lunch", "dinner", "snack")
@@ -109,8 +106,10 @@ data class CustomizeSheetState(
     val ingredients: List<CustomizeIngredient>,
 ) {
     companion object {
-        fun initial(ingredients: List<CustomizeIngredient>, mealType: String): CustomizeSheetState =
-            CustomizeSheetState(mealType = mealType, portion = 1.0, ingredients = ingredients)
+        fun initial(
+            ingredients: List<CustomizeIngredient>,
+            mealType: String,
+        ): CustomizeSheetState = CustomizeSheetState(mealType = mealType, portion = 1.0, ingredients = ingredients)
     }
 
     /** Rows not removed from this log-only customization. */
@@ -122,14 +121,15 @@ data class CustomizeSheetState(
      * math matches the confirm card's.
      */
     val totals: Totals
-        get() = CardEditor.totals(
-            ConfirmationCard(
-                message = "",
-                items = keptIngredients.map { it.item },
-                mealType = mealType,
-                portion = portion,
-            ),
-        )
+        get() =
+            CardEditor.totals(
+                ConfirmationCard(
+                    message = "",
+                    items = keptIngredients.map { it.item },
+                    mealType = mealType,
+                    portion = portion,
+                ),
+            )
 
     /**
      * The [SavedMealOverride] payload for [keptIngredients], keyed by each
@@ -144,35 +144,42 @@ data class CustomizeSheetState(
     fun withPortion(newPortion: Double): CustomizeSheetState = copy(portion = newPortion)
 
     /** Returns a copy with the row at stored [index]'s edited grams set to [qtyG]. */
-    fun withQty(index: Int, qtyG: Int): CustomizeSheetState = copy(
-        ingredients = ingredients.map {
-            if (it.index == index) it.copy(item = it.item.copy(targetQtyG = qtyG.toDouble())) else it
-        },
-    )
+    fun withQty(
+        index: Int,
+        qtyG: Int,
+    ): CustomizeSheetState =
+        copy(
+            ingredients =
+                ingredients.map {
+                    if (it.index == index) it.copy(item = it.item.copy(targetQtyG = qtyG.toDouble())) else it
+                },
+        )
 
     /** Returns a copy with the row at stored [index] marked removed (for this log only). */
-    fun withRemoved(index: Int): CustomizeSheetState = copy(
-        ingredients = ingredients.map { if (it.index == index) it.copy(removed = true) else it },
-    )
+    fun withRemoved(index: Int): CustomizeSheetState =
+        copy(
+            ingredients = ingredients.map { if (it.index == index) it.copy(removed = true) else it },
+        )
 }
 
 private fun SavedMealItem.toCustomizeIngredient(index: Int): CustomizeIngredient {
     val humanized = FoodNameHumanizer.humanize(foodName)
     return CustomizeIngredient(
         index = index,
-        item = CardItem(
-            foodName = foodName,
-            qtyG = qtyG,
-            targetQtyG = qtyG,
-            kcal = kcal,
-            proteinG = proteinG,
-            carbsG = carbsG,
-            fatG = fatG,
-            fiberG = fiberG,
-            fdcId = fdcId,
-            estimated = estimated,
-            extras = extras,
-        ),
+        item =
+            CardItem(
+                foodName = foodName,
+                qtyG = qtyG,
+                targetQtyG = qtyG,
+                kcal = kcal,
+                proteinG = proteinG,
+                carbsG = carbsG,
+                fatG = fatG,
+                fiberG = fiberG,
+                fdcId = fdcId,
+                estimated = estimated,
+                extras = extras,
+            ),
         humanizedName = humanized,
         rawNameIfDifferent = foodName.takeIf { it != humanized },
     )
@@ -181,7 +188,9 @@ private fun SavedMealItem.toCustomizeIngredient(index: Int): CustomizeIngredient
 /** Rendering state for [CustomizeSheet]. */
 internal sealed interface CustomizeUiState {
     data object Loading : CustomizeUiState
+
     data class Error(val kind: ErrorKind) : CustomizeUiState
+
     data class Loaded(val state: CustomizeSheetState, val submitting: Boolean) : CustomizeUiState
 }
 
@@ -196,75 +205,77 @@ internal sealed interface CustomizeUiState {
  * the same `id` nav arg from [SavedStateHandle].
  */
 @HiltViewModel
-class CustomizeSheetViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
-    private val myMealsRepository: MyMealsRepository,
-    private val clock: Clock,
-) : ViewModel() {
+class CustomizeSheetViewModel
+    @Inject
+    constructor(
+        savedStateHandle: SavedStateHandle,
+        private val myMealsRepository: MyMealsRepository,
+        private val clock: Clock,
+    ) : ViewModel() {
+        private val mealId: String =
+            checkNotNull(savedStateHandle.get<String>("id")) {
+                "CustomizeSheetViewModel requires an \"id\" nav arg"
+            }
 
-    private val mealId: String = checkNotNull(savedStateHandle.get<String>("id")) {
-        "CustomizeSheetViewModel requires an \"id\" nav arg"
-    }
+        private val _uiState = MutableStateFlow<CustomizeUiState>(CustomizeUiState.Loading)
+        internal val uiState: StateFlow<CustomizeUiState> = _uiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow<CustomizeUiState>(CustomizeUiState.Loading)
-    internal val uiState: StateFlow<CustomizeUiState> = _uiState.asStateFlow()
+        private val _logged = Channel<Unit>(Channel.BUFFERED)
+        val logged = _logged.receiveAsFlow()
 
-    private val _logged = Channel<Unit>(Channel.BUFFERED)
-    val logged = _logged.receiveAsFlow()
+        init {
+            load()
+        }
 
-    init {
-        load()
-    }
+        private fun load() {
+            viewModelScope.launch {
+                _uiState.value = CustomizeUiState.Loading
+                try {
+                    val detail = myMealsRepository.detail(mealId)
+                    val ingredients = detail.ingredients.mapIndexed { index, item -> item.toCustomizeIngredient(index) }
+                    val initial = CustomizeSheetState.initial(ingredients, defaultMealCategory(clock))
+                    _uiState.value = CustomizeUiState.Loaded(initial, submitting = false)
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: IOException) {
+                    _uiState.value = CustomizeUiState.Error(ErrorKind.Offline)
+                } catch (exc: Exception) {
+                    _uiState.value = CustomizeUiState.Error(ErrorKind.LoadFailed)
+                }
+            }
+        }
 
-    private fun load() {
-        viewModelScope.launch {
-            _uiState.value = CustomizeUiState.Loading
-            try {
-                val detail = myMealsRepository.detail(mealId)
-                val ingredients = detail.ingredients.mapIndexed { index, item -> item.toCustomizeIngredient(index) }
-                val initial = CustomizeSheetState.initial(ingredients, defaultMealCategory(clock))
-                _uiState.value = CustomizeUiState.Loaded(initial, submitting = false)
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: IOException) {
-                _uiState.value = CustomizeUiState.Error(ErrorKind.Offline)
-            } catch (exc: Exception) {
-                _uiState.value = CustomizeUiState.Error(ErrorKind.LoadFailed)
+        /** Re-runs [load] — used by the error state's retry button. */
+        fun retry() = load()
+
+        fun update(transform: (CustomizeSheetState) -> CustomizeSheetState) {
+            val current = _uiState.value
+            if (current is CustomizeUiState.Loaded && !current.submitting) {
+                _uiState.value = current.copy(state = transform(current.state))
+            }
+        }
+
+        fun submit() {
+            val current = _uiState.value as? CustomizeUiState.Loaded ?: return
+            if (current.submitting) return
+            _uiState.value = current.copy(submitting = true)
+            viewModelScope.launch {
+                try {
+                    myMealsRepository.logCustomized(
+                        id = mealId,
+                        mealType = current.state.mealType,
+                        overrides = current.state.overridePayload,
+                        portion = current.state.portion,
+                    )
+                    _logged.send(Unit)
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    _uiState.value = current.copy(submitting = false)
+                }
             }
         }
     }
-
-    /** Re-runs [load] — used by the error state's retry button. */
-    fun retry() = load()
-
-    fun update(transform: (CustomizeSheetState) -> CustomizeSheetState) {
-        val current = _uiState.value
-        if (current is CustomizeUiState.Loaded && !current.submitting) {
-            _uiState.value = current.copy(state = transform(current.state))
-        }
-    }
-
-    fun submit() {
-        val current = _uiState.value as? CustomizeUiState.Loaded ?: return
-        if (current.submitting) return
-        _uiState.value = current.copy(submitting = true)
-        viewModelScope.launch {
-            try {
-                myMealsRepository.logCustomized(
-                    id = mealId,
-                    mealType = current.state.mealType,
-                    overrides = current.state.overridePayload,
-                    portion = current.state.portion,
-                )
-                _logged.send(Unit)
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                _uiState.value = current.copy(submitting = false)
-            }
-        }
-    }
-}
 
 /**
  * The "Edit portions" customizer: meal-type selector, a per-ingredient list
@@ -311,15 +322,16 @@ fun CustomizeSheet(
                     onRetry = viewModel::retry,
                     modifier = Modifier.height(240.dp),
                 )
-            is CustomizeUiState.Loaded -> CustomizeSheetContent(
-                state = state.state,
-                submitting = state.submitting,
-                onMealTypeSelect = { viewModel.update { s -> s.withMealType(it) } },
-                onPortionSelect = { viewModel.update { s -> s.withPortion(it) } },
-                onQtyChange = { index, qty -> viewModel.update { s -> s.withQty(index, qty) } },
-                onRemove = { index -> viewModel.update { s -> s.withRemoved(index) } },
-                onConfirm = viewModel::submit,
-            )
+            is CustomizeUiState.Loaded ->
+                CustomizeSheetContent(
+                    state = state.state,
+                    submitting = state.submitting,
+                    onMealTypeSelect = { viewModel.update { s -> s.withMealType(it) } },
+                    onPortionSelect = { viewModel.update { s -> s.withPortion(it) } },
+                    onQtyChange = { index, qty -> viewModel.update { s -> s.withQty(index, qty) } },
+                    onRemove = { index -> viewModel.update { s -> s.withRemoved(index) } },
+                    onConfirm = viewModel::submit,
+                )
         }
     }
 }
@@ -335,18 +347,20 @@ internal fun CustomizeSheetContent(
     onConfirm: () -> Unit,
 ) {
     val colors = MealsyTheme.colors
-    val mealTypeLabels = mapOf(
-        "breakfast" to stringResource(app.mealsy.android.R.string.home_meal_breakfast),
-        "lunch" to stringResource(app.mealsy.android.R.string.home_meal_lunch),
-        "dinner" to stringResource(app.mealsy.android.R.string.home_meal_dinner),
-        "snack" to stringResource(app.mealsy.android.R.string.home_meal_snack),
-    )
-    val portionLabels = mapOf(
-        0.5 to stringResource(R.string.customize_sheet_portion_half),
-        1.0 to stringResource(R.string.customize_sheet_portion_one),
-        1.5 to stringResource(R.string.customize_sheet_portion_one_half),
-        2.0 to stringResource(R.string.customize_sheet_portion_two),
-    )
+    val mealTypeLabels =
+        mapOf(
+            "breakfast" to stringResource(app.mealsy.android.R.string.home_meal_breakfast),
+            "lunch" to stringResource(app.mealsy.android.R.string.home_meal_lunch),
+            "dinner" to stringResource(app.mealsy.android.R.string.home_meal_dinner),
+            "snack" to stringResource(app.mealsy.android.R.string.home_meal_snack),
+        )
+    val portionLabels =
+        mapOf(
+            0.5 to stringResource(R.string.customize_sheet_portion_half),
+            1.0 to stringResource(R.string.customize_sheet_portion_one),
+            1.5 to stringResource(R.string.customize_sheet_portion_one_half),
+            2.0 to stringResource(R.string.customize_sheet_portion_two),
+        )
     val totals = state.totals
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
@@ -373,33 +387,34 @@ internal fun CustomizeSheetContent(
         Spacer(modifier = Modifier.height(4.dp))
 
         TotalsStrip(
-            entries = listOf(
-                TotalsStripEntry(
-                    stringResource(app.mealsy.android.R.string.confirm_card_totals_kcal),
-                    totals.kcal.roundToInt().toString(),
-                    totals.kcal == 0.0,
+            entries =
+                listOf(
+                    TotalsStripEntry(
+                        stringResource(app.mealsy.android.R.string.confirm_card_totals_kcal),
+                        totals.kcal.roundToInt().toString(),
+                        totals.kcal == 0.0,
+                    ),
+                    TotalsStripEntry(
+                        stringResource(app.mealsy.android.R.string.confirm_card_totals_protein),
+                        "${totals.proteinG.roundToInt()}g",
+                        totals.proteinG == 0.0,
+                    ),
+                    TotalsStripEntry(
+                        stringResource(app.mealsy.android.R.string.confirm_card_totals_carbs),
+                        "${totals.carbsG.roundToInt()}g",
+                        totals.carbsG == 0.0,
+                    ),
+                    TotalsStripEntry(
+                        stringResource(app.mealsy.android.R.string.confirm_card_totals_fat),
+                        "${totals.fatG.roundToInt()}g",
+                        totals.fatG == 0.0,
+                    ),
+                    TotalsStripEntry(
+                        stringResource(app.mealsy.android.R.string.confirm_card_totals_fiber),
+                        "${totals.fiberG.roundToInt()}g",
+                        totals.fiberG == 0.0,
+                    ),
                 ),
-                TotalsStripEntry(
-                    stringResource(app.mealsy.android.R.string.confirm_card_totals_protein),
-                    "${totals.proteinG.roundToInt()}g",
-                    totals.proteinG == 0.0,
-                ),
-                TotalsStripEntry(
-                    stringResource(app.mealsy.android.R.string.confirm_card_totals_carbs),
-                    "${totals.carbsG.roundToInt()}g",
-                    totals.carbsG == 0.0,
-                ),
-                TotalsStripEntry(
-                    stringResource(app.mealsy.android.R.string.confirm_card_totals_fat),
-                    "${totals.fatG.roundToInt()}g",
-                    totals.fatG == 0.0,
-                ),
-                TotalsStripEntry(
-                    stringResource(app.mealsy.android.R.string.confirm_card_totals_fiber),
-                    "${totals.fiberG.roundToInt()}g",
-                    totals.fiberG == 0.0,
-                ),
-            ),
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -429,7 +444,11 @@ internal fun CustomizeSheetContent(
 }
 
 @Composable
-private fun IngredientRow(ingredient: CustomizeIngredient, onQtyChange: (Int) -> Unit, onRemove: () -> Unit) {
+private fun IngredientRow(
+    ingredient: CustomizeIngredient,
+    onQtyChange: (Int) -> Unit,
+    onRemove: () -> Unit,
+) {
     val colors = MealsyTheme.colors
     val removeDescription = stringResource(R.string.customize_sheet_remove_ingredient, ingredient.humanizedName)
     val stepperDescription = stringResource(R.string.customize_sheet_stepper_description, ingredient.qtyG)

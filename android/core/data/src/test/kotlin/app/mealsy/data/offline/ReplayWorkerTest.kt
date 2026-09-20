@@ -10,6 +10,7 @@ import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.repo.TodayRefreshSignal
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
@@ -23,14 +24,12 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import retrofit2.Retrofit
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 /**
  * [ReplayWorker] against a real [MockWebServer] response and a [FakePendingLogDao]
@@ -38,14 +37,21 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
  */
 @RunWith(RobolectricTestRunner::class)
 class ReplayWorkerTest {
-
     private lateinit var server: MockWebServer
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     /** Records every [ReplayFailureReporter.report] call for assertions. */
     private class RecordingFailureReporter : ReplayFailureReporter {
         val calls = mutableListOf<Pair<String, String>>()
-        override fun report(clientRequestId: String, reason: String) {
+
+        override fun report(
+            clientRequestId: String,
+            reason: String,
+        ) {
             calls += clientRequestId to reason
         }
     }
@@ -69,13 +75,16 @@ class ReplayWorkerTest {
     /** A [DroppedLogStore] whose calls always throw, for the best-effort-wrapping test. */
     private class ThrowingDroppedLogStore : DroppedLogStore {
         override suspend fun markDropped(): Nothing = error("DataStore unavailable")
+
         override suspend fun consumeDropped(): Int = error("DataStore unavailable")
     }
 
     /** A [ReplayFailureReporter] that always throws, for the same test. */
     private class ThrowingFailureReporter : ReplayFailureReporter {
-        override fun report(clientRequestId: String, reason: String): Nothing =
-            error("Crashlytics not configured")
+        override fun report(
+            clientRequestId: String,
+            reason: String,
+        ): Nothing = error("Crashlytics not configured")
     }
 
     private lateinit var failureReporter: RecordingFailureReporter
@@ -95,15 +104,17 @@ class ReplayWorkerTest {
     }
 
     private fun buildApi(): MealsyApi {
-        val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
-            .build()
+        val client =
+            OkHttpClient.Builder()
+                .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                .build()
         val contentType = "application/json".toMediaType()
-        val retrofit = Retrofit.Builder()
-            .baseUrl(server.url("/"))
-            .client(client)
-            .addConverterFactory(json.asConverterFactory(contentType))
-            .build()
+        val retrofit =
+            Retrofit.Builder()
+                .baseUrl(server.url("/"))
+                .client(client)
+                .addConverterFactory(json.asConverterFactory(contentType))
+                .build()
         return retrofit.create(MealsyApi::class.java)
     }
 
@@ -115,42 +126,61 @@ class ReplayWorkerTest {
         todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
     ): ReplayWorker {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val worker = TestListenableWorkerBuilder<ReplayWorker>(context)
-            .setWorkerFactory(
-                object : WorkerFactory() {
-                    override fun createWorker(
-                        appContext: Context,
-                        workerClassName: String,
-                        workerParameters: WorkerParameters,
-                    ): ListenableWorker = ReplayWorker(
-                        appContext, workerParameters, dao, api, json, reporter, store, todayRefreshSignal,
-                    )
-                },
-            )
-            .build()
+        val worker =
+            TestListenableWorkerBuilder<ReplayWorker>(context)
+                .setWorkerFactory(
+                    object : WorkerFactory() {
+                        override fun createWorker(
+                            appContext: Context,
+                            workerClassName: String,
+                            workerParameters: WorkerParameters,
+                        ): ListenableWorker =
+                            ReplayWorker(
+                                appContext,
+                                workerParameters,
+                                dao,
+                                api,
+                                json,
+                                reporter,
+                                store,
+                                todayRefreshSignal,
+                            )
+                    },
+                )
+                .build()
         return worker as ReplayWorker
     }
 
-    private fun sampleRow(clientRequestId: String = "req-1"): PendingLogEntity = PendingLogEntity(
-        clientRequestId = clientRequestId,
-        payloadJson = json.encodeToString(
-            app.mealsy.data.api.LogItemsRequest.serializer(),
-            app.mealsy.data.api.LogItemsRequest(
-                mealType = "breakfast",
-                portion = 1.0,
-                items = listOf(
-                    app.mealsy.data.api.ItemDto(
-                        foodName = "egg", qtyG = 100.0, kcal = 155.0, proteinG = 13.0,
-                        carbsG = 1.1, fatG = 11.0, fiberG = 0.0, fdcId = 12345,
+    private fun sampleRow(clientRequestId: String = "req-1"): PendingLogEntity =
+        PendingLogEntity(
+            clientRequestId = clientRequestId,
+            payloadJson =
+                json.encodeToString(
+                    app.mealsy.data.api.LogItemsRequest.serializer(),
+                    app.mealsy.data.api.LogItemsRequest(
+                        mealType = "breakfast",
+                        portion = 1.0,
+                        items =
+                            listOf(
+                                app.mealsy.data.api.ItemDto(
+                                    foodName = "egg",
+                                    qtyG = 100.0,
+                                    kcal = 155.0,
+                                    proteinG = 13.0,
+                                    carbsG = 1.1,
+                                    fatG = 11.0,
+                                    fiberG = 0.0,
+                                    fdcId = 12345,
+                                ),
+                            ),
+                        clientRequestId = clientRequestId,
                     ),
                 ),
-                clientRequestId = clientRequestId,
-            ),
-        ),
-        createdAt = System.currentTimeMillis(),
-    )
+            createdAt = System.currentTimeMillis(),
+        )
 
     @Test
+    @Suppress("ktlint:standard:max-line-length")
     fun `success deletes row`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -163,10 +193,12 @@ class ReplayWorkerTest {
         // Subscribe before startWork() so the buffered emission (extraBufferCapacity=1,
         // no replay) isn't dropped for lack of a collector — mirrors a screen already
         // observing TodayRefreshSignal.events when a log completes in production.
+
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-        val emitted = GlobalScope.async(Dispatchers.Default) {
-            withTimeoutOrNull(2_000) { signal.events.first() }
-        }
+        val emitted =
+            GlobalScope.async(Dispatchers.Default) {
+                withTimeoutOrNull(2_000) { signal.events.first() }
+            }
         Thread.sleep(50) // let the collector above subscribe before the emit fires
 
         val result = worker.startWork().get()
@@ -177,6 +209,7 @@ class ReplayWorkerTest {
     }
 
     @Test
+    @Suppress("ktlint:standard:max-line-length")
     fun `deduplicated response deletes row`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -231,9 +264,10 @@ class ReplayWorkerTest {
 
     @Test
     fun `row past max attempts is given up on without another network call`() {
-        val dao = FakePendingLogDao().apply {
-            seed(sampleRow().copy(attempts = ReplayWorker.MAX_ATTEMPTS))
-        }
+        val dao =
+            FakePendingLogDao().apply {
+                seed(sampleRow().copy(attempts = ReplayWorker.MAX_ATTEMPTS))
+            }
         val worker = buildWorker(dao, buildApi())
 
         val result = worker.startWork().get()
@@ -245,9 +279,10 @@ class ReplayWorkerTest {
 
     @Test
     fun `giving up past max attempts reports the failure and marks a dropped log`() {
-        val dao = FakePendingLogDao().apply {
-            seed(sampleRow("req-giveup").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
-        }
+        val dao =
+            FakePendingLogDao().apply {
+                seed(sampleRow("req-giveup").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
+            }
         val worker = buildWorker(dao, buildApi())
 
         worker.startWork().get()
@@ -261,13 +296,14 @@ class ReplayWorkerTest {
 
     @Test
     fun `row older than max age is given up on without another network call`() {
-        val dao = FakePendingLogDao().apply {
-            seed(
-                sampleRow().copy(
-                    createdAt = System.currentTimeMillis() - ReplayWorker.MAX_AGE_MS - 1_000,
-                ),
-            )
-        }
+        val dao =
+            FakePendingLogDao().apply {
+                seed(
+                    sampleRow().copy(
+                        createdAt = System.currentTimeMillis() - ReplayWorker.MAX_AGE_MS - 1_000,
+                    ),
+                )
+            }
         val worker = buildWorker(dao, buildApi())
 
         val result = worker.startWork().get()
@@ -279,13 +315,14 @@ class ReplayWorkerTest {
 
     @Test
     fun `giving up on age (not attempts) reports the age-specific reason`() {
-        val dao = FakePendingLogDao().apply {
-            seed(
-                sampleRow("req-old").copy(
-                    createdAt = System.currentTimeMillis() - ReplayWorker.MAX_AGE_MS - 1_000,
-                ),
-            )
-        }
+        val dao =
+            FakePendingLogDao().apply {
+                seed(
+                    sampleRow("req-old").copy(
+                        createdAt = System.currentTimeMillis() - ReplayWorker.MAX_AGE_MS - 1_000,
+                    ),
+                )
+            }
         val worker = buildWorker(dao, buildApi())
 
         worker.startWork().get()
@@ -296,9 +333,10 @@ class ReplayWorkerTest {
 
     @Test
     fun `a reporter or store failure does not prevent deleting the row`() {
-        val dao = FakePendingLogDao().apply {
-            seed(sampleRow("req-throws").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
-        }
+        val dao =
+            FakePendingLogDao().apply {
+                seed(sampleRow("req-throws").copy(attempts = ReplayWorker.MAX_ATTEMPTS))
+            }
         val worker = buildWorker(dao, buildApi(), reporter = ThrowingFailureReporter())
 
         val result = worker.startWork().get()
@@ -320,6 +358,7 @@ class ReplayWorkerTest {
     }
 
     @Test
+    @Suppress("ktlint:standard:max-line-length")
     fun `a successfully replayed row never reports a failure or marks a dropped log`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -351,9 +390,10 @@ class ReplayWorkerTest {
         private var getAllCalls = 0
 
         override suspend fun insert(entity: PendingLogEntity) = underlying.insert(entity)
+
         override suspend fun delete(clientRequestId: String) = underlying.delete(clientRequestId)
-        override suspend fun incrementAttempts(clientRequestId: String) =
-            underlying.incrementAttempts(clientRequestId)
+
+        override suspend fun incrementAttempts(clientRequestId: String) = underlying.incrementAttempts(clientRequestId)
 
         override suspend fun getAll(): List<PendingLogEntity> {
             getAllCalls++
@@ -364,6 +404,7 @@ class ReplayWorkerTest {
     }
 
     @Test
+    @Suppress("ktlint:standard:max-line-length")
     fun `row queued mid-run (past the first getAll) is still processed in the same run`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -386,6 +427,5 @@ class ReplayWorkerTest {
         assertEquals(2, server.requestCount)
     }
 
-    private fun runBlockingGetAll(dao: FakePendingLogDao): List<PendingLogEntity> =
-        kotlinx.coroutines.runBlocking { dao.getAll() }
+    private fun runBlockingGetAll(dao: FakePendingLogDao): List<PendingLogEntity> = kotlinx.coroutines.runBlocking { dao.getAll() }
 }

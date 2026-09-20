@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -38,74 +37,77 @@ fun MealsyTheme(
 ) {
     val mealsyColors = if (darkTheme) darkMealsyColors() else lightMealsyColors()
 
-    val colorScheme = if (darkTheme) {
-        darkColorScheme(
-            primary = mealsyColors.ink,
-            onPrimary = mealsyColors.canvas,
-            primaryContainer = mealsyColors.surface,
-            onPrimaryContainer = mealsyColors.ink,
-            secondary = mealsyColors.olive,
-            onSecondary = mealsyColors.oliveText,
-            secondaryContainer = mealsyColors.oliveTrack,
-            onSecondaryContainer = mealsyColors.oliveText,
-            background = mealsyColors.canvas,
-            onBackground = mealsyColors.ink,
-            surface = mealsyColors.surface,
-            onSurface = mealsyColors.ink,
-            surfaceVariant = mealsyColors.surface,
-            onSurfaceVariant = mealsyColors.muted,
-            surfaceContainer = mealsyColors.surface,
-            surfaceContainerHigh = mealsyColors.surface,
-            surfaceContainerLow = mealsyColors.surface,
-            outline = mealsyColors.hairline,
-            outlineVariant = mealsyColors.divider,
-            error = mealsyColors.terracotta,
-            onError = mealsyColors.terracottaText,
-            scrim = mealsyColors.ink.copy(alpha = 0.4f),
-        )
-    } else {
-        lightColorScheme(
-            primary = mealsyColors.ink,
-            onPrimary = mealsyColors.canvas,
-            primaryContainer = mealsyColors.surface,
-            onPrimaryContainer = mealsyColors.ink,
-            secondary = mealsyColors.olive,
-            onSecondary = mealsyColors.oliveText,
-            secondaryContainer = mealsyColors.oliveTrack,
-            onSecondaryContainer = mealsyColors.oliveText,
-            background = mealsyColors.canvas,
-            onBackground = mealsyColors.ink,
-            surface = mealsyColors.surface,
-            onSurface = mealsyColors.ink,
-            surfaceVariant = mealsyColors.surface,
-            onSurfaceVariant = mealsyColors.muted,
-            surfaceContainer = mealsyColors.surface,
-            surfaceContainerHigh = mealsyColors.surface,
-            surfaceContainerLow = mealsyColors.surface,
-            outline = mealsyColors.hairline,
-            outlineVariant = mealsyColors.divider,
-            error = mealsyColors.terracotta,
-            onError = mealsyColors.terracottaText,
-            scrim = mealsyColors.ink.copy(alpha = 0.4f),
-        )
-    }
+    val colorScheme =
+        if (darkTheme) {
+            darkColorScheme(
+                primary = mealsyColors.ink,
+                onPrimary = mealsyColors.canvas,
+                primaryContainer = mealsyColors.surface,
+                onPrimaryContainer = mealsyColors.ink,
+                secondary = mealsyColors.olive,
+                onSecondary = mealsyColors.oliveText,
+                secondaryContainer = mealsyColors.oliveTrack,
+                onSecondaryContainer = mealsyColors.oliveText,
+                background = mealsyColors.canvas,
+                onBackground = mealsyColors.ink,
+                surface = mealsyColors.surface,
+                onSurface = mealsyColors.ink,
+                surfaceVariant = mealsyColors.surface,
+                onSurfaceVariant = mealsyColors.muted,
+                surfaceContainer = mealsyColors.surface,
+                surfaceContainerHigh = mealsyColors.surface,
+                surfaceContainerLow = mealsyColors.surface,
+                outline = mealsyColors.hairline,
+                outlineVariant = mealsyColors.divider,
+                error = mealsyColors.terracotta,
+                onError = mealsyColors.terracottaText,
+                scrim = mealsyColors.ink.copy(alpha = 0.4f),
+            )
+        } else {
+            lightColorScheme(
+                primary = mealsyColors.ink,
+                onPrimary = mealsyColors.canvas,
+                primaryContainer = mealsyColors.surface,
+                onPrimaryContainer = mealsyColors.ink,
+                secondary = mealsyColors.olive,
+                onSecondary = mealsyColors.oliveText,
+                secondaryContainer = mealsyColors.oliveTrack,
+                onSecondaryContainer = mealsyColors.oliveText,
+                background = mealsyColors.canvas,
+                onBackground = mealsyColors.ink,
+                surface = mealsyColors.surface,
+                onSurface = mealsyColors.ink,
+                surfaceVariant = mealsyColors.surface,
+                onSurfaceVariant = mealsyColors.muted,
+                surfaceContainer = mealsyColors.surface,
+                surfaceContainerHigh = mealsyColors.surface,
+                surfaceContainerLow = mealsyColors.surface,
+                outline = mealsyColors.hairline,
+                outlineVariant = mealsyColors.divider,
+                error = mealsyColors.terracotta,
+                onError = mealsyColors.terracottaText,
+                scrim = mealsyColors.ink.copy(alpha = 0.4f),
+            )
+        }
 
-    val typography = Typography(
-        displayLarge = MealsyType.hero,
-        displayMedium = MealsyType.display,
-        headlineMedium = MealsyType.screenTitle,
-        titleMedium = MealsyType.section,
-        bodyMedium = MealsyType.body,
-        labelMedium = MealsyType.label,
-        labelSmall = MealsyType.eyebrow,
-        labelLarge = MealsyType.button,
-    )
+    val typography =
+        Typography(
+            displayLarge = MealsyType.hero,
+            displayMedium = MealsyType.display,
+            headlineMedium = MealsyType.screenTitle,
+            titleMedium = MealsyType.section,
+            bodyMedium = MealsyType.body,
+            labelMedium = MealsyType.label,
+            labelSmall = MealsyType.eyebrow,
+            labelLarge = MealsyType.button,
+        )
 
-    val shapes = androidx.compose.material3.Shapes(
-        small = MealsyShapes.strip,
-        medium = MealsyShapes.card,
-        large = MealsyShapes.card,
-    )
+    val shapes =
+        androidx.compose.material3.Shapes(
+            small = MealsyShapes.strip,
+            medium = MealsyShapes.card,
+            large = MealsyShapes.card,
+        )
 
     val view = LocalView.current
     if (!view.isInEditMode) {

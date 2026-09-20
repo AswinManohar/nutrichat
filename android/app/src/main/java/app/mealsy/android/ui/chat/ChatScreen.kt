@@ -71,10 +71,10 @@ import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.domain.PastelTone
+import kotlinx.coroutines.delay
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 /**
  * The chat screen: header, inline transcript (including the confirmation
@@ -132,15 +132,17 @@ fun ChatScreen(
     // first time the user reaches the chat screen (the only place FCM
     // notifications are relevant), rather than at app startup.
     val context = LocalContext.current
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { /* no-op: MealsyMessagingService already guards notify() against denial */ }
+    val notificationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { /* no-op: MealsyMessagingService already guards notify() against denial */ }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
+            val granted =
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
@@ -150,22 +152,25 @@ fun ChatScreen(
     // Speech recognition is optional hardware/software — hide the mic
     // entirely when no recognizer is registered, rather than showing a
     // button that always fails.
-    val recognizerAvailable = remember {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        context.packageManager.queryIntentActivities(intent, 0).isNotEmpty()
-    }
-    val speechLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val text = result.data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-            if (!text.isNullOrBlank()) {
-                input = if (input.isEmpty()) text else "$input $text"
+    val recognizerAvailable =
+        remember {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            context.packageManager.queryIntentActivities(intent, 0).isNotEmpty()
+        }
+    val speechLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                val text =
+                    result.data
+                        ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                        ?.firstOrNull()
+                if (!text.isNullOrBlank()) {
+                    input = if (input.isEmpty()) text else "$input $text"
+                }
             }
         }
-    }
 
     if (showCameraSheet) {
         CameraSheet(
@@ -197,10 +202,11 @@ fun ChatScreen(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 18.dp,
-                        vertical = 16.dp,
-                    ),
+                    contentPadding =
+                        androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 18.dp,
+                            vertical = 16.dp,
+                        ),
                 ) {
                     items(messages, key = { it.id }) { msg ->
                         val isLastOfRun = isLastOfAuthorRun(messages, msg)
@@ -240,12 +246,13 @@ fun ChatScreen(
                 focusRequester = inputFocusRequester,
                 recognizerAvailable = recognizerAvailable,
                 onMicClick = {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(
-                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                        )
-                    }
+                    val intent =
+                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                            )
+                        }
                     speechLauncher.launch(intent)
                 },
                 onCameraClick = { showCameraSheet = true },
@@ -277,7 +284,10 @@ fun ChatScreen(
 }
 
 /** True when [msg] is the last message in its consecutive run of same-author messages. */
-private fun isLastOfAuthorRun(messages: List<ChatMsg>, msg: ChatMsg): Boolean {
+private fun isLastOfAuthorRun(
+    messages: List<ChatMsg>,
+    msg: ChatMsg,
+): Boolean {
     val index = messages.indexOfFirst { it.id == msg.id }
     if (index == messages.lastIndex) return true
     val next = messages[index + 1]
@@ -285,13 +295,14 @@ private fun isLastOfAuthorRun(messages: List<ChatMsg>, msg: ChatMsg): Boolean {
 }
 
 /** Groups messages by "side" for the purposes of run-based timestamp placement. */
-private fun authorKeyOf(msg: ChatMsg): String = when (msg) {
-    is ChatMsg.User -> "user"
-    is ChatMsg.Photo -> "user"
-    is ChatMsg.Coach -> "coach"
-    is ChatMsg.UpgradeNotice -> "coach"
-    is ChatMsg.Card -> "coach"
-}
+private fun authorKeyOf(msg: ChatMsg): String =
+    when (msg) {
+        is ChatMsg.User -> "user"
+        is ChatMsg.Photo -> "user"
+        is ChatMsg.Coach -> "coach"
+        is ChatMsg.UpgradeNotice -> "coach"
+        is ChatMsg.Card -> "coach"
+    }
 
 private fun formatTimestamp(epochMillis: Long): String {
     val formatter = DateTimeFormatter.ofPattern("hh:mm a", Locale.getDefault())
@@ -306,9 +317,10 @@ private fun ChatHeader() {
     val colors = MealsyTheme.colors
     Column {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 60.dp, bottom = 14.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 60.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Olli(size = OlliSize.Header, bob = true)
@@ -327,10 +339,11 @@ private fun ChatHeader() {
             }
         }
         androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.hairline),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.hairline),
         )
     }
 }
@@ -343,14 +356,18 @@ private fun ChatHeader() {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun EmptyState(modifier: Modifier = Modifier, onSuggestionTapped: (String) -> Unit) {
+internal fun EmptyState(
+    modifier: Modifier = Modifier,
+    onSuggestionTapped: (String) -> Unit,
+) {
     val colors = MealsyTheme.colors
-    val suggestions = listOf(
-        stringResource(R.string.chat_suggestion_eggs),
-        stringResource(R.string.chat_suggestion_salad),
-        stringResource(R.string.chat_suggestion_protein_question),
-        stringResource(R.string.chat_suggestion_dinner_question),
-    )
+    val suggestions =
+        listOf(
+            stringResource(R.string.chat_suggestion_eggs),
+            stringResource(R.string.chat_suggestion_salad),
+            stringResource(R.string.chat_suggestion_protein_question),
+            stringResource(R.string.chat_suggestion_dinner_question),
+        )
     Column(
         modifier = modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -378,7 +395,6 @@ internal fun EmptyState(modifier: Modifier = Modifier, onSuggestionTapped: (Stri
     }
 }
 
-/** Renders one transcript row, dispatching on [ChatMsg] subtype. */
 /**
  * Renders one transcript entry. `internal` (rather than `private`) so
  * [app.mealsy.android.ui.chat.ChatScreenGoldenTest] can capture individual
@@ -406,118 +422,141 @@ internal fun ChatMessageRow(
     when (msg) {
         is ChatMsg.User -> ChatBubble(text = msg.text, author = ChatBubbleAuthor.User, timestamp = timestamp)
 
-        is ChatMsg.Photo -> Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-            Image(
-                bitmap = msg.bitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.chat_photo_description),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .widthIn(max = 220.dp)
-                    .clip(RoundedCornerShape(18.dp)),
-            )
-            if (timestamp != null) {
-                Text(
-                    text = timestamp,
-                    style = MealsyType.label.copy(fontSize = 11.sp),
-                    color = colors.inactive,
-                    modifier = Modifier.padding(top = 4.dp),
+        is ChatMsg.Photo ->
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                Image(
+                    bitmap = msg.bitmap.asImageBitmap(),
+                    contentDescription = stringResource(R.string.chat_photo_description),
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .widthIn(max = 220.dp)
+                            .clip(RoundedCornerShape(18.dp)),
                 )
-            }
-        }
-
-        is ChatMsg.Coach -> Column(modifier = Modifier.fillMaxWidth()) {
-            CoachMarkdownBubble(text = msg.text, tags = msg.tags, timestamp = timestamp)
-            if (msg.responseId != null) {
-                Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    FeedbackGlyph(
-                        glyph = "↑",
-                        selected = msg.feedback == 1,
-                        contentDescription = stringResource(R.string.chat_thumb_up_description),
-                        onClick = { onFeedback(msg.id, 1) },
-                    )
-                    FeedbackGlyph(
-                        glyph = "↓",
-                        selected = msg.feedback == -1,
-                        contentDescription = stringResource(R.string.chat_thumb_down_description),
-                        onClick = { onFeedback(msg.id, -1) },
+                if (timestamp != null) {
+                    Text(
+                        text = timestamp,
+                        style = MealsyType.label.copy(fontSize = 11.sp),
+                        color = colors.inactive,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
-        }
 
-        is ChatMsg.UpgradeNotice -> Surface(
-            color = colors.surface,
-            shape = RoundedCornerShape(18.dp),
-        ) {
-            Text(
-                text = msg.text,
-                style = MealsyType.body,
-                color = colors.ink,
-                modifier = Modifier.padding(16.dp),
-            )
-        }
+        is ChatMsg.Coach ->
+            Column(modifier = Modifier.fillMaxWidth()) {
+                CoachMarkdownBubble(text = msg.text, tags = msg.tags, timestamp = timestamp)
+                if (msg.responseId != null) {
+                    Row(
+                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        FeedbackGlyph(
+                            glyph = "↑",
+                            selected = msg.feedback == 1,
+                            contentDescription = stringResource(R.string.chat_thumb_up_description),
+                            onClick = { onFeedback(msg.id, 1) },
+                        )
+                        FeedbackGlyph(
+                            glyph = "↓",
+                            selected = msg.feedback == -1,
+                            contentDescription = stringResource(R.string.chat_thumb_down_description),
+                            onClick = { onFeedback(msg.id, -1) },
+                        )
+                    }
+                }
+            }
 
-        is ChatMsg.Card -> when (msg.state) {
-            is CardState.Active, is CardState.Swapping -> {
-                // Alias the row's callback lambdas under distinct names before
-                // building the anonymous ConfirmCardCallbacks below — inside
-                // that object's member bodies, an unqualified name matching a
-                // member (e.g. `onRemoveItem`) resolves to the member itself
-                // (infinite self-recursion), not the captured outer lambda.
-                val doSetMealType = onSetMealType
-                val doSetPortion = onSetPortion
-                val doEditQty = onEditQty
-                val doRemoveItem = onRemoveItem
-                val doSwapCandidate = onSwapCandidate
-                val doDecompose = onDecompose
-                val doCombine = onCombine
-                val doConfirm = onConfirm
-                val doCancel = onCancel
-                val doSaveAsMyMeal = onSaveAsMyMeal
-                ConfirmCardView(
-                    card = msg.card,
-                    callbacks = object : ConfirmCardCallbacks {
-                        override fun onMealTypeChange(mealType: String) = doSetMealType(mealType)
-                        override fun onPortionChange(portion: Double) = doSetPortion(portion)
-                        override fun onQtyChange(index: Int, newQtyG: Double) = doEditQty(index, newQtyG)
-                        override fun onRemoveItem(index: Int) = doRemoveItem(index)
-                        override fun onUndoRemove() = Unit
-                        override fun onSwapCandidate(index: Int, newName: String) =
-                            doSwapCandidate(index, newName)
-                        override fun onDecompose() = doDecompose()
-                        override fun onCombine() = doCombine()
-                        override fun onConfirm() = doConfirm()
-                        override fun onCancel() = doCancel()
-                        override fun onSaveAsMyMeal(name: String) = doSaveAsMyMeal(name)
-                    },
-                    busy = sending,
-                    swapping = msg.state is CardState.Swapping,
-                    savingMeal = savingMeal,
-                    timestamp = timestamp,
+        is ChatMsg.UpgradeNotice ->
+            Surface(
+                color = colors.surface,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Text(
+                    text = msg.text,
+                    style = MealsyType.body,
+                    color = colors.ink,
+                    modifier = Modifier.padding(16.dp),
                 )
             }
-            is CardState.Logged -> {
-                val state = msg.state as CardState.Logged
-                ChatBubble(
-                    text = stringResource(R.string.chat_card_logged, state.label, state.kcal),
-                    author = ChatBubbleAuthor.Coach,
-                    timestamp = timestamp,
-                )
+
+        is ChatMsg.Card ->
+            when (msg.state) {
+                is CardState.Active, is CardState.Swapping -> {
+                    // Alias the row's callback lambdas under distinct names before
+                    // building the anonymous ConfirmCardCallbacks below — inside
+                    // that object's member bodies, an unqualified name matching a
+                    // member (e.g. `onRemoveItem`) resolves to the member itself
+                    // (infinite self-recursion), not the captured outer lambda.
+                    val doSetMealType = onSetMealType
+                    val doSetPortion = onSetPortion
+                    val doEditQty = onEditQty
+                    val doRemoveItem = onRemoveItem
+                    val doSwapCandidate = onSwapCandidate
+                    val doDecompose = onDecompose
+                    val doCombine = onCombine
+                    val doConfirm = onConfirm
+                    val doCancel = onCancel
+                    val doSaveAsMyMeal = onSaveAsMyMeal
+                    ConfirmCardView(
+                        card = msg.card,
+                        callbacks =
+                            object : ConfirmCardCallbacks {
+                                override fun onMealTypeChange(mealType: String) = doSetMealType(mealType)
+
+                                override fun onPortionChange(portion: Double) = doSetPortion(portion)
+
+                                override fun onQtyChange(
+                                    index: Int,
+                                    newQtyG: Double,
+                                ) = doEditQty(index, newQtyG)
+
+                                override fun onRemoveItem(index: Int) = doRemoveItem(index)
+
+                                override fun onUndoRemove() = Unit
+
+                                override fun onSwapCandidate(
+                                    index: Int,
+                                    newName: String,
+                                ) = doSwapCandidate(index, newName)
+
+                                override fun onDecompose() = doDecompose()
+
+                                override fun onCombine() = doCombine()
+
+                                override fun onConfirm() = doConfirm()
+
+                                override fun onCancel() = doCancel()
+
+                                override fun onSaveAsMyMeal(name: String) = doSaveAsMyMeal(name)
+                            },
+                        busy = sending,
+                        swapping = msg.state is CardState.Swapping,
+                        savingMeal = savingMeal,
+                        timestamp = timestamp,
+                    )
+                }
+                is CardState.Logged -> {
+                    val state = msg.state as CardState.Logged
+                    ChatBubble(
+                        text = stringResource(R.string.chat_card_logged, state.label, state.kcal),
+                        author = ChatBubbleAuthor.Coach,
+                        timestamp = timestamp,
+                    )
+                }
+                is CardState.NotLogged ->
+                    CollapsedCardLine(
+                        text = stringResource(R.string.chat_card_not_logged),
+                        strikethrough = true,
+                        timestamp = timestamp,
+                    )
+                is CardState.Discarded ->
+                    CollapsedCardLine(
+                        text = stringResource(R.string.chat_card_discarded),
+                        strikethrough = false,
+                        timestamp = timestamp,
+                    )
             }
-            is CardState.NotLogged -> CollapsedCardLine(
-                text = stringResource(R.string.chat_card_not_logged),
-                strikethrough = true,
-                timestamp = timestamp,
-            )
-            is CardState.Discarded -> CollapsedCardLine(
-                text = stringResource(R.string.chat_card_discarded),
-                strikethrough = false,
-                timestamp = timestamp,
-            )
-        }
     }
 }
 
@@ -538,18 +577,19 @@ private fun CoachMarkdownBubble(
     val colors = MealsyTheme.colors
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth(0.82f)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
-                        bottomEnd = 18.dp,
-                        bottomStart = 6.dp,
-                    ),
-                )
-                .background(colors.surface)
-                .padding(vertical = 11.dp, horizontal = 14.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth(0.82f)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 18.dp,
+                            topEnd = 18.dp,
+                            bottomEnd = 18.dp,
+                            bottomStart = 6.dp,
+                        ),
+                    )
+                    .background(colors.surface)
+                    .padding(vertical = 11.dp, horizontal = 14.dp),
         ) {
             MarkdownText(markdown = text, color = colors.ink)
             if (tags.isNotEmpty()) {
@@ -581,14 +621,19 @@ private fun CoachMarkdownBubble(
  * since it carries a real coach reply and macro tags.
  */
 @Composable
-private fun CollapsedCardLine(text: String, strikethrough: Boolean, timestamp: String?) {
+private fun CollapsedCardLine(
+    text: String,
+    strikethrough: Boolean,
+    timestamp: String?,
+) {
     val colors = MealsyTheme.colors
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         Text(
             text = text,
-            style = MealsyType.body.copy(
-                textDecoration = if (strikethrough) TextDecoration.LineThrough else TextDecoration.None,
-            ),
+            style =
+                MealsyType.body.copy(
+                    textDecoration = if (strikethrough) TextDecoration.LineThrough else TextDecoration.None,
+                ),
             color = colors.muted,
         )
         if (timestamp != null) {
@@ -602,12 +647,13 @@ private fun CollapsedCardLine(text: String, strikethrough: Boolean, timestamp: S
     }
 }
 
-private fun PastelTone.toTagTone(): TagTone = when (this) {
-    PastelTone.Leaf -> TagTone.Leaf
-    PastelTone.Butter -> TagTone.Butter
-    PastelTone.Powder -> TagTone.Powder
-    PastelTone.Pink -> TagTone.Pink
-}
+private fun PastelTone.toTagTone(): TagTone =
+    when (this) {
+        PastelTone.Leaf -> TagTone.Leaf
+        PastelTone.Butter -> TagTone.Butter
+        PastelTone.Powder -> TagTone.Powder
+        PastelTone.Pink -> TagTone.Pink
+    }
 
 /**
  * A muted up/down feedback glyph. `:core:ui`'s [MealsyIcons] has no
@@ -625,9 +671,10 @@ private fun FeedbackGlyph(
     val colors = MealsyTheme.colors
     IconButton(
         onClick = onClick,
-        modifier = Modifier
-            .size(24.dp)
-            .semantics { this.contentDescription = contentDescription },
+        modifier =
+            Modifier
+                .size(24.dp)
+                .semantics { this.contentDescription = contentDescription },
     ) {
         Text(
             text = glyph,

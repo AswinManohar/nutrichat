@@ -34,9 +34,10 @@ fun DecorativeDots(modifier: Modifier = Modifier) {
     val colors = MealsyTheme.colors
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clearAndSetSemantics {},
+        modifier =
+            modifier
+                .fillMaxSize()
+                .clearAndSetSemantics {},
     ) {
         Dot(
             color = colors.butter,
@@ -78,11 +79,12 @@ private fun BoxScope.Dot(
     offsetY: androidx.compose.ui.unit.Dp,
 ) {
     Box(
-        modifier = Modifier
-            .align(alignment)
-            .offset(x = offsetX, y = offsetY)
-            .size(size)
-            .background(color, CircleShape),
+        modifier =
+            Modifier
+                .align(alignment)
+                .offset(x = offsetX, y = offsetY)
+                .size(size)
+                .background(color, CircleShape),
     )
 }
 

@@ -56,27 +56,28 @@ fun OliveFab(
     )
 
     Box(
-        modifier = modifier
-            .size(56.dp)
-            .scale(scale)
-            .shadow(
-                elevation = 14.dp,
-                shape = CircleShape,
-                ambientColor = colors.fabShadow,
-                spotColor = colors.fabShadow,
-            )
-            .clip(CircleShape)
-            .background(colors.fab)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClickLabel = contentDescription,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics {
-                role = Role.Button
-            },
+        modifier =
+            modifier
+                .size(56.dp)
+                .scale(scale)
+                .shadow(
+                    elevation = 14.dp,
+                    shape = CircleShape,
+                    ambientColor = colors.fabShadow,
+                    spotColor = colors.fabShadow,
+                )
+                .clip(CircleShape)
+                .background(colors.fab)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClickLabel = contentDescription,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .semantics {
+                    role = Role.Button
+                },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

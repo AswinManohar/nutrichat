@@ -69,9 +69,10 @@ fun HomeScreen(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
-        }
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+            }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
@@ -119,9 +120,10 @@ private fun HomeLoaded(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .mealsyScreenPadding(),
+        modifier =
+            modifier
+                .verticalScroll(rememberScrollState())
+                .mealsyScreenPadding(),
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
@@ -218,7 +220,10 @@ private fun HomeLoaded(
 
 /** Resolves the greeting bucket to localized text; no name -> the bare bucket greeting, no comma. */
 @Composable
-private fun greetingFor(dayPart: DayPart, firstName: String?): String {
+private fun greetingFor(
+    dayPart: DayPart,
+    firstName: String?,
+): String {
     return if (firstName.isNullOrBlank()) {
         stringResource(
             when (dayPart) {
@@ -241,38 +246,43 @@ private fun greetingFor(dayPart: DayPart, firstName: String?): String {
 
 /** Resolves the status pill's trailing state text against `strings.xml`. */
 @Composable
-private fun kcalStateText(state: HomeKcalState): String = when (state) {
-    is HomeKcalState.Left -> stringResource(R.string.home_state_left, state.kcal)
-    is HomeKcalState.Over -> stringResource(R.string.home_state_over, state.kcal)
-    HomeKcalState.NoTarget -> stringResource(R.string.home_state_no_target)
-}
+private fun kcalStateText(state: HomeKcalState): String =
+    when (state) {
+        is HomeKcalState.Left -> stringResource(R.string.home_state_left, state.kcal)
+        is HomeKcalState.Over -> stringResource(R.string.home_state_over, state.kcal)
+        HomeKcalState.NoTarget -> stringResource(R.string.home_state_no_target)
+    }
 
 /** Resolves a meal-type wire key to its distinct "Today's meals" row icon. */
-private fun mealTypeIcon(mealType: String) = when (mealType) {
-    "breakfast" -> MealsyIcons.Breakfast
-    "lunch" -> MealsyIcons.Lunch
-    "dinner" -> MealsyIcons.Dinner
-    else -> MealsyIcons.Snack
-}
+private fun mealTypeIcon(mealType: String) =
+    when (mealType) {
+        "breakfast" -> MealsyIcons.Breakfast
+        "lunch" -> MealsyIcons.Lunch
+        "dinner" -> MealsyIcons.Dinner
+        else -> MealsyIcons.Snack
+    }
 
-private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {
-    "breakfast" -> R.string.home_meal_breakfast
-    "lunch" -> R.string.home_meal_lunch
-    "dinner" -> R.string.home_meal_dinner
-    else -> R.string.home_meal_snack
-}
+private fun mealTypeLabelRes(mealType: String): Int =
+    when (mealType) {
+        "breakfast" -> R.string.home_meal_breakfast
+        "lunch" -> R.string.home_meal_lunch
+        "dinner" -> R.string.home_meal_dinner
+        else -> R.string.home_meal_snack
+    }
 
 @Composable
-private fun coachNoteText(note: HomeCoachNote): String = when (note) {
-    is HomeCoachNote.ProteinGap -> stringResource(
-        when (note.dayPart) {
-            DayPart.Morning -> R.string.home_coach_protein_gap_morning
-            DayPart.Afternoon -> R.string.home_coach_protein_gap_afternoon
-            DayPart.Evening -> R.string.home_coach_protein_gap_evening
-        },
-        note.gapG,
-    )
-    is HomeCoachNote.KcalRemaining -> stringResource(R.string.home_coach_kcal_remaining, note.kcal)
-    is HomeCoachNote.TargetReached -> stringResource(R.string.home_coach_target_reached)
-    is HomeCoachNote.Mindful -> stringResource(R.string.home_coach_mindful, note.nMeals)
-}
+private fun coachNoteText(note: HomeCoachNote): String =
+    when (note) {
+        is HomeCoachNote.ProteinGap ->
+            stringResource(
+                when (note.dayPart) {
+                    DayPart.Morning -> R.string.home_coach_protein_gap_morning
+                    DayPart.Afternoon -> R.string.home_coach_protein_gap_afternoon
+                    DayPart.Evening -> R.string.home_coach_protein_gap_evening
+                },
+                note.gapG,
+            )
+        is HomeCoachNote.KcalRemaining -> stringResource(R.string.home_coach_kcal_remaining, note.kcal)
+        is HomeCoachNote.TargetReached -> stringResource(R.string.home_coach_target_reached)
+        is HomeCoachNote.Mindful -> stringResource(R.string.home_coach_mindful, note.nMeals)
+    }

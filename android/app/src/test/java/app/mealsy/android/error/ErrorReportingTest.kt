@@ -12,10 +12,13 @@ import org.junit.Test
  * `FcmTokenProvider` instead of touching `FirebaseMessaging` directly.
  */
 class ErrorReportingTest {
-
     private class RecordingCrashRecorder : CrashRecorder {
         val calls = mutableListOf<Pair<Throwable, Map<String, String>>>()
-        override fun record(t: Throwable, keys: Map<String, String>) {
+
+        override fun record(
+            t: Throwable,
+            keys: Map<String, String>,
+        ) {
             calls += t to keys
         }
     }
@@ -23,10 +26,11 @@ class ErrorReportingTest {
     @Test
     fun `no-ops without Firebase configured`() {
         val recorder = RecordingCrashRecorder()
-        val reporting = ErrorReporting(
-            appsPresence = FirebaseAppsPresence { false },
-            recorder = recorder,
-        )
+        val reporting =
+            ErrorReporting(
+                appsPresence = FirebaseAppsPresence { false },
+                recorder = recorder,
+            )
 
         reporting.record(IllegalStateException("boom"))
 
@@ -36,10 +40,11 @@ class ErrorReportingTest {
     @Test
     fun `records the exception and keys when Firebase is configured`() {
         val recorder = RecordingCrashRecorder()
-        val reporting = ErrorReporting(
-            appsPresence = FirebaseAppsPresence { true },
-            recorder = recorder,
-        )
+        val reporting =
+            ErrorReporting(
+                appsPresence = FirebaseAppsPresence { true },
+                recorder = recorder,
+            )
         val exc = IllegalStateException("boom")
 
         reporting.record(exc, mapOf("client_request_id" to "req-1"))
@@ -51,10 +56,11 @@ class ErrorReportingTest {
 
     @Test
     fun `a recorder that throws does not escape record`() {
-        val reporting = ErrorReporting(
-            appsPresence = FirebaseAppsPresence { true },
-            recorder = CrashRecorder { _, _ -> throw IllegalStateException("Crashlytics not configured") },
-        )
+        val reporting =
+            ErrorReporting(
+                appsPresence = FirebaseAppsPresence { true },
+                recorder = CrashRecorder { _, _ -> throw IllegalStateException("Crashlytics not configured") },
+            )
 
         // Must return normally — see ErrorReporting's doc comment: this is
         // called from SessionManager.currentToken's 401-retry path
@@ -68,10 +74,11 @@ class ErrorReportingTest {
     @Test
     fun `keys default to empty`() {
         val recorder = RecordingCrashRecorder()
-        val reporting = ErrorReporting(
-            appsPresence = FirebaseAppsPresence { true },
-            recorder = recorder,
-        )
+        val reporting =
+            ErrorReporting(
+                appsPresence = FirebaseAppsPresence { true },
+                recorder = recorder,
+            )
 
         reporting.record(IllegalStateException("boom"))
 

@@ -49,24 +49,27 @@ fun StatusPillPlain(
     Surface(
         color = colors.olive,
         shape = MealsyShapes.pill,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 46.dp)
-            .clearAndSetSemantics { contentDescription = "$label, $value" },
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 46.dp)
+                .clearAndSetSemantics { contentDescription = "$label, $value" },
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 10.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 text = label,
                 style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
                 color = colors.oliveText,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .align(Alignment.CenterVertically),
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .align(Alignment.CenterVertically),
             )
             // MealsyType.body already bakes in tabular numerals
             // (`fontFeatureSettings = "tnum"`) — every Mealsy type role does.
@@ -75,9 +78,10 @@ fun StatusPillPlain(
                 style = MealsyType.body,
                 color = colors.oliveText,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .align(Alignment.CenterVertically),
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .align(Alignment.CenterVertically),
             )
         }
     }

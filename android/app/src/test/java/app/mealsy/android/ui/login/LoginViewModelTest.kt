@@ -45,14 +45,16 @@ private class FakeAuthGateway : AuthGateway {
 
     override suspend fun signOut() = Unit
 
-    override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) = Unit
+    override suspend fun updateProfileMetadata(
+        firstName: String,
+        goalFocus: String,
+    ) = Unit
 
     override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginViewModelTest {
-
     private val dispatcher = StandardTestDispatcher()
     private lateinit var fakeAuthGateway: FakeAuthGateway
     private lateinit var viewModel: LoginViewModel
@@ -70,44 +72,47 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `submit email calls signInWithMagicLink and enters AwaitingEmail state`() = runTest {
-        viewModel.uiState.test {
-            assertEquals(LoginUiState.Idle, awaitItem())
+    fun `submit email calls signInWithMagicLink and enters AwaitingEmail state`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
 
-            viewModel.submitEmail("user@example.com")
+                viewModel.submitEmail("user@example.com")
 
-            assertEquals(LoginUiState.AwaitingEmail, awaitItem())
-            assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
+                assertEquals(LoginUiState.AwaitingEmail, awaitItem())
+                assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
+            }
         }
-    }
 
     @Test
-    fun `invalid email shows error, no call`() = runTest {
-        viewModel.uiState.test {
-            assertEquals(LoginUiState.Idle, awaitItem())
+    fun `invalid email shows error, no call`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
 
-            viewModel.submitEmail("not-an-email")
+                viewModel.submitEmail("not-an-email")
 
-            val state = awaitItem()
-            assertTrue(state is LoginUiState.Error)
-            assertEquals(LoginErrorKind.InvalidEmail, (state as LoginUiState.Error).kind)
-            assertTrue(fakeAuthGateway.magicLinkCalls.isEmpty())
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.InvalidEmail, (state as LoginUiState.Error).kind)
+                assertTrue(fakeAuthGateway.magicLinkCalls.isEmpty())
+            }
         }
-    }
 
     @Test
-    fun `magic link failure shows MagicLinkFailed error`() = runTest {
-        fakeAuthGateway.throwOnMagicLink = RuntimeException("boom")
-        viewModel.uiState.test {
-            assertEquals(LoginUiState.Idle, awaitItem())
+    fun `magic link failure shows MagicLinkFailed error`() =
+        runTest {
+            fakeAuthGateway.throwOnMagicLink = RuntimeException("boom")
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
 
-            viewModel.submitEmail("user@example.com")
+                viewModel.submitEmail("user@example.com")
 
-            val state = awaitItem()
-            assertTrue(state is LoginUiState.Error)
-            assertEquals(LoginErrorKind.MagicLinkFailed, (state as LoginUiState.Error).kind)
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.MagicLinkFailed, (state as LoginUiState.Error).kind)
+            }
         }
-    }
 
     @Test
     fun `gate blocks when versionCode below min`() {

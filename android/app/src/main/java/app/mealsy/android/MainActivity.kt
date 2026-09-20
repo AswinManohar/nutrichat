@@ -16,7 +16,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
     // supabase-kt's Auth deep-link handling is exposed as an extension on
     // SupabaseClient (handleDeeplinks), not on Auth itself, so this needs
     // the client rather than SessionManager/AuthGateway.

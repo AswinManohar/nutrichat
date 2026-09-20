@@ -18,7 +18,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,12 +49,12 @@ import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.LoggedMeal
 import app.mealsy.domain.FoodNameHumanizer
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 
 /**
  * Lists today's logged meals for a single meal type (e.g. "Lunch"), with
@@ -89,10 +88,11 @@ fun MealTypeListScreen(
             onSwipeDelete = { id ->
                 viewModel.deleteWithUndo(id)
                 scope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = deletedMessage,
-                        actionLabel = undoneLabel,
-                    )
+                    val result =
+                        snackbarHostState.showSnackbar(
+                            message = deletedMessage,
+                            actionLabel = undoneLabel,
+                        )
                     if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(id)
                 }
             },
@@ -136,12 +136,13 @@ internal fun MealTypeListContent(
                 LoadingState(message = stringResource(R.string.meal_type_loading), modifier = Modifier.fillMaxSize())
             is MealTypeListUiState.Error ->
                 ErrorState(
-                    message = stringResource(
-                        when (state.kind) {
-                            ErrorKind.Offline -> R.string.error_offline
-                            ErrorKind.LoadFailed -> R.string.meal_type_error_load_failed
-                        },
-                    ),
+                    message =
+                        stringResource(
+                            when (state.kind) {
+                                ErrorKind.Offline -> R.string.error_offline
+                                ErrorKind.LoadFailed -> R.string.meal_type_error_load_failed
+                            },
+                        ),
                     onRetry = onRetry,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -171,32 +172,38 @@ internal fun MealTypeListContent(
 private const val SWIPE_DELETE_THRESHOLD_PX = 300f
 
 @Composable
-private fun SwipeableMealRow(meal: LoggedMeal, onOpen: () -> Unit, onSwipeDelete: () -> Unit) {
+private fun SwipeableMealRow(
+    meal: LoggedMeal,
+    onOpen: () -> Unit,
+    onSwipeDelete: () -> Unit,
+) {
     val colors = MealsyTheme.colors
     var dragOffset by remember { mutableStateOf(0f) }
     val context = LocalContext.current
 
-    val displayLabel = remember(meal.label) {
-        meal.label?.takeIf { it.isNotBlank() }?.let { FoodNameHumanizer.humanize(it) }
-    }
+    val displayLabel =
+        remember(meal.label) {
+            meal.label?.takeIf { it.isNotBlank() }?.let { FoodNameHumanizer.humanize(it) }
+        }
     val timeLabel = remember(meal.loggedAt) { formatLoggedAtTime(meal.loggedAt, context) }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 9.dp, horizontal = 16.dp)
-            .pointerInput(meal.mealId) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
-                        dragOffset = 0f
-                    },
-                    onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
-                )
-            }
-            .pointerInput(meal.mealId) {
-                detectTapGestures(onTap = { onOpen() })
-            },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 9.dp, horizontal = 16.dp)
+                .pointerInput(meal.mealId) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
+                            dragOffset = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
+                    )
+                }
+                .pointerInput(meal.mealId) {
+                    detectTapGestures(onTap = { onOpen() })
+                },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -220,7 +227,10 @@ private fun SwipeableMealRow(meal: LoggedMeal, onOpen: () -> Unit, onSwipeDelete
 }
 
 /** Formats an ISO instant [loggedAt] to a local `12:40`-style time, honoring the device's 24h setting. */
-internal fun formatLoggedAtTime(loggedAt: String, context: android.content.Context): String {
+internal fun formatLoggedAtTime(
+    loggedAt: String,
+    context: android.content.Context,
+): String {
     return try {
         val instant = Instant.parse(loggedAt)
         val local = instant.atZone(ZoneId.systemDefault())
@@ -232,16 +242,20 @@ internal fun formatLoggedAtTime(loggedAt: String, context: android.content.Conte
 }
 
 @Composable
-private fun MealTypeEmptyState(mealType: String, modifier: Modifier = Modifier) {
+private fun MealTypeEmptyState(
+    mealType: String,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Olli(size = OlliSize.Done)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = stringResource(
-                    R.string.meal_type_empty,
-                    stringResource(mealTypeLabelRes(mealType)).lowercase(Locale.getDefault()),
-                ),
+                text =
+                    stringResource(
+                        R.string.meal_type_empty,
+                        stringResource(mealTypeLabelRes(mealType)).lowercase(Locale.getDefault()),
+                    ),
                 style = MealsyType.body,
                 color = MealsyTheme.colors.muted,
             )
@@ -249,9 +263,10 @@ private fun MealTypeEmptyState(mealType: String, modifier: Modifier = Modifier) 
     }
 }
 
-private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {
-    "breakfast" -> R.string.home_meal_breakfast
-    "lunch" -> R.string.home_meal_lunch
-    "dinner" -> R.string.home_meal_dinner
-    else -> R.string.home_meal_snack
-}
+private fun mealTypeLabelRes(mealType: String): Int =
+    when (mealType) {
+        "breakfast" -> R.string.home_meal_breakfast
+        "lunch" -> R.string.home_meal_lunch
+        "dinner" -> R.string.home_meal_dinner
+        else -> R.string.home_meal_snack
+    }

@@ -61,11 +61,12 @@ fun ChatBubble(
     val isCoach = author == ChatBubbleAuthor.Coach
     val bubbleColor = if (isCoach) colors.surface else colors.userBubble
     val textColor = if (isCoach) colors.ink else colors.userBubbleText
-    val shape = if (isCoach) {
-        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 6.dp)
-    } else {
-        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 6.dp, bottomStart = 18.dp)
-    }
+    val shape =
+        if (isCoach) {
+            RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 6.dp)
+        } else {
+            RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 6.dp, bottomStart = 18.dp)
+        }
     val horizontalAlignment = if (isCoach) Alignment.Start else Alignment.End
 
     Column(
@@ -73,12 +74,13 @@ fun ChatBubble(
         horizontalAlignment = horizontalAlignment,
     ) {
         Column(
-            modifier = Modifier
-                .widthIn(max = 999.dp)
-                .fillMaxWidthFraction(0.82f)
-                .clip(shape)
-                .background(bubbleColor)
-                .padding(vertical = 11.dp, horizontal = 14.dp),
+            modifier =
+                Modifier
+                    .widthIn(max = 999.dp)
+                    .fillMaxWidthFraction(0.82f)
+                    .clip(shape)
+                    .background(bubbleColor)
+                    .padding(vertical = 11.dp, horizontal = 14.dp),
         ) {
             Text(text = text, style = MealsyType.body, color = textColor)
             if (tags != null) {

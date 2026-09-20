@@ -22,17 +22,19 @@ import javax.inject.Singleton
  * paths.
  */
 @Singleton
-class ProfileRefresher @Inject constructor(
-    private val authGateway: AuthGateway,
-    private val profileStore: ProfileStore,
-    private val errorReporter: ErrorReporter,
-) {
-    suspend fun refreshProfileFromMetadata() {
-        try {
-            val metadata = authGateway.currentProfileMetadata() ?: return
-            profileStore.set(metadata.firstName, metadata.goalFocus)
-        } catch (exc: Exception) {
-            errorReporter.record(exc)
+class ProfileRefresher
+    @Inject
+    constructor(
+        private val authGateway: AuthGateway,
+        private val profileStore: ProfileStore,
+        private val errorReporter: ErrorReporter,
+    ) {
+        suspend fun refreshProfileFromMetadata() {
+            try {
+                val metadata = authGateway.currentProfileMetadata() ?: return
+                profileStore.set(metadata.firstName, metadata.goalFocus)
+            } catch (exc: Exception) {
+                errorReporter.record(exc)
+            }
         }
     }
-}

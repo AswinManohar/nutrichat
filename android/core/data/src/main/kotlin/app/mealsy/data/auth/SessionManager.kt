@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 /** Coarse-grained auth state exposed to the rest of the app. */
 sealed interface SessionState {
     data object Loading : SessionState
+
     data object SignedOut : SessionState
+
     data class SignedIn(val userId: String) : SessionState
 }
 
@@ -37,7 +39,10 @@ interface AuthGateway {
     suspend fun signOut()
 
     /** Writes `{first_name, goal_focus}` into Supabase user metadata. */
-    suspend fun updateProfileMetadata(firstName: String, goalFocus: String)
+    suspend fun updateProfileMetadata(
+        firstName: String,
+        goalFocus: String,
+    )
 
     /**
      * Reads `{first_name, goal_focus}` back from the current user's
@@ -118,7 +123,10 @@ class SessionManager(
     }
 
     /** Pass-through to [AuthGateway.updateProfileMetadata]. */
-    suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+    suspend fun updateProfileMetadata(
+        firstName: String,
+        goalFocus: String,
+    ) {
         authGateway.updateProfileMetadata(firstName, goalFocus)
     }
 

@@ -19,6 +19,7 @@ import javax.inject.Singleton
  */
 interface ConversationIdStore {
     suspend fun get(): String?
+
     suspend fun set(id: String)
 }
 
@@ -28,15 +29,16 @@ private val Context.conversationIdDataStore: DataStore<Preferences> by
 private val CONVERSATION_ID_KEY = stringPreferencesKey("conversation_id")
 
 @Singleton
-class DataStoreConversationIdStore @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : ConversationIdStore {
+class DataStoreConversationIdStore
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+    ) : ConversationIdStore {
+        override suspend fun get(): String? {
+            return context.conversationIdDataStore.data.first()[CONVERSATION_ID_KEY]
+        }
 
-    override suspend fun get(): String? {
-        return context.conversationIdDataStore.data.first()[CONVERSATION_ID_KEY]
+        override suspend fun set(id: String) {
+            context.conversationIdDataStore.edit { prefs -> prefs[CONVERSATION_ID_KEY] = id }
+        }
     }
-
-    override suspend fun set(id: String) {
-        context.conversationIdDataStore.edit { prefs -> prefs[CONVERSATION_ID_KEY] = id }
-    }
-}

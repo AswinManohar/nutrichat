@@ -58,26 +58,28 @@ fun MealsyProgressBar(
     }
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .background(colors.oliveTrack, MealsyShapes.pill)
-            .then(
-                if (contentDescription != null) {
-                    Modifier.semantics {
-                        this.contentDescription = contentDescription
-                        progressBarRangeInfo = ProgressBarRangeInfo(current = clamped, range = 0f..1f)
-                    }
-                } else {
-                    Modifier.clearAndSetSemantics {}
-                },
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(colors.oliveTrack, MealsyShapes.pill)
+                .then(
+                    if (contentDescription != null) {
+                        Modifier.semantics {
+                            this.contentDescription = contentDescription
+                            progressBarRangeInfo = ProgressBarRangeInfo(current = clamped, range = 0f..1f)
+                        }
+                    } else {
+                        Modifier.clearAndSetSemantics {}
+                    },
+                ),
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth(animatedProgress)
-                .height(6.dp)
-                .background(colors.olive, MealsyShapes.pill),
+            modifier =
+                Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .height(6.dp)
+                    .background(colors.olive, MealsyShapes.pill),
         )
     }
 }

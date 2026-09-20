@@ -2,14 +2,11 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -83,31 +80,35 @@ fun BottomNavPill(
     fab: @Composable (() -> Unit)? = null,
 ) {
     val colors = MealsyTheme.colors
-    val borderModifier = if (colors.isDark) {
-        Modifier.border(width = 1.dp, color = colors.navBorder, shape = MealsyShapes.pill)
-    } else {
-        Modifier
-    }
+    val borderModifier =
+        if (colors.isDark) {
+            Modifier.border(width = 1.dp, color = colors.navBorder, shape = MealsyShapes.pill)
+        } else {
+            Modifier
+        }
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 26.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 26.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             color = colors.navBar,
             shape = MealsyShapes.pill,
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 340.dp)
-                .then(borderModifier),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 340.dp)
+                    .then(borderModifier),
         ) {
             Row(
-                modifier = Modifier
-                    .padding(vertical = 14.dp, horizontal = 28.dp)
-                    .fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .padding(vertical = 14.dp, horizontal = 28.dp)
+                        .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (fab != null) {
@@ -193,32 +194,34 @@ private fun NavIcon(
         imageVector = item.icon,
         contentDescription = item.label,
         tint = tint,
-        modifier = Modifier
-            .size(22.dp)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClickLabel = item.label,
-                role = Role.Tab,
-                onClick = { onSelect(item.route) },
-            )
-            .semantics {
-                role = Role.Tab
-                selected = isSelected
-                contentDescription = item.label
-            },
+        modifier =
+            Modifier
+                .size(22.dp)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClickLabel = item.label,
+                    role = Role.Tab,
+                    onClick = { onSelect(item.route) },
+                )
+                .semantics {
+                    role = Role.Tab
+                    selected = isSelected
+                    contentDescription = item.label
+                },
     )
 }
 
 @Preview(name = "BottomNavPill light", widthDp = 390)
 @Composable
 private fun BottomNavPillPreviewLight() {
-    val items = listOf(
-        MealsyNavItem(MealsyIcons.Home, "Home", "home"),
-        MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
-        MealsyNavItem(MealsyIcons.LineChart, "Trends", "trends"),
-        MealsyNavItem(MealsyIcons.Chat, "Chat", "chat"),
-    )
+    val items =
+        listOf(
+            MealsyNavItem(MealsyIcons.Home, "Home", "home"),
+            MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
+            MealsyNavItem(MealsyIcons.LineChart, "Trends", "trends"),
+            MealsyNavItem(MealsyIcons.Chat, "Chat", "chat"),
+        )
     MealsyTheme(darkTheme = false) {
         Surface(color = MealsyTheme.colors.canvas) {
             BottomNavPill(
@@ -234,12 +237,13 @@ private fun BottomNavPillPreviewLight() {
 @Preview(name = "BottomNavPill dark", widthDp = 390, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun BottomNavPillPreviewDark() {
-    val items = listOf(
-        MealsyNavItem(MealsyIcons.Home, "Home", "home"),
-        MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
-        MealsyNavItem(MealsyIcons.LineChart, "Trends", "trends"),
-        MealsyNavItem(MealsyIcons.Chat, "Chat", "chat"),
-    )
+    val items =
+        listOf(
+            MealsyNavItem(MealsyIcons.Home, "Home", "home"),
+            MealsyNavItem(MealsyIcons.BowlBars, "Meals", "meals"),
+            MealsyNavItem(MealsyIcons.LineChart, "Trends", "trends"),
+            MealsyNavItem(MealsyIcons.Chat, "Chat", "chat"),
+        )
     MealsyTheme(darkTheme = true) {
         Surface(color = MealsyTheme.colors.canvas) {
             BottomNavPill(

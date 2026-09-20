@@ -33,7 +33,9 @@ sealed interface LoginErrorKind {
 /** UI state for the login screen. */
 sealed interface LoginUiState {
     data object Idle : LoginUiState
+
     data object AwaitingEmail : LoginUiState
+
     data class Error(val kind: LoginErrorKind) : LoginUiState
 }
 
@@ -43,41 +45,42 @@ private val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 fun isValidEmail(email: String): Boolean = EMAIL_REGEX.matches(email.trim())
 
 @HiltViewModel
-class LoginViewModel @Inject constructor(
-    private val sessionManager: SessionManager,
-) : ViewModel() {
+class LoginViewModel
+    @Inject
+    constructor(
+        private val sessionManager: SessionManager,
+    ) : ViewModel() {
+        private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
+        val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
-    val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
-
-    /** Validates `email` and, if valid, requests a magic link via [SessionManager]. */
-    fun submitEmail(email: String) {
-        if (!isValidEmail(email)) {
-            _uiState.value = LoginUiState.Error(LoginErrorKind.InvalidEmail)
-            return
+        /** Validates `email` and, if valid, requests a magic link via [SessionManager]. */
+        fun submitEmail(email: String) {
+            if (!isValidEmail(email)) {
+                _uiState.value = LoginUiState.Error(LoginErrorKind.InvalidEmail)
+                return
+            }
+            viewModelScope.launch {
+                try {
+                    sessionManager.signInWithMagicLink(email.trim())
+                    _uiState.value = LoginUiState.AwaitingEmail
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    _uiState.value = LoginUiState.Error(LoginErrorKind.MagicLinkFailed)
+                }
+            }
         }
-        viewModelScope.launch {
-            try {
-                sessionManager.signInWithMagicLink(email.trim())
-                _uiState.value = LoginUiState.AwaitingEmail
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                _uiState.value = LoginUiState.Error(LoginErrorKind.MagicLinkFailed)
+
+        /** Starts the Google OAuth sign-in flow via [SessionManager]. */
+        fun signInWithGoogle(activity: Activity) {
+            viewModelScope.launch {
+                try {
+                    sessionManager.signInWithGoogle(activity)
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    _uiState.value = LoginUiState.Error(LoginErrorKind.GoogleSignInFailed)
+                }
             }
         }
     }
-
-    /** Starts the Google OAuth sign-in flow via [SessionManager]. */
-    fun signInWithGoogle(activity: Activity) {
-        viewModelScope.launch {
-            try {
-                sessionManager.signInWithGoogle(activity)
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                _uiState.value = LoginUiState.Error(LoginErrorKind.GoogleSignInFailed)
-            }
-        }
-    }
-}

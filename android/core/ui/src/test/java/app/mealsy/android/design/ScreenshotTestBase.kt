@@ -55,7 +55,6 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
 abstract class ScreenshotTestBase {
-
     @get:Rule
     val composeRule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
@@ -96,7 +95,7 @@ abstract class ScreenshotTestBase {
             }
         }
         val suffix = if (darkTheme) "dark" else "light"
-        val scaleSuffix = if (fontScale == 1f) "" else "_font${fontScale}"
+        val scaleSuffix = if (fontScale == 1f) "" else "_font$fontScale"
         composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix$scaleSuffix.png")
     }
 }

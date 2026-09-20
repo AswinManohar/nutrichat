@@ -57,18 +57,20 @@ fun MealsyDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
             shape = MealsyShapes.card,
             color = colors.surface,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 // `heading()` (rather than a root contentDescription equal
@@ -86,9 +88,10 @@ fun MealsyDialog(
                 }
                 content?.invoke(this)
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     content = buttons,
                 )

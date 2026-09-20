@@ -25,7 +25,10 @@ import app.mealsy.android.design.theme.MealsyType
  * @param modifier The modifier applied to the pill's container.
  */
 @Composable
-fun OutlinePill(text: String, modifier: Modifier = Modifier) {
+fun OutlinePill(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
 
     Surface(
@@ -36,10 +39,11 @@ fun OutlinePill(text: String, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = text,
-            style = MealsyType.eyebrow.copy(
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.1.em,
-            ),
+            style =
+                MealsyType.eyebrow.copy(
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.1.em,
+                ),
             color = colors.muted,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
         )

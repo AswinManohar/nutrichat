@@ -18,7 +18,10 @@ import app.mealsy.android.design.theme.MealsyType
  * @param modifier The modifier applied to the text.
  */
 @Composable
-fun Eyebrow(text: String, modifier: Modifier = Modifier) {
+fun Eyebrow(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     Text(
         text = text.uppercase(),

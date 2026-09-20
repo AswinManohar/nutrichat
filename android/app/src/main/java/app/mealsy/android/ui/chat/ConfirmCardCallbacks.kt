@@ -13,7 +13,10 @@ interface ConfirmCardCallbacks {
     fun onPortionChange(portion: Double)
 
     /** The user edited an item's gram quantity via its [Stepper][app.mealsy.android.design.components.Stepper]. */
-    fun onQtyChange(index: Int, newQtyG: Double)
+    fun onQtyChange(
+        index: Int,
+        newQtyG: Double,
+    )
 
     /** The user tapped the remove ("×") affordance on an item row. */
     fun onRemoveItem(index: Int)
@@ -22,7 +25,10 @@ interface ConfirmCardCallbacks {
     fun onUndoRemove()
 
     /** The user picked a different food from an item's candidate list. */
-    fun onSwapCandidate(index: Int, newName: String)
+    fun onSwapCandidate(
+        index: Int,
+        newName: String,
+    )
 
     /** The user tapped "Break into ingredients" on a composite dish. */
     fun onDecompose()

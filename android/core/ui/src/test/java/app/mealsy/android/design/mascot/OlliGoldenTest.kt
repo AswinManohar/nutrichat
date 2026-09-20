@@ -14,7 +14,6 @@ import org.junit.Test
  * `Olli.kt`'s own doc comment.
  */
 class OlliGoldenTest : ScreenshotTestBase() {
-
     @Test
     fun olli_header_light() {
         captureMealsy("Olli_header", darkTheme = false) {

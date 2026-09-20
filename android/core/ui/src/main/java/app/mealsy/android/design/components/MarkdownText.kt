@@ -76,6 +76,7 @@ fun MarkdownText(
 /** One parsed block of a Markdown document: a paragraph or a list. */
 private sealed interface MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock
+
     data class ListBlock(val items: List<String>, val ordered: Boolean) : MarkdownBlock
 }
 
@@ -151,45 +152,51 @@ private fun parseBlocks(source: String): List<MarkdownBlock> {
  * markers degrade to plain text rather than dropping characters or
  * crashing.
  */
-internal fun parseInlineMarkdown(source: String): AnnotatedString = buildAnnotatedString {
-    var i = 0
-    val n = source.length
-    while (i < n) {
-        val c = source[i]
-        if (c == '*' || c == '_') {
-            // Determine marker length (2 = bold, 1 = italic).
-            val isDouble = i + 1 < n && source[i + 1] == c
-            val markerLen = if (isDouble) 2 else 1
-            val marker = source.substring(i, i + markerLen)
-            val searchStart = i + markerLen
-            val closeIndex = findClosingMarker(source, searchStart, marker)
-            if (closeIndex != null && closeIndex > searchStart) {
-                val inner = source.substring(searchStart, closeIndex)
-                val spanStyle = if (isDouble) {
-                    SpanStyle(fontWeight = FontWeight.SemiBold)
-                } else {
-                    SpanStyle(fontStyle = FontStyle.Italic)
+internal fun parseInlineMarkdown(source: String): AnnotatedString =
+    buildAnnotatedString {
+        var i = 0
+        val n = source.length
+        while (i < n) {
+            val c = source[i]
+            if (c == '*' || c == '_') {
+                // Determine marker length (2 = bold, 1 = italic).
+                val isDouble = i + 1 < n && source[i + 1] == c
+                val markerLen = if (isDouble) 2 else 1
+                val marker = source.substring(i, i + markerLen)
+                val searchStart = i + markerLen
+                val closeIndex = findClosingMarker(source, searchStart, marker)
+                if (closeIndex != null && closeIndex > searchStart) {
+                    val inner = source.substring(searchStart, closeIndex)
+                    val spanStyle =
+                        if (isDouble) {
+                            SpanStyle(fontWeight = FontWeight.SemiBold)
+                        } else {
+                            SpanStyle(fontStyle = FontStyle.Italic)
+                        }
+                    withStyle(spanStyle) { append(parseInlineMarkdown(inner)) }
+                    i = closeIndex + markerLen
+                    continue
                 }
-                withStyle(spanStyle) { append(parseInlineMarkdown(inner)) }
-                i = closeIndex + markerLen
+                // No matching closer — emit the marker character(s) literally.
+                append(marker)
+                i += markerLen
                 continue
             }
-            // No matching closer — emit the marker character(s) literally.
-            append(marker)
-            i += markerLen
-            continue
+            append(c)
+            i++
         }
-        append(c)
-        i++
     }
-}
 
 /**
  * Finds the index of the next occurrence of [marker] in [source] at or
  * after [from], or null if there is none. Used by [parseInlineMarkdown] to
  * locate a span's closing marker.
  */
-private fun findClosingMarker(source: String, from: Int, marker: String): Int? {
+private fun findClosingMarker(
+    source: String,
+    from: Int,
+    marker: String,
+): Int? {
     val index = source.indexOf(marker, startIndex = from)
     return if (index == -1) null else index
 }
@@ -200,8 +207,9 @@ private fun MarkdownTextLightPreview() {
     MealsyTheme {
         Surface(color = MealsyTheme.colors.canvas) {
             MarkdownText(
-                markdown = "You're **close** to your protein goal today.\n\n" +
-                    "- Add a *quick* snack\n- Try Greek yogurt\n- Or a protein shake",
+                markdown =
+                    "You're **close** to your protein goal today.\n\n" +
+                        "- Add a *quick* snack\n- Try Greek yogurt\n- Or a protein shake",
                 modifier = Modifier.padding(20.dp),
             )
         }

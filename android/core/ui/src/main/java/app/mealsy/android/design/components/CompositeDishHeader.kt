@@ -81,15 +81,19 @@ fun CompositeDishHeader(
  * starve a second) action swallow the entire row width.
  */
 @Composable
-private fun DishHeaderTextAction(text: String, onClick: () -> Unit) {
+private fun DishHeaderTextAction(
+    text: String,
+    onClick: () -> Unit,
+) {
     val colors = MealsyTheme.colors
     Text(
         text = text,
         style = MealsyType.label.copy(fontSize = 13.sp, textDecoration = TextDecoration.Underline),
         color = colors.ink,
-        modifier = Modifier
-            .semantics { role = Role.Button }
-            .clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .semantics { role = Role.Button }
+                .clickable(onClick = onClick),
     )
 }
 

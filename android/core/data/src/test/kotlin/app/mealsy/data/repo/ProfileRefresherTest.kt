@@ -20,7 +20,6 @@ import org.junit.Test
  * `SessionManagerTest`.
  */
 class ProfileRefresherTest {
-
     private class FakeAuthGateway(
         initialState: SessionState = SessionState.SignedIn(userId = "user-123"),
         private val metadata: ProfileMetadata? = null,
@@ -32,12 +31,19 @@ class ProfileRefresherTest {
             private set
 
         override suspend fun signInWithMagicLink(email: String) = Unit
+
         override suspend fun signInWithGoogle(activity: Activity) = Unit
+
         override suspend fun refreshCurrentSession(): String? = null
+
         override fun currentAccessTokenOrNull(): String? = null
+
         override suspend fun signOut() = Unit
 
-        override suspend fun updateProfileMetadata(firstName: String, goalFocus: String) {
+        override suspend fun updateProfileMetadata(
+            firstName: String,
+            goalFocus: String,
+        ) {
             updateCall = firstName to goalFocus
         }
 
@@ -49,65 +55,71 @@ class ProfileRefresherTest {
 
     private class FakeErrorReporter : ErrorReporter {
         val recorded = mutableListOf<Throwable>()
+
         override fun record(t: Throwable) {
             recorded += t
         }
     }
 
     @Test
-    fun `SessionManager updateProfileMetadata delegates to the gateway`() = runTest {
-        val gateway = FakeAuthGateway()
-        val sessionManager = SessionManager(gateway)
+    fun `SessionManager updateProfileMetadata delegates to the gateway`() =
+        runTest {
+            val gateway = FakeAuthGateway()
+            val sessionManager = SessionManager(gateway)
 
-        sessionManager.updateProfileMetadata("Sam", "mindful")
+            sessionManager.updateProfileMetadata("Sam", "mindful")
 
-        assertEquals("Sam" to "mindful", gateway.updateCall)
-    }
-
-    @Test
-    fun `SessionManager currentProfileMetadata delegates to the gateway`() = runTest {
-        val gateway = FakeAuthGateway(metadata = ProfileMetadata("Sam", "mindful"))
-        val sessionManager = SessionManager(gateway)
-
-        assertEquals(ProfileMetadata("Sam", "mindful"), sessionManager.currentProfileMetadata())
-    }
+            assertEquals("Sam" to "mindful", gateway.updateCall)
+        }
 
     @Test
-    fun `refreshProfileFromMetadata writes the gateway's metadata into the store`() = runTest {
-        val gateway = FakeAuthGateway(metadata = ProfileMetadata("Sam", "mindful"))
-        val profileStore = DataStoreProfileStoreFake()
-        val errorReporter = FakeErrorReporter()
-        val refresher = ProfileRefresher(gateway, profileStore, errorReporter)
+    fun `SessionManager currentProfileMetadata delegates to the gateway`() =
+        runTest {
+            val gateway = FakeAuthGateway(metadata = ProfileMetadata("Sam", "mindful"))
+            val sessionManager = SessionManager(gateway)
 
-        refresher.refreshProfileFromMetadata()
-
-        assertEquals(Profile("Sam", "mindful"), profileStore.get())
-        assertTrue(errorReporter.recorded.isEmpty())
-    }
+            assertEquals(ProfileMetadata("Sam", "mindful"), sessionManager.currentProfileMetadata())
+        }
 
     @Test
-    fun `refreshProfileFromMetadata is a no-op when signed out`() = runTest {
-        val gateway = FakeAuthGateway(metadata = null)
-        val profileStore = DataStoreProfileStoreFake()
-        val refresher = ProfileRefresher(gateway, profileStore, FakeErrorReporter())
+    fun `refreshProfileFromMetadata writes the gateway's metadata into the store`() =
+        runTest {
+            val gateway = FakeAuthGateway(metadata = ProfileMetadata("Sam", "mindful"))
+            val profileStore = DataStoreProfileStoreFake()
+            val errorReporter = FakeErrorReporter()
+            val refresher = ProfileRefresher(gateway, profileStore, errorReporter)
 
-        refresher.refreshProfileFromMetadata()
+            refresher.refreshProfileFromMetadata()
 
-        assertEquals(Profile(), profileStore.get())
-    }
+            assertEquals(Profile("Sam", "mindful"), profileStore.get())
+            assertTrue(errorReporter.recorded.isEmpty())
+        }
 
     @Test
-    fun `refreshProfileFromMetadata reports and swallows a gateway failure`() = runTest {
-        val gateway = FakeAuthGateway(throwOnRead = true)
-        val profileStore = DataStoreProfileStoreFake()
-        val errorReporter = FakeErrorReporter()
-        val refresher = ProfileRefresher(gateway, profileStore, errorReporter)
+    fun `refreshProfileFromMetadata is a no-op when signed out`() =
+        runTest {
+            val gateway = FakeAuthGateway(metadata = null)
+            val profileStore = DataStoreProfileStoreFake()
+            val refresher = ProfileRefresher(gateway, profileStore, FakeErrorReporter())
 
-        refresher.refreshProfileFromMetadata()
+            refresher.refreshProfileFromMetadata()
 
-        assertEquals(1, errorReporter.recorded.size)
-        assertNull(profileStore.get().firstName)
-    }
+            assertEquals(Profile(), profileStore.get())
+        }
+
+    @Test
+    fun `refreshProfileFromMetadata reports and swallows a gateway failure`() =
+        runTest {
+            val gateway = FakeAuthGateway(throwOnRead = true)
+            val profileStore = DataStoreProfileStoreFake()
+            val errorReporter = FakeErrorReporter()
+            val refresher = ProfileRefresher(gateway, profileStore, errorReporter)
+
+            refresher.refreshProfileFromMetadata()
+
+            assertEquals(1, errorReporter.recorded.size)
+            assertNull(profileStore.get().firstName)
+        }
 }
 
 /** In-memory [ProfileStore] fake — no DataStore/Android framework dependency. */
@@ -117,11 +129,15 @@ private class DataStoreProfileStoreFake : ProfileStore {
 
     override suspend fun get(): Profile = state.value
 
-    override suspend fun set(firstName: String?, goalFocus: String?) {
-        state.value = state.value.copy(
-            firstName = firstName ?: state.value.firstName,
-            goalFocus = goalFocus ?: state.value.goalFocus,
-        )
+    override suspend fun set(
+        firstName: String?,
+        goalFocus: String?,
+    ) {
+        state.value =
+            state.value.copy(
+                firstName = firstName ?: state.value.firstName,
+                goalFocus = goalFocus ?: state.value.goalFocus,
+            )
     }
 
     override suspend fun clear() {

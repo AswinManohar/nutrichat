@@ -73,24 +73,26 @@ fun Stepper(
     val effectiveMax = if (max == Int.MAX_VALUE) value + UNBOUNDED_RANGE_PADDING else max
 
     Surface(
-        modifier = modifier.semantics(mergeDescendants = true) {
-            contentDescription = label
-            stateDescription = valueLabel(value)
-            progressBarRangeInfo = ProgressBarRangeInfo(
-                current = value.toFloat(),
-                range = min.toFloat()..effectiveMax.toFloat(),
-                steps = 0,
-            )
-            setProgress { targetValue ->
-                val next = targetValue.toInt().coerceIn(min, effectiveMax)
-                if (next != value) {
-                    onValueChange(next)
-                    true
-                } else {
-                    false
+        modifier =
+            modifier.semantics(mergeDescendants = true) {
+                contentDescription = label
+                stateDescription = valueLabel(value)
+                progressBarRangeInfo =
+                    ProgressBarRangeInfo(
+                        current = value.toFloat(),
+                        range = min.toFloat()..effectiveMax.toFloat(),
+                        steps = 0,
+                    )
+                setProgress { targetValue ->
+                    val next = targetValue.toInt().coerceIn(min, effectiveMax)
+                    if (next != value) {
+                        onValueChange(next)
+                        true
+                    } else {
+                        false
+                    }
                 }
-            }
-        },
+            },
         shape = MealsyShapes.pill,
         color = colors.canvas,
         border = BorderStroke(1.dp, colors.hairline),
@@ -107,10 +109,14 @@ fun Stepper(
             )
             Text(
                 text = valueLabel(value),
-                style = MealsyType.badge.copy(fontSize = androidx.compose.ui.unit.TextUnit(
-                    13f,
-                    androidx.compose.ui.unit.TextUnitType.Sp,
-                )),
+                style =
+                    MealsyType.badge.copy(
+                        fontSize =
+                            androidx.compose.ui.unit.TextUnit(
+                                13f,
+                                androidx.compose.ui.unit.TextUnitType.Sp,
+                            ),
+                    ),
                 color = colors.ink,
                 modifier = Modifier.widthIn(min = 44.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -138,17 +144,18 @@ private fun StepperButton(
     val background = if (pressed) colors.surfacePressed else Color.Transparent
 
     Box(
-        modifier = Modifier
-            .size(28.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .background(background, androidx.compose.foundation.shape.CircleShape)
-            .semantics { this.contentDescription = contentDescription }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = onClick,
-            ),
+        modifier =
+            Modifier
+                .size(28.dp)
+                .alpha(if (enabled) 1f else 0.35f)
+                .background(background, androidx.compose.foundation.shape.CircleShape)
+                .semantics { this.contentDescription = contentDescription }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                ),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = symbol, style = MealsyType.button, color = colors.ink)

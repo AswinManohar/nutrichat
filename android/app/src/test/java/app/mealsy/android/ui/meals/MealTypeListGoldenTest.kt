@@ -13,8 +13,12 @@ import org.junit.Test
  * ViewModel, no network, deterministic frames.
  */
 class MealTypeListGoldenTest : AppScreenshotTestBase() {
-
-    private fun meal(id: String, label: String, kcal: Double, loggedAt: String) = LoggedMeal(
+    private fun meal(
+        id: String,
+        label: String,
+        kcal: Double,
+        loggedAt: String,
+    ) = LoggedMeal(
         mealId = id,
         mealType = "lunch",
         loggedAt = loggedAt,
@@ -27,10 +31,11 @@ class MealTypeListGoldenTest : AppScreenshotTestBase() {
         nItems = 2,
     )
 
-    private val populatedMeals = listOf(
-        meal("meal_1", "Grilled chicken bowl", 520.0, "2026-09-16T12:05:00Z"),
-        meal("meal_2", "Turkey sandwich", 410.0, "2026-09-16T13:20:00Z"),
-    )
+    private val populatedMeals =
+        listOf(
+            meal("meal_1", "Grilled chicken bowl", 520.0, "2026-09-16T12:05:00Z"),
+            meal("meal_2", "Turkey sandwich", 410.0, "2026-09-16T13:20:00Z"),
+        )
 
     @Composable
     private fun render(state: MealTypeListUiState) {
@@ -51,14 +56,11 @@ class MealTypeListGoldenTest : AppScreenshotTestBase() {
         captureMealsy("MealTypeList_populated", false) { render(MealTypeListUiState.Loaded(populatedMeals)) }
 
     @Test
-    fun mealTypeListPopulated_dark() =
-        captureMealsy("MealTypeList_populated", true) { render(MealTypeListUiState.Loaded(populatedMeals)) }
+    fun mealTypeListPopulated_dark() = captureMealsy("MealTypeList_populated", true) { render(MealTypeListUiState.Loaded(populatedMeals)) }
 
     @Test
-    fun mealTypeListEmpty_light() =
-        captureMealsy("MealTypeList_empty", false) { render(MealTypeListUiState.Empty) }
+    fun mealTypeListEmpty_light() = captureMealsy("MealTypeList_empty", false) { render(MealTypeListUiState.Empty) }
 
     @Test
-    fun mealTypeListEmpty_dark() =
-        captureMealsy("MealTypeList_empty", true) { render(MealTypeListUiState.Empty) }
+    fun mealTypeListEmpty_dark() = captureMealsy("MealTypeList_empty", true) { render(MealTypeListUiState.Empty) }
 }

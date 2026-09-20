@@ -69,16 +69,17 @@ fun Olli(
     val inInspection = LocalInspectionMode.current
     val context = LocalContext.current
 
-    val animationsEnabled = remember {
-        try {
-            Settings.Global.getFloat(
-                context.contentResolver,
-                Settings.Global.ANIMATOR_DURATION_SCALE,
-            ) != 0f
-        } catch (_: Settings.SettingNotFoundException) {
-            true
+    val animationsEnabled =
+        remember {
+            try {
+                Settings.Global.getFloat(
+                    context.contentResolver,
+                    Settings.Global.ANIMATOR_DURATION_SCALE,
+                ) != 0f
+            } catch (_: Settings.SettingNotFoundException) {
+                true
+            }
         }
-    }
 
     // LocalReducedMotion already folds in LocalInspectionMode (see
     // ReducedMotion.kt), so this also stays static under `@Preview` and
@@ -86,11 +87,12 @@ fun Olli(
     // "Remove animations" setting even when Olli is rendered outside
     // MealsyTheme (LocalReducedMotion then falls back to its `false` default).
     val reducedMotion = LocalReducedMotion.current
-    val bobModifier = if (bob && animationsEnabled && !inInspection && !reducedMotion) {
-        Modifier.olliBob()
-    } else {
-        Modifier
-    }
+    val bobModifier =
+        if (bob && animationsEnabled && !inInspection && !reducedMotion) {
+            Modifier.olliBob()
+        } else {
+            Modifier
+        }
 
     if (inInspection) {
         Image(
@@ -101,11 +103,12 @@ fun Olli(
         return
     }
 
-    val imageLoader = remember(context) {
-        ImageLoader.Builder(context)
-            .components { add(ImageDecoderDecoder.Factory()) }
-            .build()
-    }
+    val imageLoader =
+        remember(context) {
+            ImageLoader.Builder(context)
+                .components { add(ImageDecoderDecoder.Factory()) }
+                .build()
+        }
 
     if (!animationsEnabled) {
         Image(
@@ -116,11 +119,12 @@ fun Olli(
         return
     }
 
-    val request = remember(context) {
-        ImageRequest.Builder(context)
-            .data(R.raw.olli)
-            .build()
-    }
+    val request =
+        remember(context) {
+            ImageRequest.Builder(context)
+                .data(R.raw.olli)
+                .build()
+        }
 
     Image(
         painter = rememberAsyncImagePainter(model = request, imageLoader = imageLoader),
@@ -184,13 +188,15 @@ fun Modifier.olliBob(enabled: Boolean = true): Modifier {
     val translation by transition.animateFloat(
         initialValue = 0f,
         targetValue = -8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 3200,
-                easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f),
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        durationMillis = 3200,
+                        easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f),
+                    ),
+                repeatMode = RepeatMode.Reverse,
             ),
-            repeatMode = RepeatMode.Reverse,
-        ),
         label = "olliBobY",
     )
     return this.graphicsLayer { translationY = translation.dp.toPx() }

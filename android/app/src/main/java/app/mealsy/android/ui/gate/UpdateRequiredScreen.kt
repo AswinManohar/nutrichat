@@ -33,17 +33,19 @@ fun UpdateRequiredScreen() {
 
     UpdateRequiredContent(
         onUpdate = {
-            val marketIntent = Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse("market://details?id=$packageName"),
-            )
+            val marketIntent =
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=$packageName"),
+                )
             try {
                 context.startActivity(marketIntent)
             } catch (exc: ActivityNotFoundException) {
-                val webIntent = Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
-                )
+                val webIntent =
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
+                    )
                 context.startActivity(webIntent)
             }
         },
@@ -56,14 +58,18 @@ fun UpdateRequiredScreen() {
  * lives in `AppNav.kt` and is untouched by this composable.
  */
 @Composable
-fun UpdateRequiredContent(onUpdate: () -> Unit, modifier: Modifier = Modifier) {
+fun UpdateRequiredContent(
+    onUpdate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.canvas) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -83,9 +89,10 @@ fun UpdateRequiredContent(onUpdate: () -> Unit, modifier: Modifier = Modifier) {
             MealsyButton(
                 text = stringResource(R.string.update_required_cta),
                 onClick = onUpdate,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 24.dp),
             )
         }
     }

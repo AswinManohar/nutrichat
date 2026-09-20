@@ -41,7 +41,11 @@ import app.mealsy.android.design.theme.motionDurationMs
  *   slide-up + fade over 250ms.
  */
 @Composable
-fun InkToast(text: String, modifier: Modifier = Modifier, visible: Boolean = true) {
+fun InkToast(
+    text: String,
+    modifier: Modifier = Modifier,
+    visible: Boolean = true,
+) {
     val colors = MealsyTheme.colors
     val durationMs = motionDurationMs(250)
     AnimatedVisibility(

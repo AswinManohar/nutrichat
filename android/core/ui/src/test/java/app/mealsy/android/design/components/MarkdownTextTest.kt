@@ -12,7 +12,6 @@ import org.junit.Test
  * `ComposeContentTestRule` would be unnecessary overhead here.
  */
 class MarkdownTextTest {
-
     @Test
     fun bold_isSemiBoldSpan() {
         val result = parseInlineMarkdown("This is **bold** text")

@@ -12,24 +12,32 @@ import javax.inject.Inject
  */
 interface PendingLogQueue {
     /** Persists [payloadJson] keyed by [clientRequestId] and schedules a replay attempt. */
-    suspend fun enqueue(clientRequestId: String, payloadJson: String)
+    suspend fun enqueue(
+        clientRequestId: String,
+        payloadJson: String,
+    )
 }
 
-class RoomPendingLogQueue @Inject constructor(
-    private val dao: PendingLogDao,
-    private val workEnqueuer: ReplayWorkEnqueuer,
-) : PendingLogQueue {
-    override suspend fun enqueue(clientRequestId: String, payloadJson: String) {
-        dao.insert(
-            PendingLogEntity(
-                clientRequestId = clientRequestId,
-                payloadJson = payloadJson,
-                createdAt = System.currentTimeMillis(),
-            ),
-        )
-        workEnqueuer.enqueueReplay()
+class RoomPendingLogQueue
+    @Inject
+    constructor(
+        private val dao: PendingLogDao,
+        private val workEnqueuer: ReplayWorkEnqueuer,
+    ) : PendingLogQueue {
+        override suspend fun enqueue(
+            clientRequestId: String,
+            payloadJson: String,
+        ) {
+            dao.insert(
+                PendingLogEntity(
+                    clientRequestId = clientRequestId,
+                    payloadJson = payloadJson,
+                    createdAt = System.currentTimeMillis(),
+                ),
+            )
+            workEnqueuer.enqueueReplay()
+        }
     }
-}
 
 /**
  * Thin seam around `WorkManager.enqueueUniqueWork` so [RoomPendingLogQueue]

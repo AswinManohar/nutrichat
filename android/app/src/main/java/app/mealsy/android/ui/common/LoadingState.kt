@@ -14,7 +14,10 @@ import androidx.compose.ui.Modifier
  * which had near-identical private composables before Task 14's sweep.
  */
 @Composable
-fun LoadingState(message: String, modifier: Modifier = Modifier) {
+fun LoadingState(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(message)
     }

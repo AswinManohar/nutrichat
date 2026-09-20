@@ -57,9 +57,9 @@ import app.mealsy.domain.CardItem
 import app.mealsy.domain.FoodNameHumanizer
 import app.mealsy.domain.PastelTone
 import app.mealsy.domain.pastelToneFor
+import kotlinx.serialization.json.JsonObject
 import java.text.NumberFormat
 import java.util.Locale
-import kotlinx.serialization.json.JsonObject
 
 private const val SWIPE_DELETE_THRESHOLD_PX = 300f
 
@@ -195,7 +195,10 @@ internal fun MyMealsContent(
  * copy plus a tappable "Undo" affordance overlaid on the same pill.
  */
 @Composable
-private fun UndoToast(onUndo: () -> Unit, modifier: Modifier = Modifier) {
+private fun UndoToast(
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     Row(
         modifier = modifier,
@@ -236,8 +239,7 @@ private fun MyMealsEmptyState(modifier: Modifier = Modifier) {
 }
 
 /** Formats [kcal] as tabular, thousands-separated whole kcal, e.g. "1,340". */
-private fun formatKcal(kcal: Double): String =
-    NumberFormat.getIntegerInstance(Locale.US).format(kcal.toInt())
+private fun formatKcal(kcal: Double): String = NumberFormat.getIntegerInstance(Locale.US).format(kcal.toInt())
 
 /**
  * Heuristic for whether [raw] looks like a raw USDA description (and should
@@ -261,26 +263,28 @@ internal fun displayName(raw: String): String {
     }
 }
 
-private fun SavedMeal.toCardItem(): CardItem = CardItem(
-    foodName = name,
-    qtyG = 1.0,
-    targetQtyG = 1.0,
-    kcal = kcal,
-    proteinG = proteinG,
-    carbsG = carbsG,
-    fatG = fatG,
-    fiberG = fiberG,
-    fdcId = 0L,
-    estimated = false,
-    extras = JsonObject(emptyMap()),
-)
+private fun SavedMeal.toCardItem(): CardItem =
+    CardItem(
+        foodName = name,
+        qtyG = 1.0,
+        targetQtyG = 1.0,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fatG = fatG,
+        fiberG = fiberG,
+        fdcId = 0L,
+        estimated = false,
+        extras = JsonObject(emptyMap()),
+    )
 
-private fun PastelTone.toTagTone(): TagTone = when (this) {
-    PastelTone.Leaf -> TagTone.Leaf
-    PastelTone.Butter -> TagTone.Butter
-    PastelTone.Powder -> TagTone.Powder
-    PastelTone.Pink -> TagTone.Pink
-}
+private fun PastelTone.toTagTone(): TagTone =
+    when (this) {
+        PastelTone.Leaf -> TagTone.Leaf
+        PastelTone.Butter -> TagTone.Butter
+        PastelTone.Powder -> TagTone.Powder
+        PastelTone.Pink -> TagTone.Pink
+    }
 
 /**
  * One saved meal row, styled to match [app.mealsy.android.design.components.ListRow]'s
@@ -292,7 +296,11 @@ private fun PastelTone.toTagTone(): TagTone = when (this) {
  * deletes (optimistic hide + undo, driven by the caller).
  */
 @Composable
-private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -> Unit) {
+private fun SavedMealRow(
+    meal: SavedMeal,
+    onTap: () -> Unit,
+    onSwipeDelete: () -> Unit,
+) {
     val colors = MealsyTheme.colors
     var dragOffset by remember { mutableStateOf(0f) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -300,34 +308,42 @@ private fun SavedMealRow(meal: SavedMeal, onTap: () -> Unit, onSwipeDelete: () -
     val background = if (pressed) colors.surfacePressed else androidx.compose.ui.graphics.Color.Transparent
 
     val kcalText = stringResource(R.string.my_meals_row_kcal, formatKcal(meal.kcal))
-    val description = stringResource(
-        R.string.my_meals_row_description,
-        meal.name,
-        meal.kcal.toInt().toString(),
-        meal.proteinG.toInt().toString(),
-    )
+    val description =
+        stringResource(
+            R.string.my_meals_row_description,
+            meal.name,
+            meal.kcal.toInt().toString(),
+            meal.proteinG.toInt().toString(),
+        )
     val deleteAction = stringResource(R.string.my_meals_delete_action)
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
-            .background(background)
-            .pointerInput(meal.id) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
-                        dragOffset = 0f
-                    },
-                    onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
-                )
-            }
-            .pointerInput(meal.id) { detectTapToLog(onTap) }
-            .clearAndSetSemantics {
-                contentDescription = description
-                customActions = listOf(CustomAccessibilityAction(deleteAction) { onSwipeDelete(); true })
-            }
-            .padding(vertical = 9.dp, horizontal = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .background(background)
+                .pointerInput(meal.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
+                            dragOffset = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
+                    )
+                }
+                .pointerInput(meal.id) { detectTapToLog(onTap) }
+                .clearAndSetSemantics {
+                    contentDescription = description
+                    customActions =
+                        listOf(
+                            CustomAccessibilityAction(deleteAction) {
+                                onSwipeDelete()
+                                true
+                            },
+                        )
+                }
+                .padding(vertical = 9.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

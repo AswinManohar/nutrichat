@@ -40,18 +40,20 @@ fun OliveSquiggle(modifier: Modifier = Modifier) {
     val path = remember { PathParser().parsePathString(SQUIGGLE_PATH).toPath() }
 
     Canvas(
-        modifier = modifier
-            .size(width = 120.dp, height = 12.dp)
-            .clearAndSetSemantics {},
+        modifier =
+            modifier
+                .size(width = 120.dp, height = 12.dp)
+                .clearAndSetSemantics {},
     ) {
         val scaleX = size.width / VIEWBOX_WIDTH
         val scaleY = size.height / VIEWBOX_HEIGHT
-        val scaledPath = androidx.compose.ui.graphics.Path().apply {
-            addPath(path)
-            transform(
-                Matrix().apply { scale(x = scaleX, y = scaleY) },
-            )
-        }
+        val scaledPath =
+            androidx.compose.ui.graphics.Path().apply {
+                addPath(path)
+                transform(
+                    Matrix().apply { scale(x = scaleX, y = scaleY) },
+                )
+            }
         drawPath(
             path = scaledPath,
             color = colors.olive,

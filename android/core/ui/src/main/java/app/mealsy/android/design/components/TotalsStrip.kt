@@ -50,7 +50,10 @@ data class TotalsStripEntry(val label: String, val value: String, val isZero: Bo
  * @param modifier The modifier applied to the strip's container.
  */
 @Composable
-fun TotalsStrip(entries: List<TotalsStripEntry>, modifier: Modifier = Modifier) {
+fun TotalsStrip(
+    entries: List<TotalsStripEntry>,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     val mergedDescription = entries.joinToString(", ") { "${it.value} ${it.label}" }
 
@@ -65,9 +68,10 @@ fun TotalsStrip(entries: List<TotalsStripEntry>, modifier: Modifier = Modifier) 
         ) {
             entries.forEach { entry ->
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .alpha(if (entry.isZero) 0.45f else 1f),
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .alpha(if (entry.isZero) 0.45f else 1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
@@ -99,13 +103,14 @@ private fun TotalsStripLightPreview() {
     MealsyTheme {
         Surface(color = MealsyTheme.colors.canvas) {
             TotalsStrip(
-                entries = listOf(
-                    TotalsStripEntry("kcal", "412", isZero = false),
-                    TotalsStripEntry("Protein", "28g", isZero = false),
-                    TotalsStripEntry("Carbs", "12g", isZero = false),
-                    TotalsStripEntry("Fat", "31g", isZero = false),
-                    TotalsStripEntry("Fiber", "0g", isZero = true),
-                ),
+                entries =
+                    listOf(
+                        TotalsStripEntry("kcal", "412", isZero = false),
+                        TotalsStripEntry("Protein", "28g", isZero = false),
+                        TotalsStripEntry("Carbs", "12g", isZero = false),
+                        TotalsStripEntry("Fat", "31g", isZero = false),
+                        TotalsStripEntry("Fiber", "0g", isZero = true),
+                    ),
                 modifier = Modifier.padding(20.dp),
             )
         }
@@ -122,13 +127,14 @@ private fun TotalsStripDarkPreview() {
     MealsyTheme(darkTheme = true) {
         Surface(color = MealsyTheme.colors.canvas) {
             TotalsStrip(
-                entries = listOf(
-                    TotalsStripEntry("kcal", "412", isZero = false),
-                    TotalsStripEntry("Protein", "28g", isZero = false),
-                    TotalsStripEntry("Carbs", "0g", isZero = true),
-                    TotalsStripEntry("Fat", "0g", isZero = true),
-                    TotalsStripEntry("Fiber", "0g", isZero = true),
-                ),
+                entries =
+                    listOf(
+                        TotalsStripEntry("kcal", "412", isZero = false),
+                        TotalsStripEntry("Protein", "28g", isZero = false),
+                        TotalsStripEntry("Carbs", "0g", isZero = true),
+                        TotalsStripEntry("Fat", "0g", isZero = true),
+                        TotalsStripEntry("Fiber", "0g", isZero = true),
+                    ),
                 modifier = Modifier.padding(20.dp),
             )
         }

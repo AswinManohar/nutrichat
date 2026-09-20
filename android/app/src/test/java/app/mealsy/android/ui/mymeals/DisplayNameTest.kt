@@ -5,7 +5,6 @@ import org.junit.Test
 
 /** Unit tests for [displayName]'s USDA-vs-user-name heuristic. */
 class DisplayNameTest {
-
     @Test
     fun `comma separated USDA description is humanized`() {
         assertEquals(

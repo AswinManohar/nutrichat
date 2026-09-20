@@ -54,7 +54,11 @@ internal fun TagTone.resolve(): ToneColors {
  * @param modifier The modifier applied to the tag's pill container.
  */
 @Composable
-fun TagChip(text: String, tone: TagTone, modifier: Modifier = Modifier) {
+fun TagChip(
+    text: String,
+    tone: TagTone,
+    modifier: Modifier = Modifier,
+) {
     val resolved = tone.resolve()
     Surface(
         modifier = modifier,
@@ -84,7 +88,11 @@ fun TagChip(text: String, tone: TagTone, modifier: Modifier = Modifier) {
  * @param modifier The modifier applied to the tag's pill container.
  */
 @Composable
-fun MetaTag(text: String, tone: TagTone, modifier: Modifier = Modifier) {
+fun MetaTag(
+    text: String,
+    tone: TagTone,
+    modifier: Modifier = Modifier,
+) {
     val resolved = tone.resolve()
     Surface(
         modifier = modifier,

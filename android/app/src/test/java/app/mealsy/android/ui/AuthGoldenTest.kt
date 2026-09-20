@@ -15,7 +15,6 @@ import org.junit.Test
  * the frames are deterministic (empty email field, no in-flight state).
  */
 class AuthGoldenTest : AppScreenshotTestBase() {
-
     @Composable
     private fun renderLogin(uiState: LoginUiState) {
         LoginContent(

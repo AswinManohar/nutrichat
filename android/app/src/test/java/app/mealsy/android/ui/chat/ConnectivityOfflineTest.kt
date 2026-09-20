@@ -8,6 +8,7 @@ import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.MyMealsRepository
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -25,14 +26,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 /** [ChatViewModel.offline] driven purely by [ConnectivityObserver], independent of any failed call. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectivityOfflineTest {
-
     private lateinit var server: MockWebServer
-    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        }
 
     @Before
     fun setUp() {
@@ -53,71 +56,88 @@ class ConnectivityOfflineTest {
     }
 
     private class NoopPendingLogQueue : PendingLogQueue {
-        override suspend fun enqueue(clientRequestId: String, payloadJson: String) = Unit
+        override suspend fun enqueue(
+            clientRequestId: String,
+            payloadJson: String,
+        ) = Unit
     }
 
     private class NoopDroppedLogStore : DroppedLogStore {
         override suspend fun markDropped() = Unit
+
         override suspend fun consumeDropped(): Int = 0
     }
 
     @Test
-    fun `losing connectivity sets the offline banner without any failed request`() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
+    fun `losing connectivity sets the offline banner without any failed request`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
 
-        val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
-            .build()
-        val contentType = "application/json".toMediaType()
-        val retrofit = Retrofit.Builder()
-            .baseUrl(server.url("/"))
-            .client(client)
-            .addConverterFactory(json.asConverterFactory(contentType))
-            .build()
-        val api = retrofit.create(MealsyApi::class.java)
-        val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
-        val repository =
-            ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json, todayRefreshSignal)
-        val connectivity = FakeConnectivityObserver(initial = true)
-        val viewModel =
-            ChatViewModel(
-                repository, connectivity,
-                MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
-            )
-        viewModel.readyJob.join()
+            val client =
+                OkHttpClient.Builder()
+                    .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                    .build()
+            val contentType = "application/json".toMediaType()
+            val retrofit =
+                Retrofit.Builder()
+                    .baseUrl(server.url("/"))
+                    .client(client)
+                    .addConverterFactory(json.asConverterFactory(contentType))
+                    .build()
+            val api = retrofit.create(MealsyApi::class.java)
+            val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
+            val repository =
+                ChatRepository(api, fakeConversationIdStore(), NoopPendingLogQueue(), json, todayRefreshSignal)
+            val connectivity = FakeConnectivityObserver(initial = true)
+            val viewModel =
+                ChatViewModel(
+                    repository,
+                    connectivity,
+                    MyMealsRepository(api, todayRefreshSignal),
+                    NoopDroppedLogStore(),
+                )
+            viewModel.readyJob.join()
 
-        assertTrue(!viewModel.offline.value)
+            assertTrue(!viewModel.offline.value)
 
-        connectivity.state.value = false
+            connectivity.state.value = false
 
-        assertTrue(viewModel.offline.value)
-    }
+            assertTrue(viewModel.offline.value)
+        }
 
     @Test
     fun `connectivity restored clears the offline banner (no request needed to unstick it)`() =
         runBlocking {
             server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
 
-            val client = OkHttpClient.Builder()
-                .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
-                .build()
+            val client =
+                OkHttpClient.Builder()
+                    .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
+                    .build()
             val contentType = "application/json".toMediaType()
-            val retrofit = Retrofit.Builder()
-                .baseUrl(server.url("/"))
-                .client(client)
-                .addConverterFactory(json.asConverterFactory(contentType))
-                .build()
+            val retrofit =
+                Retrofit.Builder()
+                    .baseUrl(server.url("/"))
+                    .client(client)
+                    .addConverterFactory(json.asConverterFactory(contentType))
+                    .build()
             val api = retrofit.create(MealsyApi::class.java)
             val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
             val repository =
                 ChatRepository(
-                    api, fakeConversationIdStore(), NoopPendingLogQueue(), json, todayRefreshSignal,
+                    api,
+                    fakeConversationIdStore(),
+                    NoopPendingLogQueue(),
+                    json,
+                    todayRefreshSignal,
                 )
             val connectivity = FakeConnectivityObserver(initial = true)
             val viewModel =
                 ChatViewModel(
-                    repository, connectivity,
-                    MyMealsRepository(api, todayRefreshSignal), NoopDroppedLogStore(),
+                    repository,
+                    connectivity,
+                    MyMealsRepository(api, todayRefreshSignal),
+                    NoopDroppedLogStore(),
                 )
             viewModel.readyJob.join()
             assertTrue(!viewModel.offline.value)

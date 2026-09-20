@@ -72,15 +72,16 @@ fun StatusPill(
     val colors = MealsyTheme.colors
     val clampedEaten = eatenFraction.coerceIn(0f, 1f)
     val targetRemaining = 1f - clampedEaten
-    val remainingState: State<Float> = if (animate) {
-        animateFloatAsState(
-            targetValue = targetRemaining,
-            animationSpec = mealsyTween(durationMillis = 320, easing = FastOutSlowInEasing),
-            label = "statusPillRemaining",
-        )
-    } else {
-        remember(targetRemaining) { mutableStateOf(targetRemaining) }
-    }
+    val remainingState: State<Float> =
+        if (animate) {
+            animateFloatAsState(
+                targetValue = targetRemaining,
+                animationSpec = mealsyTween(durationMillis = 320, easing = FastOutSlowInEasing),
+                label = "statusPillRemaining",
+            )
+        } else {
+            remember(targetRemaining) { mutableStateOf(targetRemaining) }
+        }
     val remainingFraction by remainingState
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -88,28 +89,31 @@ fun StatusPill(
         val biteXDp = maxWidth - oliveWidthDp
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(46.dp),
         ) {
             // The clipped track itself. The mascot slot below is a sibling,
             // not a child, of this clipped box: it deliberately overflows
             // above the pill's top edge to sit at the bite point, and a
             // child here would be cut off by [clip].
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(MealsyShapes.pill)
-                    .background(colors.oliveTrack)
-                    .clearAndSetSemantics { contentDescription = "$eatenLabel, $stateLabel" },
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(MealsyShapes.pill)
+                        .background(colors.oliveTrack)
+                        .clearAndSetSemantics { contentDescription = "$eatenLabel, $stateLabel" },
             ) {
                 // Olive remainder block, anchored to the right edge.
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight()
-                        .width(oliveWidthDp)
-                        .background(colors.olive),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(oliveWidthDp)
+                            .background(colors.olive),
                 )
 
                 // The three-circle "bite" cut into the olive block's left edge.
@@ -131,17 +135,19 @@ fun StatusPill(
                     text = eatenLabel,
                     style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
                     color = colors.oliveText,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 18.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 18.dp),
                 )
                 Text(
                     text = stateLabel,
                     style = MealsyType.body,
                     color = colors.oliveText,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 18.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 18.dp),
                 )
             }
 
@@ -151,16 +157,17 @@ fun StatusPill(
                 // the bite point) stays correct if that size ever changes.
                 val mascotSize = OlliSize.Bite
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .offset {
-                            val biteXPx = biteXDp.toPx()
-                            val mascotPx = mascotSize.toPx()
-                            IntOffset(
-                                x = (biteXPx - mascotPx * 0.55f).roundToInt(),
-                                y = -(mascotPx * 0.65f).roundToInt(),
-                            )
-                        },
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .offset {
+                                val biteXPx = biteXDp.toPx()
+                                val mascotPx = mascotSize.toPx()
+                                IntOffset(
+                                    x = (biteXPx - mascotPx * 0.55f).roundToInt(),
+                                    y = -(mascotPx * 0.65f).roundToInt(),
+                                )
+                            },
                 ) {
                     Box(modifier = Modifier.height(mascotSize)) { mascot() }
                 }
@@ -190,28 +197,31 @@ fun StatusPillAwareness(
     Surface(
         color = colors.oliveTrack,
         shape = MealsyShapes.pill,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clearAndSetSemantics { contentDescription = description },
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clearAndSetSemantics { contentDescription = description },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Text(
                 text = eatenLabel,
                 style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
                 color = colors.oliveText,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 18.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 18.dp),
             )
             if (stateLabel != null) {
                 Text(
                     text = stateLabel,
                     style = MealsyType.body,
                     color = colors.oliveText.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 18.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 18.dp),
                 )
             }
         }

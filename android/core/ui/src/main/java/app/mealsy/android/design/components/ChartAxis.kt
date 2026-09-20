@@ -25,12 +25,13 @@ import java.util.Locale
  */
 fun niceAxisMax(maxValue: Float): Float {
     if (maxValue <= 0f) return 0f
-    val step = when {
-        maxValue <= 20f -> 5f
-        maxValue <= 100f -> 10f
-        maxValue <= 1000f -> 200f
-        else -> 500f
-    }
+    val step =
+        when {
+            maxValue <= 20f -> 5f
+            maxValue <= 100f -> 10f
+            maxValue <= 1000f -> 200f
+            else -> 500f
+        }
     val ceilingSteps = kotlin.math.ceil(maxValue / step)
     return ceilingSteps * step
 }
@@ -69,5 +70,4 @@ fun DrawScope.drawDashedHorizontalLine(
  * screenshot goldens (which bake in rendered numeral text) stay
  * deterministic across locales.
  */
-fun formatThousands(value: Int): String =
-    NumberFormat.getIntegerInstance(Locale.US).format(value)
+fun formatThousands(value: Int): String = NumberFormat.getIntegerInstance(Locale.US).format(value)

@@ -8,7 +8,6 @@ import dagger.hilt.components.SingletonComponent
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepoModule {
-
     @Binds
     abstract fun bindConversationIdStore(impl: DataStoreConversationIdStore): ConversationIdStore
 

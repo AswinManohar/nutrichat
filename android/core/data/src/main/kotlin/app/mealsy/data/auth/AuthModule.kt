@@ -23,7 +23,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AuthModule {
-
     @Provides
     @Singleton
     fun provideSupabaseClient(): SupabaseClient {
@@ -55,8 +54,7 @@ object AuthModule {
         authGateway: AuthGateway,
         signOutHook: SignOutHook,
         errorReporter: ErrorReporter,
-    ): SessionManager =
-        SessionManager(authGateway, onSignOut = signOutHook::onDeviceSignOut, errorReporter = errorReporter)
+    ): SessionManager = SessionManager(authGateway, onSignOut = signOutHook::onDeviceSignOut, errorReporter = errorReporter)
 
     @Provides
     @Singleton

@@ -30,11 +30,13 @@ fun interface FirebaseAppsPresence {
     fun hasApps(): Boolean
 }
 
-class RealFirebaseAppsPresence @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : FirebaseAppsPresence {
-    override fun hasApps(): Boolean = FirebaseApp.getApps(context).isNotEmpty()
-}
+class RealFirebaseAppsPresence
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+    ) : FirebaseAppsPresence {
+        override fun hasApps(): Boolean = FirebaseApp.getApps(context).isNotEmpty()
+    }
 
 /**
  * The actual Crashlytics SDK call, isolated behind an interface for the same
@@ -44,16 +46,24 @@ class RealFirebaseAppsPresence @Inject constructor(
  * under Robolectric/JUnit.
  */
 fun interface CrashRecorder {
-    fun record(t: Throwable, keys: Map<String, String>)
+    fun record(
+        t: Throwable,
+        keys: Map<String, String>,
+    )
 }
 
-class FirebaseCrashRecorder @Inject constructor() : CrashRecorder {
-    override fun record(t: Throwable, keys: Map<String, String>) {
-        val crashlytics = FirebaseCrashlytics.getInstance()
-        keys.forEach { (key, value) -> crashlytics.setCustomKey(key, value) }
-        crashlytics.recordException(t)
+class FirebaseCrashRecorder
+    @Inject
+    constructor() : CrashRecorder {
+        override fun record(
+            t: Throwable,
+            keys: Map<String, String>,
+        ) {
+            val crashlytics = FirebaseCrashlytics.getInstance()
+            keys.forEach { (key, value) -> crashlytics.setCustomKey(key, value) }
+            crashlytics.recordException(t)
+        }
     }
-}
 
 /**
  * Crashlytics wrapper: records a non-fatal [Throwable] (optionally with
@@ -78,42 +88,51 @@ class FirebaseCrashRecorder @Inject constructor() : CrashRecorder {
  * seam in this codebase (`PushRegistrar`, `SessionManager.signOut`).
  */
 @Singleton
-class ErrorReporting @Inject constructor(
-    private val appsPresence: FirebaseAppsPresence,
-    private val recorder: CrashRecorder,
-) {
-    fun record(t: Throwable, keys: Map<String, String> = emptyMap()) {
-        if (!appsPresence.hasApps()) return
-        try {
-            recorder.record(t, keys)
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            Log.w(TAG, "Crashlytics recorder threw while reporting a non-fatal", exc)
+class ErrorReporting
+    @Inject
+    constructor(
+        private val appsPresence: FirebaseAppsPresence,
+        private val recorder: CrashRecorder,
+    ) {
+        fun record(
+            t: Throwable,
+            keys: Map<String, String> = emptyMap(),
+        ) {
+            if (!appsPresence.hasApps()) return
+            try {
+                recorder.record(t, keys)
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                Log.w(TAG, "Crashlytics recorder threw while reporting a non-fatal", exc)
+            }
         }
     }
-}
 
 /**
  * Real [ReplayFailureReporter]: records the drop into Crashlytics with the
  * `client_request_id`/`reason` as custom keys, so a spike in
  * `ReplayWorker`-dropped logs is visible without depending on device logs.
  */
-class RealReplayFailureReporter @Inject constructor(
-    private val errorReporting: ErrorReporting,
-) : ReplayFailureReporter {
-    override fun report(clientRequestId: String, reason: String) {
-        errorReporting.record(
-            IllegalStateException("ReplayWorker dropped a queued meal log: $reason"),
-            mapOf("client_request_id" to clientRequestId, "reason" to reason),
-        )
+class RealReplayFailureReporter
+    @Inject
+    constructor(
+        private val errorReporting: ErrorReporting,
+    ) : ReplayFailureReporter {
+        override fun report(
+            clientRequestId: String,
+            reason: String,
+        ) {
+            errorReporting.record(
+                IllegalStateException("ReplayWorker dropped a queued meal log: $reason"),
+                mapOf("client_request_id" to clientRequestId, "reason" to reason),
+            )
+        }
     }
-}
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class ErrorReportingModule {
-
     @Binds
     abstract fun bindFirebaseAppsPresence(impl: RealFirebaseAppsPresence): FirebaseAppsPresence
 
@@ -127,7 +146,6 @@ abstract class ErrorReportingModule {
         /** Adapts [ErrorReporting] to `:core:data`'s narrower [ErrorReporter] seam. */
         @Provides
         @Singleton
-        fun provideCoreErrorReporter(errorReporting: ErrorReporting): ErrorReporter =
-            ErrorReporter { t -> errorReporting.record(t) }
+        fun provideCoreErrorReporter(errorReporting: ErrorReporting): ErrorReporter = ErrorReporter { t -> errorReporting.record(t) }
     }
 }

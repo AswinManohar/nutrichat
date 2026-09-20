@@ -62,23 +62,25 @@ fun ListRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val background = if (pressed && onClick != null) colors.surfacePressed else Color.Transparent
 
-    val clickableModifier = if (onClick != null) {
-        Modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = onClick,
-        )
-    } else {
-        Modifier
-    }
+    val clickableModifier =
+        if (onClick != null) {
+            Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+        } else {
+            Modifier
+        }
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
-            .background(background)
-            .then(clickableModifier)
-            .padding(vertical = 9.dp, horizontal = 16.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .background(background)
+                .then(clickableModifier)
+                .padding(vertical = 9.dp, horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -131,7 +133,10 @@ fun ListRow(
  *   separated by [InsetDivider].
  */
 @Composable
-fun ListContainer(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun ListContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val colors = MealsyTheme.colors
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -177,11 +182,12 @@ private fun ListRowLightPreview() {
 fun InsetDivider(modifier: Modifier = Modifier) {
     val colors = MealsyTheme.colors
     Box(
-        modifier = modifier
-            .padding(start = 16.dp)
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(colors.divider),
+        modifier =
+            modifier
+                .padding(start = 16.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.divider),
     )
 }
 

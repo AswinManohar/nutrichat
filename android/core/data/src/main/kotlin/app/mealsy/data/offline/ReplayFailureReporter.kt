@@ -21,7 +21,10 @@ import javax.inject.Singleton
  * than free text, so Crashlytics custom keys stay low-cardinality.
  */
 fun interface ReplayFailureReporter {
-    fun report(clientRequestId: String, reason: String)
+    fun report(
+        clientRequestId: String,
+        reason: String,
+    )
 }
 
 /**
@@ -55,22 +58,23 @@ private val Context.droppedLogDataStore: DataStore<Preferences> by
 private val DROPPED_COUNT_KEY = intPreferencesKey("dropped_log_count")
 
 @Singleton
-class DataStoreDroppedLogStore @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : DroppedLogStore {
+class DataStoreDroppedLogStore
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+    ) : DroppedLogStore {
+        override suspend fun markDropped() {
+            context.droppedLogDataStore.edit { prefs ->
+                prefs[DROPPED_COUNT_KEY] = (prefs[DROPPED_COUNT_KEY] ?: 0) + 1
+            }
+        }
 
-    override suspend fun markDropped() {
-        context.droppedLogDataStore.edit { prefs ->
-            prefs[DROPPED_COUNT_KEY] = (prefs[DROPPED_COUNT_KEY] ?: 0) + 1
+        override suspend fun consumeDropped(): Int {
+            var count = 0
+            context.droppedLogDataStore.edit { prefs ->
+                count = prefs[DROPPED_COUNT_KEY] ?: 0
+                prefs[DROPPED_COUNT_KEY] = 0
+            }
+            return count
         }
     }
-
-    override suspend fun consumeDropped(): Int {
-        var count = 0
-        context.droppedLogDataStore.edit { prefs ->
-            count = prefs[DROPPED_COUNT_KEY] ?: 0
-            prefs[DROPPED_COUNT_KEY] = 0
-        }
-        return count
-    }
-}

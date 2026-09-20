@@ -9,7 +9,6 @@ import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.domain.Goals
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+import javax.inject.Inject
 
 /**
  * The backend imposes no numeric defaults of its own — `GoalCreate` in
@@ -134,223 +134,231 @@ data class OnboardingUiState(
  * never see the welcome screen.
  */
 @HiltViewModel
-class OnboardingViewModel @Inject constructor(
-    private val savedStateHandle: SavedStateHandle,
-    private val sessionManager: SessionManager,
-    private val profileStore: ProfileStore,
-    private val goalsRepository: GoalsRepository,
-    private val errorReporter: ErrorReporter = ErrorReporter {},
-) : ViewModel() {
+class OnboardingViewModel
+    @Inject
+    constructor(
+        private val savedStateHandle: SavedStateHandle,
+        private val sessionManager: SessionManager,
+        private val profileStore: ProfileStore,
+        private val goalsRepository: GoalsRepository,
+        private val errorReporter: ErrorReporter = ErrorReporter {},
+    ) : ViewModel() {
+        private val _uiState = MutableStateFlow(loadInitialState())
+        val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow(loadInitialState())
-    val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
-
-    private fun loadInitialState(): OnboardingUiState {
-        val startStep = savedStateHandle.get<Int>(KEY_START_STEP) ?: 0
-        val step = savedStateHandle.get<Int>(KEY_STEP) ?: startStep
-        val name = savedStateHandle.get<String>(KEY_NAME) ?: ""
-        val goalKey = savedStateHandle.get<String>(KEY_GOAL)
-        val goal = OnboardingGoal.entries.find { it.key == goalKey }
-        val prefKeys = savedStateHandle.get<ArrayList<String>>(KEY_PREFS) ?: arrayListOf()
-        val prefs = prefKeys.mapNotNull { key -> DietaryPref.entries.find { it.key == key } }.toSet()
-        val kcalTarget = savedStateHandle.get<Int>(KEY_KCAL) ?: (goal?.defaultKcal ?: FALLBACK_KCAL_TARGET)
-        return recompute(
-            OnboardingUiState(
-                step = step,
-                startStep = startStep,
-                name = name,
-                firstName = "",
-                goal = goal,
-                prefs = prefs,
-                kcalTarget = kcalTarget,
-                continueEnabled = false,
-                continueLabel = ContinueLabel.Continue,
-                progress = 0f,
-                isMindful = false,
-                coachNotePrefs = emptyList(),
-                hasMorePrefs = false,
-                saving = false,
-                error = false,
-                done = false,
-            ),
-        )
-    }
-
-    /** Recomputes every derived field of [base] from its raw fields. */
-    private fun recompute(base: OnboardingUiState): OnboardingUiState {
-        val continueEnabled = when (base.step) {
-            1 -> base.name.isNotBlank()
-            2 -> base.goal != null
-            else -> true
+        private fun loadInitialState(): OnboardingUiState {
+            val startStep = savedStateHandle.get<Int>(KEY_START_STEP) ?: 0
+            val step = savedStateHandle.get<Int>(KEY_STEP) ?: startStep
+            val name = savedStateHandle.get<String>(KEY_NAME) ?: ""
+            val goalKey = savedStateHandle.get<String>(KEY_GOAL)
+            val goal = OnboardingGoal.entries.find { it.key == goalKey }
+            val prefKeys = savedStateHandle.get<ArrayList<String>>(KEY_PREFS) ?: arrayListOf()
+            val prefs = prefKeys.mapNotNull { key -> DietaryPref.entries.find { it.key == key } }.toSet()
+            val kcalTarget = savedStateHandle.get<Int>(KEY_KCAL) ?: (goal?.defaultKcal ?: FALLBACK_KCAL_TARGET)
+            return recompute(
+                OnboardingUiState(
+                    step = step,
+                    startStep = startStep,
+                    name = name,
+                    firstName = "",
+                    goal = goal,
+                    prefs = prefs,
+                    kcalTarget = kcalTarget,
+                    continueEnabled = false,
+                    continueLabel = ContinueLabel.Continue,
+                    progress = 0f,
+                    isMindful = false,
+                    coachNotePrefs = emptyList(),
+                    hasMorePrefs = false,
+                    saving = false,
+                    error = false,
+                    done = false,
+                ),
+            )
         }
-        val continueLabel = when (base.step) {
-            4 -> ContinueLabel.Finish
-            3 -> if (base.prefs.isEmpty()) ContinueLabel.NothingToAvoid else ContinueLabel.Continue
-            else -> ContinueLabel.Continue
-        }
-        val orderedSelected = DietaryPref.entries.filter { it in base.prefs }
-        return base.copy(
-            firstName = firstNameOf(base.name),
-            continueEnabled = continueEnabled,
-            continueLabel = continueLabel,
-            progress = base.step / 4f,
-            isMindful = base.goal == OnboardingGoal.Learn,
-            coachNotePrefs = orderedSelected.take(2),
-            hasMorePrefs = orderedSelected.size > 2,
-        )
-    }
 
-    private fun firstNameOf(name: String): String = name.trim().substringBefore(' ')
-
-    fun setName(value: String) {
-        savedStateHandle[KEY_NAME] = value
-        _uiState.update { recompute(it.copy(name = value)) }
-    }
-
-    fun selectGoal(goal: OnboardingGoal) {
-        savedStateHandle[KEY_GOAL] = goal.key
-        _uiState.update { recompute(it.copy(goal = goal)) }
-    }
-
-    fun togglePref(pref: DietaryPref) {
-        val next = _uiState.value.prefs.let { if (pref in it) it - pref else it + pref }
-        savedStateHandle[KEY_PREFS] = ArrayList(next.map { it.key })
-        _uiState.update { recompute(it.copy(prefs = next)) }
-    }
-
-    fun setKcalTarget(value: Int) {
-        val quantized = (Math.round(value / KCAL_STEP.toDouble()).toInt() * KCAL_STEP)
-            .coerceIn(MIN_KCAL_TARGET, MAX_KCAL_TARGET)
-        savedStateHandle[KEY_KCAL] = quantized
-        _uiState.update { recompute(it.copy(kcalTarget = quantized)) }
-    }
-
-    /**
-     * Advances to the next step. Leaving step 2 with a goal chosen applies
-     * that goal's [OnboardingGoal.defaultKcal] to the step-4 slider — going
-     * back to step 2, picking a different goal and leaving again
-     * re-applies the new default (this always runs on step 2 -> 3, never
-     * only once). Leaving step 4 moves to the done step and starts the
-     * finish side effects (step 5 renders while [OnboardingUiState.saving]
-     * is true).
-     */
-    fun next() {
-        val current = _uiState.value
-        if (!current.continueEnabled) return
-        when (current.step) {
-            2 -> {
-                val goal = current.goal ?: return
-                val nextStep = 3
-                savedStateHandle[KEY_STEP] = nextStep
-                savedStateHandle[KEY_KCAL] = goal.defaultKcal
-                _uiState.update { recompute(it.copy(step = nextStep, kcalTarget = goal.defaultKcal)) }
-            }
-            4 -> {
-                val nextStep = 5
-                savedStateHandle[KEY_STEP] = nextStep
-                _uiState.update { recompute(it.copy(step = nextStep)) }
-                startFinish()
-            }
-            else -> {
-                val nextStep = (current.step + 1).coerceAtMost(LAST_STEP)
-                savedStateHandle[KEY_STEP] = nextStep
-                _uiState.update { recompute(it.copy(step = nextStep)) }
-            }
-        }
-    }
-
-    /** Moves back one step, clamped at [OnboardingUiState.startStep]. */
-    fun back() {
-        val current = _uiState.value
-        val prevStep = (current.step - 1).coerceAtLeast(current.startStep)
-        savedStateHandle[KEY_STEP] = prevStep
-        _uiState.update { recompute(it.copy(step = prevStep)) }
-    }
-
-    /** Re-runs the finish sequence after [OnboardingUiState.error]. */
-    fun retry() {
-        startFinish()
-    }
-
-    private fun startFinish() {
-        viewModelScope.launch { runFinish() }
-    }
-
-    /**
-     * 1. Best-effort write to Supabase user metadata.
-     * 2. Best-effort write to the local [ProfileStore] cache.
-     * 3. `POST /goals` via [GoalsRepository.create] — a 409 (goals already
-     *    exist for this user, e.g. a retried finish) is treated as success.
-     *
-     * Any other failure from step 3 sets [OnboardingUiState.error]; [retry]
-     * re-runs this whole sequence, including the best-effort steps.
-     */
-    private suspend fun runFinish() {
-        _uiState.update { recompute(it.copy(saving = true, error = false)) }
-        val state = _uiState.value
-        val goal = state.goal
-        if (goal == null) {
-            // Shouldn't happen — next() only reaches step 4 -> 5 once a
-            // goal has been chosen (step 2's gating). Defensive guard in
-            // case a corrupted SavedStateHandle restore reaches finish
-            // with no goal at all.
-            _uiState.update { recompute(it.copy(saving = false, error = true)) }
-            return
-        }
-        val firstName = state.firstName
-        try {
-            if (firstName.isNotBlank()) {
-                try {
-                    sessionManager.updateProfileMetadata(firstName, goal.key)
-                } catch (exc: CancellationException) {
-                    throw exc
-                } catch (exc: Exception) {
-                    errorReporter.record(exc)
+        /** Recomputes every derived field of [base] from its raw fields. */
+        private fun recompute(base: OnboardingUiState): OnboardingUiState {
+            val continueEnabled =
+                when (base.step) {
+                    1 -> base.name.isNotBlank()
+                    2 -> base.goal != null
+                    else -> true
                 }
-                try {
-                    profileStore.set(firstName, goal.key)
-                } catch (exc: CancellationException) {
-                    throw exc
-                } catch (exc: Exception) {
-                    errorReporter.record(exc)
+            val continueLabel =
+                when (base.step) {
+                    4 -> ContinueLabel.Finish
+                    3 -> if (base.prefs.isEmpty()) ContinueLabel.NothingToAvoid else ContinueLabel.Continue
+                    else -> ContinueLabel.Continue
+                }
+            val orderedSelected = DietaryPref.entries.filter { it in base.prefs }
+            return base.copy(
+                firstName = firstNameOf(base.name),
+                continueEnabled = continueEnabled,
+                continueLabel = continueLabel,
+                progress = base.step / 4f,
+                isMindful = base.goal == OnboardingGoal.Learn,
+                coachNotePrefs = orderedSelected.take(2),
+                hasMorePrefs = orderedSelected.size > 2,
+            )
+        }
+
+        private fun firstNameOf(name: String): String = name.trim().substringBefore(' ')
+
+        fun setName(value: String) {
+            savedStateHandle[KEY_NAME] = value
+            _uiState.update { recompute(it.copy(name = value)) }
+        }
+
+        fun selectGoal(goal: OnboardingGoal) {
+            savedStateHandle[KEY_GOAL] = goal.key
+            _uiState.update { recompute(it.copy(goal = goal)) }
+        }
+
+        fun togglePref(pref: DietaryPref) {
+            val next = _uiState.value.prefs.let { if (pref in it) it - pref else it + pref }
+            savedStateHandle[KEY_PREFS] = ArrayList(next.map { it.key })
+            _uiState.update { recompute(it.copy(prefs = next)) }
+        }
+
+        fun setKcalTarget(value: Int) {
+            val quantized =
+                (Math.round(value / KCAL_STEP.toDouble()).toInt() * KCAL_STEP)
+                    .coerceIn(MIN_KCAL_TARGET, MAX_KCAL_TARGET)
+            savedStateHandle[KEY_KCAL] = quantized
+            _uiState.update { recompute(it.copy(kcalTarget = quantized)) }
+        }
+
+        /**
+         * Advances to the next step. Leaving step 2 with a goal chosen applies
+         * that goal's [OnboardingGoal.defaultKcal] to the step-4 slider — going
+         * back to step 2, picking a different goal and leaving again
+         * re-applies the new default (this always runs on step 2 -> 3, never
+         * only once). Leaving step 4 moves to the done step and starts the
+         * finish side effects (step 5 renders while [OnboardingUiState.saving]
+         * is true).
+         */
+        fun next() {
+            val current = _uiState.value
+            if (!current.continueEnabled) return
+            when (current.step) {
+                2 -> {
+                    val goal = current.goal ?: return
+                    val nextStep = 3
+                    savedStateHandle[KEY_STEP] = nextStep
+                    savedStateHandle[KEY_KCAL] = goal.defaultKcal
+                    _uiState.update { recompute(it.copy(step = nextStep, kcalTarget = goal.defaultKcal)) }
+                }
+                4 -> {
+                    val nextStep = 5
+                    savedStateHandle[KEY_STEP] = nextStep
+                    _uiState.update { recompute(it.copy(step = nextStep)) }
+                    startFinish()
+                }
+                else -> {
+                    val nextStep = (current.step + 1).coerceAtMost(LAST_STEP)
+                    savedStateHandle[KEY_STEP] = nextStep
+                    _uiState.update { recompute(it.copy(step = nextStep)) }
                 }
             }
-            val goals = buildGoals(goal, state.prefs, state.kcalTarget)
+        }
+
+        /** Moves back one step, clamped at [OnboardingUiState.startStep]. */
+        fun back() {
+            val current = _uiState.value
+            val prevStep = (current.step - 1).coerceAtLeast(current.startStep)
+            savedStateHandle[KEY_STEP] = prevStep
+            _uiState.update { recompute(it.copy(step = prevStep)) }
+        }
+
+        /** Re-runs the finish sequence after [OnboardingUiState.error]. */
+        fun retry() {
+            startFinish()
+        }
+
+        private fun startFinish() {
+            viewModelScope.launch { runFinish() }
+        }
+
+        /**
+         * 1. Best-effort write to Supabase user metadata.
+         * 2. Best-effort write to the local [ProfileStore] cache.
+         * 3. `POST /goals` via [GoalsRepository.create] — a 409 (goals already
+         *    exist for this user, e.g. a retried finish) is treated as success.
+         *
+         * Any other failure from step 3 sets [OnboardingUiState.error]; [retry]
+         * re-runs this whole sequence, including the best-effort steps.
+         */
+        private suspend fun runFinish() {
+            _uiState.update { recompute(it.copy(saving = true, error = false)) }
+            val state = _uiState.value
+            val goal = state.goal
+            if (goal == null) {
+                // Shouldn't happen — next() only reaches step 4 -> 5 once a
+                // goal has been chosen (step 2's gating). Defensive guard in
+                // case a corrupted SavedStateHandle restore reaches finish
+                // with no goal at all.
+                _uiState.update { recompute(it.copy(saving = false, error = true)) }
+                return
+            }
+            val firstName = state.firstName
             try {
-                goalsRepository.create(goals)
-            } catch (exc: HttpException) {
-                if (exc.code() != 409) throw exc
-                // Goals already exist for this user (e.g. a retried
-                // finish) — proceed as if this call had succeeded.
+                if (firstName.isNotBlank()) {
+                    try {
+                        sessionManager.updateProfileMetadata(firstName, goal.key)
+                    } catch (exc: CancellationException) {
+                        throw exc
+                    } catch (exc: Exception) {
+                        errorReporter.record(exc)
+                    }
+                    try {
+                        profileStore.set(firstName, goal.key)
+                    } catch (exc: CancellationException) {
+                        throw exc
+                    } catch (exc: Exception) {
+                        errorReporter.record(exc)
+                    }
+                }
+                val goals = buildGoals(goal, state.prefs, state.kcalTarget)
+                try {
+                    goalsRepository.create(goals)
+                } catch (exc: HttpException) {
+                    if (exc.code() != 409) throw exc
+                    // Goals already exist for this user (e.g. a retried
+                    // finish) — proceed as if this call had succeeded.
+                }
+                _uiState.update { recompute(it.copy(saving = false, done = true)) }
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                _uiState.update { recompute(it.copy(saving = false, error = true)) }
             }
-            _uiState.update { recompute(it.copy(saving = false, done = true)) }
-        } catch (exc: CancellationException) {
-            throw exc
-        } catch (exc: Exception) {
-            _uiState.update { recompute(it.copy(saving = false, error = true)) }
         }
-    }
 
-    private fun buildGoals(goal: OnboardingGoal, prefs: Set<DietaryPref>, kcalTarget: Int): Goals {
-        val proteinShare = goal.proteinShare
-        val kcalGoal: Double?
-        val proteinGoal: Double?
-        val fiberGoal: Double?
-        if (proteinShare == null) {
-            kcalGoal = null
-            proteinGoal = null
-            fiberGoal = null
-        } else {
-            kcalGoal = kcalTarget.toDouble()
-            proteinGoal = Math.round(kcalTarget * proteinShare / 4.0).toDouble()
-            fiberGoal = Math.round(14.0 * kcalTarget / 1000.0).toDouble()
+        private fun buildGoals(
+            goal: OnboardingGoal,
+            prefs: Set<DietaryPref>,
+            kcalTarget: Int,
+        ): Goals {
+            val proteinShare = goal.proteinShare
+            val kcalGoal: Double?
+            val proteinGoal: Double?
+            val fiberGoal: Double?
+            if (proteinShare == null) {
+                kcalGoal = null
+                proteinGoal = null
+                fiberGoal = null
+            } else {
+                kcalGoal = kcalTarget.toDouble()
+                proteinGoal = Math.round(kcalTarget * proteinShare / 4.0).toDouble()
+                fiberGoal = Math.round(14.0 * kcalTarget / 1000.0).toDouble()
+            }
+            return Goals(
+                trackingMode = goal.trackingMode,
+                kcalGoal = kcalGoal,
+                proteinGoal = proteinGoal,
+                fiberGoal = fiberGoal,
+                dietaryPrefs = prefs.associate { it.key to true },
+            )
         }
-        return Goals(
-            trackingMode = goal.trackingMode,
-            kcalGoal = kcalGoal,
-            proteinGoal = proteinGoal,
-            fiberGoal = fiberGoal,
-            dietaryPrefs = prefs.associate { it.key to true },
-        )
     }
-}

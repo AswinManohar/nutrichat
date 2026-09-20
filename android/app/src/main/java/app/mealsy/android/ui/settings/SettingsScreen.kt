@@ -36,7 +36,6 @@ import app.mealsy.android.R
 import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.Eyebrow
 import app.mealsy.android.design.components.FilterChipPill
-import app.mealsy.android.design.components.formatThousands
 import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.ListContainer
@@ -49,6 +48,7 @@ import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.components.SelectableCard
 import app.mealsy.android.design.components.Stepper
+import app.mealsy.android.design.components.formatThousands
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
@@ -182,10 +182,11 @@ fun SettingsContent(
         MealsyDialog(
             onDismissRequest = onKeepCurrentKcalTarget,
             title = stringResource(R.string.settings_kcal_prompt_title),
-            body = stringResource(
-                R.string.settings_kcal_prompt_body,
-                goalTitleFor(goal),
-            ),
+            body =
+                stringResource(
+                    R.string.settings_kcal_prompt_body,
+                    goalTitleFor(goal),
+                ),
             buttons = {
                 MealsyButton(
                     text = stringResource(R.string.settings_kcal_prompt_use_default, "%,d".format(goal.defaultKcal)),
@@ -206,12 +207,13 @@ fun SettingsContent(
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = statusBarTop + 24.dp,
-                start = 20.dp,
-                end = 20.dp,
-                bottom = 120.dp,
-            ),
+            contentPadding =
+                PaddingValues(
+                    top = statusBarTop + 24.dp,
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 120.dp,
+                ),
         ) {
             item { HeaderRow(onBack = onBack) }
             item { Spacer(modifier = Modifier.height(20.dp)) }
@@ -278,9 +280,10 @@ fun SettingsContent(
         InkToast(
             text = stringResource(R.string.settings_saved_toast),
             visible = showSavedToast,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp),
         )
     }
 }
@@ -494,7 +497,10 @@ private fun TargetStepperRow(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PreferencesSection(uiState: SettingsUiState, onTogglePref: (String) -> Unit) {
+private fun PreferencesSection(
+    uiState: SettingsUiState,
+    onTogglePref: (String) -> Unit,
+) {
     Column {
         Eyebrow(text = stringResource(R.string.settings_section_preferences))
         Spacer(modifier = Modifier.height(10.dp))
@@ -516,7 +522,10 @@ private fun PreferencesSection(uiState: SettingsUiState, onTogglePref: (String) 
 // --- Reminders ---------------------------------------------------------------
 
 @Composable
-private fun RemindersSection(uiState: SettingsUiState, onSetReminderEnabled: (Boolean) -> Unit) {
+private fun RemindersSection(
+    uiState: SettingsUiState,
+    onSetReminderEnabled: (Boolean) -> Unit,
+) {
     Column {
         Eyebrow(text = stringResource(R.string.settings_section_reminders))
         Spacer(modifier = Modifier.height(10.dp))
@@ -543,7 +552,10 @@ private fun RemindersSection(uiState: SettingsUiState, onSetReminderEnabled: (Bo
 // --- About -----------------------------------------------------------------
 
 @Composable
-private fun AboutSection(uiState: SettingsUiState, onOpenPrivacyPolicy: () -> Unit) {
+private fun AboutSection(
+    uiState: SettingsUiState,
+    onOpenPrivacyPolicy: () -> Unit,
+) {
     Column {
         Eyebrow(text = stringResource(R.string.settings_section_about))
         Spacer(modifier = Modifier.height(10.dp))

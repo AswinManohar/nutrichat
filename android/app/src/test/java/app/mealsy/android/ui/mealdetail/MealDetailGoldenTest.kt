@@ -14,11 +14,11 @@ import org.junit.Test
  * frames.
  */
 class MealDetailGoldenTest : AppScreenshotTestBase() {
-
-    private fun items() = listOf(
-        MealDetailItemRow(humanizedName = "Grilled chicken breast", rawName = null, qtyG = 150, kcal = 250),
-        MealDetailItemRow(humanizedName = "Brown rice", rawName = "brown rice, cooked", qtyG = 120, kcal = 140),
-    )
+    private fun items() =
+        listOf(
+            MealDetailItemRow(humanizedName = "Grilled chicken breast", rawName = null, qtyG = 150, kcal = 250),
+            MealDetailItemRow(humanizedName = "Brown rice", rawName = "brown rice, cooked", qtyG = 120, kcal = 140),
+        )
 
     private fun loggedState(
         thirdTag: MealDetailThirdTag,
@@ -37,19 +37,20 @@ class MealDetailGoldenTest : AppScreenshotTestBase() {
         coachNote = MealDetailCoachNote.ProteinSource(itemName = "grilled chicken breast", alsoEstimated = false),
     )
 
-    private fun myMealState() = MealDetailUiState.Loaded(
-        mode = MealDetailMode.MyMeal("saved_1"),
-        title = "Usual breakfast",
-        mealType = null,
-        timeLabel = null,
-        heroTone = TagTone.Powder,
-        kcal = 450,
-        proteinG = 28,
-        thirdTag = MealDetailThirdTag.None,
-        status = MealDetailStatus.Logged,
-        items = items(),
-        coachNote = MealDetailCoachNote.None,
-    )
+    private fun myMealState() =
+        MealDetailUiState.Loaded(
+            mode = MealDetailMode.MyMeal("saved_1"),
+            title = "Usual breakfast",
+            mealType = null,
+            timeLabel = null,
+            heroTone = TagTone.Powder,
+            kcal = 450,
+            proteinG = 28,
+            thirdTag = MealDetailThirdTag.None,
+            status = MealDetailStatus.Logged,
+            items = items(),
+            coachNote = MealDetailCoachNote.None,
+        )
 
     @Composable
     private fun render(state: MealDetailUiState.Loaded) {
@@ -64,14 +65,16 @@ class MealDetailGoldenTest : AppScreenshotTestBase() {
     }
 
     @Test
-    fun mealDetailLoggedUsdaVerified_light() = captureMealsy("MealDetail_loggedUsdaVerified", false) {
-        render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
-    }
+    fun mealDetailLoggedUsdaVerified_light() =
+        captureMealsy("MealDetail_loggedUsdaVerified", false) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
 
     @Test
-    fun mealDetailLoggedUsdaVerified_dark() = captureMealsy("MealDetail_loggedUsdaVerified", true) {
-        render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
-    }
+    fun mealDetailLoggedUsdaVerified_dark() =
+        captureMealsy("MealDetail_loggedUsdaVerified", true) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
 
     @Test
     fun mealDetailLoggedUsdaVerified_light_fontScale130() =
@@ -86,24 +89,28 @@ class MealDetailGoldenTest : AppScreenshotTestBase() {
         }
 
     @Test
-    fun mealDetailLoggedWithEstimated_light() = captureMealsy("MealDetail_loggedWithEstimated", false) {
-        render(loggedState(MealDetailThirdTag.Estimated, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
-    }
+    fun mealDetailLoggedWithEstimated_light() =
+        captureMealsy("MealDetail_loggedWithEstimated", false) {
+            render(loggedState(MealDetailThirdTag.Estimated, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
 
     @Test
-    fun mealDetailLoggedWithEstimated_dark() = captureMealsy("MealDetail_loggedWithEstimated", true) {
-        render(loggedState(MealDetailThirdTag.Estimated, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
-    }
+    fun mealDetailLoggedWithEstimated_dark() =
+        captureMealsy("MealDetail_loggedWithEstimated", true) {
+            render(loggedState(MealDetailThirdTag.Estimated, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
 
     @Test
-    fun mealDetailOverTarget_light() = captureMealsy("MealDetail_overTarget", false) {
-        render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.OverBudget(kcalOver = 220)))
-    }
+    fun mealDetailOverTarget_light() =
+        captureMealsy("MealDetail_overTarget", false) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.OverBudget(kcalOver = 220)))
+        }
 
     @Test
-    fun mealDetailOverTarget_dark() = captureMealsy("MealDetail_overTarget", true) {
-        render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.OverBudget(kcalOver = 220)))
-    }
+    fun mealDetailOverTarget_dark() =
+        captureMealsy("MealDetail_overTarget", true) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.OverBudget(kcalOver = 220)))
+        }
 
     @Test
     fun mealDetailMyMeal_light() = captureMealsy("MealDetail_myMeal", false) { render(myMealState()) }

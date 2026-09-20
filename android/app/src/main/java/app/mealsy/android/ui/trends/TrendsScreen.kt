@@ -100,20 +100,23 @@ internal fun TrendsContent(
     today: LocalDate = LocalDate.now(),
 ) {
     when (uiState) {
-        TrendsUiState.Loading -> LoadingState(
-            message = stringResource(R.string.trends_loading),
-            modifier = modifier,
-        )
-        is TrendsUiState.Error -> ErrorState(
-            message = stringResource(
-                when (uiState.kind) {
-                    ErrorKind.Offline -> R.string.error_offline
-                    ErrorKind.LoadFailed -> R.string.trends_error_load_failed
-                },
-            ),
-            onRetry = onRetry,
-            modifier = modifier,
-        )
+        TrendsUiState.Loading ->
+            LoadingState(
+                message = stringResource(R.string.trends_loading),
+                modifier = modifier,
+            )
+        is TrendsUiState.Error ->
+            ErrorState(
+                message =
+                    stringResource(
+                        when (uiState.kind) {
+                            ErrorKind.Offline -> R.string.error_offline
+                            ErrorKind.LoadFailed -> R.string.trends_error_load_failed
+                        },
+                    ),
+                onRetry = onRetry,
+                modifier = modifier,
+            )
         else -> TrendsBody(window, uiState, onSelectWindow, today, modifier)
     }
 }
@@ -128,16 +131,18 @@ private fun TrendsBody(
 ) {
     val colors = MealsyTheme.colors
     Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .mealsyScreenPadding(),
+        modifier =
+            modifier
+                .verticalScroll(rememberScrollState())
+                .mealsyScreenPadding(),
     ) {
         Eyebrow(text = stringResource(R.string.trends_eyebrow))
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = stringResource(
-                if (window == TrendsWindow.WEEK) R.string.trends_title_week else R.string.trends_title_month,
-            ),
+            text =
+                stringResource(
+                    if (window == TrendsWindow.WEEK) R.string.trends_title_week else R.string.trends_title_month,
+                ),
             style = MealsyType.display,
             color = colors.ink,
         )
@@ -204,11 +209,12 @@ private fun TrendsLoadedContent(
         )
         MetricCard(
             label = stringResource(R.string.trends_metric_days_logged),
-            value = stringResource(
-                R.string.trends_days_logged_value,
-                state.daysLoggedCount,
-                state.daysInWindow,
-            ),
+            value =
+                stringResource(
+                    R.string.trends_days_logged_value,
+                    state.daysLoggedCount,
+                    state.daysInWindow,
+                ),
             modifier = Modifier.weight(1f),
         )
     }
@@ -217,11 +223,12 @@ private fun TrendsLoadedContent(
 
     Eyebrow(text = stringResource(R.string.trends_chart_calories))
     Spacer(modifier = Modifier.height(8.dp))
-    val kcalDesc = stringResource(
-        R.string.trends_kcal_chart_desc,
-        state.daysInWindow,
-        formatThousands(state.avgKcal),
-    )
+    val kcalDesc =
+        stringResource(
+            R.string.trends_kcal_chart_desc,
+            state.daysInWindow,
+            formatThousands(state.avgKcal),
+        )
     KcalBarChart(
         bars = bars,
         labels = labels,
@@ -233,11 +240,12 @@ private fun TrendsLoadedContent(
 
     Eyebrow(text = stringResource(R.string.trends_chart_protein))
     Spacer(modifier = Modifier.height(8.dp))
-    val proteinDesc = stringResource(
-        R.string.trends_protein_chart_desc,
-        state.daysInWindow,
-        state.avgProteinG,
-    )
+    val proteinDesc =
+        stringResource(
+            R.string.trends_protein_chart_desc,
+            state.daysInWindow,
+            state.avgProteinG,
+        )
     ProteinLineChart(
         bars = bars,
         goalProtein = state.proteinGoal,
@@ -274,10 +282,11 @@ private fun KcalBarChart(
         val maxRaw = maxOf(bars.maxOfOrNull { it.kcal }?.toFloat() ?: 0f, (goalKcal ?: 0.0).toFloat())
         val axisMax = niceAxisMax(maxRaw)
         Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .clearAndSetSemantics { contentDescription = contentDescriptionText },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clearAndSetSemantics { contentDescription = contentDescriptionText },
         ) {
             val slotWidth = if (bars.isEmpty()) size.width else size.width / bars.size
             val barWidth = slotWidth * 0.5f
@@ -336,10 +345,11 @@ private fun ProteinLineChart(
     val maxRaw = maxOf(bars.maxOfOrNull { it.proteinG }?.toFloat() ?: 0f, (goalProtein ?: 0.0).toFloat())
     val axisMax = niceAxisMax(maxRaw)
     Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(100.dp)
-            .clearAndSetSemantics { contentDescription = contentDescriptionText },
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .clearAndSetSemantics { contentDescription = contentDescriptionText },
     ) {
         repeat(3) { i ->
             val y = size.height * (i + 1) / 4f
@@ -381,24 +391,30 @@ private fun ProteinLineChart(
  * padding/min-height/typography as a plain [ListRow].
  */
 @Composable
-private fun CategoryRow(slice: CategorySlice, modifier: Modifier = Modifier) {
+private fun CategoryRow(
+    slice: CategorySlice,
+    modifier: Modifier = Modifier,
+) {
     val colors = MealsyTheme.colors
     val shareFraction = (slice.shareKcalPct / 100.0).toFloat()
-    val trailing = stringResource(
-        R.string.trends_category_avg,
-        formatThousands(slice.avgKcal.roundToInt()),
-        slice.nMeals,
-    )
-    val shareDescription = stringResource(
-        R.string.trends_category_share_desc,
-        stringResource(mealTypeLabelRes(slice.mealType)),
-        (slice.shareKcalPct.roundToInt()),
-    )
+    val trailing =
+        stringResource(
+            R.string.trends_category_avg,
+            formatThousands(slice.avgKcal.roundToInt()),
+            slice.nMeals,
+        )
+    val shareDescription =
+        stringResource(
+            R.string.trends_category_share_desc,
+            stringResource(mealTypeLabelRes(slice.mealType)),
+            (slice.shareKcalPct.roundToInt()),
+        )
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 48.dp)
-            .padding(vertical = 9.dp, horizontal = 16.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
+                .padding(vertical = 9.dp, horizontal = 16.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -426,27 +442,30 @@ private fun CategoryRow(slice: CategorySlice, modifier: Modifier = Modifier) {
 }
 
 /** Resolves a meal-type wire key to its "Today's meals" icon — mirrors `HomeScreen`'s mapping. */
-private fun mealTypeIcon(mealType: String) = when (mealType) {
-    "breakfast" -> MealsyIcons.Breakfast
-    "lunch" -> MealsyIcons.Lunch
-    "dinner" -> MealsyIcons.Dinner
-    else -> MealsyIcons.Snack
-}
+private fun mealTypeIcon(mealType: String) =
+    when (mealType) {
+        "breakfast" -> MealsyIcons.Breakfast
+        "lunch" -> MealsyIcons.Lunch
+        "dinner" -> MealsyIcons.Dinner
+        else -> MealsyIcons.Snack
+    }
 
 /** Resolves a meal-type wire key to its pastel tone — mirrors `HomeScreen`'s `MEAL_ROW_ORDER`. */
-private fun mealTypeTone(mealType: String): TagTone = when (mealType) {
-    "breakfast" -> TagTone.Butter
-    "lunch" -> TagTone.Leaf
-    "dinner" -> TagTone.Pink
-    else -> TagTone.Powder
-}
+private fun mealTypeTone(mealType: String): TagTone =
+    when (mealType) {
+        "breakfast" -> TagTone.Butter
+        "lunch" -> TagTone.Leaf
+        "dinner" -> TagTone.Pink
+        else -> TagTone.Powder
+    }
 
-private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {
-    "breakfast" -> R.string.home_meal_breakfast
-    "lunch" -> R.string.home_meal_lunch
-    "dinner" -> R.string.home_meal_dinner
-    else -> R.string.home_meal_snack
-}
+private fun mealTypeLabelRes(mealType: String): Int =
+    when (mealType) {
+        "breakfast" -> R.string.home_meal_breakfast
+        "lunch" -> R.string.home_meal_lunch
+        "dinner" -> R.string.home_meal_dinner
+        else -> R.string.home_meal_snack
+    }
 
 /** One day slot for the charts: the backend's [DayPoint] value, or zero when nothing was logged. */
 internal data class TrendsDayBar(val date: LocalDate, val kcal: Double, val proteinG: Double, val hasData: Boolean)
@@ -462,9 +481,10 @@ internal fun buildTrendsDayBars(
     days: List<DayPoint>,
     today: LocalDate,
 ): List<TrendsDayBar> {
-    val byDate = days.mapNotNull { point ->
-        runCatching { LocalDate.parse(point.date) }.getOrNull()?.let { it to point }
-    }.toMap()
+    val byDate =
+        days.mapNotNull { point ->
+            runCatching { LocalDate.parse(point.date) }.getOrNull()?.let { it to point }
+        }.toMap()
     val start = today.minusDays((window.days - 1).toLong())
     return (0 until window.days).map { offset ->
         val date = start.plusDays(offset.toLong())
@@ -483,24 +503,29 @@ internal fun buildTrendsDayBars(
  * single-letter weekday initial (`M T W T F S S`); the month window thins
  * labels to the first, last and every 6th day so 30 labels don't collide.
  */
-internal fun trendsDayLabels(window: TrendsWindow, bars: List<TrendsDayBar>): List<String> =
+internal fun trendsDayLabels(
+    window: TrendsWindow,
+    bars: List<TrendsDayBar>,
+): List<String> =
     when (window) {
         TrendsWindow.WEEK -> bars.map { weekdayInitial(it.date) }
-        TrendsWindow.MONTH -> bars.mapIndexed { index, bar ->
-            if (index == 0 || index == bars.lastIndex || index % 6 == 0) {
-                bar.date.dayOfMonth.toString()
-            } else {
-                ""
+        TrendsWindow.MONTH ->
+            bars.mapIndexed { index, bar ->
+                if (index == 0 || index == bars.lastIndex || index % 6 == 0) {
+                    bar.date.dayOfMonth.toString()
+                } else {
+                    ""
+                }
             }
-        }
     }
 
-private fun weekdayInitial(date: LocalDate): String = when (date.dayOfWeek) {
-    DayOfWeek.MONDAY -> "M"
-    DayOfWeek.TUESDAY -> "T"
-    DayOfWeek.WEDNESDAY -> "W"
-    DayOfWeek.THURSDAY -> "T"
-    DayOfWeek.FRIDAY -> "F"
-    DayOfWeek.SATURDAY -> "S"
-    DayOfWeek.SUNDAY -> "S"
-}
+private fun weekdayInitial(date: LocalDate): String =
+    when (date.dayOfWeek) {
+        DayOfWeek.MONDAY -> "M"
+        DayOfWeek.TUESDAY -> "T"
+        DayOfWeek.WEDNESDAY -> "W"
+        DayOfWeek.THURSDAY -> "T"
+        DayOfWeek.FRIDAY -> "F"
+        DayOfWeek.SATURDAY -> "S"
+        DayOfWeek.SUNDAY -> "S"
+    }

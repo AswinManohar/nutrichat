@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -55,7 +56,6 @@ import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.android.ui.meals.formatLoggedAtTime
 import app.mealsy.android.ui.mymeals.CustomizeSheet
-import androidx.compose.ui.platform.LocalContext
 
 /**
  * Meal detail: shows a logged meal or a saved "My Meal", with a "log again"
@@ -109,23 +109,25 @@ fun MealDetailScreen(
                 LoadingState(message = stringResource(R.string.meal_detail_loading), modifier = Modifier.fillMaxSize())
             is MealDetailUiState.Error ->
                 ErrorState(
-                    message = stringResource(
-                        when (s.kind) {
-                            ErrorKind.Offline -> R.string.error_offline
-                            ErrorKind.LoadFailed -> R.string.meal_detail_error_load_failed
-                        },
-                    ),
+                    message =
+                        stringResource(
+                            when (s.kind) {
+                                ErrorKind.Offline -> R.string.error_offline
+                                ErrorKind.LoadFailed -> R.string.meal_detail_error_load_failed
+                            },
+                        ),
                     onRetry = viewModel::retry,
                     modifier = Modifier.fillMaxSize(),
                 )
-            is MealDetailUiState.Loaded -> MealDetailContent(
-                state = s,
-                onBack = onBack,
-                onLogAgain = viewModel::openSheet,
-                onEditPortions = { showCustomizeSheet = true },
-                onDeleteRequested = { showDeleteDialog = true },
-                modifier = Modifier.fillMaxSize(),
-            )
+            is MealDetailUiState.Loaded ->
+                MealDetailContent(
+                    state = s,
+                    onBack = onBack,
+                    onLogAgain = viewModel::openSheet,
+                    onEditPortions = { showCustomizeSheet = true },
+                    onDeleteRequested = { showDeleteDialog = true },
+                    modifier = Modifier.fillMaxSize(),
+                )
         }
 
         if (showLoggedToast) {
@@ -170,9 +172,10 @@ internal fun MealDetailContent(
 ) {
     val colors = MealsyTheme.colors
     Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .mealsyScreenPadding(showsBottomNav = false),
+        modifier =
+            modifier
+                .verticalScroll(rememberScrollState())
+                .mealsyScreenPadding(showsBottomNav = false),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -237,9 +240,10 @@ internal fun MealDetailContent(
         ListContainer {
             state.items.forEachIndexed { index, item ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -318,46 +322,56 @@ private fun headerEyebrow(state: MealDetailUiState.Loaded): String {
 }
 
 @Composable
-private fun statusText(status: MealDetailStatus): Pair<String, String> = when (status) {
-    is MealDetailStatus.FitsBudget -> stringResource(R.string.meal_detail_status_fits_label) to
-        stringResource(R.string.meal_detail_status_fits_value, status.kcalRemaining)
-    is MealDetailStatus.OverBudget -> stringResource(R.string.meal_detail_status_over_label) to
-        stringResource(R.string.meal_detail_status_over_value, status.kcalOver)
-    MealDetailStatus.Logged -> stringResource(R.string.meal_detail_status_logged_label) to
-        stringResource(R.string.meal_detail_status_no_target)
-}
-
-@Composable
-private fun coachNoteText(note: MealDetailCoachNote): String? = when (note) {
-    is MealDetailCoachNote.ProteinSource -> {
-        val proteinSentence = stringResource(R.string.meal_detail_coach_protein, note.itemName)
-        if (note.alsoEstimated) {
-            proteinSentence + " " + stringResource(R.string.meal_detail_coach_estimate)
-        } else {
-            proteinSentence
-        }
+private fun statusText(status: MealDetailStatus): Pair<String, String> =
+    when (status) {
+        is MealDetailStatus.FitsBudget ->
+            stringResource(R.string.meal_detail_status_fits_label) to
+                stringResource(R.string.meal_detail_status_fits_value, status.kcalRemaining)
+        is MealDetailStatus.OverBudget ->
+            stringResource(R.string.meal_detail_status_over_label) to
+                stringResource(R.string.meal_detail_status_over_value, status.kcalOver)
+        MealDetailStatus.Logged ->
+            stringResource(R.string.meal_detail_status_logged_label) to
+                stringResource(R.string.meal_detail_status_no_target)
     }
-    MealDetailCoachNote.EstimateOnly -> stringResource(R.string.meal_detail_coach_estimate)
-    MealDetailCoachNote.None -> null
-}
-
-private fun mealTypeLabelRes(mealType: String): Int = when (mealType) {
-    "breakfast" -> R.string.home_meal_breakfast
-    "lunch" -> R.string.home_meal_lunch
-    "dinner" -> R.string.home_meal_dinner
-    else -> R.string.home_meal_snack
-}
-
-private fun mealDetailIcon(mealType: String?) = when (mealType) {
-    "breakfast" -> MealsyIcons.Breakfast
-    "lunch" -> MealsyIcons.Lunch
-    "dinner" -> MealsyIcons.Dinner
-    "snack" -> MealsyIcons.Snack
-    else -> MealsyIcons.BowlBars
-}
 
 @Composable
-private fun DeleteMealDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun coachNoteText(note: MealDetailCoachNote): String? =
+    when (note) {
+        is MealDetailCoachNote.ProteinSource -> {
+            val proteinSentence = stringResource(R.string.meal_detail_coach_protein, note.itemName)
+            if (note.alsoEstimated) {
+                proteinSentence + " " + stringResource(R.string.meal_detail_coach_estimate)
+            } else {
+                proteinSentence
+            }
+        }
+        MealDetailCoachNote.EstimateOnly -> stringResource(R.string.meal_detail_coach_estimate)
+        MealDetailCoachNote.None -> null
+    }
+
+private fun mealTypeLabelRes(mealType: String): Int =
+    when (mealType) {
+        "breakfast" -> R.string.home_meal_breakfast
+        "lunch" -> R.string.home_meal_lunch
+        "dinner" -> R.string.home_meal_dinner
+        else -> R.string.home_meal_snack
+    }
+
+private fun mealDetailIcon(mealType: String?) =
+    when (mealType) {
+        "breakfast" -> MealsyIcons.Breakfast
+        "lunch" -> MealsyIcons.Lunch
+        "dinner" -> MealsyIcons.Dinner
+        "snack" -> MealsyIcons.Snack
+        else -> MealsyIcons.BowlBars
+    }
+
+@Composable
+private fun DeleteMealDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     MealsyDialog(
         onDismissRequest = onDismiss,
         title = stringResource(R.string.meal_detail_delete_dialog_title),
@@ -403,12 +417,13 @@ internal fun LogAgainSheet(
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
             val mealTypeLabels = MEAL_TYPE_OPTIONS.associateWith { stringResource(mealTypeLabelRes(it)) }
-            val portionLabels = mapOf(
-                0.5 to stringResource(R.string.meal_detail_portion_half),
-                1.0 to stringResource(R.string.meal_detail_portion_one),
-                1.5 to stringResource(R.string.meal_detail_portion_one_half),
-                2.0 to stringResource(R.string.meal_detail_portion_two),
-            )
+            val portionLabels =
+                mapOf(
+                    0.5 to stringResource(R.string.meal_detail_portion_half),
+                    1.0 to stringResource(R.string.meal_detail_portion_one),
+                    1.5 to stringResource(R.string.meal_detail_portion_one_half),
+                    2.0 to stringResource(R.string.meal_detail_portion_two),
+                )
 
             Text(text = stringResource(R.string.meal_detail_sheet_log_as), style = MealsyType.label, color = colors.muted)
             Spacer(modifier = Modifier.height(8.dp))

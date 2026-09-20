@@ -41,8 +41,10 @@ val LocalReducedMotion: ProvidableCompositionLocal<Boolean> = compositionLocalOf
  * @param transitionScale `Settings.Global.TRANSITION_ANIMATION_SCALE`, or
  *   `1f` if unset.
  */
-internal fun isReducedMotion(animatorScale: Float, transitionScale: Float): Boolean =
-    animatorScale == 0f || transitionScale == 0f
+internal fun isReducedMotion(
+    animatorScale: Float,
+    transitionScale: Float,
+): Boolean = animatorScale == 0f || transitionScale == 0f
 
 /**
  * Reads the system's animator/transition duration scales via
@@ -72,7 +74,10 @@ fun rememberReducedMotion(): Boolean {
 }
 
 /** Reads a `Settings.Global` float duration scale, defaulting to `1f` on any failure. */
-private fun readDurationScale(contentResolver: ContentResolver, name: String): Float =
+private fun readDurationScale(
+    contentResolver: ContentResolver,
+    name: String,
+): Float =
     try {
         Settings.Global.getFloat(contentResolver, name)
     } catch (_: Settings.SettingNotFoundException) {
@@ -104,5 +109,7 @@ fun motionDurationMs(base: Int): Int = if (LocalReducedMotion.current) 0 else ba
  * animation) when reduced motion is active.
  */
 @Composable
-fun <T> mealsyTween(durationMillis: Int, easing: Easing = androidx.compose.animation.core.FastOutSlowInEasing): TweenSpec<T> =
-    tween(durationMillis = motionDurationMs(durationMillis), easing = easing)
+fun <T> mealsyTween(
+    durationMillis: Int,
+    easing: Easing = androidx.compose.animation.core.FastOutSlowInEasing,
+): TweenSpec<T> = tween(durationMillis = motionDurationMs(durationMillis), easing = easing)

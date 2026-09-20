@@ -4,20 +4,20 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.data.repo.CategorySlice
+import app.mealsy.data.repo.DayPoint
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.TrendData
 import app.mealsy.data.repo.TrendsRepository
-import app.mealsy.data.repo.DayPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.io.IOException
-import javax.inject.Inject
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.IOException
+import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /** Number of days covered by the trends window, toggled via the 7/30-day segmented control. */
 enum class TrendsWindow(val days: Int) {
@@ -28,7 +28,9 @@ enum class TrendsWindow(val days: Int) {
 /** Rendering state for [TrendsScreen]. */
 sealed interface TrendsUiState {
     data object Loading : TrendsUiState
+
     data object Empty : TrendsUiState
+
     data class Error(val kind: ErrorKind) : TrendsUiState
 
     /**
@@ -61,12 +63,10 @@ sealed interface TrendsUiState {
  * diluted by 25 empty days. Returns `0` for an empty list (no division by
  * zero).
  */
-internal fun averageKcal(days: List<DayPoint>): Int =
-    if (days.isEmpty()) 0 else (days.sumOf { it.kcal } / days.size).roundToInt()
+internal fun averageKcal(days: List<DayPoint>): Int = if (days.isEmpty()) 0 else (days.sumOf { it.kcal } / days.size).roundToInt()
 
 /** Average protein grams per logged day. Same "days with data" rule as [averageKcal]. */
-internal fun averageProteinG(days: List<DayPoint>): Int =
-    if (days.isEmpty()) 0 else (days.sumOf { it.proteinG } / days.size).roundToInt()
+internal fun averageProteinG(days: List<DayPoint>): Int = if (days.isEmpty()) 0 else (days.sumOf { it.proteinG } / days.size).roundToInt()
 
 /**
  * Drives the trends screen: fetches `GET /meals/trends` + `GET /meals/categories`
@@ -77,61 +77,64 @@ internal fun averageProteinG(days: List<DayPoint>): Int =
  * with nothing logged — that maps to [TrendsUiState.Empty], not an error.
  */
 @HiltViewModel
-class TrendsViewModel @Inject constructor(
-    private val trendsRepository: TrendsRepository,
-    private val goalsRepository: GoalsRepository,
-) : ViewModel() {
+class TrendsViewModel
+    @Inject
+    constructor(
+        private val trendsRepository: TrendsRepository,
+        private val goalsRepository: GoalsRepository,
+    ) : ViewModel() {
+        private val _window = MutableStateFlow(TrendsWindow.WEEK)
+        val window: StateFlow<TrendsWindow> = _window.asStateFlow()
 
-    private val _window = MutableStateFlow(TrendsWindow.WEEK)
-    val window: StateFlow<TrendsWindow> = _window.asStateFlow()
+        private val _uiState = MutableStateFlow<TrendsUiState>(TrendsUiState.Loading)
+        val uiState: StateFlow<TrendsUiState> = _uiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow<TrendsUiState>(TrendsUiState.Loading)
-    val uiState: StateFlow<TrendsUiState> = _uiState.asStateFlow()
+        /** Exposed only so tests can [Job.join] the load deterministically. */
+        val readyJob: Job = load(_window.value)
 
-    /** Exposed only so tests can [Job.join] the load deterministically. */
-    val readyJob: Job = load(_window.value)
+        /** Switches the trends window and refetches; a no-op if [newWindow] is already selected. */
+        fun setWindow(newWindow: TrendsWindow): Job? {
+            if (newWindow == _window.value) return null
+            _window.value = newWindow
+            return load(newWindow)
+        }
 
-    /** Switches the trends window and refetches; a no-op if [newWindow] is already selected. */
-    fun setWindow(newWindow: TrendsWindow): Job? {
-        if (newWindow == _window.value) return null
-        _window.value = newWindow
-        return load(newWindow)
-    }
+        /** Re-runs the load for the current window — used by the error state's retry button. */
+        fun retry(): Job = load(_window.value)
 
-    /** Re-runs the load for the current window — used by the error state's retry button. */
-    fun retry(): Job = load(_window.value)
-
-    private fun load(selected: TrendsWindow): Job {
-        _uiState.value = TrendsUiState.Loading
-        return viewModelScope.launch {
-            try {
-                val trends = trendsRepository.trends(selected.days)
-                val categories = trendsRepository.categories(selected.days)
-                val goals = try {
-                    goalsRepository.get()
+        private fun load(selected: TrendsWindow): Job {
+            _uiState.value = TrendsUiState.Loading
+            return viewModelScope.launch {
+                try {
+                    val trends = trendsRepository.trends(selected.days)
+                    val categories = trendsRepository.categories(selected.days)
+                    val goals =
+                        try {
+                            goalsRepository.get()
+                        } catch (exc: CancellationException) {
+                            throw exc
+                        } catch (exc: Exception) {
+                            null
+                        }
+                    _uiState.value =
+                        if (trends.days.isEmpty() && categories.isEmpty()) {
+                            TrendsUiState.Empty
+                        } else {
+                            TrendsUiState.Loaded(
+                                trends = trends,
+                                categories = categories,
+                                proteinGoal = goals?.proteinGoal,
+                                kcalGoal = goals?.kcalGoal,
+                                daysInWindow = selected.days,
+                            )
+                        }
                 } catch (exc: CancellationException) {
                     throw exc
+                } catch (exc: IOException) {
+                    _uiState.value = TrendsUiState.Error(ErrorKind.Offline)
                 } catch (exc: Exception) {
-                    null
+                    _uiState.value = TrendsUiState.Error(ErrorKind.LoadFailed)
                 }
-                _uiState.value = if (trends.days.isEmpty() && categories.isEmpty()) {
-                    TrendsUiState.Empty
-                } else {
-                    TrendsUiState.Loaded(
-                        trends = trends,
-                        categories = categories,
-                        proteinGoal = goals?.proteinGoal,
-                        kcalGoal = goals?.kcalGoal,
-                        daysInWindow = selected.days,
-                    )
-                }
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: IOException) {
-                _uiState.value = TrendsUiState.Error(ErrorKind.Offline)
-            } catch (exc: Exception) {
-                _uiState.value = TrendsUiState.Error(ErrorKind.LoadFailed)
             }
         }
     }
-}

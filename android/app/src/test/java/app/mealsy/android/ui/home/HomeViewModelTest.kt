@@ -3,6 +3,7 @@ package app.mealsy.android.ui.home
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.ByTypeDto
 import app.mealsy.data.api.CategoryStatDto
+import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.DayTrendDto
 import app.mealsy.data.api.GoalRequest
 import app.mealsy.data.api.GoalsResponse
@@ -13,7 +14,6 @@ import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealLogDetailDto
 import app.mealsy.data.api.MealLogSummaryDto
-import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.MyMealDetailDto
 import app.mealsy.data.api.QuotaResponse
@@ -25,11 +25,6 @@ import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.Profile
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
-import java.io.IOException
-import okhttp3.ResponseBody.Companion.toResponseBody
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,6 +40,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /** A [MealsyApi] fake that only implements what [HomeViewModel] and [GoalsRepository] use. */
 private class FakeMealsyApi(
@@ -52,7 +52,9 @@ private class FakeMealsyApi(
     var throwOnToday: Boolean = false,
 ) : MealsyApi {
     override suspend fun logTurn(body: LogTurnRequest): LogTurnResponse = notImplemented()
+
     override suspend fun pending(id: String): LogTurnResponse = notImplemented()
+
     override suspend fun logItems(body: LogItemsRequest): LogItemsResponse = notImplemented()
 
     override suspend fun today(): TodayResponse {
@@ -60,29 +62,55 @@ private class FakeMealsyApi(
         return todayResponse
     }
 
-    override suspend fun goals(): GoalsResponse = goalsResponse ?: throw retrofit2.HttpException(
-        retrofit2.Response.error<Any>(404, "".toResponseBody(null)),
-    )
+    override suspend fun goals(): GoalsResponse =
+        goalsResponse ?: throw retrofit2.HttpException(
+            retrofit2.Response.error<Any>(404, "".toResponseBody(null)),
+        )
 
     override suspend fun createGoals(body: GoalRequest): GoalsResponse = notImplemented()
+
     override suspend fun updateGoals(body: GoalRequest): GoalsResponse = notImplemented()
+
     override suspend fun quota(): QuotaResponse = notImplemented()
+
     override suspend fun registerDevice(body: RegisterDeviceRequest): Unit = notImplemented()
+
     override suspend fun deleteDevice(token: String): Unit = notImplemented()
+
     override suspend fun appMeta(): AppMetaResponse = notImplemented()
+
     override suspend fun trends(days: Int): List<DayTrendDto> = notImplemented()
+
     override suspend fun categories(days: Int): List<CategoryStatDto> = notImplemented()
+
     override suspend fun myMeals(): List<SavedMealDto> = notImplemented()
+
     override suspend fun myMeal(id: String): MyMealDetailDto = notImplemented()
+
     override suspend fun saveMeal(body: SaveMealRequest): SavedMealDto = notImplemented()
-    override suspend fun logMyMeal(id: String, body: LogMyMealRequest): LogItemsResponse = notImplemented()
+
+    override suspend fun logMyMeal(
+        id: String,
+        body: LogMyMealRequest,
+    ): LogItemsResponse = notImplemented()
+
     override suspend fun deleteMyMeal(id: String): Unit = notImplemented()
-    override suspend fun listMealLogs(date: String?, mealType: String?): List<MealLogSummaryDto> = notImplemented()
+
+    override suspend fun listMealLogs(
+        date: String?,
+        mealType: String?,
+    ): List<MealLogSummaryDto> = notImplemented()
+
     override suspend fun mealLog(id: String): MealLogDetailDto = notImplemented()
+
     override suspend fun deleteMealLog(id: String): Unit = notImplemented()
+
     override suspend fun deleteAccount(): Unit = notImplemented()
-    override suspend fun coachingFeedback(id: String, body: CoachingFeedbackRequest): Unit =
-        notImplemented()
+
+    override suspend fun coachingFeedback(
+        id: String,
+        body: CoachingFeedbackRequest,
+    ): Unit = notImplemented()
 
     private fun <T> notImplemented(): T = throw UnsupportedOperationException("not used by HomeViewModel tests")
 }
@@ -91,11 +119,17 @@ private class FakeProfileStore(initial: Profile) : ProfileStore {
     private var current = initial
     private val flow = MutableStateFlow(initial)
     override val profile: Flow<Profile> get() = flow
+
     override suspend fun get(): Profile = flow.first()
-    override suspend fun set(firstName: String?, goalFocus: String?) {
+
+    override suspend fun set(
+        firstName: String?,
+        goalFocus: String?,
+    ) {
         current = current.copy(firstName = firstName ?: current.firstName, goalFocus = goalFocus ?: current.goalFocus)
         flow.value = current
     }
+
     override suspend fun clear() {
         current = Profile()
         flow.value = current
@@ -108,11 +142,12 @@ private fun today(
     carbsG: Double = 152.0,
     fatG: Double = 48.0,
     nMeals: Int = 4,
-    byType: List<ByTypeDto> = listOf(
-        ByTypeDto(mealType = "breakfast", kcal = 400.0, summary = "", nMeals = 2),
-        ByTypeDto(mealType = "lunch", kcal = 500.0, summary = "", nMeals = 1),
-        ByTypeDto(mealType = "snack", kcal = 440.0, summary = "", nMeals = 1),
-    ),
+    byType: List<ByTypeDto> =
+        listOf(
+            ByTypeDto(mealType = "breakfast", kcal = 400.0, summary = "", nMeals = 2),
+            ByTypeDto(mealType = "lunch", kcal = 500.0, summary = "", nMeals = 1),
+            ByTypeDto(mealType = "snack", kcal = 440.0, summary = "", nMeals = 1),
+        ),
 ) = TodayResponse(kcal = kcal, proteinG = proteinG, carbsG = carbsG, fatG = fatG, fiberG = 20.0, nMeals = nMeals, byType = byType)
 
 private fun goalsResponse(
@@ -122,12 +157,13 @@ private fun goalsResponse(
 ) = GoalsResponse(trackingMode = trackingMode, kcalGoal = kcalGoal, proteinGoal = proteinGoal, fiberGoal = 30.0)
 
 /** Clock fixed at a given local hour on an arbitrary date, in UTC. */
-private fun clockAtHour(hour: Int, minute: Int = 0): Clock =
-    Clock.fixed(Instant.parse("2026-09-16T00:00:00Z").plusSeconds((hour * 3600 + minute * 60).toLong()), ZoneOffset.UTC)
+private fun clockAtHour(
+    hour: Int,
+    minute: Int = 0,
+): Clock = Clock.fixed(Instant.parse("2026-09-16T00:00:00Z").plusSeconds((hour * 3600 + minute * 60).toLong()), ZoneOffset.UTC)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
-
     @Before
     fun setUp() {
         Dispatchers.setMain(Dispatchers.Unconfined)
@@ -146,13 +182,14 @@ class HomeViewModelTest {
         throwOnToday: Boolean = false,
     ): Pair<HomeViewModel, FakeMealsyApi> {
         val api = FakeMealsyApi(todayResponse, goals, throwOnToday)
-        val vm = HomeViewModel(
-            api = api,
-            goalsRepository = GoalsRepository(api),
-            profileStore = FakeProfileStore(profile),
-            todayRefreshSignal = TodayRefreshSignal(),
-            clock = clock,
-        )
+        val vm =
+            HomeViewModel(
+                api = api,
+                goalsRepository = GoalsRepository(api),
+                profileStore = FakeProfileStore(profile),
+                todayRefreshSignal = TodayRefreshSignal(),
+                clock = clock,
+            )
         return vm to api
     }
 
@@ -287,31 +324,34 @@ class HomeViewModelTest {
 
     @Test
     fun coachNote_proteinGapAfternoon() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(proteinG = 100.0),
-            goals = goalsResponse(proteinGoal = 140.0),
-            clock = clockAtHour(13),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 100.0),
+                goals = goalsResponse(proteinGoal = 140.0),
+                clock = clockAtHour(13),
+            )
         assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon), vm.uiState.value.coachNote)
     }
 
     @Test
     fun coachNote_proteinGapMorning() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(proteinG = 100.0),
-            goals = goalsResponse(proteinGoal = 140.0),
-            clock = clockAtHour(8),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 100.0),
+                goals = goalsResponse(proteinGoal = 140.0),
+                clock = clockAtHour(8),
+            )
         assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Morning), vm.uiState.value.coachNote)
     }
 
     @Test
     fun coachNote_proteinGapEvening() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(proteinG = 100.0),
-            goals = goalsResponse(proteinGoal = 140.0),
-            clock = clockAtHour(19),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 100.0),
+                goals = goalsResponse(proteinGoal = 140.0),
+                clock = clockAtHour(19),
+            )
         assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Evening), vm.uiState.value.coachNote)
     }
 
@@ -329,28 +369,31 @@ class HomeViewModelTest {
 
     @Test
     fun coachNote_kcalRemainingWhenNoProteinGap() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(kcal = 1340.0, proteinG = 140.0),
-            goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(kcal = 1340.0, proteinG = 140.0),
+                goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
+            )
         assertEquals(HomeCoachNote.KcalRemaining(kcal = 560), vm.uiState.value.coachNote)
     }
 
     @Test
     fun coachNote_targetReachedWhenGoalMetExactly() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(kcal = 1900.0, proteinG = 140.0),
-            goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(kcal = 1900.0, proteinG = 140.0),
+                goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
+            )
         assertEquals(HomeCoachNote.TargetReached, vm.uiState.value.coachNote)
     }
 
     @Test
     fun coachNote_targetReachedWhenOverGoal() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(kcal = 2200.0, proteinG = 140.0),
-            goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(kcal = 2200.0, proteinG = 140.0),
+                goals = goalsResponse(kcalGoal = 1900.0, proteinGoal = 140.0),
+            )
         assertEquals(HomeCoachNote.TargetReached, vm.uiState.value.coachNote)
     }
 
@@ -358,14 +401,17 @@ class HomeViewModelTest {
 
     @Test
     fun mealRows_missingOrZeroCountRendersNull() {
-        val (vm, _) = buildViewModel(
-            todayResponse = today(
-                byType = listOf(
-                    ByTypeDto(mealType = "breakfast", kcal = 0.0, summary = "", nMeals = 0),
-                    ByTypeDto(mealType = "lunch", kcal = 500.0, summary = "", nMeals = 1),
-                ),
-            ),
-        )
+        val (vm, _) =
+            buildViewModel(
+                todayResponse =
+                    today(
+                        byType =
+                            listOf(
+                                ByTypeDto(mealType = "breakfast", kcal = 0.0, summary = "", nMeals = 0),
+                                ByTypeDto(mealType = "lunch", kcal = 500.0, summary = "", nMeals = 1),
+                            ),
+                    ),
+            )
         val meals = vm.uiState.value.meals.associateBy { it.mealType }
         assertNull(meals.getValue("breakfast").count)
         assertEquals(1, meals.getValue("lunch").count)
@@ -385,22 +431,24 @@ class HomeViewModelTest {
     // --- Refresh signal ---------------------------------------------------
 
     @Test
-    fun refreshSignal_reloadsWithoutFlippingLoading() = kotlinx.coroutines.test.runTest {
-        val api = FakeMealsyApi(today(kcal = 1000.0), goalsResponse())
-        val signal = TodayRefreshSignal()
-        val vm = HomeViewModel(
-            api = api,
-            goalsRepository = GoalsRepository(api),
-            profileStore = FakeProfileStore(Profile(firstName = "Alex")),
-            todayRefreshSignal = signal,
-            clock = clockAtHour(13),
-        )
-        assertFalse(vm.uiState.value.loading)
-        api.todayResponse = today(kcal = 1500.0)
-        signal.notifyLogged()
-        assertFalse(vm.uiState.value.loading)
-        assertEquals("1,500", vm.uiState.value.eatenKcal)
-    }
+    fun refreshSignal_reloadsWithoutFlippingLoading() =
+        kotlinx.coroutines.test.runTest {
+            val api = FakeMealsyApi(today(kcal = 1000.0), goalsResponse())
+            val signal = TodayRefreshSignal()
+            val vm =
+                HomeViewModel(
+                    api = api,
+                    goalsRepository = GoalsRepository(api),
+                    profileStore = FakeProfileStore(Profile(firstName = "Alex")),
+                    todayRefreshSignal = signal,
+                    clock = clockAtHour(13),
+                )
+            assertFalse(vm.uiState.value.loading)
+            api.todayResponse = today(kcal = 1500.0)
+            signal.notifyLogged()
+            assertFalse(vm.uiState.value.loading)
+            assertEquals("1,500", vm.uiState.value.eatenKcal)
+        }
 
     // --- Error / retry ------------------------------------------------------
 
@@ -414,13 +462,14 @@ class HomeViewModelTest {
     @Test
     fun retry_clearsErrorOnSuccess() {
         val api = FakeMealsyApi(today(), goalsResponse(), throwOnToday = true)
-        val vm = HomeViewModel(
-            api = api,
-            goalsRepository = GoalsRepository(api),
-            profileStore = FakeProfileStore(Profile(firstName = "Alex")),
-            todayRefreshSignal = TodayRefreshSignal(),
-            clock = clockAtHour(13),
-        )
+        val vm =
+            HomeViewModel(
+                api = api,
+                goalsRepository = GoalsRepository(api),
+                profileStore = FakeProfileStore(Profile(firstName = "Alex")),
+                todayRefreshSignal = TodayRefreshSignal(),
+                clock = clockAtHour(13),
+            )
         assertTrue(vm.uiState.value.error)
         api.throwOnToday = false
         vm.retry()

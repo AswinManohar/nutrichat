@@ -49,23 +49,25 @@ fun ProgressRing(
 ) {
     val colors = MealsyTheme.colors
     val clamped = progress.coerceIn(0f, 1f)
-    val progressState: androidx.compose.runtime.State<Float> = if (animate) {
-        animateFloatAsState(
-            targetValue = clamped,
-            animationSpec = mealsyTween(durationMillis = 320, easing = FastOutSlowInEasing),
-            label = "progressRing",
-        )
-    } else {
-        remember(clamped) { mutableStateOf(clamped) }
-    }
+    val progressState: androidx.compose.runtime.State<Float> =
+        if (animate) {
+            animateFloatAsState(
+                targetValue = clamped,
+                animationSpec = mealsyTween(durationMillis = 320, easing = FastOutSlowInEasing),
+                label = "progressRing",
+            )
+        } else {
+            remember(clamped) { mutableStateOf(clamped) }
+        }
     val animatedProgress by progressState
 
     Box(
-        modifier = modifier
-            .size(size)
-            .semantics {
-                progressBarRangeInfo = ProgressBarRangeInfo(current = clamped, range = 0f..1f)
-            },
+        modifier =
+            modifier
+                .size(size)
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(current = clamped, range = 0f..1f)
+                },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(size)) {

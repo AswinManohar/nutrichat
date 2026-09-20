@@ -52,7 +52,10 @@ import kotlin.math.max
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CameraSheet(onUsePhoto: (Bitmap) -> Unit, onDismiss: () -> Unit) {
+fun CameraSheet(
+    onUsePhoto: (Bitmap) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
 
     var hasPermission by remember {
@@ -65,12 +68,13 @@ fun CameraSheet(onUsePhoto: (Bitmap) -> Unit, onDismiss: () -> Unit) {
     var captured by remember { mutableStateOf<Bitmap?>(null) }
     var captureError by remember { mutableStateOf<String?>(null) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        hasPermission = granted
-        if (!granted) permissionDenied = true
-    }
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            hasPermission = granted
+            if (!granted) permissionDenied = true
+        }
 
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
@@ -156,7 +160,10 @@ fun CameraSheet(onUsePhoto: (Bitmap) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun CameraPreview(modifier: Modifier, onImageCaptureReady: (ImageCapture) -> Unit) {
+private fun CameraPreview(
+    modifier: Modifier,
+    onImageCaptureReady: (ImageCapture) -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context) }
@@ -166,9 +173,10 @@ private fun CameraPreview(modifier: Modifier, onImageCaptureReady: (ImageCapture
         cameraProviderFuture.addListener(
             {
                 val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
+                val preview =
+                    Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
                 val imageCapture = ImageCapture.Builder().build()
                 try {
                     cameraProvider.unbindAll()
@@ -243,9 +251,10 @@ private fun ImageProxy.toRotatedBitmap(): Bitmap {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
 
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = computeInSampleSize(bounds.outWidth, bounds.outHeight, DECODE_TARGET_PX)
-    }
+    val options =
+        BitmapFactory.Options().apply {
+            inSampleSize = computeInSampleSize(bounds.outWidth, bounds.outHeight, DECODE_TARGET_PX)
+        }
     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     return ImageEncoder.rotate(bitmap, imageInfo.rotationDegrees)
 }
@@ -254,7 +263,11 @@ private fun ImageProxy.toRotatedBitmap(): Bitmap {
  * Smallest power-of-two subsample factor that brings the longest edge down
  * to [targetPx] or less (never upsamples — factor is always >= 1).
  */
-private fun computeInSampleSize(width: Int, height: Int, targetPx: Int): Int {
+private fun computeInSampleSize(
+    width: Int,
+    height: Int,
+    targetPx: Int,
+): Int {
     val longestEdge = max(width, height)
     var sampleSize = 1
     while (longestEdge / sampleSize > targetPx) {

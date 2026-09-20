@@ -55,13 +55,14 @@ fun SelectableCard(
     )
 
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                role = Role.RadioButton,
-                onClick = onClick,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .selectable(
+                    selected = selected,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                ),
         shape = MealsyShapes.card,
         color = colors.surface,
         border = BorderStroke(1.5.dp, borderColor),

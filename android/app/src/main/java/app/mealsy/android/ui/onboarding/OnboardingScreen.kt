@@ -34,6 +34,7 @@ import app.mealsy.android.R
 import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.CoachNote
 import app.mealsy.android.design.components.DecorativeDots
+import app.mealsy.android.design.components.FilterChipPill
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
 import app.mealsy.android.design.components.MealsyProgressBar
@@ -41,7 +42,6 @@ import app.mealsy.android.design.components.MealsySlider
 import app.mealsy.android.design.components.OliveSquiggle
 import app.mealsy.android.design.components.OutlinePill
 import app.mealsy.android.design.components.PastelIconCircle
-import app.mealsy.android.design.components.FilterChipPill
 import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.components.SelectableCard
 import app.mealsy.android.design.components.SpeechBubble
@@ -111,27 +111,29 @@ fun OnboardingContent(
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.canvas) {
         when (state.step) {
-            0 -> WelcomeStep(
-                statusBarTop = statusBarTop,
-                animate = animate,
-                onGetStarted = onNext,
-                onNavigateToLogin = onNavigateToLogin,
-            )
+            0 ->
+                WelcomeStep(
+                    statusBarTop = statusBarTop,
+                    animate = animate,
+                    onGetStarted = onNext,
+                    onNavigateToLogin = onNavigateToLogin,
+                )
             5 -> DoneStep(state = state, animate = animate, onRetry = onRetry)
-            else -> StepScaffold(
-                state = state,
-                statusBarTop = statusBarTop,
-                onBack = onBack,
-                onNext = onNext,
-                animate = animate,
-            ) {
-                when (state.step) {
-                    1 -> NameStep(state = state, onName = onName)
-                    2 -> GoalStep(state = state, onSelectGoal = onSelectGoal)
-                    3 -> PrefsStep(state = state, onTogglePref = onTogglePref)
-                    4 -> TargetStep(state = state, onKcalTarget = onKcalTarget)
+            else ->
+                StepScaffold(
+                    state = state,
+                    statusBarTop = statusBarTop,
+                    onBack = onBack,
+                    onNext = onNext,
+                    animate = animate,
+                ) {
+                    when (state.step) {
+                        1 -> NameStep(state = state, onName = onName)
+                        2 -> GoalStep(state = state, onSelectGoal = onSelectGoal)
+                        3 -> PrefsStep(state = state, onTogglePref = onTogglePref)
+                        4 -> TargetStep(state = state, onKcalTarget = onKcalTarget)
+                    }
                 }
-            }
         }
     }
 }
@@ -152,9 +154,10 @@ private fun WelcomeStep(
         DecorativeDots(modifier = Modifier.fillMaxSize())
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
         ) {
             Text(
                 text = stringResource(R.string.onboarding_welcome_hero).uppercase(),
@@ -171,17 +174,19 @@ private fun WelcomeStep(
                 )
                 SpeechBubble(
                     text = stringResource(R.string.onboarding_welcome_speech_bubble).uppercase(),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 173.dp, top = 0.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 173.dp, top = 0.dp),
                 )
             }
 
             OutlinePill(
                 text = stringResource(R.string.onboarding_welcome_pill).uppercase(),
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 18.dp, bottom = 10.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 18.dp, bottom = 10.dp),
             )
 
             MealsyButton(
@@ -219,9 +224,10 @@ private fun StepScaffold(
     val stepOfLabel = stringResource(R.string.onboarding_step_of_4, state.step)
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -251,11 +257,12 @@ private fun StepScaffold(
             content()
         }
 
-        val buttonLabel = when (state.continueLabel) {
-            ContinueLabel.Continue -> stringResource(R.string.onboarding_continue)
-            ContinueLabel.NothingToAvoid -> stringResource(R.string.onboarding_nothing_to_avoid)
-            ContinueLabel.Finish -> stringResource(R.string.onboarding_finish)
-        }
+        val buttonLabel =
+            when (state.continueLabel) {
+                ContinueLabel.Continue -> stringResource(R.string.onboarding_continue)
+                ContinueLabel.NothingToAvoid -> stringResource(R.string.onboarding_nothing_to_avoid)
+                ContinueLabel.Finish -> stringResource(R.string.onboarding_finish)
+            }
         MealsyButton(
             text = buttonLabel,
             onClick = onNext,
@@ -288,7 +295,10 @@ private fun StepSubtitle(text: String) {
 // --- Step 1: Name ---------------------------------------------------------
 
 @Composable
-private fun NameStep(state: OnboardingUiState, onName: (String) -> Unit) {
+private fun NameStep(
+    state: OnboardingUiState,
+    onName: (String) -> Unit,
+) {
     Column {
         StepTitle(stringResource(R.string.onboarding_name_title))
         StepSubtitle(stringResource(R.string.onboarding_name_subtitle))
@@ -310,21 +320,31 @@ internal data class GoalCardSpec(
     val subtitleRes: Int,
 )
 
-internal val GOAL_CARD_SPECS = listOf(
-    GoalCardSpec(OnboardingGoal.Lose, TagTone.Butter, R.string.onboarding_goal_lose_title, R.string.onboarding_goal_lose_subtitle),
-    GoalCardSpec(OnboardingGoal.Maintain, TagTone.Leaf, R.string.onboarding_goal_maintain_title, R.string.onboarding_goal_maintain_subtitle),
-    GoalCardSpec(OnboardingGoal.Build, TagTone.Powder, R.string.onboarding_goal_build_title, R.string.onboarding_goal_build_subtitle),
-    GoalCardSpec(OnboardingGoal.Learn, TagTone.Pink, R.string.onboarding_goal_learn_title, R.string.onboarding_goal_learn_subtitle),
-)
+internal val GOAL_CARD_SPECS =
+    listOf(
+        GoalCardSpec(OnboardingGoal.Lose, TagTone.Butter, R.string.onboarding_goal_lose_title, R.string.onboarding_goal_lose_subtitle),
+        GoalCardSpec(
+            OnboardingGoal.Maintain,
+            TagTone.Leaf,
+            R.string.onboarding_goal_maintain_title,
+            R.string.onboarding_goal_maintain_subtitle,
+        ),
+        GoalCardSpec(OnboardingGoal.Build, TagTone.Powder, R.string.onboarding_goal_build_title, R.string.onboarding_goal_build_subtitle),
+        GoalCardSpec(OnboardingGoal.Learn, TagTone.Pink, R.string.onboarding_goal_learn_title, R.string.onboarding_goal_learn_subtitle),
+    )
 
 @Composable
-private fun GoalStep(state: OnboardingUiState, onSelectGoal: (OnboardingGoal) -> Unit) {
+private fun GoalStep(
+    state: OnboardingUiState,
+    onSelectGoal: (OnboardingGoal) -> Unit,
+) {
     Column {
-        val title = if (state.firstName.isBlank()) {
-            stringResource(R.string.onboarding_goal_title_no_name)
-        } else {
-            stringResource(R.string.onboarding_goal_title, state.firstName)
-        }
+        val title =
+            if (state.firstName.isBlank()) {
+                stringResource(R.string.onboarding_goal_title_no_name)
+            } else {
+                stringResource(R.string.onboarding_goal_title, state.firstName)
+            }
         StepTitle(title)
         StepSubtitle(stringResource(R.string.onboarding_goal_subtitle))
 
@@ -347,20 +367,24 @@ private fun GoalStep(state: OnboardingUiState, onSelectGoal: (OnboardingGoal) ->
 
 // --- Step 3: Preferences ---------------------------------------------------
 
-internal val PREF_LABELS: Map<DietaryPref, Int> = mapOf(
-    DietaryPref.Vegetarian to R.string.onboarding_pref_vegetarian,
-    DietaryPref.Vegan to R.string.onboarding_pref_vegan,
-    DietaryPref.Pescatarian to R.string.onboarding_pref_pescatarian,
-    DietaryPref.NoDairy to R.string.onboarding_pref_no_dairy,
-    DietaryPref.NoGluten to R.string.onboarding_pref_no_gluten,
-    DietaryPref.LowSodium to R.string.onboarding_pref_low_sodium,
-    DietaryPref.LowSugar to R.string.onboarding_pref_low_sugar,
-    DietaryPref.NoNuts to R.string.onboarding_pref_no_nuts,
-)
+internal val PREF_LABELS: Map<DietaryPref, Int> =
+    mapOf(
+        DietaryPref.Vegetarian to R.string.onboarding_pref_vegetarian,
+        DietaryPref.Vegan to R.string.onboarding_pref_vegan,
+        DietaryPref.Pescatarian to R.string.onboarding_pref_pescatarian,
+        DietaryPref.NoDairy to R.string.onboarding_pref_no_dairy,
+        DietaryPref.NoGluten to R.string.onboarding_pref_no_gluten,
+        DietaryPref.LowSodium to R.string.onboarding_pref_low_sodium,
+        DietaryPref.LowSugar to R.string.onboarding_pref_low_sugar,
+        DietaryPref.NoNuts to R.string.onboarding_pref_no_nuts,
+    )
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PrefsStep(state: OnboardingUiState, onTogglePref: (DietaryPref) -> Unit) {
+private fun PrefsStep(
+    state: OnboardingUiState,
+    onTogglePref: (DietaryPref) -> Unit,
+) {
     Column {
         StepTitle(stringResource(R.string.onboarding_prefs_title))
         StepSubtitle(stringResource(R.string.onboarding_prefs_subtitle))
@@ -383,25 +407,30 @@ private fun PrefsStep(state: OnboardingUiState, onTogglePref: (DietaryPref) -> U
 // --- Step 4: Target ---------------------------------------------------------
 
 @Composable
-private fun goalLabel(goal: OnboardingGoal?): String = when (goal) {
-    OnboardingGoal.Lose -> stringResource(R.string.onboarding_goal_lose_title)
-    OnboardingGoal.Maintain -> stringResource(R.string.onboarding_goal_maintain_title)
-    OnboardingGoal.Build -> stringResource(R.string.onboarding_goal_build_title)
-    OnboardingGoal.Learn -> stringResource(R.string.onboarding_goal_learn_title)
-    null -> ""
-}
+private fun goalLabel(goal: OnboardingGoal?): String =
+    when (goal) {
+        OnboardingGoal.Lose -> stringResource(R.string.onboarding_goal_lose_title)
+        OnboardingGoal.Maintain -> stringResource(R.string.onboarding_goal_maintain_title)
+        OnboardingGoal.Build -> stringResource(R.string.onboarding_goal_build_title)
+        OnboardingGoal.Learn -> stringResource(R.string.onboarding_goal_learn_title)
+        null -> ""
+    }
 
 @Composable
-private fun targetWhyCopy(goal: OnboardingGoal?): String = when (goal) {
-    OnboardingGoal.Lose -> stringResource(R.string.onboarding_target_why_lose)
-    OnboardingGoal.Maintain -> stringResource(R.string.onboarding_target_why_maintain)
-    OnboardingGoal.Build -> stringResource(R.string.onboarding_target_why_build)
-    OnboardingGoal.Learn -> stringResource(R.string.onboarding_target_why_learn)
-    null -> stringResource(R.string.onboarding_target_why_default)
-}
+private fun targetWhyCopy(goal: OnboardingGoal?): String =
+    when (goal) {
+        OnboardingGoal.Lose -> stringResource(R.string.onboarding_target_why_lose)
+        OnboardingGoal.Maintain -> stringResource(R.string.onboarding_target_why_maintain)
+        OnboardingGoal.Build -> stringResource(R.string.onboarding_target_why_build)
+        OnboardingGoal.Learn -> stringResource(R.string.onboarding_target_why_learn)
+        null -> stringResource(R.string.onboarding_target_why_default)
+    }
 
 @Composable
-private fun TargetStep(state: OnboardingUiState, onKcalTarget: (Int) -> Unit) {
+private fun TargetStep(
+    state: OnboardingUiState,
+    onKcalTarget: (Int) -> Unit,
+) {
     val colors = MealsyTheme.colors
 
     Column {
@@ -432,10 +461,11 @@ private fun TargetStep(state: OnboardingUiState, onKcalTarget: (Int) -> Unit) {
                             color = colors.muted,
                         )
                         Text(
-                            text = stringResource(
-                                R.string.onboarding_target_kcal_value,
-                                "%,d".format(state.kcalTarget),
-                            ),
+                            text =
+                                stringResource(
+                                    R.string.onboarding_target_kcal_value,
+                                    "%,d".format(state.kcalTarget),
+                                ),
                             style = MealsyType.bigNumberLarge,
                             color = colors.ink,
                         )
@@ -467,18 +497,20 @@ private fun TargetStep(state: OnboardingUiState, onKcalTarget: (Int) -> Unit) {
             }
         }
 
-        val coachNoteText = if (state.coachNotePrefs.isEmpty()) {
-            stringResource(R.string.onboarding_target_coach_note_default)
-        } else {
-            val joined = state.coachNotePrefs
-                .map { pref -> stringResource(PREF_LABELS.getValue(pref)) }
-                .joinToString(" and ") { it.lowercase() }
-            if (state.hasMorePrefs) {
-                stringResource(R.string.onboarding_target_coach_note_prefs_more, joined)
+        val coachNoteText =
+            if (state.coachNotePrefs.isEmpty()) {
+                stringResource(R.string.onboarding_target_coach_note_default)
             } else {
-                stringResource(R.string.onboarding_target_coach_note_prefs, joined)
+                val joined =
+                    state.coachNotePrefs
+                        .map { pref -> stringResource(PREF_LABELS.getValue(pref)) }
+                        .joinToString(" and ") { it.lowercase() }
+                if (state.hasMorePrefs) {
+                    stringResource(R.string.onboarding_target_coach_note_prefs_more, joined)
+                } else {
+                    stringResource(R.string.onboarding_target_coach_note_prefs, joined)
+                }
             }
-        }
         CoachNote(text = coachNoteText, modifier = Modifier.padding(top = 12.dp))
     }
 }
@@ -486,18 +518,23 @@ private fun TargetStep(state: OnboardingUiState, onKcalTarget: (Int) -> Unit) {
 // --- Step 5: Done ---------------------------------------------------------
 
 @Composable
-private fun DoneStep(state: OnboardingUiState, animate: Boolean, onRetry: () -> Unit) {
+private fun DoneStep(
+    state: OnboardingUiState,
+    animate: Boolean,
+    onRetry: () -> Unit,
+) {
     val colors = MealsyTheme.colors
 
     Box(modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Olli(size = OlliSize.Done, bob = animate)
 
-            val title = if (state.firstName.isBlank()) {
-                stringResource(R.string.onboarding_done_title_no_name)
-            } else {
-                stringResource(R.string.onboarding_done_title, state.firstName)
-            }
+            val title =
+                if (state.firstName.isBlank()) {
+                    stringResource(R.string.onboarding_done_title_no_name)
+                } else {
+                    stringResource(R.string.onboarding_done_title, state.firstName)
+                }
             Text(
                 text = title,
                 style = MealsyType.screenTitle,
@@ -515,15 +552,16 @@ private fun DoneStep(state: OnboardingUiState, animate: Boolean, onRetry: () -> 
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            val pillText = if (state.isMindful) {
-                stringResource(R.string.onboarding_done_pill_no_target, goalLabel(state.goal))
-            } else {
-                stringResource(
-                    R.string.onboarding_done_pill,
-                    goalLabel(state.goal),
-                    "%,d".format(state.kcalTarget),
-                )
-            }
+            val pillText =
+                if (state.isMindful) {
+                    stringResource(R.string.onboarding_done_pill_no_target, goalLabel(state.goal))
+                } else {
+                    stringResource(
+                        R.string.onboarding_done_pill,
+                        goalLabel(state.goal),
+                        "%,d".format(state.kcalTarget),
+                    )
+                }
             Surface(color = colors.olive, shape = MealsyShapes.pill) {
                 Text(
                     text = pillText,
@@ -551,4 +589,3 @@ private fun DoneStep(state: OnboardingUiState, animate: Boolean, onRetry: () -> 
         }
     }
 }
-

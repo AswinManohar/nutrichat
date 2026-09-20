@@ -13,22 +13,27 @@ import org.junit.Test
  * pull-to-refresh wrapper, no network, deterministic frames.
  */
 class HomeScreenGoldenTest : AppScreenshotTestBase() {
+    private fun mealRow(
+        mealType: String,
+        tone: TagTone,
+        count: Int?,
+    ) = HomeMealRow(mealType, tone, count)
 
-    private fun mealRow(mealType: String, tone: TagTone, count: Int?) = HomeMealRow(mealType, tone, count)
+    private val emptyMeals =
+        listOf(
+            mealRow("breakfast", TagTone.Butter, null),
+            mealRow("lunch", TagTone.Leaf, null),
+            mealRow("dinner", TagTone.Pink, null),
+            mealRow("snack", TagTone.Powder, null),
+        )
 
-    private val emptyMeals = listOf(
-        mealRow("breakfast", TagTone.Butter, null),
-        mealRow("lunch", TagTone.Leaf, null),
-        mealRow("dinner", TagTone.Pink, null),
-        mealRow("snack", TagTone.Powder, null),
-    )
-
-    private val partialMeals = listOf(
-        mealRow("breakfast", TagTone.Butter, 2),
-        mealRow("lunch", TagTone.Leaf, 1),
-        mealRow("dinner", TagTone.Pink, null),
-        mealRow("snack", TagTone.Powder, 1),
-    )
+    private val partialMeals =
+        listOf(
+            mealRow("breakfast", TagTone.Butter, 2),
+            mealRow("lunch", TagTone.Leaf, 1),
+            mealRow("dinner", TagTone.Pink, null),
+            mealRow("snack", TagTone.Powder, 1),
+        )
 
     @Composable
     private fun render(state: HomeUiState) {
@@ -43,21 +48,22 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
 
     // --- Empty: nothing logged --------------------------------------------
 
-    private fun emptyState() = HomeUiState(
-        loading = false,
-        dateLabel = "WEDNESDAY, SEP 16",
-        dayPart = DayPart.Morning,
-        firstName = "Alex",
-        mindful = false,
-        eatenKcal = "0",
-        kcalState = HomeKcalState.Left("1,900"),
-        eatenFraction = 0f,
-        proteinValue = "0g",
-        carbsValue = "0g",
-        fatValue = "0g",
-        meals = emptyMeals,
-        coachNote = HomeCoachNote.KcalRemaining(kcal = 1900),
-    )
+    private fun emptyState() =
+        HomeUiState(
+            loading = false,
+            dateLabel = "WEDNESDAY, SEP 16",
+            dayPart = DayPart.Morning,
+            firstName = "Alex",
+            mindful = false,
+            eatenKcal = "0",
+            kcalState = HomeKcalState.Left("1,900"),
+            eatenFraction = 0f,
+            proteinValue = "0g",
+            carbsValue = "0g",
+            fatValue = "0g",
+            meals = emptyMeals,
+            coachNote = HomeCoachNote.KcalRemaining(kcal = 1900),
+        )
 
     @Test
     fun homeEmpty_light() = captureMealsy("Home_empty", false) { render(emptyState()) }
@@ -67,21 +73,22 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
 
     // --- Partial: the design mock -------------------------------------------
 
-    private fun partialState() = HomeUiState(
-        loading = false,
-        dateLabel = "WEDNESDAY, SEP 16",
-        dayPart = DayPart.Afternoon,
-        firstName = "Alex",
-        mindful = false,
-        eatenKcal = "1,340",
-        kcalState = HomeKcalState.Left("560"),
-        eatenFraction = 1340f / 1900f,
-        proteinValue = "86g",
-        carbsValue = "152g",
-        fatValue = "48g",
-        meals = partialMeals,
-        coachNote = HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon),
-    )
+    private fun partialState() =
+        HomeUiState(
+            loading = false,
+            dateLabel = "WEDNESDAY, SEP 16",
+            dayPart = DayPart.Afternoon,
+            firstName = "Alex",
+            mindful = false,
+            eatenKcal = "1,340",
+            kcalState = HomeKcalState.Left("560"),
+            eatenFraction = 1340f / 1900f,
+            proteinValue = "86g",
+            carbsValue = "152g",
+            fatValue = "48g",
+            meals = partialMeals,
+            coachNote = HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon),
+        )
 
     @Test
     fun homePartial_light() = captureMealsy("Home_partial", false) { render(partialState()) }
@@ -90,30 +97,29 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
     fun homePartial_dark() = captureMealsy("Home_partial", true) { render(partialState()) }
 
     @Test
-    fun homePartial_light_fontScale130() =
-        captureMealsy("Home_partial", false, 1.3f) { render(partialState()) }
+    fun homePartial_light_fontScale130() = captureMealsy("Home_partial", false, 1.3f) { render(partialState()) }
 
     @Test
-    fun homePartial_light_fontScale200() =
-        captureMealsy("Home_partial", false, 2.0f) { render(partialState()) }
+    fun homePartial_light_fontScale200() = captureMealsy("Home_partial", false, 2.0f) { render(partialState()) }
 
     // --- Over goal --------------------------------------------------------
 
-    private fun overGoalState() = HomeUiState(
-        loading = false,
-        dateLabel = "WEDNESDAY, SEP 16",
-        dayPart = DayPart.Evening,
-        firstName = "Alex",
-        mindful = false,
-        eatenKcal = "2,220",
-        kcalState = HomeKcalState.Over("120"),
-        eatenFraction = 1f,
-        proteinValue = "150g",
-        carbsValue = "210g",
-        fatValue = "70g",
-        meals = partialMeals,
-        coachNote = HomeCoachNote.TargetReached,
-    )
+    private fun overGoalState() =
+        HomeUiState(
+            loading = false,
+            dateLabel = "WEDNESDAY, SEP 16",
+            dayPart = DayPart.Evening,
+            firstName = "Alex",
+            mindful = false,
+            eatenKcal = "2,220",
+            kcalState = HomeKcalState.Over("120"),
+            eatenFraction = 1f,
+            proteinValue = "150g",
+            carbsValue = "210g",
+            fatValue = "70g",
+            meals = partialMeals,
+            coachNote = HomeCoachNote.TargetReached,
+        )
 
     @Test
     fun homeOverGoal_light() = captureMealsy("Home_over_goal", false) { render(overGoalState()) }
@@ -123,21 +129,22 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
 
     // --- Mindful ------------------------------------------------------------
 
-    private fun mindfulState() = HomeUiState(
-        loading = false,
-        dateLabel = "WEDNESDAY, SEP 16",
-        dayPart = DayPart.Afternoon,
-        firstName = "Alex",
-        mindful = true,
-        eatenKcal = "1,340",
-        kcalState = HomeKcalState.NoTarget,
-        eatenFraction = 0f,
-        proteinValue = "86g",
-        carbsValue = "152g",
-        fatValue = "48g",
-        meals = partialMeals,
-        coachNote = HomeCoachNote.Mindful(nMeals = 4),
-    )
+    private fun mindfulState() =
+        HomeUiState(
+            loading = false,
+            dateLabel = "WEDNESDAY, SEP 16",
+            dayPart = DayPart.Afternoon,
+            firstName = "Alex",
+            mindful = true,
+            eatenKcal = "1,340",
+            kcalState = HomeKcalState.NoTarget,
+            eatenFraction = 0f,
+            proteinValue = "86g",
+            carbsValue = "152g",
+            fatValue = "48g",
+            meals = partialMeals,
+            coachNote = HomeCoachNote.Mindful(nMeals = 4),
+        )
 
     @Test
     fun homeMindful_light() = captureMealsy("Home_mindful", false) { render(mindfulState()) }

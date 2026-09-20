@@ -2,7 +2,6 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -55,15 +54,16 @@ fun CircleIconButton(
     val backgroundColor = if (pressed) colors.surface else Color.Transparent
 
     Surface(
-        modifier = modifier
-            .minimumInteractiveComponentSize()
-            .size(size)
-            .semantics { this.contentDescription = contentDescription }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            ),
+        modifier =
+            modifier
+                .minimumInteractiveComponentSize()
+                .size(size)
+                .semantics { this.contentDescription = contentDescription }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                ),
         shape = CircleShape,
         color = backgroundColor,
         border = BorderStroke(1.dp, colors.hairline),
