@@ -7,14 +7,16 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.roborazzi)
+    alias(libs.plugins.ktlint)
 }
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
+val localProperties =
+    Properties().apply {
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { load(it) }
+        }
     }
-}
 
 android {
     namespace = "app.mealsy.android"
@@ -105,6 +107,10 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 roborazzi {
@@ -190,4 +196,9 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
+
+    // Compose-specific lint checks (modifier-param convention, remember
+    // usage, content-description on interactive elements, etc.) beyond
+    // what's bundled in the Compose libraries themselves.
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.4.2")
 }

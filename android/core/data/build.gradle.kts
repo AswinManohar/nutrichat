@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ktlint)
 }
 
 // :core:data cannot see :app's BuildConfig, and ApiModule (Retrofit setup)
@@ -15,12 +16,13 @@ plugins {
 // local.properties key straight into its own BuildConfig field — both
 // modules stay independently buildable/testable, and Task 5's app module
 // needs no extra wiring to consume MealsyApi.
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
+val localProperties =
+    Properties().apply {
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { load(it) }
+        }
     }
-}
 
 android {
     namespace = "app.mealsy.android.data"

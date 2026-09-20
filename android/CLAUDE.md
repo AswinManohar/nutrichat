@@ -1,5 +1,24 @@
 # CLAUDE.md — Mealsy Android design system
 
+## Design QA checklist
+
+Run through this list, per screen, before calling any screen done:
+
+- [ ] Exactly one olive element on the screen (the hero status element — FAB,
+      toggle-on, progress fill, sparkle icon — count as the same "one" if
+      more than one type appears; a screen with no status has zero, not one)
+- [ ] Pastels (`butter`/`pink`/`leaf`/`powder`) appear only in 32–36dp icon
+      circles or tiny metadata tags — never as a fill, background, or button
+- [ ] No shadows anywhere except the FAB
+- [ ] No pure black or pure white anywhere (text, backgrounds, dividers)
+- [ ] Geist is the only typeface in use, everywhere on the screen
+- [ ] All numeric text (counts, macros, timestamps, prices) uses tabular
+      numerals
+- [ ] All spacing/sizing is on the 8dp grid
+- [ ] Every interactive element (button, chip, row, toggle) exposes
+      semantics — a `contentDescription`, role, or merged/cleared semantics
+      block that reads sensibly with TalkBack
+
 This is the Android-adapted version of `android/design-handoff/DESIGN_SYSTEM_SPEC.md`
 and `android/design-handoff/README.md`. All new UI in this project MUST follow
 this system. The `.html` files in `android/design-handoff/` are the reference

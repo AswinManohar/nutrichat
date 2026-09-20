@@ -66,9 +66,11 @@ PAIRS = [
 
 
 def main() -> None:
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        "core/ui/src/main/java/app/mealsy/android/design/theme/MealsyColors.kt"
+    default_path = (
+        Path(__file__).resolve().parent.parent
+        / "core/ui/src/main/java/app/mealsy/android/design/theme/MealsyColors.kt"
     )
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else default_path
     src = path.read_text()
 
     light_start = src.index("fun lightMealsyColors")

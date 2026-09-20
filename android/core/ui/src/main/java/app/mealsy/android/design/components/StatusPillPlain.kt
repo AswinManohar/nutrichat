@@ -38,6 +38,12 @@ import app.mealsy.android.design.theme.MealsyType
  *
  * @param label Left-aligned text, medium weight, e.g. "Logged at".
  * @param value Right-aligned text with tabular numerals, e.g. "8:42 AM".
+ *
+ * Deliberately deviates from the HTML prototype's spec for this pill (13sp
+ * text, 12x20dp padding, implying a shorter height): the 46dp floor and 14sp
+ * [MealsyType.body] text here match the rest of the status-pill family
+ * ([StatusPill]) instead, so the two read as one consistent component
+ * language rather than two different pill heights/text sizes across screens.
  */
 @Composable
 fun StatusPillPlain(

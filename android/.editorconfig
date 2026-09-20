@@ -1,0 +1,9 @@
+root = true
+
+# Standard ktlint accommodation for Jetpack Compose: functions returning
+# Unit and annotated with @Composable follow the Compose naming convention
+# (PascalCase, since they read like UI elements), not standard Kotlin
+# function naming. This is ktlint's own documented Compose exception, not a
+# project-specific rule tweak.
+[*.{kt,kts}]
+ktlint_function_naming_ignore_when_annotated_with = Composable

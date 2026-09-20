@@ -30,13 +30,23 @@ jobs:
         with:
           build-root-directory: android
 
+      - name: ktlint
+        working-directory: android
+        run: ./gradlew ktlintCheck --stacktrace
+
+      - name: Android lint
+        working-directory: android
+        run: ./gradlew :app:lintDebug --stacktrace
+
       - name: Build, unit test, and verify Roborazzi goldens
         working-directory: android
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :core:data:test :core:domain:test :core:ui:verifyRoborazziDebug --stacktrace
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :core:data:test :core:domain:test :core:ui:verifyRoborazziDebug :app:verifyRoborazziDebug --stacktrace
 
       - name: Upload Roborazzi diffs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: roborazzi-diffs
-          path: android/core/ui/build/outputs/roborazzi
+          path: |
+            android/core/ui/build/outputs/roborazzi
+            android/app/build/outputs/roborazzi
