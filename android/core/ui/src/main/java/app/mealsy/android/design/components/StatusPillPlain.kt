@@ -2,8 +2,9 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,10 +22,19 @@ import app.mealsy.android.design.theme.MealsyType
 
 /**
  * The plain, full-olive-filled status pill from the "MEAL DETAIL" block in
- * `Mealsy Design System.html`: a 46dp pill with a solid olive fill, [label]
- * on the left and [value] on the right. Unlike [StatusPill] there is no
- * bite notch and no mascot slot — this is the flat variant used where a
- * status needs to read as a single fact rather than a remaining budget.
+ * `Mealsy Design System.html`: a pill with a solid olive fill, [label] on
+ * the left and [value] on the right, 46dp tall at the default font scale.
+ * Unlike [StatusPill] there is no bite notch and no mascot slot — this is
+ * the flat variant used where a status needs to read as a single fact
+ * rather than a remaining budget.
+ *
+ * Uses [heightIn] with a 46dp floor rather than a fixed [Modifier.height]:
+ * at large system font scales, [label] and [value] both need more than
+ * 46dp to render without overlapping, so the pill must be free to grow.
+ * [label] and [value] sit in a [Row] (rather than two independently
+ * [Alignment]-anchored children of a [Box], which is what used to overlap
+ * once either string wrapped) so each gets its own share of the width and
+ * wraps within it instead of colliding with the other.
  *
  * @param label Left-aligned text, medium weight, e.g. "Logged at".
  * @param value Right-aligned text with tabular numerals, e.g. "8:42 AM".
@@ -41,17 +51,22 @@ fun StatusPillPlain(
         shape = MealsyShapes.pill,
         modifier = modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .heightIn(min = 46.dp)
             .clearAndSetSemantics { contentDescription = "$label, $value" },
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        ) {
             Text(
                 text = label,
                 style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
                 color = colors.oliveText,
                 modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 18.dp),
+                    .weight(1f, fill = false)
+                    .align(Alignment.CenterVertically),
             )
             // MealsyType.body already bakes in tabular numerals
             // (`fontFeatureSettings = "tnum"`) — every Mealsy type role does.
@@ -59,9 +74,10 @@ fun StatusPillPlain(
                 text = value,
                 style = MealsyType.body,
                 color = colors.oliveText,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 18.dp),
+                    .weight(1f, fill = false)
+                    .align(Alignment.CenterVertically),
             )
         }
     }

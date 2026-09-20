@@ -3,10 +3,12 @@ package app.mealsy.android.ui
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Density
 import app.mealsy.android.design.theme.MealsyTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -44,10 +46,15 @@ abstract class AppScreenshotTestBase {
     protected fun captureMealsy(
         name: String,
         darkTheme: Boolean,
+        fontScale: Float = 1f,
         content: @Composable () -> Unit,
     ) {
         composeRule.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) {
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalInspectionMode provides true,
+                LocalDensity provides Density(baseDensity.density, fontScale),
+            ) {
                 MealsyTheme(darkTheme = darkTheme) {
                     Surface(color = MealsyTheme.colors.canvas) {
                         content()
@@ -56,7 +63,8 @@ abstract class AppScreenshotTestBase {
             }
         }
         val suffix = if (darkTheme) "dark" else "light"
-        composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix.png")
+        val scaleSuffix = if (fontScale == 1f) "" else "_font${fontScale}"
+        composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix$scaleSuffix.png")
     }
 
     /**

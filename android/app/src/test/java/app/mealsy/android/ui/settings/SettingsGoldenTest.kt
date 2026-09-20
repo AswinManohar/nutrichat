@@ -70,6 +70,14 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
     fun goalsMode_light() = captureMealsy("Settings_goalsMode", false) { render(goalsModeState) }
 
     @Test
+    fun goalsMode_light_fontScale130() =
+        captureMealsy("Settings_goalsMode", false, 1.3f) { render(goalsModeState) }
+
+    @Test
+    fun goalsMode_light_fontScale200() =
+        captureMealsy("Settings_goalsMode", false, 2.0f) { render(goalsModeState) }
+
+    @Test
     fun goalsMode_dark() = captureMealsy("Settings_goalsMode", true) { render(goalsModeState) }
 
     @Test

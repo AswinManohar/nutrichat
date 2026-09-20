@@ -74,6 +74,18 @@ class MealDetailGoldenTest : AppScreenshotTestBase() {
     }
 
     @Test
+    fun mealDetailLoggedUsdaVerified_light_fontScale130() =
+        captureMealsy("MealDetail_loggedUsdaVerified", false, 1.3f) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
+
+    @Test
+    fun mealDetailLoggedUsdaVerified_light_fontScale200() =
+        captureMealsy("MealDetail_loggedUsdaVerified", false, 2.0f) {
+            render(loggedState(MealDetailThirdTag.UsdaVerified, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
+        }
+
+    @Test
     fun mealDetailLoggedWithEstimated_light() = captureMealsy("MealDetail_loggedWithEstimated", false) {
         render(loggedState(MealDetailThirdTag.Estimated, MealDetailStatus.FitsBudget(kcalRemaining = 380)))
     }

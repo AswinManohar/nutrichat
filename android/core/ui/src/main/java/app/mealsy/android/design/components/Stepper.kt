@@ -20,8 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,8 +32,18 @@ import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 
+/** A generously-bounded ceiling used when [Stepper.max] is left at its
+ * unbounded [Int.MAX_VALUE] default, so [ProgressBarRangeInfo] always gets a
+ * finite range for TalkBack's adjustable-widget gesture. */
+private const val UNBOUNDED_RANGE_PADDING = 1000
+
 /**
  * Mealsy's gram-quantity stepper, used on food rows in the meal confirm card.
+ *
+ * Exposes itself to TalkBack as an adjustable widget: [progressBarRangeInfo]
+ * plus a [setProgress] action let a swipe-up/down gesture on the whole
+ * control change [value] by [step], in addition to tapping the +/- buttons
+ * directly.
  *
  * @param value The current integer value.
  * @param onValueChange Invoked with the new value when a button is tapped.
@@ -38,6 +51,8 @@ import app.mealsy.android.design.theme.MealsyType
  * @param step The amount to add or subtract per tap.
  * @param min The minimum allowed value; the decrease button disables here.
  * @param max The maximum allowed value; the increase button disables here.
+ * @param label The accessibility label announced together with the current
+ *   value, e.g. "Quantity, 120 g".
  * @param valueLabel Formats [value] for both the visible label and the
  *   accessibility [androidx.compose.ui.semantics.stateDescription].
  */
@@ -49,14 +64,33 @@ fun Stepper(
     step: Int = 5,
     min: Int = 5,
     max: Int = Int.MAX_VALUE,
+    label: String = "Quantity",
     valueLabel: (Int) -> String = { "$it g" },
 ) {
     val colors = MealsyTheme.colors
     val canDecrease = value > min
     val canIncrease = value < max
+    val effectiveMax = if (max == Int.MAX_VALUE) value + UNBOUNDED_RANGE_PADDING else max
 
     Surface(
-        modifier = modifier.semantics { stateDescription = valueLabel(value) },
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = label
+            stateDescription = valueLabel(value)
+            progressBarRangeInfo = ProgressBarRangeInfo(
+                current = value.toFloat(),
+                range = min.toFloat()..effectiveMax.toFloat(),
+                steps = 0,
+            )
+            setProgress { targetValue ->
+                val next = targetValue.toInt().coerceIn(min, effectiveMax)
+                if (next != value) {
+                    onValueChange(next)
+                    true
+                } else {
+                    false
+                }
+            }
+        },
         shape = MealsyShapes.pill,
         color = colors.canvas,
         border = BorderStroke(1.dp, colors.hairline),

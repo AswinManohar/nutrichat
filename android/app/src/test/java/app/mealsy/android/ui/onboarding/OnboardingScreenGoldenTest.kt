@@ -80,6 +80,14 @@ class OnboardingScreenGoldenTest : AppScreenshotTestBase() {
     @Test
     fun step0Welcome_dark() = captureMealsy("Onboarding_step0Welcome", true) { render(state(step = 0)) }
 
+    @Test
+    fun step0Welcome_light_fontScale130() =
+        captureMealsy("Onboarding_step0Welcome", false, 1.3f) { render(state(step = 0)) }
+
+    @Test
+    fun step0Welcome_light_fontScale200() =
+        captureMealsy("Onboarding_step0Welcome", false, 2.0f) { render(state(step = 0)) }
+
     // --- Step 1: Name (empty, Continue disabled) ------------------------
 
     @Test

@@ -89,6 +89,14 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
     @Test
     fun homePartial_dark() = captureMealsy("Home_partial", true) { render(partialState()) }
 
+    @Test
+    fun homePartial_light_fontScale130() =
+        captureMealsy("Home_partial", false, 1.3f) { render(partialState()) }
+
+    @Test
+    fun homePartial_light_fontScale200() =
+        captureMealsy("Home_partial", false, 2.0f) { render(partialState()) }
+
     // --- Over goal --------------------------------------------------------
 
     private fun overGoalState() = HomeUiState(

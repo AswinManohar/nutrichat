@@ -6,9 +6,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -65,15 +67,25 @@ abstract class ScreenshotTestBase {
      * @param name The golden's base file name, e.g. `MealsyButton_primary_enabled`.
      *   The `_light`/`_dark` suffix is appended automatically from [darkTheme].
      * @param darkTheme Whether to render the dark Mealsy palette.
+     * @param fontScale The system font-scale multiplier to render under, e.g.
+     *   `1.3f` or `2.0f` for large-text accessibility goldens. Overrides
+     *   [LocalDensity] with the same pixel density but this font scale, the
+     *   same mechanism `Settings > Display > Font size` uses. Defaults to
+     *   `1f` (no override), leaving every existing golden byte-identical.
      * @param content The composable under test.
      */
     protected fun captureMealsy(
         name: String,
         darkTheme: Boolean,
+        fontScale: Float = 1f,
         content: @Composable () -> Unit,
     ) {
         composeRule.setContent {
-            CompositionLocalProvider(LocalInspectionMode provides true) {
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalInspectionMode provides true,
+                LocalDensity provides Density(baseDensity.density, fontScale),
+            ) {
                 MealsyTheme(darkTheme = darkTheme) {
                     Surface(color = MealsyTheme.colors.canvas) {
                         Box(Modifier.padding(16.dp)) {
@@ -84,6 +96,7 @@ abstract class ScreenshotTestBase {
             }
         }
         val suffix = if (darkTheme) "dark" else "light"
-        composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix.png")
+        val scaleSuffix = if (fontScale == 1f) "" else "_font${fontScale}"
+        composeRule.onRoot().captureRoboImage("src/test/screenshots/${name}_$suffix$scaleSuffix.png")
     }
 }

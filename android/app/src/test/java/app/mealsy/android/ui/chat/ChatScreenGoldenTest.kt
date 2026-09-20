@@ -146,6 +146,18 @@ class ChatScreenGoldenTest : AppScreenshotTestBase() {
         renderRow(cardMsg(defaultCard(), CardState.Active))
     }
 
+    @Test
+    fun chatConfirmCardDefault_light_fontScale130() =
+        captureMealsy("Chat_confirmCardDefault", false, 1.3f) {
+            renderRow(cardMsg(defaultCard(), CardState.Active))
+        }
+
+    @Test
+    fun chatConfirmCardDefault_light_fontScale200() =
+        captureMealsy("Chat_confirmCardDefault", false, 2.0f) {
+            renderRow(cardMsg(defaultCard(), CardState.Active))
+        }
+
     // --- Confirm card: estimated + low-confidence item ---------------------------
 
     private fun estimatedLowConfidenceCard() = ConfirmationCard(
