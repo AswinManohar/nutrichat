@@ -20,6 +20,9 @@ class FoodNameHumanizerTest {
         "Potatoes, russet, flesh and skin, baked" to "Baked russet potatoes",
         "Salmon, Atlantic, farmed, cooked, dry heat" to "Cooked Atlantic salmon",
         "Apples, raw, with skin" to "Apples with skin",
+        "Chicken, broilers or fryers, breast, skinless, boneless, meat only, cooked, roasted" to
+            "Roasted chicken breast",
+        "Chicken, broilers or fryers, thigh, meat and skin, cooked, fried" to "Fried chicken thigh",
     )
 
     @Test

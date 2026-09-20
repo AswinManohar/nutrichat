@@ -45,6 +45,7 @@ import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.LoggedMeal
@@ -134,7 +135,16 @@ internal fun MealTypeListContent(
             MealTypeListUiState.Loading ->
                 LoadingState(message = stringResource(R.string.meal_type_loading), modifier = Modifier.fillMaxSize())
             is MealTypeListUiState.Error ->
-                ErrorState(message = state.message, onRetry = onRetry, modifier = Modifier.fillMaxSize())
+                ErrorState(
+                    message = stringResource(
+                        when (state.kind) {
+                            ErrorKind.Offline -> R.string.error_offline
+                            ErrorKind.LoadFailed -> R.string.meal_type_error_load_failed
+                        },
+                    ),
+                    onRetry = onRetry,
+                    modifier = Modifier.fillMaxSize(),
+                )
             MealTypeListUiState.Empty ->
                 MealTypeEmptyState(mealType = mealType, modifier = Modifier.fillMaxSize())
             is MealTypeListUiState.Loaded -> {

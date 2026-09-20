@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
@@ -64,6 +65,8 @@ fun TagChip(text: String, tone: TagTone, modifier: Modifier = Modifier) {
             text = text,
             style = MealsyType.tinyTag,
             color = resolved.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(vertical = 2.dp, horizontal = 8.dp),
         )
     }
@@ -92,6 +95,8 @@ fun MetaTag(text: String, tone: TagTone, modifier: Modifier = Modifier) {
             text = text,
             style = MealsyType.badge,
             color = resolved.text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(vertical = 4.dp, horizontal = 11.dp),
         )
     }

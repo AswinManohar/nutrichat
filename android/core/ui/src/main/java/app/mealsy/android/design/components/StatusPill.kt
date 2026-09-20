@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
@@ -145,7 +146,10 @@ fun StatusPill(
             }
 
             if (mascot != null) {
-                val mascotSize = 46.dp
+                // Kept in lockstep with the actual [OlliSize.Bite] mascot
+                // dp so the offset math below (which sits Olli's feet at
+                // the bite point) stays correct if that size ever changes.
+                val mascotSize = OlliSize.Bite
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)

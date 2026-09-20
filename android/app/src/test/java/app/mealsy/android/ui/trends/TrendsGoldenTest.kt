@@ -37,11 +37,15 @@ class TrendsGoldenTest : AppScreenshotTestBase() {
         DayPoint("2026-09-16", kcal = 2050.0, proteinG = 102.0, carbsG = 210.0, fiberG = 19.0, nMeals = 3, junkMeals = 0),
     )
 
+    // A 7-day window can log at most 7 of each meal type. [weekDays] totals
+    // 15 logged meals across 5 days, so these slices are sized to sum to
+    // that same 15 (5 breakfast + 5 lunch + 4 dinner + 1 snack), with
+    // totalKcal = nMeals * avgKcal and shareKcalPct summing to ~100.
     private fun categories(): List<CategorySlice> = listOf(
-        CategorySlice("breakfast", nMeals = 12, daysLogged = 10, avgKcal = 420.0, avgProteinG = 22.0, avgCarbsG = 45.0, avgFatG = 15.0, avgFiberG = 5.0, totalKcal = 5040.0, shareKcalPct = 28.4),
-        CategorySlice("lunch", nMeals = 10, daysLogged = 10, avgKcal = 620.0, avgProteinG = 34.0, avgCarbsG = 60.0, avgFatG = 20.0, avgFiberG = 7.0, totalKcal = 6200.0, shareKcalPct = 34.9),
-        CategorySlice("dinner", nMeals = 8, daysLogged = 8, avgKcal = 580.0, avgProteinG = 30.0, avgCarbsG = 55.0, avgFatG = 18.0, avgFiberG = 6.0, totalKcal = 4640.0, shareKcalPct = 26.1),
-        CategorySlice("snack", nMeals = 6, daysLogged = 5, avgKcal = 180.0, avgProteinG = 5.0, avgCarbsG = 22.0, avgFatG = 6.0, avgFiberG = 2.0, totalKcal = 1080.0, shareKcalPct = 6.1),
+        CategorySlice("breakfast", nMeals = 5, daysLogged = 5, avgKcal = 420.0, avgProteinG = 22.0, avgCarbsG = 45.0, avgFatG = 15.0, avgFiberG = 5.0, totalKcal = 2100.0, shareKcalPct = 27.3),
+        CategorySlice("lunch", nMeals = 5, daysLogged = 5, avgKcal = 620.0, avgProteinG = 34.0, avgCarbsG = 60.0, avgFatG = 20.0, avgFiberG = 7.0, totalKcal = 3100.0, shareKcalPct = 40.3),
+        CategorySlice("dinner", nMeals = 4, daysLogged = 4, avgKcal = 580.0, avgProteinG = 30.0, avgCarbsG = 55.0, avgFatG = 18.0, avgFiberG = 6.0, totalKcal = 2320.0, shareKcalPct = 30.1),
+        CategorySlice("snack", nMeals = 1, daysLogged = 1, avgKcal = 180.0, avgProteinG = 5.0, avgCarbsG = 22.0, avgFatG = 6.0, avgFiberG = 2.0, totalKcal = 180.0, shareKcalPct = 2.3),
     )
 
     private fun loadedState(): TrendsUiState.Loaded {

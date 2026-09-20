@@ -2,6 +2,7 @@ package app.mealsy.android.ui.trends
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.data.repo.CategorySlice
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.TrendData
@@ -28,7 +29,7 @@ enum class TrendsWindow(val days: Int) {
 sealed interface TrendsUiState {
     data object Loading : TrendsUiState
     data object Empty : TrendsUiState
-    data class Error(val message: String) : TrendsUiState
+    data class Error(val kind: ErrorKind) : TrendsUiState
 
     /**
      * @param proteinGoal The protein daily goal, for the protein chart's dashed reference line.
@@ -127,9 +128,9 @@ class TrendsViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {
-                _uiState.value = TrendsUiState.Error("Couldn't reach Mealsy. Check your connection.")
+                _uiState.value = TrendsUiState.Error(ErrorKind.Offline)
             } catch (exc: Exception) {
-                _uiState.value = TrendsUiState.Error("Something went wrong loading trends.")
+                _uiState.value = TrendsUiState.Error(ErrorKind.LoadFailed)
             }
         }
     }

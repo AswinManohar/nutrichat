@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.design.components.TagTone
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.GoalsRepository
@@ -87,7 +88,7 @@ data class MealDetailItemRow(
 /** Rendering state for [MealDetailScreen]. */
 sealed interface MealDetailUiState {
     data object Loading : MealDetailUiState
-    data class Error(val message: String) : MealDetailUiState
+    data class Error(val kind: ErrorKind) : MealDetailUiState
     data class Loaded(
         val mode: MealDetailMode,
         val title: String,
@@ -188,9 +189,9 @@ class MealDetailViewModel @Inject constructor(
         } catch (exc: CancellationException) {
             throw exc
         } catch (exc: IOException) {
-            _uiState.value = MealDetailUiState.Error("Couldn't reach Mealsy. Check your connection.")
+            _uiState.value = MealDetailUiState.Error(ErrorKind.Offline)
         } catch (exc: Exception) {
-            _uiState.value = MealDetailUiState.Error("Something went wrong loading this meal.")
+            _uiState.value = MealDetailUiState.Error(ErrorKind.LoadFailed)
         }
     }
 

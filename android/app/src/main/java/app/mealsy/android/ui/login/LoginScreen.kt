@@ -123,7 +123,13 @@ fun LoginContent(
 
                     if (uiState is LoginUiState.Error) {
                         Text(
-                            text = uiState.message,
+                            text = stringResource(
+                                when (uiState.kind) {
+                                    LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
+                                    LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
+                                    LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
+                                },
+                            ),
                             style = MealsyType.body,
                             color = colors.muted,
                             modifier = Modifier.padding(top = 8.dp),

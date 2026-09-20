@@ -90,7 +90,22 @@ class LoginViewModelTest {
 
             val state = awaitItem()
             assertTrue(state is LoginUiState.Error)
+            assertEquals(LoginErrorKind.InvalidEmail, (state as LoginUiState.Error).kind)
             assertTrue(fakeAuthGateway.magicLinkCalls.isEmpty())
+        }
+    }
+
+    @Test
+    fun `magic link failure shows MagicLinkFailed error`() = runTest {
+        fakeAuthGateway.throwOnMagicLink = RuntimeException("boom")
+        viewModel.uiState.test {
+            assertEquals(LoginUiState.Idle, awaitItem())
+
+            viewModel.submitEmail("user@example.com")
+
+            val state = awaitItem()
+            assertTrue(state is LoginUiState.Error)
+            assertEquals(LoginErrorKind.MagicLinkFailed, (state as LoginUiState.Error).kind)
         }
     }
 

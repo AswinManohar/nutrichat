@@ -41,6 +41,7 @@ import app.mealsy.android.design.components.TotalsStripEntry
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.MyMealsRepository
@@ -180,7 +181,7 @@ private fun SavedMealItem.toCustomizeIngredient(index: Int): CustomizeIngredient
 /** Rendering state for [CustomizeSheet]. */
 internal sealed interface CustomizeUiState {
     data object Loading : CustomizeUiState
-    data class Error(val message: String) : CustomizeUiState
+    data class Error(val kind: ErrorKind) : CustomizeUiState
     data class Loaded(val state: CustomizeSheetState, val submitting: Boolean) : CustomizeUiState
 }
 
@@ -226,9 +227,9 @@ class CustomizeSheetViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {
-                _uiState.value = CustomizeUiState.Error("Couldn't reach Mealsy. Check your connection.")
+                _uiState.value = CustomizeUiState.Error(ErrorKind.Offline)
             } catch (exc: Exception) {
-                _uiState.value = CustomizeUiState.Error("Couldn't load this meal.")
+                _uiState.value = CustomizeUiState.Error(ErrorKind.LoadFailed)
             }
         }
     }
@@ -300,7 +301,16 @@ fun CustomizeSheet(
             CustomizeUiState.Loading ->
                 LoadingState(stringResource(R.string.customize_sheet_loading), modifier = Modifier.height(240.dp))
             is CustomizeUiState.Error ->
-                ErrorState(state.message, onRetry = viewModel::retry, modifier = Modifier.height(240.dp))
+                ErrorState(
+                    stringResource(
+                        when (state.kind) {
+                            ErrorKind.Offline -> R.string.error_offline
+                            ErrorKind.LoadFailed -> R.string.customize_sheet_error_load_failed
+                        },
+                    ),
+                    onRetry = viewModel::retry,
+                    modifier = Modifier.height(240.dp),
+                )
             is CustomizeUiState.Loaded -> CustomizeSheetContent(
                 state = state.state,
                 submitting = state.submitting,

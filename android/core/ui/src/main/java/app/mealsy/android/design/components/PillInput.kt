@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
@@ -78,7 +79,13 @@ fun PillInput(
         ) {
             androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
                 if (value.isEmpty()) {
-                    Text(text = placeholder, style = MealsyType.button, color = colors.inactive)
+                    Text(
+                        text = placeholder,
+                        style = MealsyType.button,
+                        color = colors.inactive,
+                        maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                        overflow = if (singleLine) TextOverflow.Ellipsis else TextOverflow.Clip,
+                    )
                 }
                 BasicTextField(
                     value = value,

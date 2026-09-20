@@ -2,6 +2,7 @@
 <resources>
     <!-- Common -->
     <string name="common_retry">Retry</string>
+    <string name="error_offline">Couldn\'t reach Mealsy. Check your connection.</string>
 
     <!-- Bottom navigation -->
     <string name="nav_home">Home</string>
@@ -169,11 +170,12 @@
     <string name="meal_type_empty">Nothing logged for %1$s yet.</string>
     <string name="meal_type_deleted_message">Meal deleted</string>
     <string name="meal_type_deleted_undo_label">Undo</string>
+    <string name="meal_type_error_load_failed">Something went wrong loading your meals.</string>
 
     <!-- Meal detail -->
     <string name="meal_detail_back">Back</string>
     <string name="meal_detail_loading">Loading meal…</string>
-    <string name="meal_detail_error">Could not load this meal.</string>
+    <string name="meal_detail_error_load_failed">Something went wrong loading this meal.</string>
     <string name="meal_detail_my_meal_eyebrow">My meal</string>
     <string name="meal_detail_header">%1$s · %2$s</string>
     <string name="meal_detail_kcal_chip">%1$d kcal</string>
@@ -218,6 +220,7 @@
     <string name="my_meals_delete_action">Delete meal</string>
     <string name="my_meals_deleted_toast">Deleted</string>
     <string name="my_meals_undo">Undo</string>
+    <string name="my_meals_error_load_failed">Something went wrong loading your meals.</string>
 
     <!-- Customize sheet ("Edit portions") -->
     <string name="customize_sheet_log_as">Log this as</string>
@@ -226,7 +229,7 @@
     <string name="customize_sheet_confirm">Log meal</string>
     <string name="customize_sheet_logged_toast">Logged</string>
     <string name="customize_sheet_loading">Loading this meal…</string>
-    <string name="customize_sheet_error">Couldn\'t load this meal.</string>
+    <string name="customize_sheet_error_load_failed">Couldn\'t load this meal.</string>
     <string name="customize_sheet_portion_half">0.5×</string>
     <string name="customize_sheet_portion_one">1×</string>
     <string name="customize_sheet_portion_one_half">1.5×</string>
@@ -252,7 +255,7 @@
     <string name="trends_category_share_desc">%1$s, %2$d percent of total kcal</string>
     <string name="trends_empty_message">Log a few meals to see trends.</string>
     <string name="trends_loading">Loading trends…</string>
-    <string name="trends_error">Couldn\'t load trends. Check your connection.</string>
+    <string name="trends_error_load_failed">Something went wrong loading trends.</string>
 
     <!-- Settings screen -->
     <string name="settings_eyebrow">Settings</string>
@@ -305,6 +308,9 @@
     <string name="login_send_magic_link">Send magic link</string>
     <string name="login_continue_with_google">Continue with Google</string>
     <string name="login_awaiting_email">Check your email for a magic link.</string>
+    <string name="login_error_invalid_email">Enter a valid email address.</string>
+    <string name="login_error_magic_link_failed">Could not send magic link. Try again.</string>
+    <string name="login_error_google_sign_in_failed">Google sign-in failed. Try again.</string>
 
     <!-- Update-required gate -->
     <string name="update_required_title">Update required</string>

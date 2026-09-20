@@ -50,6 +50,7 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.android.ui.meals.formatLoggedAtTime
@@ -107,7 +108,16 @@ fun MealDetailScreen(
             MealDetailUiState.Loading ->
                 LoadingState(message = stringResource(R.string.meal_detail_loading), modifier = Modifier.fillMaxSize())
             is MealDetailUiState.Error ->
-                ErrorState(message = s.message, onRetry = viewModel::retry, modifier = Modifier.fillMaxSize())
+                ErrorState(
+                    message = stringResource(
+                        when (s.kind) {
+                            ErrorKind.Offline -> R.string.error_offline
+                            ErrorKind.LoadFailed -> R.string.meal_detail_error_load_failed
+                        },
+                    ),
+                    onRetry = viewModel::retry,
+                    modifier = Modifier.fillMaxSize(),
+                )
             is MealDetailUiState.Loaded -> MealDetailContent(
                 state = s,
                 onBack = onBack,

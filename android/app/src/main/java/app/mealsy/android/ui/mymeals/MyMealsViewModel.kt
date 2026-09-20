@@ -3,6 +3,7 @@ package app.mealsy.android.ui.mymeals
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.di.ApplicationScope
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.SavedMeal
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,7 +38,7 @@ internal var undoWindowMs: Long = 4_000L
 sealed interface MyMealsUiState {
     data object Loading : MyMealsUiState
     data object Empty : MyMealsUiState
-    data class Error(val message: String) : MyMealsUiState
+    data class Error(val kind: ErrorKind) : MyMealsUiState
     data class Loaded(val meals: List<SavedMeal>) : MyMealsUiState
 }
 
@@ -101,9 +102,9 @@ class MyMealsViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {
-                _uiState.value = MyMealsUiState.Error("Couldn't reach Mealsy. Check your connection.")
+                _uiState.value = MyMealsUiState.Error(ErrorKind.Offline)
             } catch (exc: Exception) {
-                _uiState.value = MyMealsUiState.Error("Something went wrong loading your meals.")
+                _uiState.value = MyMealsUiState.Error(ErrorKind.LoadFailed)
             }
         }
     }

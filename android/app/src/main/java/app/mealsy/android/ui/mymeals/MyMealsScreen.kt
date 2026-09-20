@@ -49,6 +49,7 @@ import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.SavedMeal
@@ -139,7 +140,16 @@ internal fun MyMealsContent(
                     LoadingState(stringResource(R.string.my_meals_loading), modifier = Modifier.fillMaxSize())
                 MyMealsUiState.Empty -> MyMealsEmptyState(modifier = Modifier.fillMaxSize())
                 is MyMealsUiState.Error ->
-                    ErrorState(state.message, onRetry = onRetry, modifier = Modifier.fillMaxSize())
+                    ErrorState(
+                        stringResource(
+                            when (state.kind) {
+                                ErrorKind.Offline -> R.string.error_offline
+                                ErrorKind.LoadFailed -> R.string.my_meals_error_load_failed
+                            },
+                        ),
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 is MyMealsUiState.Loaded -> {
                     val visible = state.meals.filterNot { it.id in hiddenIds }
                     if (visible.isEmpty()) {

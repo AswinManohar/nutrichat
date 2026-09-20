@@ -51,6 +51,7 @@ import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.data.repo.CategorySlice
@@ -104,7 +105,12 @@ internal fun TrendsContent(
             modifier = modifier,
         )
         is TrendsUiState.Error -> ErrorState(
-            message = stringResource(R.string.trends_error),
+            message = stringResource(
+                when (uiState.kind) {
+                    ErrorKind.Offline -> R.string.error_offline
+                    ErrorKind.LoadFailed -> R.string.trends_error_load_failed
+                },
+            ),
             onRetry = onRetry,
             modifier = modifier,
         )

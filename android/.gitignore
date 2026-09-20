@@ -7,3 +7,9 @@ local.properties
 .cxx/
 captures/
 app/google-services.json
+
+# Android
+# Roborazzi failure diff artifacts — not goldens, never commit these.
+*_actual.png
+*_actual_*.png
+*_compare.png

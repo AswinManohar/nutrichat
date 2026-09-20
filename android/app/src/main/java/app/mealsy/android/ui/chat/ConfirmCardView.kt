@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -622,6 +624,7 @@ private fun ItemRow(
  * pastel would violate the "pastels are for exactly these four tones" rule
  * in `android/CLAUDE.md`. It's rendered as a plain hairline pill instead.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ItemMetaLine(item: CardItem, card: ConfirmationCard) {
     val colors = MealsyTheme.colors
@@ -629,8 +632,8 @@ private fun ItemMetaLine(item: CardItem, card: ConfirmationCard) {
     val kcal = item.kcal * factor
     val protein = item.proteinG * factor
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    FlowRow(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.padding(top = 2.dp),
     ) {
@@ -638,6 +641,8 @@ private fun ItemMetaLine(item: CardItem, card: ConfirmationCard) {
             text = "${kcal.roundToInt()} kcal · ${protein.roundToInt()}g protein",
             style = MealsyType.label.copy(fontSize = 12.sp),
             color = colors.muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         if (item.estimated) {
             TagChip(text = stringResource(R.string.confirm_card_estimated), tone = TagTone.Powder)
@@ -660,6 +665,8 @@ private fun CheckMatchTag() {
             text = stringResource(R.string.confirm_card_check_match),
             style = MealsyType.tinyTag.copy(fontSize = 11.sp),
             color = colors.muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(vertical = 2.dp, horizontal = 8.dp),
         )
     }

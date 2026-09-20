@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.di.ApplicationScope
+import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.data.repo.LoggedMeal
 import app.mealsy.data.repo.MealsRepository
 import app.mealsy.data.repo.TodayRefreshSignal
@@ -33,7 +34,7 @@ internal var mealTypeUndoWindowMs: Long = 4_000L
 sealed interface MealTypeListUiState {
     data object Loading : MealTypeListUiState
     data object Empty : MealTypeListUiState
-    data class Error(val message: String) : MealTypeListUiState
+    data class Error(val kind: ErrorKind) : MealTypeListUiState
     data class Loaded(val meals: List<LoggedMeal>) : MealTypeListUiState
 }
 
@@ -93,9 +94,9 @@ class MealTypeListViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {
-                _uiState.value = MealTypeListUiState.Error("Couldn't reach Mealsy. Check your connection.")
+                _uiState.value = MealTypeListUiState.Error(ErrorKind.Offline)
             } catch (exc: Exception) {
-                _uiState.value = MealTypeListUiState.Error("Something went wrong loading your meals.")
+                _uiState.value = MealTypeListUiState.Error(ErrorKind.LoadFailed)
             }
         }
     }

@@ -11,7 +11,8 @@ package app.mealsy.domain
  *    It is lowercased — it is only capitalised because it opens the raw USDA
  *    sentence, not because it is a proper noun.
  * 3. Drop noise/qualifier segments that add nothing to a meal-detail title:
- *    anatomical-source or trim qualifiers (`broiler or fryers`, `meat only`,
+ *    anatomical-source or trim qualifiers (`broiler or fryers`/`broilers or
+ *    fryers`, `meat only`,
  *    `meat and skin`, `skinless`, `boneless`, `flesh and skin` — the "both"
  *    case is the default state for produce/meat and reads as noise, the same
  *    way `raw` does; the *contrastive* single-sided `with skin` / `without
@@ -74,12 +75,15 @@ object FoodNameHumanizer {
         "sauteed", "sautéed", "microwaved", "canned", "dried", "frozen",
     )
 
+    // Includes both the singular and plural USDA forms of "broiler or
+    // fryers" ("broiler or fryers" vs. "broilers or fryers") since FDC
+    // descriptions use either depending on the source dataset.
     private val NOISE_SEGMENTS = setOf(
-        "broiler or fryers", "meat only", "meat and skin", "skinless",
-        "boneless", "flesh and skin", "commercially prepared", "all types",
-        "nfs", "ns as to form", "prepared", "without salt", "with salt",
-        "enriched", "unenriched", "regular", "long-grain", "large", "medium",
-        "small", "salad or cooking", "plain",
+        "broiler or fryers", "broilers or fryers", "meat only", "meat and skin",
+        "skinless", "boneless", "flesh and skin", "commercially prepared",
+        "all types", "nfs", "ns as to form", "prepared", "without salt",
+        "with salt", "enriched", "unenriched", "regular", "long-grain",
+        "large", "medium", "small", "salad or cooking", "plain",
     )
 
     private val SUFFIX_PARTS = setOf(

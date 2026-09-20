@@ -131,19 +131,42 @@ fun Olli(
 
 /**
  * The four sanctioned sizes for [Olli], one per allowed placement.
+ *
+ * These are NOT the design spec's nominal 34/46/150/200dp — do not "fix"
+ * them back to those numbers. `olli.webp` was cropped to its visible alpha
+ * bounds (53×78px mascot, was padded out to a square 150×150 canvas, now a
+ * 61×86 canvas). [Olli] renders it in a square `Modifier.size(size)` box
+ * with the default `ContentScale.Fit`, so the box's *height* is always the
+ * constraining dimension and the visible mascot height is
+ * `size × (78 / 86)` (≈0.907× the box) — versus `size × (78 / 150)` (≈0.52×
+ * the box) for the old, more-padded asset. Concretely, at each placement's
+ * old nominal dp box the mascot would now read noticeably larger:
+ *
+ * - [Header] and [Done]/[Welcome] are set so the mascot's *visible* height
+ *   matches what it looked like pre-crop: box = old nominal dp × (0.52 /
+ *   0.907) ≈ old nominal dp × 0.573 (Done 150→86dp, Welcome 200→115dp).
+ * - [Header] intentionally follows the same 0.573 factor as well (34→~20dp
+ *   box) would read as *smaller* than intended at very small sizes, so it
+ *   is nudged up to 30dp (visible mascot ≈27dp) for legibility in the chat
+ *   header.
+ * - [Bite] is deliberately made to read LARGER than before — that was the
+ *   point of the tighter crop for the status-pill bite point — so it is
+ *   not rescaled to match the old visual size; it targets a ≈34dp visible
+ *   mascot height (box 38dp × 0.907 ≈ 34.5dp), versus the old asset's
+ *   effective ≈24dp visible height at the old 46dp box.
  */
 object OlliSize {
     /** Olli in the chat header, alongside the title. */
-    val Header: Dp = 34.dp
+    val Header: Dp = 30.dp
 
     /** Olli at the "bite" point of the status pill / snack-bar. */
-    val Bite: Dp = 46.dp
+    val Bite: Dp = 38.dp
 
     /** Olli on the onboarding "done" / completion step. */
-    val Done: Dp = 150.dp
+    val Done: Dp = 86.dp
 
     /** Olli on the onboarding welcome screen. */
-    val Welcome: Dp = 200.dp
+    val Welcome: Dp = 115.dp
 }
 
 /**

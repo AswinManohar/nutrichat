@@ -12,11 +12,29 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Login-specific error kinds. Login's failures are validation/auth outcomes,
+ * not the generic "couldn't load a screen" shape covered by
+ * `app.mealsy.android.ui.common.ErrorKind` — so this screen defines its own
+ * sealed kind rather than reusing that one. [LoginScreen] resolves each kind
+ * to its user-facing string via `stringResource`.
+ */
+sealed interface LoginErrorKind {
+    /** The entered address failed [isValidEmail]'s format check. */
+    data object InvalidEmail : LoginErrorKind
+
+    /** [SessionManager.signInWithMagicLink] threw. */
+    data object MagicLinkFailed : LoginErrorKind
+
+    /** [SessionManager.signInWithGoogle] threw. */
+    data object GoogleSignInFailed : LoginErrorKind
+}
+
 /** UI state for the login screen. */
 sealed interface LoginUiState {
     data object Idle : LoginUiState
     data object AwaitingEmail : LoginUiState
-    data class Error(val message: String) : LoginUiState
+    data class Error(val kind: LoginErrorKind) : LoginUiState
 }
 
 private val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
@@ -35,7 +53,7 @@ class LoginViewModel @Inject constructor(
     /** Validates `email` and, if valid, requests a magic link via [SessionManager]. */
     fun submitEmail(email: String) {
         if (!isValidEmail(email)) {
-            _uiState.value = LoginUiState.Error("Enter a valid email address.")
+            _uiState.value = LoginUiState.Error(LoginErrorKind.InvalidEmail)
             return
         }
         viewModelScope.launch {
@@ -45,7 +63,7 @@ class LoginViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: Exception) {
-                _uiState.value = LoginUiState.Error("Could not send magic link. Try again.")
+                _uiState.value = LoginUiState.Error(LoginErrorKind.MagicLinkFailed)
             }
         }
     }
@@ -58,7 +76,7 @@ class LoginViewModel @Inject constructor(
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: Exception) {
-                _uiState.value = LoginUiState.Error("Google sign-in failed. Try again.")
+                _uiState.value = LoginUiState.Error(LoginErrorKind.GoogleSignInFailed)
             }
         }
     }
