@@ -96,6 +96,7 @@ REDIS_URL=redis://default:<password>@redis.railway.internal:6379
 # --- LLM providers --------------------------------------------------------
 GOOGLE_API_KEY=
 ANTHROPIC_API_KEY=
+TYPESAFE_API_KEY=        # Jev intent routing (web + bot); optional
 
 # --- USDA FoodData Central ------------------------------------------------
 USDA_API_KEY=

@@ -19,6 +19,7 @@ and tracks daily nutrition goals.
 | LLM — extraction | Gemini 2.5 Flash (thinking disabled — see tunables `extraction_thinking_budget`) |
 | LLM — coaching | Gemini 2.5 Flash |
 | LLM — fallback | Claude Haiku 4.5 |
+| Typed judgments | TypeSafe Jev (System One): log/coaching intent routing; Gemini classifier as safety net |
 | Database | PostgreSQL 16 + pgvector |
 | Cache | Redis |
 | Task queue | Celery + Redis |
@@ -42,7 +43,8 @@ nutrichat/
 │   ├── agent/
 │   │   ├── context.py          # build_context(), build_system_prompt()
 │   │   ├── graph.py            # LangGraph StateGraph
-│   │   ├── orchestrator.py     # handle_message(), intent routing
+│   │   ├── orchestrator.py     # handle_message(), _route() decision rule
+│   │   ├── system_one.py       # TypeSafe Jev routing judgment (judge_message)
 │   │   ├── coaching.py         # proactive coaching logic
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
 │   │   └── tools/
@@ -91,6 +93,7 @@ nutrichat/
 ```bash
 GOOGLE_API_KEY=          # Gemini Flash-Lite + embeddings
 ANTHROPIC_API_KEY=       # fallback / eval runs
+TYPESAFE_API_KEY=        # Jev intent routing; unset = Gemini routes everything
 DATABASE_URL=            # postgresql://...
 REDIS_URL=               # redis://...
 SUPABASE_URL=            # https://xxx.supabase.co
@@ -120,6 +123,9 @@ cd frontend && npm run dev
 # Eval
 python eval/run_eval.py --dataset eval/test_set_200.jsonl --mock  # offline
 python eval/run_eval.py --dataset eval/test_set_200.jsonl          # live
+python eval/gate.py --only intent_routing --runs 5 \
+    --baseline eval/baseline_intent_legacy.json                   # routing gate
+python eval/probe_jev_latency.py --n 50 --concurrency 1,5,10      # Jev latency
 ```
 
 ---

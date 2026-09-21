@@ -175,6 +175,7 @@ Set in each host's dashboard (or via CLI). Not committed.
 | `DATABASE_URL` | Supabase Postgres (`postgresql+asyncpg://…`, session pooler) |
 | `REDIS_URL` | Railway Redis |
 | `GOOGLE_API_KEY` | Gemini (extraction, coaching, embeddings) |
+| `TYPESAFE_API_KEY` | TypeSafe Jev intent routing (`web`, `bot`). Unset = the Gemini classifier routes every message; nothing breaks. Only the message text is sent to TypeSafe |
 | `USDA_API_KEY` | FoodData Central |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` | Auth / JWKS verification |
 | `FRONTEND_ORIGIN` | Netlify origin(s) allowed by CORS (comma-separated) |
