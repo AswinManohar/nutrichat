@@ -305,6 +305,33 @@ nutrient_checkup:
 features:
   auto_decompose_enabled: true
 
+typesafe:
+  # TypeSafe System One (Jev): one request per fresh text message answers
+  # "log a meal or ask the coach?" plus two yes/no questions (does it also
+  # report food; does it need guidance). See agent/system_one.py and
+  # specs/001-jev-intent-routing/. Needs TYPESAFE_API_KEY; without it every
+  # fresh message is routed by the Gemini classifier instead.
+  model: "jev-latest"
+
+  # Certainty behind the chosen handler (0.5-1.0) at or above which Jev's route
+  # is acted on directly. Below it, the Gemini classifier gives a second
+  # opinion. Both misroutes are recoverable (a card the user cancels, a text
+  # reply), so a moderate bar. Probe 2026-09-21: 33 of 35 messages scored
+  # >= 0.95, "eggs?" 0.66. Tune on the eval gate, not by feel.
+  intent_min_probability: 0.75
+
+  # P(message also reports food) at or above which a coaching reply ends with
+  # log_offer_text ("I had pizza, was that bad?"). Probe: mixed messages
+  # 0.83-0.98, pure questions <= 0.03.
+  log_offer_min_probability: 0.7
+  log_offer_text: "Want me to log that? Send me what you had and I'll add it."
+
+  # Per-request wait for Jev, no retries. Past it, Gemini decides. Routing is
+  # in front of every fresh message, so fail fast. Measured p95 346 ms
+  # sequential from the dev machine, but ~800 ms at 10 concurrent requests;
+  # re-check against the container latency probe (eval/probe_jev_latency.py).
+  request_timeout_s: 0.8
+
 routing:
   # Keyword pre-filter for the orchestrator's log_meal/coaching intent router
   # (agent/orchestrator.py). Substring match on the lowercased message.
