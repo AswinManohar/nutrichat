@@ -228,7 +228,11 @@ async def _route_one(text: str) -> tuple[str, str | None, bool | None]:
     route = getattr(orchestrator, "_route", None)
     if route is None:
         return await orchestrator._classify_intent(text, TEST_USER), None, None
-    decision = await route(text)
+    from backend.agent.system_one import judge_message
+
+    # handle_message starts the judgment as a task; mirror that here, or
+    # _route sees no judgment and every case goes to Gemini.
+    decision = await route(text, asyncio.ensure_future(judge_message(text)))
     return decision.intent, decision.path, decision.offer_to_log
 
 
