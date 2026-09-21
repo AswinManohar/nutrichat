@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.agent.system_one import warn_if_unconfigured
 from backend.api import (
     billing,
     coaching_feedback,
@@ -26,6 +27,7 @@ from backend.ratelimit import RateLimitMiddleware
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    warn_if_unconfigured()
     async with pooled_checkpointer() as checkpointer:
         app_instance.state.checkpointer = checkpointer
         yield
