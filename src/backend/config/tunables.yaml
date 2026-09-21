@@ -333,81 +333,9 @@ typesafe:
   request_timeout_s: 0.8
 
 routing:
-  # Keyword pre-filter for the orchestrator's log_meal/coaching intent router
-  # (agent/orchestrator.py). Substring match on the lowercased message.
-  # Precedence (first match wins):
-  #   1. strong query signal  -> coaching   (unambiguous question/request phrasing)
-  #   2. log signal           -> log_meal   (explicit "I'm reporting food")
-  #   3. weak query signal    -> coaching   (bare nutrient/time nouns)
-  #   4. otherwise            -> LLM fallback
-  # Log signals beat WEAK query signals so a food report that merely NAMES a
-  # macro/ingredient ("half a glass of 3.8% fat milk", "a high protein yogurt")
-  # still logs — the bug where "fat"/"protein" hijacked such messages to coaching.
-  # Strong query signals still beat log signals so "how much protein have I had
-  # today?" (which contains "i had") stays a question.
-  log_signals:
-    # High-confidence "I'm reporting food" phrases only. Bare meal markers like
-    # "for dinner" are intentionally NOT here — they also appear in coaching
-    # requests ("suggest a meal plan for dinner") and would wrongly short-circuit
-    # to the logger. Pure logs like "chicken for dinner" fall through to the LLM.
-    - "i ate"
-    - "i had"
-    - "just had"
-    - "just ate"
-    - "logged"
-  query_signals:
-    # STRONG — question/request phrasing that does not occur in a food report.
-    - "how much"
-    - "how many"
-    - "did i"
-    - "have i"
-    - "what was"
-    - "what is"
-    - "what's"
-    - "what do i"
-    - "what did i"
-    - "what should"
-    - "should i"
-    - "show me"
-    - "suggest"
-    - "recommend"
-    - "meal plan"
-    - "plan my"
-    - "idea"
-    - "average"
-    - "trend"
-    - "healthiest"
-    - "unhealthiest"
-    - "should i eat"
-    - "what should i eat"
-    - "how am i"
-    - "how am i doing"
-    - "how am i tracking"
-    - "tracking toward"
-  weak_query_signals:
-    # WEAK — nutrient/time/adjective nouns that ALSO appear in food descriptions
-    # ("protein bar", "fat milk", "eggs today"). These route to coaching only
-    # when NO log signal is present, so an explicit "i had"/"i ate" wins.
-    - "vitamin"
-    - "mineral"
-    - "protein"
-    - "calories"
-    - "fiber"
-    - "carbs"
-    - "fat"
-    - "nutrient"
-    - "today"
-    - "this week"
-    - "yesterday"
-    - "last week"
-    - "last month"
-    - "months"
-    - "weeks"
-    - "junk"
-    - "balanced"
-    - "most"
-    - "goal"
-
+  # log_meal/coaching routing moved to TypeSafe Jev (see `typesafe:` above);
+  # its keyword lists were deleted. What remains is the card-reply classifier.
+  #
   # Keyword sets for the confirmation-card reply classifier in
   # agent/tools/meals.py classify_intent (no LLM). Word-level match after
   # punctuation stripping; multi-word entries match as substrings.
