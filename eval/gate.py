@@ -14,6 +14,8 @@ score a change against it.
     uv run --env-file .env python eval/gate.py --runs 5
     uv run --env-file .env python eval/gate.py --runs 5 \
         --baseline eval/baseline_scores.json
+    uv run --env-file .env python eval/gate.py --only intent_routing --runs 5 \
+        --baseline eval/baseline_intent_legacy.json
 
 Decomposition is scored on resulting MACRO TOTALS, not ingredient-list similarity: a
 dish split five ways or nine ways is the same answer if the kcal and macros land in the
@@ -27,6 +29,7 @@ import asyncio
 import json
 import statistics
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +68,9 @@ TOLERANCES: dict[str, float] = {
     "entity_recall": 10.0,  # 12 cases -> 8.3pp granularity; CI 0.0pp
     "quantity": 8.0,  # 24 cases -> 4.2pp granularity; CI 6.6pp (extraction is noisy)
     "food_identity": 8.0,  # 14 cases -> 7.1pp granularity; CI 5.2pp
-    "intent_routing": 8.0,  # 14 cases -> 7.1pp granularity; CI 0.0pp
+    # 88 cases -> 1.1pp granularity. Two cases of slack: the legacy router's CI
+    # was 0.0pp on the old 14-case set, but the new set adds real ambiguity.
+    "intent_routing": 2.3,
     # Not a percentage of cases, so granularity does not apply -- but the
     # measured CI of the mean at N=5 is ~16% (haleem alone swings 45%
     # run-to-run), so anything under that is noise. Raise N to tighten.
@@ -206,18 +211,98 @@ async def score_food_identity(sem: asyncio.Semaphore) -> float:
     return 100 * hits / len(cases)
 
 
-async def score_intent_routing(sem: asyncio.Semaphore) -> float:
-    """Accuracy of log_meal vs coaching routing."""
-    from backend.agent.orchestrator import _classify_intent
+async def _route_one(text: str) -> tuple[str, str | None, bool | None]:
+    """Route one message with whichever router the checked-out code has.
 
+    The legacy router (`_classify_intent`, keyword lists + Gemini) returns only
+    the intent; the judgment router (`_route`) also says which path decided and
+    whether the coaching reply would carry the offer to log. Supporting both is
+    what lets one gate measure the legacy baseline and the replacement against
+    the same cases.
+
+    Returns:
+        (intent, path or None, offer_to_log or None).
+    """
+    from backend.agent import orchestrator
+
+    route = getattr(orchestrator, "_route", None)
+    if route is None:
+        return await orchestrator._classify_intent(text, TEST_USER), None, None
+    decision = await route(text)
+    return decision.intent, decision.path, decision.offer_to_log
+
+
+async def score_intent_routing(
+    sem: asyncio.Semaphore,
+) -> tuple[float, dict[str, Any]]:
+    """Accuracy of log_meal vs coaching routing, with a per-category breakdown.
+
+    Returns:
+        (overall accuracy %, details) where details holds per-category
+        (correct, total), the count of cases each routing path decided, and
+        offer-to-log hits against `expect_offer` (judgment router only).
+    """
     cases = load_cases("intent_routing")
 
-    async def one(case: dict) -> float:
+    async def one(case: dict) -> tuple[dict, str, str | None, bool | None]:
         async with sem:
-            got = await _classify_intent(case["text"], TEST_USER)
-        return 1.0 if got == case["expect"] else 0.0
+            got, path, offer = await _route_one(case["text"])
+        return case, got, path, offer
 
-    return 100 * statistics.fmean(await asyncio.gather(*(one(c) for c in cases)))
+    results = await asyncio.gather(*(one(c) for c in cases))
+    per_cat: dict[str, list[int]] = {}
+    paths: Counter[str] = Counter()
+    offers = {"tp": 0, "fn": 0, "fp": 0, "tn": 0}
+    for case, got, path, offer in results:
+        bucket = per_cat.setdefault(case.get("category", "uncategorized"), [0, 0])
+        bucket[0] += got == case["expect"]
+        bucket[1] += 1
+        if path is not None:
+            paths[path] += 1
+        if offer is not None and "expect_offer" in case:
+            key = ("t" if offer == case["expect_offer"] else "f") + (
+                "p" if offer else "n"
+            )
+            offers[key] += 1
+    correct = sum(c for c, _ in per_cat.values())
+    details = {
+        "per_category": per_cat,
+        "paths": dict(paths),
+        "offers": offers if paths else {},
+    }
+    return 100 * correct / len(cases), details
+
+
+def _summarize_routing(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pool per-run routing details into category accuracy, path and offer shares."""
+    per_cat: dict[str, list[int]] = {}
+    paths: Counter[str] = Counter()
+    offers: Counter[str] = Counter()
+    for run in runs:
+        for cat, (c, t) in run["per_category"].items():
+            bucket = per_cat.setdefault(cat, [0, 0])
+            bucket[0] += c
+            bucket[1] += t
+        paths.update(run["paths"])
+        offers.update(run["offers"])
+    summary: dict[str, Any] = {
+        "per_category_pct": {
+            cat: round(100 * c / t, 1) for cat, (c, t) in sorted(per_cat.items())
+        }
+    }
+    if paths:
+        total = sum(paths.values())
+        summary["path_share_pct"] = {
+            p: round(100 * n / total, 1) for p, n in sorted(paths.items())
+        }
+    if sum(offers.values()):
+        pos = offers["tp"] + offers["fn"]
+        neg = offers["fp"] + offers["tn"]
+        summary["offer_recall_pct"] = (
+            round(100 * offers["tp"] / pos, 1) if pos else None
+        )
+        summary["false_offer_pct"] = round(100 * offers["fp"] / neg, 1) if neg else None
+    return summary
 
 
 async def score_decomposition(sem: asyncio.Semaphore) -> dict[str, float]:
@@ -294,8 +379,18 @@ def band(values: list[float]) -> dict[str, float]:
     }
 
 
+PCT_CATEGORIES = ("entity_recall", "quantity", "food_identity", "intent_routing")
+ALL_CATEGORIES = (*PCT_CATEGORIES, "decomposition")
+
+
 async def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--only",
+        action="append",
+        choices=ALL_CATEGORIES,
+        help="run just this category (repeatable); default: all",
+    )
     ap.add_argument("--runs", type=int, default=5, help="repeats per category (N>=5)")
     ap.add_argument("--baseline", type=Path, help="score against this baseline JSON")
     ap.add_argument(
@@ -305,6 +400,7 @@ async def main() -> None:
         "baseline; nothing when scoring against one)",
     )
     args = ap.parse_args()
+    selected = tuple(args.only) if args.only else ALL_CATEGORIES
     _validate_tolerances()
 
     default_baseline = Path(__file__).parent / "baseline_scores.json"
@@ -325,38 +421,43 @@ async def main() -> None:
     sem = asyncio.Semaphore(CONCURRENCY)
     await prepare_user()
 
+    scorers = {
+        "entity_recall": score_entity_recall,
+        "quantity": score_quantity,
+        "food_identity": score_food_identity,
+        "intent_routing": score_intent_routing,
+    }
     pct_scores: dict[str, list[float]] = {
-        "entity_recall": [],
-        "quantity": [],
-        "food_identity": [],
-        "intent_routing": [],
+        c: [] for c in PCT_CATEGORIES if c in selected
     }
     decomp_runs: list[dict[str, float]] = []
+    routing_runs: list[dict[str, Any]] = []
 
     try:
         for i in range(args.runs):
             print(f"run {i + 1}/{args.runs} ...", flush=True)
-            e, q, f, r, dec = await asyncio.gather(
-                score_entity_recall(sem),
-                score_quantity(sem),
-                score_food_identity(sem),
-                score_intent_routing(sem),
-                score_decomposition(sem),
-            )
-            pct_scores["entity_recall"].append(e)
-            pct_scores["quantity"].append(q)
-            pct_scores["food_identity"].append(f)
-            pct_scores["intent_routing"].append(r)
-            decomp_runs.append(dec)
+            names = list(pct_scores)
+            jobs = [scorers[c](sem) for c in names]
+            if "decomposition" in selected:
+                jobs.append(score_decomposition(sem))
+            results = await asyncio.gather(*jobs)
+            for cat, res in zip(names, results):
+                if cat == "intent_routing":
+                    res, details = res
+                    routing_runs.append(details)
+                pct_scores[cat].append(res)
+            if "decomposition" in selected:
+                decomp_runs.append(results[-1])
             print(
-                f"  entity_recall={e:.1f}  quantity={q:.1f}  "
-                f"food_identity={f:.1f}  intent_routing={r:.1f}",
+                "  " + "  ".join(f"{c}={pct_scores[c][-1]:.1f}" for c in names),
                 flush=True,
             )
     finally:
         await cleanup_user()
 
     report: dict[str, Any] = {k: band(v) for k, v in pct_scores.items()}
+    if routing_runs:
+        report["intent_routing"].update(_summarize_routing(routing_runs))
 
     dishes = sorted(decomp_runs[0]) if decomp_runs else []
     per_dish = {d: band([run[d] for run in decomp_runs]) for d in dishes}
@@ -372,11 +473,12 @@ async def main() -> None:
         key=lambda t: t[1],
         default=("-", 0.0),
     )
-    report["decomposition_kcal"] = {
-        "per_dish": per_dish,
-        "worst_dish": worst[0],
-        "worst_noise_pct": round(worst[1], 2),
-    }
+    if decomp_runs:
+        report["decomposition_kcal"] = {
+            "per_dish": per_dish,
+            "worst_dish": worst[0],
+            "worst_noise_pct": round(worst[1], 2),
+        }
 
     if out_path:
         with open(out_path, "w") as f:
@@ -389,10 +491,23 @@ async def main() -> None:
             f"{cat:16} mean={b['mean']:6.1f}  band={b['noise_band']:5.1f}pp  "
             f"(min {b['min']:.1f} / max {b['max']:.1f})"
         )
-    print(
-        f"\n{'decomposition kcal':16} worst dish: {worst[0]} "
-        f"swings {worst[1]:.1f}% across identical runs"
-    )
+    if "intent_routing" in report:
+        r = report["intent_routing"]
+        print("\nintent_routing per category (all runs pooled):")
+        for cat, pct in r["per_category_pct"].items():
+            print(f"  {cat:24} {pct:5.1f}%")
+        if "path_share_pct" in r:
+            print(f"  decided by: {r['path_share_pct']}")
+        if "offer_recall_pct" in r:
+            print(
+                f"  offer to log: recall {r['offer_recall_pct']}%  "
+                f"false offers {r['false_offer_pct']}%"
+            )
+    if decomp_runs:
+        print(
+            f"\n{'decomposition kcal':16} worst dish: {worst[0]} "
+            f"swings {worst[1]:.1f}% across identical runs"
+        )
     for d in dishes:
         b = per_dish[d]
         pctb = 100 * b["noise_band"] / b["mean"] if b["mean"] else 0
@@ -402,13 +517,20 @@ async def main() -> None:
         failures: list[str] = []
         print("\n=== delta vs baseline ===")
         for cat in pct_scores:
+            if cat not in base:
+                print(f"{cat:16} not in baseline -- skipped")
+                continue
             delta = report[cat]["mean"] - base[cat]["mean"]
             tol = TOLERANCES[cat]
             verdict = "PASS" if delta >= -tol else "FAIL"
             if verdict == "FAIL":
                 failures.append(cat)
             print(f"{cat:16} {delta:+6.1f}pp  (tolerance {tol:.1f}pp)  {verdict}")
-        base_dish = base["decomposition_kcal"]["per_dish"]
+        base_dish = (
+            base["decomposition_kcal"]["per_dish"]
+            if decomp_runs and "decomposition_kcal" in base
+            else {}
+        )
         tol_pct = TOLERANCES["decomposition_kcal_pct"]
         for dish, b in per_dish.items():
             if dish not in base_dish or not base_dish[dish]["mean"]:
