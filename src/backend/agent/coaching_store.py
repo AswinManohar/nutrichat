@@ -20,6 +20,7 @@ async def save_coaching_response(
     result: CoachingResult,
     model: str,
     trace_id: str | None,
+    routing: dict[str, float | str | bool] | None = None,
 ) -> str | None:
     """Insert a coaching_response row and return its id.
 
@@ -34,6 +35,11 @@ async def save_coaching_response(
         result: Output of CoachingAgent.handle().
         model: Model name used for the response (COACHING_MODEL).
         trace_id: OTel trace id as 32 hex chars, or None outside a trace.
+        routing: Jev's routing record for this turn (path, certainty,
+            raw_choice, reports_food, needs_guidance_jev, offer_to_log). Stored
+            as ``parsed_query["routing"]`` beside Gemini's ``needs_guidance``
+            so the two can be compared; omitted when None. No schema change:
+            parsed_query is free-form JSONB.
 
     Returns:
         The new row's id as a string, or None if the write failed.
@@ -48,7 +54,10 @@ async def save_coaching_response(
                     user_id=user_id,
                     conversation_id=conversation_id,
                     query=query,
-                    parsed_query=result.parsed.model_dump(mode="json"),
+                    parsed_query={
+                        **result.parsed.model_dump(mode="json"),
+                        **({"routing": routing} if routing else {}),
+                    },
                     retrieved_chunk_ids=[c.id for c in result.retrieved],
                     retrieved=[
                         {
