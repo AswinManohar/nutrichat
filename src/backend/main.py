@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.agent.system_one import warn_if_unconfigured
+from backend.agent.system_one import warm_up, warn_if_unconfigured
 from backend.api import (
     billing,
     coaching_feedback,
@@ -28,6 +29,8 @@ from backend.ratelimit import RateLimitMiddleware
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     warn_if_unconfigured()
+    # Background: never delays startup; the reference keeps it from being GC'd.
+    app_instance.state.typesafe_warm_up = asyncio.create_task(warm_up())
     async with pooled_checkpointer() as checkpointer:
         app_instance.state.checkpointer = checkpointer
         yield

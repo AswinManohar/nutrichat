@@ -16,7 +16,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from fastapi import FastAPI, Request, Response
 
-from backend.agent.system_one import warn_if_unconfigured
+from backend.agent.system_one import warm_up, warn_if_unconfigured
 from backend.db.checkpointer import pooled_checkpointer
 from backend.observability import configure_observability
 from backend.telegram.handlers import router
@@ -74,6 +74,7 @@ async def run_polling() -> None:
     configure_observability(None)
     # Webhook mode (prod) runs inside backend.main's lifespan, which warns there.
     warn_if_unconfigured()
+    await warm_up()
     bot = build_bot()
     dispatcher = build_dispatcher()
 

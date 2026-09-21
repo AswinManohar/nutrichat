@@ -27,6 +27,7 @@ import os
 import time
 from typing import Literal
 
+import httpx2
 from pydantic import BaseModel, ConfigDict, Field
 from typesafe_sdk import (
     AsyncTypeSafeClient,
@@ -43,6 +44,13 @@ logger = logging.getLogger(__name__)
 
 _CONFIG = get_tunables().typesafe
 _API_KEY_ENV = "TYPESAFE_API_KEY"
+
+# httpx drops an idle connection after 5 s by default, and a fresh TLS
+# handshake to TypeSafe costs ~400 ms on top of the ~250 ms call: measured
+# 600-700 ms after any gap > 5 s, against the 0.8 s routing timeout. TypeSafe
+# keeps idle connections open for at least 2 minutes, so keep ours for 10.
+_KEEPALIVE_EXPIRY_S = 600.0
+_WARM_UP_TIMEOUT_S = 10.0
 
 Intent = Literal["log_meal", "coaching"]
 
@@ -158,6 +166,10 @@ def _get_client() -> AsyncTypeSafeClient | None:
             model=_CONFIG.model,
             timeout=_CONFIG.request_timeout_s,
             retry=RetryPolicy(max_retries=0),
+            http_client=httpx2.AsyncClient(
+                timeout=_CONFIG.request_timeout_s,
+                limits=httpx2.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S),
+            ),
         )
     return _client
 
@@ -170,6 +182,28 @@ def warn_if_unconfigured() -> None:
             "classifier instead of TypeSafe Jev",
             _API_KEY_ENV,
         )
+
+
+async def warm_up() -> None:
+    """Open the connection at startup so the first real message is not cold.
+
+    The first request of a process pays DNS + TLS (~700 ms), which would push
+    the first user's message past the routing timeout onto the Gemini path.
+    Sends one canned message with a generous timeout, so the handshake
+    completes instead of being aborted at the routing limit. Never raises.
+    """
+    client = _get_client()
+    if client is None:
+        return
+    start = time.perf_counter()
+    try:
+        await client.system_one(
+            {"message": "warm up"}, ROUTING_QUESTIONS, timeout=_WARM_UP_TIMEOUT_S
+        )
+    except TypeSafeError as exc:
+        logger.warning("TypeSafe warm-up failed: %s", type(exc).__name__)
+        return
+    logger.info("TypeSafe warm-up took %.0f ms", (time.perf_counter() - start) * 1000)
 
 
 async def judge_message(message: str) -> tuple[RoutingJudgment | None, str | None]:

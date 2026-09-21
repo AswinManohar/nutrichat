@@ -23,6 +23,7 @@ from backend.agent import system_one
 from backend.agent.system_one import (
     ROUTING_QUESTIONS,
     judge_message,
+    warm_up,
     warn_if_unconfigured,
 )
 
@@ -198,3 +199,34 @@ def test_eval_cases_are_held_out_of_question_examples():
     cases = [json.loads(line) for line in _EVAL_CASES.read_text().splitlines()]
     leaked = [c["text"] for c in cases if c["text"].strip().lower() in taught]
     assert leaked == []
+
+
+@pytest.mark.asyncio
+async def test_warm_up_never_raises_and_sends_no_user_text(caplog):
+    client = _client(side_effect=TypeSafeAPITimeoutError(0.8))
+    with (
+        patch.object(system_one, "_get_client", return_value=client),
+        caplog.at_level(logging.WARNING, logger="backend.agent.system_one"),
+    ):
+        await warm_up()
+
+    assert client.system_one.await_args.args[0] == {"message": "warm up"}
+    assert client.system_one.await_args.kwargs["timeout"] == 10.0
+    assert "TypeSafeAPITimeoutError" in caplog.text
+
+
+def test_client_keeps_idle_connections(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(system_one, "_client", None)
+    captured = {}
+    monkeypatch.setattr(
+        system_one.httpx2,
+        "AsyncClient",
+        lambda **kwargs: captured.update(kwargs) or MagicMock(),
+    )
+    monkeypatch.setattr(system_one, "AsyncTypeSafeClient", MagicMock())
+
+    system_one._get_client()
+
+    assert captured["limits"].keepalive_expiry == system_one._KEEPALIVE_EXPIRY_S
+    monkeypatch.setattr(system_one, "_client", None)
