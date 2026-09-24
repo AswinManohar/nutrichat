@@ -252,3 +252,23 @@ the go/no-go number for SC-003.
 98.9%, second opinion (unsure) 1.1%, unavailable 0%. Offer to log: recall 100%,
 false offers 0%. Every category 100%, including bare_food_nutrient_word
 (legacy 10.5%) and mixed (legacy 62.5%).
+
+## R14 — Message-to-card latency, local A/B (2026-09-24, T033)
+
+Two backends against the same local DB and Redis: the pre-Jev commit `17d143f`
+on :8001 and this branch on :8000. 3 runs x 24 messages, sequential, a fresh
+user id per request. Raw data: `logs/bench_jev_vs_legacy.json`.
+
+| Message type | Legacy p50 | Jev p50 | Delta |
+|---|---|---|---|
+| Cue-less meal (10 msgs) | 2,093 ms | 1,619 ms | **-474 ms** (SC-004 target >= -300: pass) |
+| Cue-bearing meal (8 msgs) | 1,579 ms | 1,708 ms | +129 ms (SC-005 target <= +50: **not met locally**) |
+| Meal with a nutrient word (3 msgs) | 7,459 ms, coaching reply (misroute) | 1,261 ms, meal card | fixed |
+| Question (3 msgs) | 3,506 ms | 3,218 ms | noise |
+
+SC-005 note: locally the checkpoint read is ~1 ms, so the Jev call has nothing
+to overlap with and lands on the critical path where the keyword match was free.
+In production that read is a ~300 ms transatlantic round trip (R4), so the
+overlap should absorb most of it. Re-measure in the container before calling
+SC-005 either way. The user was also clicking through the :8000 UI during the
+run, which adds noise to the Jev column only.
