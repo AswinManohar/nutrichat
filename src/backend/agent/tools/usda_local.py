@@ -7,9 +7,15 @@ retrieval and ranking only -- it returns a plain, dependency-free
 ``USDAResult`` model to ``usda.py``, which imports this module (never the
 other way around, to avoid a circular import).
 
-The ranking strategy here was chosen empirically against the eval set
-(78.6% vs 71.4% for the runner-up) and must not be changed without
-re-running that eval.
+The ranking strategy here was chosen empirically against the eval set and
+must not be changed without re-running ``eval/gate.py``'s food_identity
+category. Beware how coarse that signal is: the category is 22 cases, so
+one case is 4.5pp, and the strategy originally shipped on a 14-case set
+where it beat its runner-up by a single case (78.6% vs 71.4%). For finer
+resolution score ``eval/cases/food_identity_expanded.jsonl`` (176 cases,
+0.57pp each), where this ranker measures 88.1% recall@1 -- ahead of BM25,
+Gemini embeddings, and RRF fusions of either (see EXPANDED_NOTES.md), and
+chosen over an LLM reranker on 2026-09-24.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from backend.agent.tools.usda_match import (
     _MATCH_STOPWORDS,
     _confidence,
     _description_coverage,
+    _generic_rank,
     _head_purity,
     _tokenize,
 )
@@ -262,9 +269,56 @@ def _substring_rescue(
             candidates.setdefault(fdc_id, (description, 0.0))
 
 
+def _head_match_supplement(
+    conn: sqlite3.Connection,
+    food_name: str,
+    candidates: dict[int, tuple[str, float]],
+    limit: int,
+) -> None:
+    """Guarantee entries whose *head noun is the query* are in the pool.
+
+    Ranking prefers a candidate whose head segment the query names outright
+    (see ``_head_purity``), but it can only choose among what bm25 retrieved,
+    and for a one-word query bm25 is the wrong instrument: it favours short
+    descriptions where the term is a large fraction of the text, so "rice"
+    returned "Rice crackers", "Rice cake" and "Rice paper" while "Rice,
+    white, long-grain, regular, enriched, cooked" -- the entry the ranking
+    would have picked -- never entered the pool at all. No scoring change can
+    fix a candidate that was never a candidate.
+
+    Rows are taken shortest-description-first so that, when the head has more
+    matching entries than ``limit``, the ones that survive are the least
+    qualified (most generic) rather than an arbitrary slice: the database
+    holds far more rows beginning "Cheese," than the limit allows, and
+    without the ordering "Cheese, NFS" lost its place to named varieties.
+
+    Mutates ``candidates`` in place, using ``setdefault`` so rows already
+    ranked by bm25 keep their real rank and only new rows get the
+    placeholder rank of 0.0.
+
+    Args:
+        conn: Open read-only connection.
+        food_name: The user's original free-text food name.
+        candidates: Candidate map to supplement in place.
+        limit: Max head-matching rows to add.
+    """
+    head = food_name.strip().lower()
+    rows = conn.execute(
+        """
+        SELECT fdc_id, description FROM food
+        WHERE lower(description) = ? OR lower(description) LIKE ?
+        ORDER BY length(description)
+        LIMIT ?
+        """,
+        (head, f"{head},%", limit),
+    ).fetchall()
+    for fdc_id, description in rows:
+        candidates.setdefault(fdc_id, (description, 0.0))
+
+
 def _rank_key(
     query: str, description: str, bm25_rank: float, fdc_id: int
-) -> tuple[float, float, float, float, int]:
+) -> tuple[float, float, float, float, float, int]:
     """Build the descending sort key used to pick the best candidate.
 
     Args:
@@ -276,12 +330,13 @@ def _rank_key(
 
     Returns:
         Tuple sorted descending: (confidence, head_purity,
-        description_coverage, -bm25_rank, -fdc_id).
+        description_coverage, generic_rank, -bm25_rank, -fdc_id).
     """
     return (
         _confidence(query, description),
         _head_purity(query, description),
         _description_coverage(query, description),
+        _generic_rank(description),
         -bm25_rank,
         -fdc_id,
     )
@@ -335,10 +390,11 @@ def lookup(
     """Resolve a free-text food name against the bundled USDA database.
 
     Retrieves a candidate pool via FTS5 prefix search (backfilled with
-    substring search when the pool is thin), ranks candidates by
-    confidence, then head purity, then description coverage, then bm25,
-    then fdc_id, and returns the top match with its macros and nutrients
-    per 100 g.
+    substring search when the pool is thin, and always supplemented with
+    rows whose head noun is the query), ranks candidates by confidence,
+    then head purity, then description coverage, then generic rank, then
+    bm25, then fdc_id, and returns the top match with its macros and
+    nutrients per 100 g.
 
     Args:
         food_name: User-facing free-text food name.
@@ -356,6 +412,7 @@ def lookup(
     conn = _get_connection()
     candidates = _fts_candidates(conn, _search_terms(food_name), pool_size)
     _substring_rescue(conn, food_name, candidates, pool_size)
+    _head_match_supplement(conn, food_name, candidates, pool_size)
     if not candidates:
         return None
 

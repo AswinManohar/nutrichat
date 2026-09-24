@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import statistics
 import sys
 from collections import Counter
@@ -67,7 +68,7 @@ QTY_TOL = 0.25  # counted grams must land within +/-25% of count x singular
 TOLERANCES: dict[str, float] = {
     "entity_recall": 10.0,  # 12 cases -> 8.3pp granularity; CI 0.0pp
     "quantity": 8.0,  # 24 cases -> 4.2pp granularity; CI 6.6pp (extraction is noisy)
-    "food_identity": 8.0,  # 14 cases -> 7.1pp granularity; CI 5.2pp
+    "food_identity": 8.0,  # 22 cases -> 4.5pp granularity; CI 0.0pp
     # 88 cases -> 1.1pp granularity. Two cases of slack: the legacy router's CI
     # was 0.0pp on the old 14-case set, but the new set adds real ambiguity.
     "intent_routing": 2.3,
@@ -122,10 +123,29 @@ def _validate_tolerances() -> None:
         raise SystemExit("Mis-specified gate tolerances:\n" + "\n".join(problems))
 
 
+def _normalize_for_match(value: str) -> str:
+    """Lowercase, turn punctuation into spaces, collapse runs of whitespace."""
+    return " ".join(re.sub(r"[^\w\s]", " ", value.lower()).split())
+
+
 def _matches(text: str, alternatives: list[str]) -> bool:
-    """True if any alternative appears as a substring of text (case-insensitive)."""
-    low = text.lower()
-    return any(alt.lower() in low for alt in alternatives)
+    """True if any alternative appears in text, ignoring punctuation and case.
+
+    Plain substring matching made the instrument measure FDC's comma
+    conventions rather than food identity: "chicken breast" did not match
+    "Chicken, breast, boneless, skinless, raw" because of the comma, so a
+    correct match scored as a miss -- while tests/test_usda_local.py asserts
+    that exact description is the right answer for that exact query.
+
+    Adjacency is deliberately preserved. Token-set containment would also
+    fix the comma case, but by discarding word order it starts accepting
+    wrong foods: {apple, raw} is a subset of "Apple pie filling, raw". A
+    case that needs both of FDC's spellings ("Olive oil" and "Oil, olive,
+    extra virgin") should list both, rather than the matcher guessing that
+    any permutation of the words means the same food.
+    """
+    low = _normalize_for_match(text)
+    return any(_normalize_for_match(alt) in low for alt in alternatives)
 
 
 # ---------------------------------------------------------------------------
