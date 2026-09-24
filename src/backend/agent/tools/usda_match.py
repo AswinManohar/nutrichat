@@ -143,3 +143,62 @@ def _energy_kcal(raw: dict[str, tuple[float, str]]) -> float:
         if key in raw and raw[key][0] > 0:
             return raw[key][0]
     return 0.0
+
+
+# FDC's own markers for "the unspecified / base form of this food". "NFS"
+# ("Not Further Specified") is an FNDDS convention meaning exactly what a
+# bare query noun means; "raw" is the unprepared base form for produce.
+_GENERIC_MODIFIERS = frozenset({"nfs", "raw"})
+
+# FDC's *other* generic convention, and about as common as NFS (255 rows vs
+# 251): "NS as to <dimension>" -- Not Specified as to cut, form, fat content,
+# type of milk. Unlike NFS it is a free-text phrase rather than a token, so it
+# needs a prefix test: "Lamb, NS as to cut", "Corn, NS as to form".
+_NOT_SPECIFIED_PREFIX = "ns as to "
+
+
+def _generic_rank(description: str) -> float:
+    """1.0 if every modifier after the head is a generic marker, else 0.0.
+
+    A tie-break for queries that name a food without specifying which kind
+    of it. "cheese" leaves "Cheese, NFS" and "Cheese, fontina" tied on
+    confidence, head purity and description coverage alike -- both have head
+    {cheese} and one modifier -- so the ordering fell through to bm25 and
+    then fdc_id, i.e. to an arbitrary choice that picked fontina. FDC marks
+    the generic entry itself, so prefer it rather than guessing.
+
+    Deliberately narrow: it only separates candidates the existing three
+    scores have already tied, and only when a candidate's modifiers are
+    *entirely* generic, so "Cheese, cheddar" is never promoted over a more
+    specific match the query actually asked for. That strictness means
+    "Corn, NS as to form, cooked" does not qualify -- "cooked" is a real
+    modifier -- while "Lamb, NS as to cut" does.
+
+    Caveat, measured rather than assumed: the "NS as to" arm is currently
+    almost unreachable. Ranking consults this function only after
+    ``_description_coverage`` ties, and the marker's own words inflate a
+    row's token count enough to lose there first -- "Lamb, NS as to cut"
+    scores 0.25 against "Lamb, chop" at 0.50, so it is eliminated one step
+    before generic rank is read. Recognising the marker changed 0 of 198
+    eval answers. Collapsing the phrase to a single token in ``_tokenize``
+    does make it reachable, but that is a change to the shared tokenizer
+    feeding all three earlier scores and must be judged on its own.
+
+    Args:
+        description: An FDC food description.
+
+    Returns:
+        1.0 if the description has at least one modifier and all of them are
+        generic markers, 0.0 otherwise.
+    """
+    modifiers = [p.strip().lower() for p in description.split(",")[1:]]
+    if not modifiers:
+        return 0.0
+    return (
+        1.0
+        if all(
+            m in _GENERIC_MODIFIERS or m.startswith(_NOT_SPECIFIED_PREFIX)
+            for m in modifiers
+        )
+        else 0.0
+    )
