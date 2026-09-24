@@ -242,8 +242,22 @@ request with its own 10 s timeout (`system_one.warm_up`). Without it, a
 low-traffic app pays a TLS handshake on most messages and, at a 0.8 s timeout,
 often falls back to Gemini.
 
-**Container (`sfo`)**: not yet measured, needs the user (T010). This is still
-the go/no-go number for SC-003.
+**Container (`sfo`, 2026-09-24)** — stdlib probe with persistent connections,
+same three questions, run via `railway ssh --service web` (the SDK is not in
+the deployed image yet, so `http.client` + Bearer auth instead):
+
+| Concurrency | p50 | p95 | max |
+|---|---|---|---|
+| 1 | 86 ms | 134 ms | 144 ms |
+| 5 | 92 ms | 120 ms | 121 ms |
+| 10 | 84 ms | 117 ms | 314 ms |
+
+**Go** for SC-003 (p50 < 300, p95 < 800). Roughly 3x faster than from the dev
+machine, so TypeSafe is close to `sfo`. With ~90 ms per judgment overlapped on a
+~300 ms checkpoint read, the +129 ms seen locally on cue-bearing meals (R14)
+should not appear in production. For reference, the same probe without
+keepalive (new TLS handshake per request) measured ~600 ms locally — the
+reason for the keepalive + warm-up fix in `system_one.py`.
 
 ## R13 — Gate result
 
