@@ -117,3 +117,58 @@ async def test_save_returns_none_and_logs_when_commit_fails(
 
     assert response_id is None
     assert "coaching_response write failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_save_stores_routing_record_beside_gemini_parse() -> None:
+    session = MagicMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    routing = {
+        "path": "judgment",
+        "certainty": 0.98,
+        "raw_choice": "coaching",
+        "reports_food": 0.97,
+        "needs_guidance_jev": 0.94,
+        "offer_to_log": True,
+    }
+
+    with patch(
+        "backend.agent.coaching_store.get_session",
+        return_value=_session_factory(session),
+    ):
+        await save_coaching_response(
+            user_id="user-1",
+            conversation_id="thread-1",
+            query="I had pizza, was that bad?",
+            result=_result(),
+            model="gemini-2.5-flash",
+            trace_id=None,
+            routing=routing,
+        )
+
+    parsed = session.add.call_args.args[0].parsed_query
+    assert parsed["routing"] == routing
+    assert parsed["needs_guidance"] is True  # Gemini's own decision, untouched
+
+
+@pytest.mark.asyncio
+async def test_save_without_routing_has_no_routing_key() -> None:
+    session = MagicMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+
+    with patch(
+        "backend.agent.coaching_store.get_session",
+        return_value=_session_factory(session),
+    ):
+        await save_coaching_response(
+            user_id="user-1",
+            conversation_id=None,
+            query="hi",
+            result=_result(),
+            model="gemini-2.5-flash",
+            trace_id=None,
+        )
+
+    assert "routing" not in session.add.call_args.args[0].parsed_query

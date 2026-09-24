@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -52,29 +53,94 @@ async def test_coaching_under_quota_calls_agent():
     assert result["message"] == "You had 120g protein today."
 
 
+@pytest.mark.parametrize(
+    "judgment_result",
+    [
+        # judgment path
+        "confident",
+        # second opinion because unsure
+        "unsure",
+        # second opinion because unavailable
+        "unavailable",
+    ],
+)
 @pytest.mark.asyncio
-async def test_classify_intent_over_quota_defaults_to_log_meal():
-    from backend.agent.orchestrator import _classify_intent
+async def test_routing_never_spends_a_credit(judgment_result):
+    """Spec FR-005: no routing path touches usage credits."""
+    from backend.agent import orchestrator
+    from backend.agent.orchestrator import _IntentResult, _route
+    from backend.agent.system_one import RoutingJudgment
 
-    with patch(
-        "backend.agent.orchestrator.consume_llm_credit",
-        new=AsyncMock(return_value=False),
+    judgment = {
+        "confident": RoutingJudgment(
+            intent="coaching",
+            certainty=0.99,
+            raw_choice="coaching",
+            reports_food=0.0,
+            needs_guidance=0.0,
+            latency_ms=1.0,
+        ),
+        "unsure": RoutingJudgment(
+            intent="coaching",
+            certainty=0.6,
+            raw_choice="coaching",
+            reports_food=0.0,
+            needs_guidance=0.0,
+            latency_ms=1.0,
+        ),
+        "unavailable": None,
+    }[judgment_result]
+
+    async def finished():
+        return judgment, None if judgment else "not_configured"
+
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(return_value=_IntentResult(type="coaching"))
+    credit = AsyncMock(return_value=False)
+    with (
+        patch("backend.agent.orchestrator.consume_llm_credit", new=credit),
+        patch.object(orchestrator, "_intent_llm", llm),
     ):
-        intent = await _classify_intent("blah blah", "user-1")
+        decision = await _route("is rice ok?", asyncio.ensure_future(finished()))
 
-    assert intent == "log_meal"
+    credit.assert_not_called()
+    assert decision.intent == "coaching"
 
 
 @pytest.mark.asyncio
-async def test_classify_intent_keyword_match_skips_quota():
-    from backend.agent.orchestrator import _classify_intent
+async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
+    """A question is never turned into a meal card by the user's balance."""
+    from backend.agent.orchestrator import handle_message
+    from backend.agent.system_one import RoutingJudgment
 
-    mock_credit = AsyncMock(return_value=False)
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=mock_credit):
-        intent = await _classify_intent("I ate rice", "user-1")
+    graph = MagicMock()
+    graph.aget_state = AsyncMock(return_value=MagicMock(next=()))
+    graph.ainvoke = AsyncMock()
+    judgment = RoutingJudgment(
+        intent="coaching",
+        certainty=0.99,
+        raw_choice="coaching",
+        reports_food=0.0,
+        needs_guidance=0.0,
+        latency_ms=1.0,
+    )
+    with (
+        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch(
+            "backend.agent.orchestrator.judge_message",
+            new=AsyncMock(return_value=(judgment, None)),
+        ),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("backend.agent.orchestrator.append_coaching_turns", new=AsyncMock()),
+        patch("backend.agent.orchestrator.extract_and_store_facts"),
+    ):
+        result = await handle_message("user-1", "how am I doing?", "thread-1", None)
 
-    mock_credit.assert_not_called()
-    assert intent == "log_meal"
+    assert result["message"] == _UPGRADE_MSG
+    graph.ainvoke.assert_not_called()
 
 
 def _coaching_result(text: str) -> CoachingResult:

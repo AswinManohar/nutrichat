@@ -41,6 +41,7 @@ dependencies = [
     "opentelemetry-instrumentation-langchain>=0.61.0",
     "opentelemetry-instrumentation-aiohttp-client>=0.63b1",
     "aiogram>=3.28.2",
+    "typesafe-sdk>=0.6,<0.7",
 ]
 
 [dependency-groups]

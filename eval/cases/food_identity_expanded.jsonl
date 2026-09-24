@@ -1,0 +1,176 @@
+{"query": "chicken", "acceptable_fdc_ids": [2706081], "acceptable_name_substrings": ["chicken, broilers or fryers", "chicken, cooked"], "category": "bare_noun"}
+{"query": "beef", "acceptable_fdc_ids": [2705847, 2705825], "acceptable_name_substrings": ["beef, nfs", "beef, ground", "beef, composite"], "category": "bare_noun"}
+{"query": "milk", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["milk, nfs", "milk, whole", "milk, low fat", "milk, reduced fat"], "category": "bare_noun"}
+{"query": "rice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["rice, white", "rice, brown", "rice, cooked"], "category": "bare_noun"}
+{"query": "toast", "acceptable_fdc_ids": [2707795, 2707643], "acceptable_name_substrings": ["bread, white", "bread, wheat", "bread, whole wheat", "bread, whole-wheat", "bread, rye", "bread, italian", "bread, french", "bread, oat", "bread, multigrain", "bread, pumpernickel", "bread, whole grain"], "category": "bare_noun"}
+{"query": "bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, white", "bread, wheat", "bread, whole wheat", "bread, nfs", "bread, potato", "bread, sour dough"], "category": "bare_noun"}
+{"query": "egg", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["egg, whole"], "category": "bare_noun"}
+{"query": "cheese", "acceptable_fdc_ids": [328637, 2705709], "acceptable_name_substrings": ["cheese, nfs", "cheese, cream"], "category": "bare_noun"}
+{"query": "apple", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["apple, raw", "apples, raw"], "category": "bare_noun"}
+{"query": "pasta", "acceptable_fdc_ids": [2708359, 168902], "acceptable_name_substrings": ["pasta, cooked"], "category": "bare_noun"}
+{"query": "yogurt", "acceptable_fdc_ids": [2705418], "acceptable_name_substrings": ["yogurt, nfs", "yogurt, greek, plain", "yogurt, plain"], "category": "bare_noun"}
+{"query": "salmon", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["salmon,"], "category": "bare_noun"}
+{"query": "spinach", "acceptable_fdc_ids": [1750352, 1999632], "acceptable_name_substrings": ["spinach, raw", "spinach, cooked"], "category": "bare_noun"}
+{"query": "coffee", "acceptable_fdc_ids": [2710378], "acceptable_name_substrings": ["coffee, brewed", "coffee, instant"], "category": "bare_noun"}
+{"query": "banana", "acceptable_fdc_ids": [2709224, 790991], "acceptable_name_substrings": ["bananas, raw"], "category": "bare_noun"}
+{"query": "orange", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["orange, raw", "oranges, raw"], "category": "bare_noun"}
+{"query": "tomato", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["tomatoes, raw", "tomatoes, red, ripe, raw", "tomato, roma"], "category": "bare_noun"}
+{"query": "broccoli", "acceptable_fdc_ids": [2709645], "acceptable_name_substrings": ["broccoli, raw", "broccoli, cooked"], "category": "bare_noun"}
+{"query": "carrot", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["carrots, raw", "carrots, cooked"], "category": "bare_noun"}
+{"query": "bacon", "acceptable_fdc_ids": [2705884, 167914, 2705889], "acceptable_name_substrings": ["bacon, ns as to type of meat, cooked", "pork bacon, ns as to fresh"], "category": "bare_noun"}
+{"query": "butter", "acceptable_fdc_ids": [2710155], "acceptable_name_substrings": ["butter, nfs", "butter, salted", "butter, without salt"], "category": "bare_noun"}
+{"query": "pork", "acceptable_fdc_ids": [2705882], "acceptable_name_substrings": ["pork, nfs"], "category": "bare_noun"}
+{"query": "turkey", "acceptable_fdc_ids": [2706131], "acceptable_name_substrings": ["turkey, nfs"], "category": "bare_noun"}
+{"query": "shrimp", "acceptable_fdc_ids": [175179], "acceptable_name_substrings": ["shrimp, nfs", "shrimp, cooked"], "category": "bare_noun"}
+{"query": "tuna", "acceptable_fdc_ids": [2706310], "acceptable_name_substrings": ["tuna, nfs", "tuna, canned", "tuna, ahi", "tuna, fresh"], "category": "bare_noun"}
+{"query": "onion", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["onions, raw", "onions, cooked"], "category": "bare_noun"}
+{"query": "corn", "acceptable_fdc_ids": [170288, 2709913], "acceptable_name_substrings": ["corn, nfs", "corn, raw"], "category": "bare_noun"}
+{"query": "beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beans, nfs"], "category": "bare_noun"}
+{"query": "oats", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oats, raw", "oats, whole grain"], "category": "bare_noun"}
+{"query": "potato", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potato, nfs", "potatoes, raw", "potato, baked", "potato, boiled"], "category": "bare_noun"}
+{"query": "lettuce", "acceptable_fdc_ids": [2346391, 169249], "acceptable_name_substrings": ["lettuce, raw", "lettuce, iceberg", "lettuce, romaine"], "category": "bare_noun"}
+{"query": "cucumber", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cucumber, raw", "cucumber, with peel, raw", "cucumber, peeled, raw"], "category": "bare_noun"}
+{"query": "water", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["water, tap", "water, bottled", "water, nfs"], "category": "bare_noun"}
+{"query": "tea", "acceptable_fdc_ids": [2710488], "acceptable_name_substrings": ["tea, black", "tea, ginger"], "category": "bare_noun"}
+{"query": "sugar", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sugar, nfs", "sugar, white", "sugar, brown", "sugars, granulated"], "category": "bare_noun"}
+{"query": "honey", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["honey"], "category": "bare_noun"}
+{"query": "avocado", "acceptable_fdc_ids": [171705], "acceptable_name_substrings": ["avocado, raw"], "category": "bare_noun"}
+{"query": "mushroom", "acceptable_fdc_ids": [2003598, 1999627, 1750345, 1999629], "acceptable_name_substrings": ["mushrooms, raw", "mushrooms, cooked"], "category": "bare_noun"}
+{"query": "garlic", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["garlic, raw", "garlic, cooked"], "category": "bare_noun"}
+{"query": "grapes", "acceptable_fdc_ids": [173040], "acceptable_name_substrings": ["grapes, raw", "grapes, red or green"], "category": "bare_noun"}
+{"query": "strawberries", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["strawberries, raw"], "category": "bare_noun"}
+{"query": "pizza", "acceptable_fdc_ids": [2708622, 2708623], "acceptable_name_substrings": ["pizza, cheese", "pizza with meat"], "category": "bare_noun"}
+{"query": "sandwich", "acceptable_fdc_ids": [2707055, 2706977], "acceptable_name_substrings": ["sandwich, nfs"], "category": "bare_noun"}
+{"query": "steak", "acceptable_fdc_ids": [2705841, 2705825, 2705827], "acceptable_name_substrings": ["steak, ns as to type of meat"], "category": "bare_noun"}
+{"query": "ham", "acceptable_fdc_ids": [2705878, 2705881], "acceptable_name_substrings": ["ham, sliced", "ham, chopped", "pork, cured, ham"], "category": "bare_noun"}
+{"query": "cabbage", "acceptable_fdc_ids": [2346407, 169335], "acceptable_name_substrings": ["cabbage, raw", "cabbage, cooked"], "category": "bare_noun"}
+{"query": "celery", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["celery, raw", "celery, cooked"], "category": "bare_noun"}
+{"query": "cauliflower", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cauliflower, raw", "cauliflower, cooked", "cauliflower, ns as to form"], "category": "bare_noun"}
+{"query": "peas", "acceptable_fdc_ids": [2709797, 170010], "acceptable_name_substrings": ["peas, green, raw", "peas, green, cooked", "peas, green, canned"], "category": "bare_noun"}
+{"query": "pineapple", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["pineapple, raw", "pineapple, canned, nfs"], "category": "bare_noun"}
+{"query": "watermelon", "acceptable_fdc_ids": [2747675], "acceptable_name_substrings": ["watermelon, raw"], "category": "bare_noun"}
+{"query": "mango", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["mango,", "mangos, raw"], "category": "bare_noun"}
+{"query": "pear", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["pear, raw", "pears, raw"], "category": "bare_noun"}
+{"query": "plum", "acceptable_fdc_ids": [2709266], "acceptable_name_substrings": ["plum, raw", "plums, raw"], "category": "bare_noun"}
+{"query": "cherries", "acceptable_fdc_ids": [2346399], "acceptable_name_substrings": ["cherries, raw", "cherries, sweet, raw"], "category": "bare_noun"}
+{"query": "lemon", "acceptable_fdc_ids": [167747], "acceptable_name_substrings": ["lemon, raw", "lemons, raw"], "category": "bare_noun"}
+{"query": "lime", "acceptable_fdc_ids": [168156], "acceptable_name_substrings": ["lime, raw", "limes, raw"], "category": "bare_noun"}
+{"query": "lamb", "acceptable_fdc_ids": [2705905], "acceptable_name_substrings": ["lamb, australian", "lamb, new zealand", "lamb, chop"], "category": "bare_noun"}
+{"query": "duck", "acceptable_fdc_ids": [172410, 172411, 172409], "acceptable_name_substrings": ["duck, cooked", "duck, peking"], "category": "bare_noun"}
+{"query": "sausage", "acceptable_fdc_ids": [2706191, 2706189, 2706171], "acceptable_name_substrings": ["sausage, nfs"], "category": "bare_noun"}
+{"query": "ketchup", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["ketchup", "catsup"], "category": "bare_noun"}
+{"query": "mustard", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["mustard,"], "category": "bare_noun"}
+{"query": "mayonnaise", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["mayonnaise,", "mayonnaise dressing"], "category": "bare_noun"}
+{"query": "sour cream", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sour cream,", "cream, sour"], "category": "bare_noun"}
+{"query": "white rice", "acceptable_fdc_ids": [169756, 168878], "acceptable_name_substrings": ["rice, white"], "category": "single_food"}
+{"query": "brown rice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["rice, brown"], "category": "single_food"}
+{"query": "greek yogurt", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["yogurt, greek"], "category": "single_food"}
+{"query": "plain yogurt", "acceptable_fdc_ids": [2705418], "acceptable_name_substrings": ["yogurt, plain"], "category": "single_food"}
+{"query": "vanilla yogurt", "acceptable_fdc_ids": [170907], "acceptable_name_substrings": ["yogurt, vanilla"], "category": "single_food"}
+{"query": "cheddar cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, cheddar"], "category": "single_food"}
+{"query": "mozzarella cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, mozzarella"], "category": "single_food"}
+{"query": "swiss cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, swiss"], "category": "single_food"}
+{"query": "cottage cheese", "acceptable_fdc_ids": [2346384], "acceptable_name_substrings": ["cheese, cottage"], "category": "single_food"}
+{"query": "cream cheese", "acceptable_fdc_ids": [2705760, 2705761], "acceptable_name_substrings": ["cheese, cream"], "category": "single_food"}
+{"query": "whole wheat bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, whole-wheat", "bread, whole wheat", "100% whole wheat"], "category": "single_food"}
+{"query": "white bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, white"], "category": "single_food"}
+{"query": "sourdough bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sourdough", "bread, sour dough"], "category": "single_food"}
+{"query": "rye bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, rye"], "category": "single_food"}
+{"query": "almond milk", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almond milk"], "category": "single_food"}
+{"query": "skim milk", "acceptable_fdc_ids": [2705390], "acceptable_name_substrings": ["milk, nonfat", "milk, fat free"], "category": "single_food"}
+{"query": "whole milk", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["milk, whole"], "category": "single_food"}
+{"query": "olive oil", "acceptable_fdc_ids": [171413, 748608, 2710186], "acceptable_name_substrings": ["oil, olive", "olive oil"], "category": "single_food"}
+{"query": "canola oil", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oil, canola", "canola oil"], "category": "single_food"}
+{"query": "vegetable oil", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oil, vegetable", "vegetable oil"], "category": "single_food"}
+{"query": "coconut oil", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oil, coconut", "coconut oil"], "category": "single_food"}
+{"query": "peanut butter", "acceptable_fdc_ids": [2707537], "acceptable_name_substrings": ["peanut butter, smooth", "peanut butter, chunky", "peanut butter, creamy", "peanut butter with omega-3"], "category": "single_food"}
+{"query": "almond butter", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almond butter"], "category": "single_food"}
+{"query": "cashew nuts", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cashew"], "category": "single_food"}
+{"query": "walnuts", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["walnut"], "category": "single_food"}
+{"query": "pecans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["pecan"], "category": "single_food"}
+{"query": "black beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beans, black", "black beans,"], "category": "single_food"}
+{"query": "kidney beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beans, kidney", "kidney beans,"], "category": "single_food"}
+{"query": "chickpeas", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["chickpeas", "garbanzo"], "category": "single_food"}
+{"query": "green beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beans, snap, green", "green beans"], "category": "single_food"}
+{"query": "sweet potato", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sweet potato"], "category": "single_food"}
+{"query": "russet potato", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potatoes, russet"], "category": "single_food"}
+{"query": "red onion", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["onions, red"], "category": "single_food"}
+{"query": "chicken breast", "acceptable_fdc_ids": [171077, 2646170], "acceptable_name_substrings": ["chicken, broilers or fryers, breast", "chicken breast"], "category": "single_food"}
+{"query": "chicken thigh", "acceptable_fdc_ids": [173627], "acceptable_name_substrings": ["chicken, broilers or fryers, thigh", "chicken thigh"], "category": "single_food"}
+{"query": "ground beef", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beef, ground"], "category": "single_food"}
+{"query": "pork chop", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["pork, loin,", "pork chop"], "category": "single_food"}
+{"query": "brown sugar", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sugar, brown", "brown sugar", "sugars, brown"], "category": "single_food"}
+{"query": "lentils", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["lentil"], "category": "single_food"}
+{"query": "almonds", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almonds,"], "category": "single_food"}
+{"query": "cheddar cheese slice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, cheddar"], "category": "single_food"}
+{"query": "string cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, mozzarella, low moisture"], "category": "single_food"}
+{"query": "baby spinach", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["spinach, raw", "spinach, baby"], "category": "single_food"}
+{"query": "scrambled eggs", "acceptable_fdc_ids": [173272], "acceptable_name_substrings": ["egg, whole, cooked, scrambled", "eggs, scrambled"], "category": "preparation"}
+{"query": "fried eggs", "acceptable_fdc_ids": [2707158, 2707156, 2707155], "acceptable_name_substrings": ["egg, whole, cooked, fried"], "category": "preparation"}
+{"query": "hard boiled eggs", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["egg, whole, cooked, hard-boiled"], "category": "preparation"}
+{"query": "poached eggs", "acceptable_fdc_ids": [2707154], "acceptable_name_substrings": ["egg, whole, cooked, poached"], "category": "preparation"}
+{"query": "grilled chicken", "acceptable_fdc_ids": [2705945, 2706090], "acceptable_name_substrings": ["chicken breast, grilled"], "category": "preparation"}
+{"query": "fried chicken", "acceptable_fdc_ids": [170718, 171053], "acceptable_name_substrings": ["chicken, fried", "fried chicken"], "category": "preparation"}
+{"query": "baked chicken", "acceptable_fdc_ids": [171071, 171075, 171065, 173612, 173617, 171461, 171450, 173625, 173630, 2705951, 2706069, 2705933], "acceptable_name_substrings": [], "category": "preparation"}
+{"query": "roasted chicken", "acceptable_fdc_ids": [171071, 171075, 171065, 173612, 173617, 171461, 171450, 173625, 173630, 172395, 173635], "acceptable_name_substrings": [], "category": "preparation"}
+{"query": "boiled potatoes", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potato, boiled", "potatoes, boiled"], "category": "preparation"}
+{"query": "mashed potatoes", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potatoes, mashed", "potato, mashed"], "category": "preparation"}
+{"query": "baked potato", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potato, baked", "potatoes, baked"], "category": "preparation"}
+{"query": "roasted potatoes", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potato, roasted", "potatoes, roasted"], "category": "preparation"}
+{"query": "french fries", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["potatoes, french fried", "french fries", "potato, french fried"], "category": "preparation"}
+{"query": "fried rice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["rice, fried", "fried rice"], "category": "preparation"}
+{"query": "steamed rice", "acceptable_fdc_ids": [169712], "acceptable_name_substrings": ["rice, white, cooked", "rice, cooked"], "category": "preparation"}
+{"query": "grilled salmon", "acceptable_fdc_ids": [2706286], "acceptable_name_substrings": ["salmon, grilled"], "category": "preparation"}
+{"query": "baked salmon", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["salmon, baked"], "category": "preparation"}
+{"query": "roasted almonds", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almonds, dry roasted", "almonds, honey roasted"], "category": "preparation"}
+{"query": "toasted almonds", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["almonds, dry roasted"], "category": "preparation"}
+{"query": "grilled steak", "acceptable_fdc_ids": [167670, 171781], "acceptable_name_substrings": ["steak, ns as to type of meat"], "category": "preparation"}
+{"query": "sauteed spinach", "acceptable_fdc_ids": [2709618, 2709624], "acceptable_name_substrings": ["spinach, cooked"], "category": "preparation"}
+{"query": "steamed broccoli", "acceptable_fdc_ids": [2709645], "acceptable_name_substrings": ["broccoli, cooked"], "category": "preparation"}
+{"query": "roasted broccoli", "acceptable_fdc_ids": [2709650], "acceptable_name_substrings": ["broccoli, cooked"], "category": "preparation"}
+{"query": "boiled eggs", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["egg, whole, cooked, hard-boiled", "egg, whole, boiled"], "category": "preparation"}
+{"query": "roasted turkey", "acceptable_fdc_ids": [171097, 171496, 171091, 171489, 2706124, 2706123, 171481, 171479, 2706114], "acceptable_name_substrings": [], "category": "preparation"}
+{"query": "grilled shrimp", "acceptable_fdc_ids": [2706361], "acceptable_name_substrings": ["shrimp, grilled", "shrimp, cooked"], "category": "preparation"}
+{"query": "fried shrimp", "acceptable_fdc_ids": [172037, 171970], "acceptable_name_substrings": ["shrimp, fried"], "category": "preparation"}
+{"query": "baked beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beans, baked", "baked beans"], "category": "preparation"}
+{"query": "refried beans", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["refried beans"], "category": "preparation"}
+{"query": "sauteed mushrooms", "acceptable_fdc_ids": [2709941], "acceptable_name_substrings": ["mushrooms, cooked"], "category": "preparation"}
+{"query": "caramelized onions", "acceptable_fdc_ids": [170004], "acceptable_name_substrings": ["onions, cooked"], "category": "preparation"}
+{"query": "grilled cheese sandwich", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["grilled cheese sandwich"], "category": "preparation"}
+{"query": "stir fried vegetables", "acceptable_fdc_ids": [168435], "acceptable_name_substrings": ["stir fry vegetables"], "category": "preparation"}
+{"query": "slice of toast", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, white", "bread, wheat", "bread, whole wheat", "bread, whole-wheat", "bread, rye", "bread, italian", "bread, french", "bread, oat", "bread, multigrain", "bread, pumpernickel", "bread, whole grain", "bread, sour dough"], "category": "quantity_phrase"}
+{"query": "glass of milk", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["milk, nfs", "milk, whole", "milk, low fat", "milk, reduced fat"], "category": "quantity_phrase"}
+{"query": "cup of coffee", "acceptable_fdc_ids": [2710378], "acceptable_name_substrings": ["coffee, brewed"], "category": "quantity_phrase"}
+{"query": "bowl of rice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["rice, white", "rice, brown", "rice, cooked"], "category": "quantity_phrase"}
+{"query": "piece of chicken", "acceptable_fdc_ids": [2706081, 2706083], "acceptable_name_substrings": ["chicken, broilers or fryers", "chicken, cooked", "chicken, breaded and fried, boneless pieces"], "category": "quantity_phrase"}
+{"query": "slice of bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, white", "bread, wheat", "bread, whole wheat", "bread, nfs"], "category": "quantity_phrase"}
+{"query": "slice of cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, nfs", "cheese, american", "cheese, cheddar", "cheese, provolone"], "category": "quantity_phrase"}
+{"query": "cup of yogurt", "acceptable_fdc_ids": [2705442, 2705418], "acceptable_name_substrings": ["yogurt, nfs", "yogurt, plain", "yogurt, greek"], "category": "quantity_phrase"}
+{"query": "cup of rice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["rice, white", "rice, brown", "rice, cooked"], "category": "quantity_phrase"}
+{"query": "cup of oatmeal", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oatmeal", "oats,"], "category": "quantity_phrase"}
+{"query": "glass of orange juice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["orange juice"], "category": "quantity_phrase"}
+{"query": "slice of ham", "acceptable_fdc_ids": [2705878, 2705879], "acceptable_name_substrings": ["ham, sliced", "ham, chopped", "pork, cured, ham"], "category": "quantity_phrase"}
+{"query": "bowl of soup", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["soup,"], "category": "quantity_phrase"}
+{"query": "spoonful of peanut butter", "acceptable_fdc_ids": [2707537], "acceptable_name_substrings": ["peanut butter, smooth", "peanut butter, chunky", "peanut butter, creamy", "peanut butter with omega-3"], "category": "quantity_phrase"}
+{"query": "slice of watermelon", "acceptable_fdc_ids": [2747675], "acceptable_name_substrings": ["watermelon, raw"], "category": "quantity_phrase"}
+{"query": "cup of milk", "acceptable_fdc_ids": [2705388], "acceptable_name_substrings": ["milk, nfs", "milk, whole", "milk, low fat", "milk, reduced fat"], "category": "quantity_phrase"}
+{"query": "slice of pizza", "acceptable_fdc_ids": [2708622], "acceptable_name_substrings": ["pizza, cheese", "pizza with meat"], "category": "quantity_phrase"}
+{"query": "piece of fruit", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["raw", "fruit"], "category": "quantity_phrase"}
+{"query": "berries", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["berries", "blueberry", "strawberry", "raspberry", "blackberry"], "category": "ambiguous"}
+{"query": "greens", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["greens,", "spinach", "collard", "kale", "mustard greens", "turnip greens"], "category": "ambiguous"}
+{"query": "nuts", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["nuts,", "almond", "walnut", "cashew", "pecan", "peanut", "mixed nuts"], "category": "ambiguous"}
+{"query": "salad", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["salad"], "category": "ambiguous"}
+{"query": "seafood", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["fish", "shrimp", "seafood", "salmon", "tuna"], "category": "ambiguous"}
+{"query": "meat", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["beef", "pork", "meat,", "meatloaf"], "category": "ambiguous"}
+{"query": "fruit", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["fruit", "raw"], "category": "ambiguous"}
+{"query": "vegetables", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["vegetable", "vegetables"], "category": "ambiguous"}
+{"query": "cereal", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cereal"], "category": "ambiguous"}
+{"query": "juice", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["juice"], "category": "ambiguous"}
+{"query": "soda", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["soda", "cola", "soft drink"], "category": "ambiguous"}
+{"query": "chips", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["chips"], "category": "ambiguous"}
+{"query": "crackers", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cracker"], "category": "ambiguous"}
+{"query": "cookies", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cookie"], "category": "ambiguous"}
+{"query": "candy", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["candy"], "category": "ambiguous"}
+{"query": "dressing", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["dressing"], "category": "ambiguous"}
+{"query": "sauce", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["sauce"], "category": "ambiguous"}
+{"query": "broth", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["broth", "bouillon"], "category": "ambiguous"}

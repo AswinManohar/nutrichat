@@ -1,0 +1,27 @@
+{
+  "intent_routing": {
+    "mean": 77.27,
+    "stdev": 0.0,
+    "min": 77.27,
+    "max": 77.27,
+    "noise_band": 0.0,
+    "runs": [
+      77.27272727272727,
+      77.27272727272727,
+      77.27272727272727,
+      77.27272727272727,
+      77.27272727272727
+    ],
+    "per_category_pct": {
+      "advice": 100.0,
+      "bare_food": 100.0,
+      "bare_food_nutrient_word": 10.5,
+      "data_question": 100.0,
+      "explicit_report": 100.0,
+      "food_question": 100.0,
+      "mixed": 62.5,
+      "non_english": 100.0,
+      "smalltalk": 100.0
+    }
+  }
+}

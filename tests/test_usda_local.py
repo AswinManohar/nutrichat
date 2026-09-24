@@ -28,6 +28,9 @@ _ROWS: list[tuple[int, str]] = [
     (1012, "Chicken curry"),
     (1013, "Blueberry juice"),
     (1014, "Blueberry syrup"),
+    # Lower fdc_id than the NFS row, so the old -fdc_id tie-break picked it.
+    (1015, "Cheese, fontina"),
+    (1016, "Cheese, NFS"),
 ]
 
 _SAMPLE_MACROS = {
@@ -166,3 +169,49 @@ def test_concurrent_lookups_are_thread_safe(fixture_db: Path) -> None:
     assert all(result is not None for result in results)
     fdc_ids = {result.fdc_id for result in results}
     assert len(fdc_ids) == 1
+
+
+def test_bare_noun_prefers_generic_nfs_entry(fixture_db: Path) -> None:
+    """A bare noun resolves to FDC's generic entry, not an arbitrary specific.
+
+    "cheese" ties "Cheese, NFS" and "Cheese, fontina" on confidence (1.0
+    each -- a one-word query is covered by any description containing it),
+    head purity (both {cheese}) and description coverage (both 0.5), so the
+    order fell through to fdc_id and returned fontina.
+    """
+    match = usda_local.lookup("cheese")
+    assert match is not None
+    assert match.description == "Cheese, NFS"
+
+
+def test_head_matching_rows_enter_a_truncated_pool(fixture_db: Path) -> None:
+    """Head-noun matches are retrieved even when bm25 fills the pool.
+
+    With ``pool_size=1`` the FTS pool holds a single bm25 winner, which for
+    a one-word query favours whichever short description repeats the term --
+    "Rice flour, white, unenriched" or "Beans and white rice" -- over the
+    "Rice, ..." entries the ranking would actually prefer. The supplement
+    puts a head match back in contention.
+    """
+    match = usda_local.lookup("rice", pool_size=1)
+    assert match is not None
+    assert match.description.startswith("Rice,")
+
+
+def test_generic_rank_only_fires_when_all_modifiers_are_generic() -> None:
+    from backend.agent.tools.usda_match import _generic_rank
+
+    assert _generic_rank("Cheese, NFS") == 1.0
+    assert _generic_rank("Apple, raw") == 1.0
+    assert _generic_rank("Cheese, fontina") == 0.0
+    assert _generic_rank("Rice, white, cooked") == 0.0
+    # FDC's second generic convention, "NS as to <dimension>" -- as common as
+    # NFS (255 rows vs 251) but a free-text phrase rather than a token.
+    assert _generic_rank("Lamb, NS as to cut") == 1.0
+    assert _generic_rank("Chicken, NS as to part") == 1.0
+    # Still strict: a real modifier alongside the marker disqualifies it.
+    assert _generic_rank("Corn, NS as to form, cooked") == 0.0
+    assert _generic_rank("Yogurt, Greek, NS as to type of milk, plain") == 0.0
+    # No modifier at all is not "generic" -- "Peanut butter" must not be
+    # promoted over an entry the query specified more precisely.
+    assert _generic_rank("Peanut butter") == 0.0

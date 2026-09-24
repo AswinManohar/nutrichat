@@ -135,13 +135,24 @@ class UpperLimitEntry(BaseModel):
 
 
 class RoutingConfig(BaseModel):
-    log_signals: list[str]
-    query_signals: list[str]
-    weak_query_signals: list[str]
+    """Keyword lists for replies to a pending meal card (tools/meals.py)."""
+
     confirm_keywords: list[str]
     reject_keywords: list[str]
     new_meal_leadins: list[str]
     new_meal_exclusions: list[str]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TypeSafeConfig(BaseModel):
+    """TypeSafe System One (Jev) judgments; see agent/system_one.py."""
+
+    model: str
+    intent_min_probability: float = Field(ge=0.5, le=1.0)
+    log_offer_min_probability: float = Field(ge=0.0, le=1.0)
+    log_offer_text: str = Field(min_length=1)
+    request_timeout_s: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -191,6 +202,7 @@ class Tunables(BaseModel):
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
+    typesafe: TypeSafeConfig
     prompts: PromptsConfig
     features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]
