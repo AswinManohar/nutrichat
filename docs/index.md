@@ -15,6 +15,7 @@ then drill into a guide or the API reference below.
 architecture
 observability
 tuning-prompts
+usda-matching-methods
 coaching-meal-plans
 telegram-bot
 integration-api
