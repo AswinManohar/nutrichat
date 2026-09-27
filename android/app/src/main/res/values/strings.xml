@@ -232,6 +232,7 @@
     <string name="my_meals_row_kcal">%1$s kcal</string>
     <string name="my_meals_row_description">%1$s, %2$s kcal, %3$sg protein</string>
     <string name="my_meals_delete_action">Delete meal</string>
+    <string name="my_meals_open_label">Open meal</string>
     <string name="my_meals_deleted_toast">Deleted</string>
     <string name="my_meals_undo">Undo</string>
     <string name="my_meals_error_load_failed">Something went wrong loading your meals.</string>

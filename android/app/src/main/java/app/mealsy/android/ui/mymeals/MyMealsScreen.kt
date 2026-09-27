@@ -2,8 +2,6 @@ package app.mealsy.android.ui.mymeals
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,21 +15,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,7 +65,8 @@ import kotlinx.serialization.json.JsonObject
 import java.text.NumberFormat
 import java.util.Locale
 
-private const val SWIPE_DELETE_THRESHOLD_PX = 300f
+/** [SwipeToDismissBoxState]'s positional threshold for a swipe-to-delete — dp-based (not px) so it's density-independent (#48 item 2). Mirrors [app.mealsy.android.ui.meals.MealTypeListScreen]'s. */
+private val SWIPE_DELETE_THRESHOLD = 96.dp
 
 /**
  * My Meals screen: saved quick-log meals with per-meal macros, tap to open
@@ -295,6 +300,7 @@ private fun PastelTone.toTagTone(): TagTone =
  * extended instead). Tap opens meal detail; swipe left past the threshold
  * deletes (optimistic hide + undo, driven by the caller).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SavedMealRow(
     meal: SavedMeal,
@@ -302,10 +308,28 @@ private fun SavedMealRow(
     onSwipeDelete: () -> Unit,
 ) {
     val colors = MealsyTheme.colors
-    var dragOffset by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { SWIPE_DELETE_THRESHOLD.toPx() }
+
+    val dismissState =
+        rememberSwipeToDismissBoxState(
+            positionalThreshold = { thresholdPx },
+        )
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onSwipeDelete()
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val background = if (pressed) colors.surfacePressed else androidx.compose.ui.graphics.Color.Transparent
+    // Opaque (not Color.Transparent) so it fully covers the SwipeToDismissBox's
+    // terracotta backgroundContent at rest — a transparent row here let that
+    // background bleed through even when not swiping. Mirrors
+    // MealTypeListScreen's SwipeableMealRow.
+    val background = if (pressed) colors.surfacePressed else colors.surface
 
     val kcalText = stringResource(R.string.my_meals_row_kcal, formatKcal(meal.kcal))
     val description =
@@ -315,59 +339,86 @@ private fun SavedMealRow(
             meal.kcal.toInt().toString(),
             meal.proteinG.toInt().toString(),
         )
+    val openLabel = stringResource(R.string.my_meals_open_label)
     val deleteAction = stringResource(R.string.my_meals_delete_action)
 
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
-                .background(background)
-                .pointerInput(meal.id) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
-                            dragOffset = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
-                    )
-                }
-                .pointerInput(meal.id) { detectTapToLog(onTap) }
-                .clearAndSetSemantics {
-                    contentDescription = description
-                    customActions =
-                        listOf(
-                            CustomAccessibilityAction(deleteAction) {
-                                onSwipeDelete()
-                                true
-                            },
-                        )
-                }
-                .padding(vertical = 9.dp, horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    // Reduced motion shortens/skips SwipeToDismissBox's own settle animation —
+    // it doesn't take the gesture away — so gesturesEnabled stays true
+    // unconditionally, matching MealTypeListScreen's row (#48).
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(colors.terracotta)
+                        .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    imageVector = MealsyIcons.Trash,
+                    contentDescription = deleteAction,
+                    tint = colors.terracottaText,
+                )
+            }
+        },
     ) {
-        PastelIconCircle(
-            icon = MealsyIcons.Bowl,
-            tone = pastelToneFor(meal.toCardItem()).toTagTone(),
-            size = 34.dp,
-        )
-        androidx.compose.material3.Text(
-            text = displayName(meal.name),
-            style = MealsyType.body,
-            color = colors.ink,
-            modifier = Modifier.weight(1f),
-        )
-        TagChip(text = kcalText, tone = TagTone.Butter)
-        Icon(
-            imageVector = MealsyIcons.ChevronRight,
-            contentDescription = null,
-            tint = colors.inactive,
-            modifier = Modifier.padding(start = 2.dp).size(13.dp),
-        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
+                    .background(background)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClickLabel = openLabel,
+                        role = Role.Button,
+                        onClick = onTap,
+                    )
+                    // clickable() above gives the row a click action/role for
+                    // TalkBack, but clearAndSetSemantics below replaces the
+                    // merged-children semantics tree with a single curated
+                    // description — which would otherwise drop that click
+                    // action too (#48 item 1), so it's re-declared here.
+                    .clearAndSetSemantics {
+                        contentDescription = description
+                        onClick(label = openLabel) {
+                            onTap()
+                            true
+                        }
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(deleteAction) {
+                                    onSwipeDelete()
+                                    true
+                                },
+                            )
+                    }
+                    .padding(vertical = 9.dp, horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PastelIconCircle(
+                icon = MealsyIcons.Bowl,
+                tone = pastelToneFor(meal.toCardItem()).toTagTone(),
+                size = 34.dp,
+            )
+            androidx.compose.material3.Text(
+                text = displayName(meal.name),
+                style = MealsyType.body,
+                color = colors.ink,
+                modifier = Modifier.weight(1f),
+            )
+            TagChip(text = kcalText, tone = TagTone.Butter)
+            Icon(
+                imageVector = MealsyIcons.ChevronRight,
+                contentDescription = null,
+                tint = colors.inactive,
+                modifier = Modifier.padding(start = 2.dp).size(13.dp),
+            )
+        }
     }
-}
-
-private suspend fun PointerInputScope.detectTapToLog(onTap: () -> Unit) {
-    detectTapGestures(onTap = { onTap() })
 }
