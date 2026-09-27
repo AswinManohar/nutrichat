@@ -31,6 +31,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -400,6 +401,84 @@ class ChatViewModelTest {
         }
 
     @Test
+    fun `undoRemove restores an item removed from a multi-item card`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_TWO_ITEMS_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("egg and toast").join()
+            val before = activeCardOf(viewModel)?.card
+            assertEquals(2, before?.items?.size)
+
+            viewModel.removeItem(0)
+            assertEquals(1, activeCardOf(viewModel)?.card?.items?.size)
+
+            viewModel.undoRemove()
+
+            assertEquals(before, activeCardOf(viewModel)?.card)
+        }
+
+    @Test
+    fun `undoRemove restores a card dropped entirely by removing its last item`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("an egg").join()
+            val cardMsgId = activeCardOf(viewModel)?.id
+
+            viewModel.removeItem(0)
+            assertNull(activeCardOf(viewModel))
+
+            viewModel.undoRemove()
+
+            val restored = activeCardOf(viewModel)
+            assertEquals(cardMsgId, restored?.id)
+            assertEquals(1, restored?.card?.items?.size)
+        }
+
+    @Test
+    fun `undoRemove is a no-op when nothing has been removed`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("an egg").join()
+            val before = viewModel.messages.value
+
+            viewModel.undoRemove()
+
+            assertEquals(before, viewModel.messages.value)
+        }
+
+    @Test
+    fun `onDescribeItemDifferently sends a re-describe turn and marks the card Swapping while in flight`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("an egg").join()
+
+            viewModel.onDescribeItemDifferently(0, "toasted white bread")?.join()
+
+            val request = server.takeRequest() // startup
+            server.takeRequest() // the initial "an egg" turn
+            val describeRequest = server.takeRequest()
+            assertTrue(
+                describeRequest.body.readUtf8().contains(
+                    "\"user_input\":\"the egg is actually: toasted white bread\"",
+                ),
+            )
+            assertTrue(activeCardOf(viewModel)?.state is CardState.Active)
+            assertNotNull(request)
+        }
+
+    @Test
     @Suppress("ktlint:standard:max-line-length")
     fun `confirm collapses the card to Logged with label and kcal, and appends a coach reply`() =
         runBlocking {
@@ -635,6 +714,17 @@ class ChatViewModelTest {
               "paused": true,
               "items": [
                 {"food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13, "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345}
+              ]
+            }
+        """
+        const val PAUSED_CARD_TWO_ITEMS_BODY = """
+            {
+              "status": "confirm",
+              "message": "Got it — egg and toast. Log as breakfast?",
+              "paused": true,
+              "items": [
+                {"food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13, "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345},
+                {"food_name": "toast", "qty_g": 30, "kcal": 80, "protein_g": 3, "carbs_g": 15, "fat_g": 1, "fiber_g": 1, "fdc_id": 54321}
               ]
             }
         """

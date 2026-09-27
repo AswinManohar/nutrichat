@@ -145,6 +145,8 @@ class ChatViewModel
 
         fun removeItem(index: Int) = session.removeItem(index)
 
+        fun undoRemove() = session.undoRemove()
+
         fun setMealType(mealType: String) = session.setMealType(mealType)
 
         fun setPortion(portion: Double) = session.setPortion(portion)
@@ -153,6 +155,11 @@ class ChatViewModel
             index: Int,
             newName: String,
         ): Job? = session.onSwapCandidate(index, newName)
+
+        fun onDescribeItemDifferently(
+            index: Int,
+            description: String,
+        ): Job? = session.onDescribeItemDifferently(index, description)
 
         fun onDecompose(): Job? = session.onDecompose()
 

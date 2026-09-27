@@ -4,6 +4,14 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +78,8 @@ import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
+import app.mealsy.android.design.theme.motionDurationMs
 import app.mealsy.domain.PastelTone
 import kotlinx.coroutines.delay
 import java.time.ZoneId
@@ -179,8 +190,17 @@ fun ChatScreen(
 
     val colors = MealsyTheme.colors
     val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    // The typing indicator is appended as a synthetic extra row (key
+    // "typing") after `messages` below, not as a `ChatMsg` — so when it's
+    // showing, the "last item" to scroll to is one past `messages.size - 1`,
+    // not `messages.size - 1` itself (#49: this used to leave the typing row
+    // sitting below the fold).
+    val lastCardForScroll = messages.lastOrNull() as? ChatMsg.Card
+    val showTypingRow = sending && lastCardForScroll?.state !is CardState.Swapping
+    LaunchedEffect(messages.size, showTypingRow) {
+        if (messages.isEmpty() && !showTypingRow) return@LaunchedEffect
+        val lastIndex = if (showTypingRow) messages.size else messages.size - 1
+        listState.animateScrollToItem(lastIndex.coerceAtLeast(0))
     }
 
     Box(modifier = Modifier.fillMaxSize().background(colors.canvas)) {
@@ -220,21 +240,27 @@ fun ChatScreen(
                             savingMeal = savingMeal,
                             onEditQty = viewModel::editQty,
                             onRemoveItem = viewModel::removeItem,
+                            onUndoRemove = viewModel::undoRemove,
                             onSetMealType = viewModel::setMealType,
                             onSetPortion = viewModel::setPortion,
                             onSwapCandidate = viewModel::onSwapCandidate,
+                            onDescribeItemDifferently = viewModel::onDescribeItemDifferently,
                             onDecompose = viewModel::onDecompose,
                             onCombine = viewModel::onCombine,
                             onConfirm = viewModel::confirm,
                             onCancel = viewModel::cancel,
                             onSaveAsMyMeal = viewModel::onSaveAsMyMeal,
                             onFeedback = viewModel::submitFeedback,
+                            // #49: no LazyColumn in the app used
+                            // `animateItem()`, so a removal/undo/merge made
+                            // every row below it pop to its new position
+                            // instead of sliding.
+                            modifier = Modifier.animateItem(),
                         )
                     }
-                    val lastCard = messages.lastOrNull() as? ChatMsg.Card
-                    if (sending && lastCard?.state !is CardState.Swapping) {
+                    if (showTypingRow) {
                         item(key = "typing") {
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth().animateItem()) {
                                 TypingIndicator()
                             }
                         }
@@ -415,156 +441,225 @@ internal fun ChatMessageRow(
     savingMeal: Boolean,
     onEditQty: (Int, Double) -> Unit,
     onRemoveItem: (Int) -> Unit,
+    onUndoRemove: () -> Unit,
     onSetMealType: (String) -> Unit,
     onSetPortion: (Double) -> Unit,
     onSwapCandidate: (Int, String) -> Unit,
+    onDescribeItemDifferently: (Int, String) -> Unit,
     onDecompose: () -> Unit,
     onCombine: () -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
     onSaveAsMyMeal: (String) -> Unit,
     onFeedback: (String, Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
-    when (msg) {
-        is ChatMsg.User -> ChatBubble(text = msg.text, author = ChatBubbleAuthor.User, timestamp = timestamp)
+    Box(modifier = modifier) {
+        when (msg) {
+            is ChatMsg.User -> ChatBubble(text = msg.text, author = ChatBubbleAuthor.User, timestamp = timestamp)
 
-        is ChatMsg.Photo ->
-            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-                Image(
-                    bitmap = msg.bitmap.asImageBitmap(),
-                    contentDescription = stringResource(R.string.chat_photo_description),
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .widthIn(max = 220.dp)
-                            .clip(RoundedCornerShape(18.dp)),
-                )
-                if (timestamp != null) {
-                    Text(
-                        text = timestamp,
-                        style = MealsyType.label.copy(fontSize = 11.sp),
-                        color = colors.inactive,
-                        modifier = Modifier.padding(top = 4.dp),
+            is ChatMsg.Photo ->
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                    Image(
+                        bitmap = msg.bitmap.asImageBitmap(),
+                        contentDescription = stringResource(R.string.chat_photo_description),
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .widthIn(max = 220.dp)
+                                .clip(RoundedCornerShape(18.dp)),
                     )
-                }
-            }
-
-        is ChatMsg.Coach ->
-            Column(modifier = Modifier.fillMaxWidth()) {
-                CoachMarkdownBubble(text = msg.text, tags = msg.tags, timestamp = timestamp)
-                if (msg.responseId != null) {
-                    Row(
-                        modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        FeedbackGlyph(
-                            glyph = "↑",
-                            selected = msg.feedback == 1,
-                            contentDescription = stringResource(R.string.chat_thumb_up_description),
-                            onClick = { onFeedback(msg.id, 1) },
-                        )
-                        FeedbackGlyph(
-                            glyph = "↓",
-                            selected = msg.feedback == -1,
-                            contentDescription = stringResource(R.string.chat_thumb_down_description),
-                            onClick = { onFeedback(msg.id, -1) },
+                    if (timestamp != null) {
+                        Text(
+                            text = timestamp,
+                            style = MealsyType.label.copy(fontSize = 11.sp),
+                            color = colors.inactive,
+                            modifier = Modifier.padding(top = 4.dp),
                         )
                     }
                 }
-            }
 
-        is ChatMsg.UpgradeNotice ->
-            Surface(
-                color = colors.surface,
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                Text(
-                    text = msg.text,
-                    style = MealsyType.body,
-                    color = colors.ink,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
+            is ChatMsg.Coach ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    CoachMarkdownBubble(text = msg.text, tags = msg.tags, timestamp = timestamp)
+                    if (msg.responseId != null) {
+                        Row(
+                            modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            FeedbackGlyph(
+                                glyph = "↑",
+                                selected = msg.feedback == 1,
+                                contentDescription = stringResource(R.string.chat_thumb_up_description),
+                                onClick = { onFeedback(msg.id, 1) },
+                            )
+                            FeedbackGlyph(
+                                glyph = "↓",
+                                selected = msg.feedback == -1,
+                                contentDescription = stringResource(R.string.chat_thumb_down_description),
+                                onClick = { onFeedback(msg.id, -1) },
+                            )
+                        }
+                    }
+                }
 
-        is ChatMsg.Card ->
-            when (msg.state) {
-                is CardState.Active, is CardState.Swapping -> {
-                    // Alias the row's callback lambdas under distinct names before
-                    // building the anonymous ConfirmCardCallbacks below — inside
-                    // that object's member bodies, an unqualified name matching a
-                    // member (e.g. `onRemoveItem`) resolves to the member itself
-                    // (infinite self-recursion), not the captured outer lambda.
-                    val doSetMealType = onSetMealType
-                    val doSetPortion = onSetPortion
-                    val doEditQty = onEditQty
-                    val doRemoveItem = onRemoveItem
-                    val doSwapCandidate = onSwapCandidate
-                    val doDecompose = onDecompose
-                    val doCombine = onCombine
-                    val doConfirm = onConfirm
-                    val doCancel = onCancel
-                    val doSaveAsMyMeal = onSaveAsMyMeal
-                    ConfirmCardView(
-                        card = msg.card,
-                        callbacks =
-                            object : ConfirmCardCallbacks {
-                                override fun onMealTypeChange(mealType: String) = doSetMealType(mealType)
-
-                                override fun onPortionChange(portion: Double) = doSetPortion(portion)
-
-                                override fun onQtyChange(
-                                    index: Int,
-                                    newQtyG: Double,
-                                ) = doEditQty(index, newQtyG)
-
-                                override fun onRemoveItem(index: Int) = doRemoveItem(index)
-
-                                override fun onUndoRemove() = Unit
-
-                                override fun onSwapCandidate(
-                                    index: Int,
-                                    newName: String,
-                                ) = doSwapCandidate(index, newName)
-
-                                override fun onDecompose() = doDecompose()
-
-                                override fun onCombine() = doCombine()
-
-                                override fun onConfirm() = doConfirm()
-
-                                override fun onCancel() = doCancel()
-
-                                override fun onSaveAsMyMeal(name: String) = doSaveAsMyMeal(name)
-                            },
-                        busy = sending,
-                        swapping = msg.state is CardState.Swapping,
-                        savingMeal = savingMeal,
-                        timestamp = timestamp,
+            is ChatMsg.UpgradeNotice ->
+                Surface(
+                    color = colors.surface,
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Text(
+                        text = msg.text,
+                        style = MealsyType.body,
+                        color = colors.ink,
+                        modifier = Modifier.padding(16.dp),
                     )
                 }
-                is CardState.Logged -> {
-                    val state = msg.state as CardState.Logged
-                    ChatBubble(
-                        text = stringResource(R.string.chat_card_logged, state.label, state.kcal),
-                        author = ChatBubbleAuthor.Coach,
-                        timestamp = timestamp,
-                    )
+
+            is ChatMsg.Card -> {
+                // #49 item 3: the Active/Swapping card <-> collapsed-bubble swap
+                // used to be a plain `when`, so the ~1,500px card vanished and
+                // the small bubble popped in on the same frame, jumping
+                // everything below it. AnimatedContent cross-fades + grows/
+                // shrinks between the two shapes instead. `contentKey` groups
+                // Active and Swapping together so an in-place edit (portion,
+                // qty, a swap round-tripping) never replays this transition —
+                // only an actual category change (into/out of "still
+                // interactive") does.
+                val cardMotionMs = motionDurationMs(220)
+                AnimatedContent(
+                    targetState = msg.state,
+                    contentKey = { it.isInteractive() },
+                    transitionSpec = {
+                        (fadeIn(tween(cardMotionMs)) + expandVertically(tween(cardMotionMs)))
+                            .togetherWith(fadeOut(tween(cardMotionMs)) + shrinkVertically(tween(cardMotionMs)))
+                    },
+                    label = "confirm-card-state",
+                ) { state ->
+                    when (state) {
+                        is CardState.Active, is CardState.Swapping -> {
+                            // Alias the row's callback lambdas under distinct names before
+                            // building the anonymous ConfirmCardCallbacks below — inside
+                            // that object's member bodies, an unqualified name matching a
+                            // member (e.g. `onRemoveItem`) resolves to the member itself
+                            // (infinite self-recursion), not the captured outer lambda.
+                            val doSetMealType = onSetMealType
+                            val doSetPortion = onSetPortion
+                            val doEditQty = onEditQty
+                            val doRemoveItem = onRemoveItem
+                            val doUndoRemove = onUndoRemove
+                            val doSwapCandidate = onSwapCandidate
+                            val doDescribeItemDifferently = onDescribeItemDifferently
+                            val doDecompose = onDecompose
+                            val doCombine = onCombine
+                            val doConfirm = onConfirm
+                            val doCancel = onCancel
+                            val doSaveAsMyMeal = onSaveAsMyMeal
+                            HighlightOnChange(changeKey = msg.card) { highlightModifier ->
+                                ConfirmCardView(
+                                    card = msg.card,
+                                    callbacks =
+                                        object : ConfirmCardCallbacks {
+                                            override fun onMealTypeChange(mealType: String) = doSetMealType(mealType)
+
+                                            override fun onPortionChange(portion: Double) = doSetPortion(portion)
+
+                                            override fun onQtyChange(
+                                                index: Int,
+                                                newQtyG: Double,
+                                            ) = doEditQty(index, newQtyG)
+
+                                            override fun onRemoveItem(index: Int) = doRemoveItem(index)
+
+                                            override fun onUndoRemove() = doUndoRemove()
+
+                                            override fun onSwapCandidate(
+                                                index: Int,
+                                                newName: String,
+                                            ) = doSwapCandidate(index, newName)
+
+                                            override fun onDescribeItemDifferently(
+                                                index: Int,
+                                                description: String,
+                                            ) = doDescribeItemDifferently(index, description)
+
+                                            override fun onDecompose() = doDecompose()
+
+                                            override fun onCombine() = doCombine()
+
+                                            override fun onConfirm() = doConfirm()
+
+                                            override fun onCancel() = doCancel()
+
+                                            override fun onSaveAsMyMeal(name: String) = doSaveAsMyMeal(name)
+                                        },
+                                    busy = sending,
+                                    swapping = state is CardState.Swapping,
+                                    savingMeal = savingMeal,
+                                    timestamp = timestamp,
+                                    modifier = highlightModifier,
+                                )
+                            }
+                        }
+                        is CardState.Logged ->
+                            ChatBubble(
+                                text = stringResource(R.string.chat_card_logged, state.label, state.kcal),
+                                author = ChatBubbleAuthor.Coach,
+                                timestamp = timestamp,
+                            )
+                        is CardState.NotLogged ->
+                            CollapsedCardLine(
+                                text = stringResource(R.string.chat_card_not_logged),
+                                strikethrough = true,
+                                timestamp = timestamp,
+                            )
+                        is CardState.Discarded ->
+                            CollapsedCardLine(
+                                text = stringResource(R.string.chat_card_discarded),
+                                strikethrough = false,
+                                timestamp = timestamp,
+                            )
+                    }
                 }
-                is CardState.NotLogged ->
-                    CollapsedCardLine(
-                        text = stringResource(R.string.chat_card_not_logged),
-                        strikethrough = true,
-                        timestamp = timestamp,
-                    )
-                is CardState.Discarded ->
-                    CollapsedCardLine(
-                        text = stringResource(R.string.chat_card_discarded),
-                        strikethrough = false,
-                        timestamp = timestamp,
-                    )
             }
+        }
     }
+}
+
+/** Groups [CardState] into "still interactive" vs "collapsed", for [AnimatedContent]'s `contentKey`. */
+private fun CardState.isInteractive(): Boolean = this is CardState.Active || this is CardState.Swapping
+
+/**
+ * Wraps [content] with a background tint that briefly flashes (`oliveTrack`
+ * -> transparent) whenever [changeKey] changes after the first composition —
+ * a merge (a new user message folded into this card) or a candidate
+ * swap/re-describe landing. Respects [LocalReducedMotion] via [mealsyTween].
+ * Self-contained per #49 item 3's brief: no shared component change needed.
+ */
+@Composable
+private fun HighlightOnChange(
+    changeKey: Any,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val colors = MealsyTheme.colors
+    var previousKey by remember { mutableStateOf(changeKey) }
+    var flashing by remember { mutableStateOf(false) }
+    LaunchedEffect(changeKey) {
+        if (changeKey != previousKey) {
+            previousKey = changeKey
+            flashing = true
+            delay(600)
+            flashing = false
+        }
+    }
+    val tint by
+        animateColorAsState(
+            targetValue = if (flashing) colors.oliveTrack else Color.Transparent,
+            animationSpec = mealsyTween(600),
+            label = "card-row-highlight",
+        )
+    content(Modifier.background(tint, RoundedCornerShape(18.dp)))
 }
 
 /**

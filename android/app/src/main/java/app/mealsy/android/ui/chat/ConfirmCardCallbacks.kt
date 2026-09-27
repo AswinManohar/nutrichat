@@ -30,6 +30,16 @@ interface ConfirmCardCallbacks {
         newName: String,
     )
 
+    /**
+     * The user typed a free-text replacement description for an item after
+     * none of the candidate picker's rows matched ("None of these — describe
+     * it differently").
+     */
+    fun onDescribeItemDifferently(
+        index: Int,
+        description: String,
+    )
+
     /** The user tapped "Break into ingredients" on a composite dish. */
     fun onDecompose()
 

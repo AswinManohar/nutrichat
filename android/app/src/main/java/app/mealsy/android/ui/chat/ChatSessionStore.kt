@@ -401,18 +401,56 @@ class ChatSessionStore
         }
 
         /**
+         * The active card's message id, card, and state exactly as they were
+         * just before the most recent [removeItem] call — what [undoRemove]
+         * restores. `null` once consumed by [undoRemove] or once a different
+         * mutation makes "undo the removal" no longer meaningful is NOT
+         * tracked separately here; the "Removed X" toast's own 4s auto-
+         * dismiss (see [ConfirmCardView]) is what actually bounds how long
+         * undo stays offered in the UI.
+         */
+        private var lastRemoved: Triple<String, ConfirmationCard, CardState>? = null
+
+        /**
          * Removes the active card's item at [index]; a no-op if [index] is
          * stale. Removing the LAST item dismisses the card locally — no
-         * backend call — matching the web's behavior.
+         * backend call — matching the web's behavior. Snapshots the card
+         * beforehand into [lastRemoved] so [undoRemove] can restore it
+         * (#46 — the "Removed X" toast's Undo used to be wired to nothing).
          */
         fun removeItem(index: Int) {
+            val activeId = activeCardId() ?: return
             val card = activeCard() ?: return
             if (index !in card.items.indices) return
+            val stateBefore =
+                (_messages.value.firstOrNull { it.id == activeId } as? ChatMsg.Card)?.state ?: CardState.Active
+            lastRemoved = Triple(activeId, card, stateBefore)
             if (card.items.size == 1) {
                 dropActiveCard()
                 return
             }
             replaceActiveCard(CardEditor.removeItem(card, index), CardState.Active)
+        }
+
+        /**
+         * Restores the card exactly as it was before the most recent
+         * [removeItem] call — either back into the still-present card
+         * message (its id unchanged), or, if removing the last item dropped
+         * the message entirely, by re-appending it. A no-op if nothing has
+         * been removed since the last [undoRemove].
+         */
+        fun undoRemove() {
+            val (id, card, state) = lastRemoved ?: return
+            lastRemoved = null
+            val stillPresent = _messages.value.any { it.id == id }
+            _messages.value =
+                if (stillPresent) {
+                    _messages.value.map { msg ->
+                        if (msg is ChatMsg.Card && msg.id == id) msg.copy(card = card, state = state) else msg
+                    }
+                } else {
+                    _messages.value + ChatMsg.Card(id, clock.millis(), card, state)
+                }
         }
 
         /** Sets the active card's meal type (breakfast/lunch/snack/dinner). */
@@ -448,6 +486,54 @@ class ChatSessionStore
             return sessionScope.launch {
                 try {
                     when (val result = repository.correctCandidate(from, newName)) {
+                        is TurnResult.Card -> replaceActiveCard(result.card, CardState.Active)
+                        is TurnResult.Reply -> {
+                            stampActiveCard(CardState.NotLogged)
+                            appendCoach(result.message)
+                        }
+                        is TurnResult.UpgradeRequired -> {
+                            stampActiveCard(CardState.NotLogged)
+                            appendUpgradeNotice(result.message)
+                        }
+                    }
+                    _offline.value = false
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: IOException) {
+                    _offline.value = true
+                    replaceActiveCard(card, CardState.Active)
+                    appendCoach("Couldn't reach Mealsy. Check your connection and try again.")
+                } catch (exc: HttpException) {
+                    stampActiveCard(CardState.NotLogged)
+                    appendCoach(httpErrorMessage(exc))
+                } catch (exc: Exception) {
+                    stampActiveCard(CardState.NotLogged)
+                    appendCoach("Something went wrong. Try again.")
+                } finally {
+                    _sending.value = false
+                }
+            }
+        }
+
+        /**
+         * Applies a free-text re-description to the active card's item at
+         * [index] (#39's "None of these — describe it differently" fallback):
+         * marks the card [CardState.Swapping] and sends the description back
+         * through the paused graph for re-resolution, then handles the result
+         * exactly like [onSwapCandidate].
+         */
+        fun onDescribeItemDifferently(
+            index: Int,
+            description: String,
+        ): Job? {
+            val card = activeCard() ?: return null
+            if (index !in card.items.indices) return null
+            val from = card.items[index].foodName
+            replaceActiveCard(CardEditor.replaceCandidate(card, index, description), CardState.Swapping)
+            _sending.value = true
+            return sessionScope.launch {
+                try {
+                    when (val result = repository.describeItemDifferently(from, description)) {
                         is TurnResult.Card -> replaceActiveCard(result.card, CardState.Active)
                         is TurnResult.Reply -> {
                             stampActiveCard(CardState.NotLogged)

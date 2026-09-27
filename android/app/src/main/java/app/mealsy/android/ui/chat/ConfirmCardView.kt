@@ -74,8 +74,24 @@ import app.mealsy.domain.pastelToneFor
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
-/** The four meal-type segments offered by [ConfirmCardView], display-cased. */
-private val MEAL_TYPE_OPTIONS = listOf("Breakfast", "Lunch", "Dinner", "Snack")
+/**
+ * The four meal-type segments offered by [ConfirmCardView], as canonical
+ * lowercase values matching the backend's `meal_type` vocabulary. Display
+ * labels come from the shared `home_meal_*` strings (see [mealTypeLabel]) so
+ * this segment reads "Snacks", matching the Home row, meal detail, and
+ * Log-again sheet — it used to say "Snack" here only (#46).
+ */
+private val MEAL_TYPE_OPTIONS = listOf("breakfast", "lunch", "dinner", "snack")
+
+/** The shared display labels for [MEAL_TYPE_OPTIONS]'s canonical values. */
+@Composable
+private fun mealTypeLabels(): Map<String, String> =
+    mapOf(
+        "breakfast" to stringResource(R.string.home_meal_breakfast),
+        "lunch" to stringResource(R.string.home_meal_lunch),
+        "dinner" to stringResource(R.string.home_meal_dinner),
+        "snack" to stringResource(R.string.home_meal_snack),
+    )
 
 /** The four portion multipliers offered by [ConfirmCardView], display-labelled. */
 private val PORTION_OPTIONS = listOf("0.5×" to 0.5, "1×" to 1.0, "1.5×" to 1.5, "2×" to 2.0)
@@ -264,6 +280,15 @@ fun ConfirmCardView(
                         callbacks.onSwapCandidate(sheetIndex, newName)
                         candidateSheetIndex = null
                     },
+                    onRemove = {
+                        pendingUndo = item.foodName to sheetIndex
+                        callbacks.onRemoveItem(sheetIndex)
+                        candidateSheetIndex = null
+                    },
+                    onDescribeDifferently = { description ->
+                        callbacks.onDescribeItemDifferently(sheetIndex, description)
+                        candidateSheetIndex = null
+                    },
                 )
             }
         }
@@ -315,7 +340,8 @@ private fun MealTypeSection(
     val selected =
         MEAL_TYPE_OPTIONS.firstOrNull {
             it.equals(mealType, ignoreCase = true)
-        } ?: "Lunch"
+        } ?: "lunch"
+    val labels = mealTypeLabels()
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -326,9 +352,9 @@ private fun MealTypeSection(
         SegmentedControl(
             options = MEAL_TYPE_OPTIONS,
             selected = selected,
-            onSelect = { if (enabled) onMealTypeChange(it.lowercase()) },
+            onSelect = { if (enabled) onMealTypeChange(it) },
             modifier = Modifier.semantics { selectableGroup() }.alpha(if (enabled) 1f else 0.5f),
-            label = { it },
+            label = { labels.getValue(it) },
         )
     }
 }
@@ -629,9 +655,19 @@ private fun ItemRow(
             } else {
                 Box(modifier = Modifier)
             }
+            // Displayed grams must reflect the card's overall portion
+            // multiplier, not just the item's own qty edit — otherwise a 2×
+            // portion doubles kcal while the row still shows the unscaled
+            // grams (#46). The Stepper edits/displays the scaled ("what
+            // will actually be logged") weight; converting a user edit back
+            // to targetQtyG divides out the portion again.
+            val scaledQtyG = CardEditor.scaledQtyG(item, card.portion)
             Stepper(
-                value = item.targetQtyG.roundToInt(),
-                onValueChange = { callbacks.onQtyChange(index, it.toDouble()) },
+                value = scaledQtyG.roundToInt(),
+                onValueChange = { newScaled ->
+                    val newTargetQtyG = if (card.portion != 0.0) newScaled / card.portion else newScaled.toDouble()
+                    callbacks.onQtyChange(index, newTargetQtyG)
+                },
                 step = 5,
                 min = 5,
                 label =
@@ -841,6 +877,11 @@ private fun previewCallbacks(): ConfirmCardCallbacks =
         override fun onSwapCandidate(
             index: Int,
             newName: String,
+        ) = Unit
+
+        override fun onDescribeItemDifferently(
+            index: Int,
+            description: String,
         ) = Unit
 
         override fun onDecompose() = Unit
