@@ -165,6 +165,18 @@ class ChatRepository
         ): TurnResult = sendTurn("use $to instead of $from")
 
         /**
+         * Sends a free-text re-description for a single item, for the "None of
+         * these — describe it differently" fallback in the candidate picker
+         * (#39): when no listed candidate matches, the user types what the food
+         * actually is and that goes back through the paused graph as a text
+         * turn, same as [correctCandidate], so the backend can re-resolve it.
+         */
+        suspend fun describeItemDifferently(
+            from: String,
+            description: String,
+        ): TurnResult = sendTurn("the $from is actually: $description")
+
+        /**
          * Asks the paused graph to break the composite dish into its
          * ingredients. Does not rotate the conversation id (the graph stays
          * paused) and does not clear [pendingConfirmation] except through the

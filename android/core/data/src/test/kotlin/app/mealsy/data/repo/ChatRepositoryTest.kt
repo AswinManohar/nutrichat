@@ -584,6 +584,29 @@ class ChatRepositoryTest {
         }
 
     @Test
+    fun `describeItemDifferently sends the free-text description as a turn`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"status":"success","message":"Updated.","paused":false,"items":[]}""",
+                ),
+            )
+            val repository = buildRepository()
+            val idBefore = repository.conversationId()
+
+            repository.describeItemDifferently("shrimp toast", "toasted white bread, no shrimp")
+
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(
+                body.contains(
+                    "\"user_input\":\"the shrimp toast is actually: toasted white bread, no shrimp\"",
+                ),
+            )
+            assertTrue(body.contains("\"conversation_id\":\"$idBefore\""))
+            assertEquals(idBefore, repository.conversationId())
+        }
+
+    @Test
     fun `decompose sends action=decompose with empty user_input and returns Card`() =
         runBlocking {
             server.enqueue(MockResponse().setResponseCode(200).setBody(pausedCardBody()))

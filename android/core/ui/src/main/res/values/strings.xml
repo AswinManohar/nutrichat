@@ -8,4 +8,8 @@
     <!-- CandidatePickerSheetContent -->
     <string name="candidate_sheet_eyebrow">Pick the right food</string>
     <string name="candidate_sheet_current">Currently: %1$s</string>
+    <string name="candidate_sheet_none_of_these">None of these — remove it</string>
+    <string name="candidate_sheet_describe_differently">Describe it differently</string>
+    <string name="candidate_sheet_describe_placeholder">What is it, really?</string>
+    <string name="candidate_sheet_describe_submit">Use this</string>
 </resources>

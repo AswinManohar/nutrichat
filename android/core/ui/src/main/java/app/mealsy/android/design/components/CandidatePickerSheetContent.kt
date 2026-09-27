@@ -16,7 +16,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,6 +48,14 @@ import app.mealsy.android.design.theme.MealsyType
  *   equal to [currentName], if present, is still tappable — re-selecting
  *   the current food is a no-op for the caller but not disabled here.
  * @param onSelect Invoked with the tapped candidate's name.
+ * @param onRemove Invoked when the user taps the trailing "None of these —
+ *   remove it" row: no candidate matched, so the whole item should be
+ *   dropped from the card (#39). `null` hides that row.
+ * @param onDescribeDifferently Invoked with the user's free-text
+ *   replacement description once they submit it from the "Describe it
+ *   differently" inline field (#39's other fallback, for when the food
+ *   should stay on the card but under a different resolution). `null` hides
+ *   that row entirely.
  * @param modifier The modifier applied to the sheet content's column.
  */
 @Composable
@@ -53,8 +64,13 @@ fun CandidatePickerSheetContent(
     candidates: List<String>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onRemove: (() -> Unit)? = null,
+    onDescribeDifferently: ((String) -> Unit)? = null,
 ) {
     val colors = MealsyTheme.colors
+    var describing by rememberSaveable { mutableStateOf(false) }
+    var description by rememberSaveable { mutableStateOf("") }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp),
@@ -75,7 +91,52 @@ fun CandidatePickerSheetContent(
                         isCurrent = candidate == currentName,
                         onClick = { onSelect(candidate) },
                     )
-                    if (index != candidates.lastIndex) InsetDivider()
+                    if (index != candidates.lastIndex || onDescribeDifferently != null || onRemove != null) {
+                        InsetDivider()
+                    }
+                }
+                if (onDescribeDifferently != null) {
+                    CandidateRow(
+                        name = stringResource(R.string.candidate_sheet_describe_differently),
+                        isCurrent = false,
+                        onClick = { describing = !describing },
+                    )
+                    if (onRemove != null) InsetDivider()
+                }
+                if (onRemove != null) {
+                    CandidateRow(
+                        name = stringResource(R.string.candidate_sheet_none_of_these),
+                        isCurrent = false,
+                        muted = true,
+                        onClick = onRemove,
+                    )
+                }
+            }
+            if (describing && onDescribeDifferently != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PillInput(
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = stringResource(R.string.candidate_sheet_describe_placeholder),
+                        modifier = Modifier.weight(1f),
+                    )
+                    MealsyButton(
+                        text = stringResource(R.string.candidate_sheet_describe_submit),
+                        onClick = {
+                            val trimmed = description.trim()
+                            if (trimmed.isNotEmpty()) {
+                                onDescribeDifferently(trimmed)
+                                describing = false
+                                description = ""
+                            }
+                        },
+                        style = MealsyButtonStyle.Secondary,
+                        enabled = description.isNotBlank(),
+                    )
                 }
             }
         }
@@ -92,6 +153,7 @@ private fun CandidateRow(
     name: String,
     isCurrent: Boolean,
     onClick: () -> Unit,
+    muted: Boolean = false,
 ) {
     val colors = MealsyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
@@ -117,7 +179,7 @@ private fun CandidateRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = name, style = MealsyType.body, color = colors.ink)
+        Text(text = name, style = MealsyType.body, color = if (muted) colors.muted else colors.ink)
         if (isCurrent) {
             Icon(
                 imageVector = MealsyIcons.Check,
@@ -163,6 +225,23 @@ private fun CandidatePickerSheetContentDarkPreview() {
                 currentName = "Grilled chicken breast",
                 candidates = listOf("Grilled chicken breast", "Roasted chicken breast"),
                 onSelect = {},
+                modifier = Modifier.padding(top = 20.dp),
+            )
+        }
+    }
+}
+
+@Preview(name = "CandidatePickerSheetContent with fallback rows", widthDp = 390)
+@Composable
+private fun CandidatePickerSheetContentFallbacksPreview() {
+    MealsyTheme {
+        Surface(color = MealsyTheme.colors.surface) {
+            CandidatePickerSheetContent(
+                currentName = "Shrimp toast",
+                candidates = listOf("Shrimp toast", "Melba toast", "Anisette toast"),
+                onSelect = {},
+                onRemove = {},
+                onDescribeDifferently = {},
                 modifier = Modifier.padding(top = 20.dp),
             )
         }
