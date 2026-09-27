@@ -41,6 +41,10 @@ sealed interface TrendsUiState {
      * @param daysLoggedCount How many days in the window have at least one logged meal
      *   ([trends]`.days` already omits no-meal days, so this is just its size).
      * @param daysInWindow The window's total day count (the "Days logged" denominator).
+     * @param refreshing Set while a Week/Month toggle is refetching this window's data.
+     *   The screen keeps rendering this (stale) [Loaded] content — segmented control
+     *   included — instead of blanking to [Loading], so only the very first load
+     *   ever shows the full-screen loading state.
      */
     data class Loaded(
         val trends: TrendData,
@@ -51,6 +55,7 @@ sealed interface TrendsUiState {
         val avgProteinG: Int = averageProteinG(trends.days),
         val daysLoggedCount: Int = trends.days.size,
         val daysInWindow: Int = 7,
+        val refreshing: Boolean = false,
     ) : TrendsUiState
 }
 
@@ -89,6 +94,13 @@ class TrendsViewModel
         private val _uiState = MutableStateFlow<TrendsUiState>(TrendsUiState.Loading)
         val uiState: StateFlow<TrendsUiState> = _uiState.asStateFlow()
 
+        /**
+         * Per-window [TrendsUiState.Loaded] cache, populated after each successful
+         * load. Lets a Week/Month toggle show the target window's own last-known
+         * content (rather than the window being left behind) while it refetches.
+         */
+        private val loadedCache = mutableMapOf<TrendsWindow, TrendsUiState.Loaded>()
+
         /** Exposed only so tests can [Job.join] the load deterministically. */
         val readyJob: Job = load(_window.value)
 
@@ -102,8 +114,18 @@ class TrendsViewModel
         /** Re-runs the load for the current window — used by the error state's retry button. */
         fun retry(): Job = load(_window.value)
 
+        /**
+         * Loads [selected]'s trends/categories/goals.
+         *
+         * Stale-while-revalidate: if there is any prior [TrendsUiState.Loaded] to
+         * show for [selected] (its own cache entry, or else whatever is currently
+         * on screen), that content stays up with [TrendsUiState.Loaded.refreshing]
+         * set instead of the screen dropping to [TrendsUiState.Loading]. Only a
+         * truly cold start — nothing loaded yet, for any window — shows [TrendsUiState.Loading].
+         */
         private fun load(selected: TrendsWindow): Job {
-            _uiState.value = TrendsUiState.Loading
+            val staleForSelected = loadedCache[selected] ?: (_uiState.value as? TrendsUiState.Loaded)
+            _uiState.value = staleForSelected?.copy(refreshing = true) ?: TrendsUiState.Loading
             return viewModelScope.launch {
                 try {
                     val trends = trendsRepository.trends(selected.days)
@@ -118,6 +140,7 @@ class TrendsViewModel
                         }
                     _uiState.value =
                         if (trends.days.isEmpty() && categories.isEmpty()) {
+                            loadedCache.remove(selected)
                             TrendsUiState.Empty
                         } else {
                             TrendsUiState.Loaded(
@@ -126,7 +149,8 @@ class TrendsViewModel
                                 proteinGoal = goals?.proteinGoal,
                                 kcalGoal = goals?.kcalGoal,
                                 daysInWindow = selected.days,
-                            )
+                                refreshing = false,
+                            ).also { loadedCache[selected] = it }
                         }
                 } catch (exc: CancellationException) {
                     throw exc

@@ -225,6 +225,64 @@ class TrendsViewModelTest {
     }
 
     @Test
+    fun `toggling window never drops to Loading once something has loaded`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            assertTrue(viewModel.uiState.value is TrendsUiState.Loaded)
+
+            // Enqueue slow-to-arrive responses for the Month fetch and inspect
+            // uiState synchronously right after triggering the toggle, before
+            // the new responses are consumed (Unconfined dispatcher runs the
+            // coroutine up to its first suspension point immediately).
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(TRENDS_BODY).setBodyDelay(50, java.util.concurrent.TimeUnit.MILLISECONDS),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody(CATEGORIES_BODY))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+            val job = viewModel.setWindow(TrendsWindow.MONTH)
+
+            // Never Loading: the prior Week Loaded content stays up, marked refreshing.
+            val stateWhileRefreshing = viewModel.uiState.value
+            assertTrue(stateWhileRefreshing is TrendsUiState.Loaded)
+            assertTrue((stateWhileRefreshing as TrendsUiState.Loaded).refreshing)
+
+            job?.join()
+            val finalState = viewModel.uiState.value as TrendsUiState.Loaded
+            assertEquals(false, finalState.refreshing)
+            assertEquals(30, finalState.daysInWindow)
+        }
+
+    @Test
+    fun `toggling back to a window shows its own cached content while refetching`() =
+        runBlocking {
+            enqueueLoadedResponses()
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+
+            enqueueLoadedResponses()
+            viewModel.setWindow(TrendsWindow.MONTH)?.join()
+            assertEquals(30, (viewModel.uiState.value as TrendsUiState.Loaded).daysInWindow)
+
+            // Toggle back to Week: the Week cache entry should surface immediately
+            // (refreshing = true) rather than falling back to the Month content.
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(TRENDS_BODY).setBodyDelay(50, java.util.concurrent.TimeUnit.MILLISECONDS),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody(CATEGORIES_BODY))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(GOALS_BODY))
+            val job = viewModel.setWindow(TrendsWindow.WEEK)
+
+            val stateWhileRefreshing = viewModel.uiState.value as TrendsUiState.Loaded
+            assertEquals(7, stateWhileRefreshing.daysInWindow)
+            assertTrue(stateWhileRefreshing.refreshing)
+
+            job?.join()
+            Unit
+        }
+
+    @Test
     fun `averageKcal and averageProteinG average across multiple logged days`() {
         val days =
             listOf(
