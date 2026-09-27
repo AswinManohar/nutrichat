@@ -31,6 +31,11 @@ _ROWS: list[tuple[int, str]] = [
     # Lower fdc_id than the NFS row, so the old -fdc_id tie-break picked it.
     (1015, "Cheese, fontina"),
     (1016, "Cheese, NFS"),
+    # Regression fixture for issue #38: bare "toast" must resolve to toasted
+    # bread, not a dish that merely contains the word "toast".
+    (1017, "Shrimp toast"),
+    (1018, "Bread, white, toasted"),
+    (1019, "French toast, NFS"),
 ]
 
 _SAMPLE_MACROS = {
@@ -179,6 +184,58 @@ def test_head_matching_rows_enter_a_truncated_pool(fixture_db: Path) -> None:
     match = usda_local.lookup("rice", pool_size=1)
     assert match is not None
     assert match.description.startswith("Rice,")
+
+
+def test_bare_toast_resolves_to_toasted_bread_not_shrimp_toast(
+    fixture_db: Path,
+) -> None:
+    """Regression for issue #38: "toast" must not resolve to "Shrimp toast".
+
+    "toast" is a preparation of bread, not an FDC head noun on its own, so
+    plain lexical matching picked whatever short description contained the
+    literal word -- a dim-sum dish the user never named.
+    """
+    match = usda_local.lookup("toast")
+    assert match is not None
+    assert match.description == "Bread, white, toasted"
+    assert match.description != "Shrimp toast"
+
+
+def test_eggs_and_toast_entity_resolves_to_toasted_bread(fixture_db: Path) -> None:
+    """The "toast" entity from "2 eggs and toast" must not pick up shrimp."""
+    match = usda_local.lookup("toast")
+    assert match is not None
+    assert "shrimp" not in match.description.lower()
+
+
+def test_french_toast_is_not_rewritten_to_bread(fixture_db: Path) -> None:
+    """The preparation synonym must not clobber a real compound dish."""
+    match = usda_local.lookup("french toast")
+    assert match is not None
+    assert match.description == "French toast, NFS"
+
+
+def test_normalize_preparation_rewrites_bare_toast() -> None:
+    from backend.agent.tools.usda_match import _normalize_preparation
+
+    assert _normalize_preparation("toast") == "bread, toasted"
+    assert _normalize_preparation("2 eggs and toast") == "2 eggs and bread, toasted"
+
+
+def test_normalize_preparation_leaves_compound_dishes_alone() -> None:
+    from backend.agent.tools.usda_match import _normalize_preparation
+
+    assert _normalize_preparation("french toast") == "french toast"
+    assert _normalize_preparation("melba toast") == "melba toast"
+    assert _normalize_preparation("cinnamon toast") == "cinnamon toast"
+    assert _normalize_preparation("french fries") == "french fries"
+
+
+def test_normalize_preparation_does_not_touch_substrings() -> None:
+    from backend.agent.tools.usda_match import _normalize_preparation
+
+    # "toasted" contains "toast" but is a different word -- must not match.
+    assert _normalize_preparation("toasted almonds") == "toasted almonds"
 
 
 def test_generic_rank_only_fires_when_all_modifiers_are_generic() -> None:

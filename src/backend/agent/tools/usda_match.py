@@ -64,6 +64,62 @@ def _tokenize(text_value: str) -> set[str]:
     return {_singularize(t) for t in raw if t not in _MATCH_STOPWORDS}
 
 
+# Everyday preparation nouns that are not FDC head nouns: in FDC they are a
+# modifier on a different head ("Bread, ..., toasted"), so left as-is they
+# retrieve whatever entry happens to contain the word verbatim -- "toast"
+# alone returns "Shrimp toast" (a dim-sum dish) rather than toasted bread
+# (issue #38). Rewriting the query text to the FDC form fixes retrieval and
+# ranking together: the FDC head noun becomes a query token, so head purity
+# and confidence favor it over an unrelated dish that merely contains the
+# same word.
+_PREPARATION_SYNONYMS: dict[str, str] = {
+    "toast": "bread, toasted",
+    "toasts": "bread, toasted",
+    "fries": "potatoes, french fried",
+    "oats": "oats, rolled",
+}
+
+# Compound dishes where the synonym word IS the correct FDC head noun, so
+# rewriting it would replace a real dish with an unrelated one. Any of these
+# words appearing anywhere in the query suppresses the rewrite for that
+# synonym.
+_SYNONYM_EXCEPTIONS: dict[str, frozenset[str]] = {
+    "toast": frozenset({"french", "melba", "zwieback", "anisette", "cinnamon"}),
+    # "french fries" is already the FDC phrase ("Potatoes, french fried");
+    # rewriting it duplicates "french" and drifts off the correct match.
+    "fries": frozenset({"french"}),
+}
+
+
+def _normalize_preparation(food_name: str) -> str:
+    """Rewrite preparation nouns that are not FDC head nouns to their FDC form.
+
+    Applied to the query text itself, upstream of tokenizing, search and
+    ranking, so the rewrite benefits retrieval and every ranking signal
+    alike, not just a post-hoc tie-break. Matches are whole-word only (a
+    substring like "toast" inside another word is never touched), and each
+    synonym has an exception list for compound dishes where the word is
+    itself the right FDC head noun (see ``_SYNONYM_EXCEPTIONS``).
+
+    Args:
+        food_name: User-facing free-text food name.
+
+    Returns:
+        ``food_name`` with any matching bare preparation nouns replaced by
+        their FDC head-noun phrase, unchanged if none apply.
+    """
+    lowered = food_name.lower()
+    for word, replacement in _PREPARATION_SYNONYMS.items():
+        if not re.search(rf"\b{re.escape(word)}\b", lowered):
+            continue
+        if any(exc in lowered for exc in _SYNONYM_EXCEPTIONS.get(word, ())):
+            continue
+        food_name = re.sub(
+            rf"\b{re.escape(word)}\b", replacement, food_name, flags=re.IGNORECASE
+        )
+    return food_name
+
+
 def _confidence(query: str, description: str) -> float:
     """Match confidence as query-word coverage by the FDC description.
 
