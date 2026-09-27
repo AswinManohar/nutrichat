@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <application android:networkSecurityConfig="@xml/network_security_config">
         <!-- Debug-build-only host activity for Roborazzi screenshot tests
              (see app/src/test/java/app/mealsy/android/ui/TestHostActivity.kt
              and AppScreenshotTestBase). Robolectric's ActivityScenario
