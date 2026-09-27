@@ -100,8 +100,12 @@ sealed interface CardState {
  *    (#40 part 1) — no separate conversation state to keep in sync.
  *  - a send/confirm/cancel keeps running on the store's app-scoped coroutine
  *    even after this `ViewModel` (and its `viewModelScope`) is cleared by
- *    navigating away (#40 part 2); `GET /meals/pending` recovery on return is
- *    unchanged (see [ChatSessionStore]'s KDoc).
+ *    navigating away (#40 part 2).
+ *  - construction re-runs pending-card recovery via [ChatSessionStore.attach]
+ *    (skipped while a send is in flight, or while signed out) — every chat
+ *    open re-checks `GET /meals/pending`, not just the first one — and the
+ *    store resets itself on sign-out/sign-in so one user's transcript never
+ *    leaks into another's session (see [ChatSessionStore]'s KDoc).
  *
  * Home, Trends, and My Meals are reached via `AppNav`'s [app.mealsy.android.design.components.BottomNavPill],
  * not from this screen. The today totals/goals header that used to live here
@@ -122,12 +126,13 @@ class ChatViewModel
         val toasts: SharedFlow<String> = session.toasts
 
         /**
-         * The store's startup recovery job. Exposed only so tests can
-         * [Job.join] it deterministically — since [ChatSessionStore] is a
-         * singleton this only actually does work once per process, the same
-         * as [ChatSessionStore.readyJob] itself.
+         * Re-runs pending-card recovery for this screen open (see
+         * [ChatSessionStore.attach]). Called once per `ChatViewModel`
+         * instance — i.e. once per chat-screen open, FAB or tab — not just
+         * the first ever. Exposed as a `Job` so tests can [Job.join] it
+         * deterministically.
          */
-        val readyJob: Job get() = session.readyJob
+        val readyJob: Job = session.attach()
 
         fun send(text: String): Job = session.send(text)
 

@@ -4,6 +4,10 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.ProfileMetadata
+import app.mealsy.data.auth.SessionManager
+import app.mealsy.data.auth.SessionState
 import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
@@ -69,6 +73,28 @@ class ConnectivityOfflineTest {
         override suspend fun consumeDropped(): Int = 0
     }
 
+    /** Always-signed-in fake — [ChatSessionStore.attach] is a no-op while signed out. */
+    private class FakeAuthGateway : AuthGateway {
+        override val sessionState = MutableStateFlow<SessionState>(SessionState.SignedIn("user-1"))
+
+        override suspend fun signInWithMagicLink(email: String) = Unit
+
+        override suspend fun signInWithGoogle(activity: android.app.Activity) = Unit
+
+        override suspend fun refreshCurrentSession(): String? = null
+
+        override fun currentAccessTokenOrNull(): String? = null
+
+        override suspend fun signOut() = Unit
+
+        override suspend fun updateProfileMetadata(
+            firstName: String,
+            goalFocus: String,
+        ) = Unit
+
+        override suspend fun currentProfileMetadata(): ProfileMetadata? = null
+    }
+
     @Test
     fun `losing connectivity sets the offline banner without any failed request`() =
         runBlocking {
@@ -97,6 +123,7 @@ class ConnectivityOfflineTest {
                         connectivity,
                         MyMealsRepository(api, todayRefreshSignal),
                         NoopDroppedLogStore(),
+                        SessionManager(FakeAuthGateway()),
                         CoroutineScope(Dispatchers.Unconfined),
                     ),
                 )
@@ -143,6 +170,7 @@ class ConnectivityOfflineTest {
                         connectivity,
                         MyMealsRepository(api, todayRefreshSignal),
                         NoopDroppedLogStore(),
+                        SessionManager(FakeAuthGateway()),
                         CoroutineScope(Dispatchers.Unconfined),
                     ),
                 )

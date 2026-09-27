@@ -4,6 +4,10 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.ProfileMetadata
+import app.mealsy.data.auth.SessionManager
+import app.mealsy.data.auth.SessionState
 import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
@@ -13,6 +17,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -38,6 +43,32 @@ import java.time.ZoneOffset
 /** Always-online fake — connectivity-driven offline handling is exercised in [ConnectivityOfflineTest]. */
 private class FakeOnlineConnectivityObserver : ConnectivityObserver {
     override val isOnline: Flow<Boolean> = flowOf(true)
+}
+
+/**
+ * Minimal [AuthGateway] fake whose [sessionState] a test can drive directly —
+ * [ChatSessionStore] only reads [SessionManager.sessionState], the same
+ * seam [AppNavViewModelTest]'s `FakeAuthGateway` exercises.
+ */
+private class FakeAuthGateway(initial: SessionState = SessionState.SignedIn("user-1")) : AuthGateway {
+    override val sessionState = MutableStateFlow(initial)
+
+    override suspend fun signInWithMagicLink(email: String) = Unit
+
+    override suspend fun signInWithGoogle(activity: android.app.Activity) = Unit
+
+    override suspend fun refreshCurrentSession(): String? = null
+
+    override fun currentAccessTokenOrNull(): String? = null
+
+    override suspend fun signOut() = Unit
+
+    override suspend fun updateProfileMetadata(
+        firstName: String,
+        goalFocus: String,
+    ) = Unit
+
+    override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
 /** No-op fake — queueing itself is covered by `ChatRepositoryTest`. */
@@ -123,8 +154,16 @@ class ChatViewModelTest {
      * [Dispatchers.Unconfined] for the store's app-scoped [CoroutineScope]
      * too (not just `Dispatchers.setMain` below) — see the class KDoc on
      * mixing real `MockWebServer` I/O with a virtual-time dispatcher.
+     *
+     * Defaults to an already-[SessionState.SignedIn] session — [attach]
+     * (called by every [ChatViewModel] on construction) is a no-op while
+     * signed out, and most of these tests exercise `send`/`confirm`/etc,
+     * not the sign-in gate itself (see the dedicated session tests below).
      */
-    private fun buildSessionStore(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatSessionStore {
+    private fun buildSessionStore(
+        droppedLogStore: DroppedLogStore = FakeDroppedLogStore(),
+        sessionManager: SessionManager = SessionManager(FakeAuthGateway()),
+    ): ChatSessionStore {
         val api = buildApi()
         val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
         val repository =
@@ -140,6 +179,7 @@ class ChatViewModelTest {
             FakeOnlineConnectivityObserver(),
             app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
             droppedLogStore,
+            sessionManager,
             CoroutineScope(Dispatchers.Unconfined),
             fixedClock,
         )
@@ -185,7 +225,7 @@ class ChatViewModelTest {
             enqueueEmptyStartup()
             server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
             val session = buildSessionStore()
-            session.readyJob.join()
+            session.attach().join()
 
             // No ChatViewModel is ever constructed here — send() is driven
             // straight off the store, exactly as it would keep running after
@@ -195,6 +235,105 @@ class ChatViewModelTest {
             val card = session.messages.value.lastOrNull { it is ChatMsg.Card } as? ChatMsg.Card
             assertTrue(card != null)
             assertTrue(card?.state is CardState.Active)
+        }
+
+    /**
+     * #40 follow-up (regression 1): [ChatSessionStore] is a process-wide
+     * singleton, so without resetting on sign-out it would keep showing one
+     * user's transcript to the next user signed in on the same device.
+     */
+    @Test
+    fun `signing out clears the transcript`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val authGateway = FakeAuthGateway(SessionState.SignedIn("user-1"))
+            val session = buildSessionStore(sessionManager = SessionManager(authGateway))
+            session.attach().join()
+            session.send("an egg").join()
+            assertTrue(session.messages.value.isNotEmpty())
+
+            authGateway.sessionState.value = SessionState.SignedOut
+
+            assertEquals(emptyList<ChatMsg>(), session.messages.value)
+            assertFalse(session.sending.value)
+            assertFalse(session.savingMeal.value)
+        }
+
+    /**
+     * #40 follow-up (regression 1, other direction): signing back in as a
+     * *different* user id must reset too, not just sign-out — a same-device
+     * account switch is exactly the "old user's transcript leaks into the
+     * new session" scenario.
+     */
+    @Test
+    fun `signing in as a different user clears the previous user's transcript`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val authGateway = FakeAuthGateway(SessionState.SignedIn("user-1"))
+            val session = buildSessionStore(sessionManager = SessionManager(authGateway))
+            session.attach().join()
+            session.send("an egg").join()
+            assertTrue(session.messages.value.isNotEmpty())
+
+            authGateway.sessionState.value = SessionState.SignedIn("user-2")
+
+            assertEquals(emptyList<ChatMsg>(), session.messages.value)
+        }
+
+    /**
+     * #40 follow-up (regression 2): recovery used to be a construction-time
+     * one-shot on the singleton, so a second chat open (a second
+     * `ChatViewModel`/`attach()`) never re-checked `GET /meals/pending` —
+     * and when it *did* run again, it would have re-appended the same
+     * still-pending card as a duplicate. Both are covered here: a second
+     * `attach()` re-issues the request (the enqueued response would make
+     * `MockWebServer` throw if it weren't consumed) but the transcript ends
+     * up with exactly one card, not two.
+     */
+    @Test
+    fun `a second attach re-runs recovery without duplicating the pending card`() =
+        runBlocking {
+            // First attach recovers the pending card from GET /meals/pending.
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            // Second attach's GET /meals/pending finds the same card still pending.
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val session = buildSessionStore()
+
+            session.attach().join()
+            assertEquals(1, session.messages.value.filterIsInstance<ChatMsg.Card>().size)
+
+            session.attach().join()
+
+            val cards = session.messages.value.filterIsInstance<ChatMsg.Card>()
+            assertEquals(1, cards.size)
+            assertTrue(cards[0].state is CardState.Active)
+        }
+
+    /**
+     * #40 follow-up (regression 2): recovery must not fire while signed out
+     * — the old construction-time one-shot could run before any session
+     * existed at all, hitting `GET /meals/pending` unauthenticated. Only one
+     * response is enqueued; a recovery call while signed out would consume
+     * it and leave the real `attach()` after sign-in with an empty
+     * `MockWebServer` queue, which would throw instead of returning
+     * normally.
+     */
+    @Test
+    fun `attach does not call recovery while signed out`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(EMPTY_PENDING_BODY))
+            val authGateway = FakeAuthGateway(SessionState.SignedOut)
+            val session = buildSessionStore(sessionManager = SessionManager(authGateway))
+
+            session.attach().join()
+            assertEquals(emptyList<ChatMsg>(), session.messages.value)
+
+            authGateway.sessionState.value = SessionState.SignedIn("user-1")
+            session.attach().join()
+
+            assertEquals(emptyList<ChatMsg>(), session.messages.value)
         }
 
     private fun activeCardOf(viewModel: ChatViewModel): ChatMsg.Card? =

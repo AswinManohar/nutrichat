@@ -2,6 +2,8 @@ package app.mealsy.android.ui.chat
 
 import app.mealsy.android.di.ApplicationScope
 import app.mealsy.android.util.ConnectivityObserver
+import app.mealsy.data.auth.SessionManager
+import app.mealsy.data.auth.SessionState
 import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.LogOutcome
@@ -30,6 +32,12 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** [ChatSessionStore]'s internal key for "signed out" — distinct from any real user id. */
+private const val SIGNED_OUT_KEY = "\u0000signed-out"
+
+/** Sentinel meaning "no session observed yet" — distinct from [SIGNED_OUT_KEY] and any user id. */
+private const val UNSET_KEY = "\u0000unset"
+
 /**
  * Holds the single chat conversation's transcript and in-flight work, shared
  * by every [ChatViewModel] instance regardless of which nav-graph entry
@@ -51,6 +59,16 @@ import javax.inject.Singleton
  * `viewModelScope`; [ChatViewModel] is now a thin per-screen forwarder onto
  * this store (see its KDoc).
  *
+ * Being a singleton means it outlives any one user's sign-in, so it also
+ * observes [SessionManager.sessionState] to reset itself on sign-out/sign-in
+ * (or a same-device switch to a different account) — see [resetForNewSession]
+ * — rather than leaking one user's transcript into the next session. Pending
+ * recovery (`GET /meals/pending`) also isn't a construction-time one-shot any
+ * more: it re-runs on every [attach] (i.e. every `ChatViewModel` creation),
+ * gated to only fire while [SessionManager.sessionState] is
+ * [SessionState.SignedIn] and skipped while a send is already in flight — see
+ * [attach].
+ *
  * @param clock Injected so tests can pin timestamps and [defaultMealCategory].
  */
 @Singleton
@@ -61,6 +79,7 @@ class ChatSessionStore
         private val connectivity: ConnectivityObserver,
         private val myMealsRepository: MyMealsRepository,
         private val droppedLogStore: DroppedLogStore,
+        private val sessionManager: SessionManager,
         @ApplicationScope private val scope: CoroutineScope,
         private val clock: Clock = Clock.systemDefaultZone(),
     ) {
@@ -80,6 +99,30 @@ class ChatSessionStore
         private val _toasts = MutableSharedFlow<String>(extraBufferCapacity = 4)
         val toasts: SharedFlow<String> = _toasts
 
+        /**
+         * The last-observed session identity: a user id, [SIGNED_OUT_KEY], or
+         * [UNSET_KEY] before the first [SessionState] is seen. Used purely to
+         * detect a *change* of identity (sign-out, sign-in, or a same-device
+         * switch to a different account) in [resetForNewSession] — comparing
+         * successive [SessionState.SignedIn] values by id, not by reference,
+         * since e.g. a token refresh emits a new but same-user `SignedIn`.
+         */
+        private var sessionKey: String = UNSET_KEY
+
+        /**
+         * The child job all message-mutating work (send/confirm/cancel/edit/
+         * recovery) is launched under. Cancelled and replaced wholesale in
+         * [resetForNewSession] so a sign-out (or account switch) can't let a
+         * stale request from the old user's session land after the
+         * transcript has already been reset — a plain per-call `Job` field
+         * would need every launch site to remember to check it.
+         */
+        private var sessionJob = kotlinx.coroutines.SupervisorJob(scope.coroutineContext[Job])
+        private var sessionScope: CoroutineScope = CoroutineScope(scope.coroutineContext + sessionJob)
+
+        /** The most recently launched [attach] recovery job — exposed via [attach]'s return value for tests to join. */
+        private var recoveryJob: Job = completedJob()
+
         init {
             // Primary offline signal: with no pending card there may be no
             // in-flight network call left to ever clear a stale `_offline=true`
@@ -88,55 +131,136 @@ class ChatSessionStore
             // chat input stays locked out until the process restarts. The
             // request-driven sets elsewhere (send/confirm/cancel/startup)
             // remain a secondary signal — they fire immediately on a call's
-            // actual outcome without waiting for the OS to notice.
+            // actual outcome without waiting for the OS to notice. This
+            // collector lives on the outer [scope], not [sessionScope]: it's
+            // not user-specific and must keep running across a sign-out.
             scope.launch {
                 connectivity.isOnline.collect { online -> _offline.value = !online }
+            }
+
+            // #40 follow-up: this store is a process-wide singleton, so it
+            // outlives any one user's sign-in. Without this, signing out and
+            // back in (or switching accounts on the same device) would leave
+            // the previous user's transcript on screen. `sessionState` is a
+            // hot StateFlow — comparing against [sessionKey] (not just
+            // reacting to every emission) is what makes this a no-op for a
+            // same-user re-emission (e.g. a token refresh), while still
+            // resetting on a genuine identity change either direction.
+            scope.launch {
+                sessionManager.sessionState.collect { state ->
+                    val newKey =
+                        when (state) {
+                            is SessionState.SignedIn -> state.userId
+                            SessionState.SignedOut -> SIGNED_OUT_KEY
+                            // Transient — wait for a real (signed-in/signed-out) value
+                            // rather than treating "loading" as its own identity.
+                            SessionState.Loading -> return@collect
+                        }
+                    if (newKey != sessionKey) {
+                        sessionKey = newKey
+                        resetForNewSession()
+                    }
+                }
             }
         }
 
         /**
-         * The startup job that recovers a pending card and surfaces any dropped
-         * offline logs. Runs once per process (this store is a singleton), so
-         * re-opening chat via the FAB after the tab already ran it is a no-op
-         * — nothing to join a second time. Exposed only so tests can
-         * [Job.join] it deterministically — production callers don't need to
-         * await it, the UI just observes the resulting state flows.
+         * Cancels all in-flight session work and clears the transcript —
+         * called whenever [sessionKey] changes (sign-out, sign-in, or a
+         * same-device account switch). Recovery for the *new* session is
+         * NOT re-triggered here: it runs from [attach], the same as any
+         * other chat-screen open, once a `ChatViewModel` is actually created
+         * against the new session.
          */
-        val readyJob: Job =
-            scope.launch {
-                // Surface (once — consumeDropped clears the counter) however many
-                // queued meals ReplayWorker gave up on or poison-deleted, per the
-                // CARRIED FINDING from Task 7: an offline log silently vanishing
-                // must leave a user-visible trace, not just a Crashlytics record.
-                try {
-                    val droppedCount = droppedLogStore.consumeDropped()
-                    if (droppedCount > 0) {
-                        val notice =
-                            if (droppedCount == 1) {
-                                "A queued meal from earlier couldn't be synced and was dropped."
-                            } else {
-                                "$droppedCount queued meals couldn't be synced and were dropped."
-                            }
-                        appendCoach(notice)
-                    }
-                } catch (exc: CancellationException) {
-                    throw exc
-                } catch (exc: Exception) {
-                    // Best-effort — a failure reading this counter must not block startup.
+        private fun resetForNewSession() {
+            sessionJob.cancel()
+            sessionJob = kotlinx.coroutines.SupervisorJob(scope.coroutineContext[Job])
+            sessionScope = CoroutineScope(scope.coroutineContext + sessionJob)
+            recoveryJob = completedJob()
+            _messages.value = emptyList()
+            _sending.value = false
+            _savingMeal.value = false
+        }
+
+        /** An already-completed [Job], for [attach] call sites that have nothing to run. */
+        private fun completedJob(): Job = Job().apply { complete() }
+
+        /**
+         * Called by every new [ChatViewModel] (i.e. every chat-screen open,
+         * FAB or tab) to re-run pending-card recovery (`GET /meals/pending`).
+         * This used to be a construction-time one-shot ([recoveryJob] simply
+         * ran once when the singleton was first built) — which could run
+         * before any session existed (recovering 401s), and never re-ran
+         * later, even though the same recovery used to happen on every chat
+         * open when [ChatViewModel] owned it directly (e.g. a card left
+         * pending from another device or Telegram, or the app resuming after
+         * hours in the background).
+         *
+         * A no-op (returns the previous [recoveryJob] rather than launching a
+         * new one) while a send/confirm/cancel/etc is already in flight —
+         * racing recovery against an active card's own request could stomp
+         * whichever finishes last. Also a no-op (an already-[completedJob])
+         * while signed out: [SessionManager]'s token provider has nothing to
+         * attach to `GET /meals/pending` yet, and `checkOnboarding` may not
+         * have even resolved.
+         *
+         * Returns the [Job] so tests (and this store's own KDoc contract) can
+         * await it deterministically.
+         */
+        fun attach(): Job {
+            if (_sending.value) return recoveryJob
+            if (sessionManager.sessionState.value !is SessionState.SignedIn) return completedJob()
+            val job = sessionScope.launch { runRecovery() }
+            recoveryJob = job
+            return job
+        }
+
+        /** The actual recovery body shared by every [attach] call. */
+        private suspend fun runRecovery() {
+            // Surface (once — consumeDropped clears the counter) however many
+            // queued meals ReplayWorker gave up on or poison-deleted, per the
+            // CARRIED FINDING from Task 7: an offline log silently vanishing
+            // must leave a user-visible trace, not just a Crashlytics record.
+            try {
+                val droppedCount = droppedLogStore.consumeDropped()
+                if (droppedCount > 0) {
+                    val notice =
+                        if (droppedCount == 1) {
+                            "A queued meal from earlier couldn't be synced and was dropped."
+                        } else {
+                            "$droppedCount queued meals couldn't be synced and were dropped."
+                        }
+                    appendCoach(notice)
                 }
-                try {
-                    val recovered = repository.recoverPending()
-                    if (recovered != null) appendCard(recovered)
-                    _offline.value = false
-                } catch (exc: CancellationException) {
-                    throw exc
-                } catch (exc: IOException) {
-                    _offline.value = true
-                } catch (exc: Exception) {
-                    // HttpException or anything else on startup recovery isn't fatal
-                    // and there's no chat transcript yet to report it into.
-                }
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                // Best-effort — a failure reading this counter must not block startup.
             }
+            try {
+                val recovered = repository.recoverPending()
+                // A second (or later) attach() must not re-append the same
+                // still-pending card every time chat is reopened — compare
+                // against the already-shown active card (there's no server
+                // id on ConfirmationCard to key off; content equality is the
+                // available substitute) and only append when it's actually
+                // new/different. Normalize the mealType the same way
+                // appendCard does first — otherwise a raw "unspecified" from
+                // the wire would never equal the already-defaulted active
+                // card and this would re-append every time.
+                if (recovered != null && withDefaultMealType(recovered) != activeCard()) {
+                    appendCard(recovered)
+                }
+                _offline.value = false
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: IOException) {
+                _offline.value = true
+            } catch (exc: Exception) {
+                // HttpException or anything else on recovery isn't fatal —
+                // the existing transcript (if any) stays as-is.
+            }
+        }
 
         /**
          * Sends [text] as a new turn: appends a user bubble, then handles the
@@ -145,7 +269,7 @@ class ChatSessionStore
         fun send(text: String): Job {
             appendUser(text)
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     handleTurnResult(repository.sendTurn(text))
                     _offline.value = false
@@ -173,7 +297,7 @@ class ChatSessionStore
         fun sendPhoto(bitmap: android.graphics.Bitmap): Job {
             _messages.value = _messages.value + ChatMsg.Photo(newId(), clock.millis(), bitmap)
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     // JPEG compression is CPU-bound; keep it off the main thread
                     // so a large capture doesn't cause a frame-drop stutter.
@@ -207,6 +331,10 @@ class ChatSessionStore
             }
         }
 
+        /** Fills in [ConfirmationCard.mealType] via [defaultMealCategory] when the wire left it "unspecified". */
+        private fun withDefaultMealType(card: ConfirmationCard): ConfirmationCard =
+            if (card.mealType == "unspecified") card.copy(mealType = defaultMealCategory(clock)) else card
+
         /** Returns the id of the newest still-interactive card, or null if there isn't one. */
         private fun activeCardId(): String? {
             val msg = _messages.value.lastOrNull { it is ChatMsg.Card } as? ChatMsg.Card ?: return null
@@ -219,12 +347,7 @@ class ChatSessionStore
          * `mealStore.ts`'s `stampResolvedCard`).
          */
         private fun appendCard(card: ConfirmationCard) {
-            val withMealType =
-                if (card.mealType == "unspecified") {
-                    card.copy(mealType = defaultMealCategory(clock))
-                } else {
-                    card
-                }
+            val withMealType = withDefaultMealType(card)
             stampActiveCard(CardState.NotLogged)
             _messages.value = _messages.value + ChatMsg.Card(newId(), clock.millis(), withMealType, CardState.Active)
         }
@@ -322,7 +445,7 @@ class ChatSessionStore
             val from = card.items[index].foodName
             replaceActiveCard(CardEditor.replaceCandidate(card, index, newName), CardState.Swapping)
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     when (val result = repository.correctCandidate(from, newName)) {
                         is TurnResult.Card -> replaceActiveCard(result.card, CardState.Active)
@@ -363,7 +486,7 @@ class ChatSessionStore
         private fun runCardMutation(call: suspend () -> TurnResult): Job? {
             val card = activeCard() ?: return null
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     when (val result = call()) {
                         is TurnResult.Card -> replaceActiveCard(result.card, CardState.Active)
@@ -402,7 +525,7 @@ class ChatSessionStore
             val activeId = activeCardId() ?: return null
             val card = activeCard() ?: return null
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     when (val outcome = repository.confirmCard(card)) {
                         is LogOutcome.Logged -> {
@@ -458,7 +581,7 @@ class ChatSessionStore
         fun cancel(): Job? {
             if (activeCardId() == null) return null
             _sending.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     when (val result = repository.cancelCard()) {
                         is TurnResult.Reply -> {
@@ -497,7 +620,7 @@ class ChatSessionStore
         fun onSaveAsMyMeal(name: String): Job? {
             val card = activeCard() ?: return null
             _savingMeal.value = true
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     myMealsRepository.save(card, name)
                     _toasts.tryEmit("Saved \"$name\" to My Meals.")
@@ -534,7 +657,7 @@ class ChatSessionStore
             val responseId = msg.responseId ?: return null
             val previous = msg.feedback
             setCoachFeedback(messageId, rating)
-            return scope.launch {
+            return sessionScope.launch {
                 try {
                     repository.submitCoachingFeedback(responseId, rating)
                 } catch (exc: CancellationException) {
