@@ -1,9 +1,6 @@
 package app.mealsy.android.ui.chat
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,9 +13,12 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.android.R
@@ -77,6 +76,16 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
+ * Bottom clearance the composer reserves at rest so the floating nav pill +
+ * FAB (drawn as a `Box` overlay by `AppNav`) never covers it (#37) — the same
+ * 120dp every other bottom-nav-showing screen reserves via
+ * `Modifier.mealsyScreenPadding()`. Not applied while the IME is visible: the
+ * pill hides itself then (see `AppNav`) and `Modifier.imePadding()` already
+ * puts the composer directly above the keyboard.
+ */
+private const val NAV_PILL_CLEARANCE = 120
+
+/**
  * The chat screen: header, inline transcript (including the confirmation
  * card as a first-class transcript entry), and input bar.
  *
@@ -92,6 +101,7 @@ import java.util.Locale
  *   per screen instance (see [rememberSaveable] guard below), so a
  *   recomposition or configuration change doesn't replay them.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(
     quickLog: Boolean = false,
@@ -128,26 +138,11 @@ fun ChatScreen(
         }
     }
 
-    // POST_NOTIFICATIONS is a runtime permission on API 33+; request it the
-    // first time the user reaches the chat screen (the only place FCM
-    // notifications are relevant), rather than at app startup.
+    // POST_NOTIFICATIONS is requested contextually now (batch J: the settings
+    // reminder-toggle flow), not as a cold system dialog on first chat entry
+    // (#44) — that used to fire right when the user was trying to type their
+    // first meal, before they had any reason to want notifications.
     val context = LocalContext.current
-    val notificationPermissionLauncher =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestPermission(),
-        ) { /* no-op: MealsyMessagingService already guards notify() against denial */ }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted =
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
 
     // Speech recognition is optional hardware/software — hide the mic
     // entirely when no recognizer is registered, rather than showing a
@@ -189,7 +184,15 @@ fun ChatScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(colors.canvas)) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // #37 (blocker): the pill/FAB overlay (`AppNav.MealsyBottomBar`) hides
+        // itself while the IME is visible, so `imePadding()` here is enough to
+        // put the composer directly above the keyboard with nothing covering
+        // it. At rest (IME closed) the pill is still drawn as a `Box` overlay
+        // on top of this screen, so the composer needs its own bottom
+        // clearance to sit above it — the same 120dp every other
+        // bottom-nav-showing screen reserves via `mealsyScreenPadding()`.
+        val imeVisible = WindowInsets.isImeVisible
+        Column(modifier = Modifier.fillMaxSize().imePadding()) {
             ChatHeader()
 
             if (messages.isEmpty() && !sending) {
@@ -263,6 +266,7 @@ fun ChatScreen(
                         input = ""
                     }
                 },
+                modifier = Modifier.padding(bottom = if (imeVisible) 0.dp else NAV_PILL_CLEARANCE.dp),
             )
         }
 
@@ -700,10 +704,11 @@ private fun ChatInputBar(
     onMicClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onCameraClick, enabled = enabled) {

@@ -7,7 +7,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -372,6 +375,7 @@ internal fun MealsyBottomBar(
  * `Scaffold`+`bottomBar` would instead hand back an `innerPadding` sized to
  * the bar's actual (non-floating) height and double up that clearance.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppNav(navController: NavHostController = rememberNavController()) {
     val viewModel: AppNavViewModel = hiltViewModel()
@@ -546,7 +550,13 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         }
                     }
 
-                    if (activeTab != null) {
+                    // #37 (blocker): hide the floating pill/FAB while the IME is
+                    // open — with it drawn as an overlay `Box`, the composer on
+                    // Chat (and any future screen with a text field) would
+                    // otherwise sit directly underneath it once both are lifted
+                    // above the keyboard.
+                    val imeVisible = WindowInsets.isImeVisible
+                    if (activeTab != null && !imeVisible) {
                         MealsyBottomBar(
                             selectedRoute = activeTab,
                             onSelect = { route ->
