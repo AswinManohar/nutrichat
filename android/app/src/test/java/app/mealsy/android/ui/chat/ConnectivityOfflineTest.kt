@@ -121,7 +121,7 @@ class ConnectivityOfflineTest {
                     ChatSessionStore(
                         repository,
                         connectivity,
-                        MyMealsRepository(api, todayRefreshSignal),
+                        MyMealsRepository(api, todayRefreshSignal, app.mealsy.data.repo.MyMealsRefreshSignal()),
                         NoopDroppedLogStore(),
                         SessionManager(FakeAuthGateway()),
                         CoroutineScope(Dispatchers.Unconfined),
@@ -168,7 +168,7 @@ class ConnectivityOfflineTest {
                     ChatSessionStore(
                         repository,
                         connectivity,
-                        MyMealsRepository(api, todayRefreshSignal),
+                        MyMealsRepository(api, todayRefreshSignal, app.mealsy.data.repo.MyMealsRefreshSignal()),
                         NoopDroppedLogStore(),
                         SessionManager(FakeAuthGateway()),
                         CoroutineScope(Dispatchers.Unconfined),

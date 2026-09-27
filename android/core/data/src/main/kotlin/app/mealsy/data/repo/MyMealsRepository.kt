@@ -65,6 +65,7 @@ class MyMealsRepository
     constructor(
         private val api: MealsyApi,
         private val todayRefreshSignal: TodayRefreshSignal,
+        private val myMealsRefreshSignal: MyMealsRefreshSignal,
     ) {
         suspend fun list(): List<SavedMeal> = api.myMeals().map { it.toSavedMeal() }
 
@@ -87,6 +88,7 @@ class MyMealsRepository
                     ingredients = fromCard.items.map { it.toSavedIngredientDto(fromCard.portion) },
                 ),
             )
+            myMealsRefreshSignal.notifyChanged()
         }
 
         /** Quick-logs the saved meal [id] verbatim (1x) at [mealType]. */
@@ -121,7 +123,17 @@ class MyMealsRepository
             todayRefreshSignal.notifyLogged()
         }
 
-        /** Soft-deletes the saved meal [id]. Not idempotency-keyed — see the mobile API contract's retry rules. */
+        /**
+         * Soft-deletes the saved meal [id]. Not idempotency-keyed — see the
+         * mobile API contract's retry rules.
+         *
+         * Deliberately does not call [MyMealsRefreshSignal.notifyChanged]:
+         * delete only ever runs from My Meals' own swipe-to-delete flow, whose
+         * ViewModel already updates its list locally (see
+         * [app.mealsy.android.ui.mymeals.MyMealsViewModel.commitDelete]).
+         * Emitting here too would make that ViewModel redundantly refetch its
+         * own delete via [MyMealsRefreshSignal]'s collector.
+         */
         suspend fun delete(id: String) {
             api.deleteMyMeal(id)
         }

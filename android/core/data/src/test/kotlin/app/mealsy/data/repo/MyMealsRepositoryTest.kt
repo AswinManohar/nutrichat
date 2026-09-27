@@ -50,7 +50,10 @@ class MyMealsRepositoryTest {
         server.shutdown()
     }
 
-    private fun buildRepository(todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal()): MyMealsRepository {
+    private fun buildRepository(
+        todayRefreshSignal: TodayRefreshSignal = TodayRefreshSignal(),
+        myMealsRefreshSignal: MyMealsRefreshSignal = MyMealsRefreshSignal(),
+    ): MyMealsRepository {
         val client =
             OkHttpClient.Builder()
                 .addInterceptor(AuthInterceptor(TokenProvider { "token" }))
@@ -63,7 +66,7 @@ class MyMealsRepositoryTest {
                 .addConverterFactory(json.asConverterFactory(contentType))
                 .build()
         val api = retrofit.create(MealsyApi::class.java)
-        return MyMealsRepository(api, todayRefreshSignal)
+        return MyMealsRepository(api, todayRefreshSignal, myMealsRefreshSignal)
     }
 
     private val listGoldenJson =
@@ -178,6 +181,52 @@ class MyMealsRepositoryTest {
             server.enqueue(MockResponse().setResponseCode(409).setBody("""{"detail":"duplicate"}"""))
 
             buildRepository().save(sampleCard(), "My eggs")
+        }
+
+    @Test
+    fun `save does not emit the refresh signal on a 409 conflict`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(409).setBody("""{"detail":"duplicate"}"""))
+
+            val signal = MyMealsRefreshSignal()
+            val emitted = async { withTimeoutOrNull(300) { signal.events.first() } }
+            yield()
+            try {
+                buildRepository(myMealsRefreshSignal = signal).save(sampleCard(), "My eggs")
+            } catch (exc: HttpException) {
+                // expected — the assertion is that no signal fired despite the failure.
+            }
+
+            assertEquals(null, emitted.await())
+        }
+
+    @Test
+    fun `save on success emits MyMealsRefreshSignal so a live My Meals screen refetches`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(201).setBody(
+                    """
+                    {
+                      "id": "meal_1",
+                      "name": "My eggs",
+                      "kcal": 465.0,
+                      "protein_g": 39.0,
+                      "carbs_g": 3.3,
+                      "fat_g": 33.0,
+                      "fiber_g": 0.0,
+                      "n_ingredients": 1,
+                      "logged_today": false
+                    }
+                    """.trimIndent(),
+                ),
+            )
+
+            val signal = MyMealsRefreshSignal()
+            val emitted = async { withTimeoutOrNull(1_000) { signal.events.first() } }
+            yield() // let the collector above subscribe before the emit fires
+            buildRepository(myMealsRefreshSignal = signal).save(sampleCard(), "My eggs")
+
+            assertEquals(Unit, emitted.await())
         }
 
     @Test
@@ -314,5 +363,21 @@ class MyMealsRepositoryTest {
             val request = server.takeRequest()
             assertEquals("DELETE", request.method)
             assertEquals("/my-meals/meal_1", request.path)
+        }
+
+    @Test
+    fun `delete does not emit MyMealsRefreshSignal`() =
+        runBlocking {
+            // delete() only ever runs from My Meals' own swipe-to-delete flow,
+            // which already updates its list locally — see
+            // MyMealsRepository.delete's doc comment.
+            server.enqueue(MockResponse().setResponseCode(204))
+
+            val signal = MyMealsRefreshSignal()
+            val emitted = async { withTimeoutOrNull(300) { signal.events.first() } }
+            yield()
+            buildRepository(myMealsRefreshSignal = signal).delete("meal_1")
+
+            assertEquals(null, emitted.await())
         }
 }

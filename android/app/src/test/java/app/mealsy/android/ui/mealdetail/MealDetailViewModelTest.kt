@@ -27,6 +27,7 @@ import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.ConversationIdStore
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.MealsRepository
+import app.mealsy.data.repo.MyMealsRefreshSignal
 import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.TodayRefreshSignal
 import kotlinx.coroutines.Dispatchers
@@ -239,7 +240,7 @@ class MealDetailViewModelTest {
         return MealDetailViewModel(
             savedStateHandle = SavedStateHandle(navArgs),
             mealsRepository = MealsRepository(api, todayRefreshSignal),
-            myMealsRepository = MyMealsRepository(api, todayRefreshSignal),
+            myMealsRepository = MyMealsRepository(api, todayRefreshSignal, MyMealsRefreshSignal()),
             chatRepository = ChatRepository(api, FakeConversationIdStore(), FakePendingLogQueue(), Json, todayRefreshSignal),
             goalsRepository = GoalsRepository(api),
             api = api,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelStore
 import app.mealsy.data.api.AuthInterceptor
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
+import app.mealsy.data.repo.MyMealsRefreshSignal
 import app.mealsy.data.repo.MyMealsRepository
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.CoroutineScope
@@ -80,9 +81,10 @@ class MyMealsViewModelTest {
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildViewModel(): MyMealsViewModel =
+    private fun buildViewModel(refreshSignal: MyMealsRefreshSignal = MyMealsRefreshSignal()): MyMealsViewModel =
         MyMealsViewModel(
-            MyMealsRepository(buildApi(), app.mealsy.data.repo.TodayRefreshSignal()),
+            MyMealsRepository(buildApi(), app.mealsy.data.repo.TodayRefreshSignal(), refreshSignal),
+            refreshSignal,
             appScope,
         )
 

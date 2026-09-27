@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.di.ApplicationScope
 import app.mealsy.android.ui.common.ErrorKind
+import app.mealsy.data.repo.MyMealsRefreshSignal
 import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.SavedMeal
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +73,7 @@ class MyMealsViewModel
     @Inject
     constructor(
         private val repository: MyMealsRepository,
+        private val refreshSignal: MyMealsRefreshSignal,
         @ApplicationScope private val appScope: CoroutineScope,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow<MyMealsUiState>(MyMealsUiState.Loading)
@@ -95,6 +97,19 @@ class MyMealsViewModel
 
         /** Exposed only so tests can [Job.join] the initial load deterministically. */
         val readyJob: Job = load()
+
+        init {
+            // #41: a meal can be saved to My Meals from chat's confirm card, not
+            // just from this screen — and this ViewModel survives tab switches
+            // (its back-stack entry stays alive), so without this the list would
+            // only pick up a chat-side save on the next process restart.
+            // [MyMealsRepository] emits on [MyMealsRefreshSignal] after a
+            // successful save or delete; refetch whenever it does, even if this
+            // save came from another screen's ViewModel entirely.
+            viewModelScope.launch {
+                refreshSignal.events.collect { load() }
+            }
+        }
 
         /** Re-runs the list load — used by the error state's retry button and after a save-from-chat. */
         fun load(): Job {

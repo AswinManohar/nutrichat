@@ -178,7 +178,7 @@ class ChatViewModelTest {
         return ChatSessionStore(
             repository,
             FakeOnlineConnectivityObserver(),
-            app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
+            app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal, app.mealsy.data.repo.MyMealsRefreshSignal()),
             droppedLogStore,
             sessionManager,
             CoroutineScope(Dispatchers.Unconfined),
