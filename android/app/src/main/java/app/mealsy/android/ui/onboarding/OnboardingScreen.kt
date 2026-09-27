@@ -455,6 +455,33 @@ private fun targetWhyCopy(goal: OnboardingGoal?): String =
         null -> stringResource(R.string.onboarding_target_why_default)
     }
 
+/**
+ * Fills the step-4 coach note that recaps the user's chosen dietary
+ * preferences ("Noted — I'll keep suggestions vegetarian."), or the
+ * no-prefs default when none were picked.
+ *
+ * Pure (no `stringResource` calls) so every [DietaryPref] combination can
+ * be exercised by a plain JUnit test without a Compose/resource context —
+ * callers resolve [prefLabels] and the templates via `stringResource`
+ * first. [prefsTemplate] and [prefsMoreTemplate] are `%1$s`-style resource
+ * templates ([R.string.onboarding_target_coach_note_prefs] and
+ * [R.string.onboarding_target_coach_note_prefs_more]); [prefsMoreTemplate]
+ * is used whenever [hasMorePrefs] is true (more than the two prefs already
+ * folded into [prefLabels]).
+ */
+internal fun buildCoachNoteText(
+    prefLabels: List<String>,
+    hasMorePrefs: Boolean,
+    defaultText: String,
+    prefsTemplate: String,
+    prefsMoreTemplate: String,
+): String {
+    if (prefLabels.isEmpty()) return defaultText
+    val joined = prefLabels.joinToString(" and ") { it.lowercase() }
+    val template = if (hasMorePrefs) prefsMoreTemplate else prefsTemplate
+    return String.format(template, joined)
+}
+
 @Composable
 private fun TargetStep(
     state: OnboardingUiState,
@@ -527,19 +554,13 @@ private fun TargetStep(
         }
 
         val coachNoteText =
-            if (state.coachNotePrefs.isEmpty()) {
-                stringResource(R.string.onboarding_target_coach_note_default)
-            } else {
-                val joined =
-                    state.coachNotePrefs
-                        .map { pref -> stringResource(PREF_LABELS.getValue(pref)) }
-                        .joinToString(" and ") { it.lowercase() }
-                if (state.hasMorePrefs) {
-                    stringResource(R.string.onboarding_target_coach_note_prefs_more, joined)
-                } else {
-                    stringResource(R.string.onboarding_target_coach_note_prefs, joined)
-                }
-            }
+            buildCoachNoteText(
+                prefLabels = state.coachNotePrefs.map { pref -> stringResource(PREF_LABELS.getValue(pref)) },
+                hasMorePrefs = state.hasMorePrefs,
+                defaultText = stringResource(R.string.onboarding_target_coach_note_default),
+                prefsTemplate = stringResource(R.string.onboarding_target_coach_note_prefs),
+                prefsMoreTemplate = stringResource(R.string.onboarding_target_coach_note_prefs_more),
+            )
         CoachNote(text = coachNoteText, modifier = Modifier.padding(top = 12.dp))
     }
 }

@@ -118,8 +118,8 @@
     <string name="onboarding_target_min_kcal">1,400</string>
     <string name="onboarding_target_max_kcal">3,200</string>
     <string name="onboarding_target_mindful_note">Awareness only — no daily target</string>
-    <string name="onboarding_target_coach_note_prefs">Noted — I’ll steer around %1$s when suggesting meals.</string>
-    <string name="onboarding_target_coach_note_prefs_more">Noted — I’ll steer around %1$s and more when suggesting meals.</string>
+    <string name="onboarding_target_coach_note_prefs">Noted — I’ll keep suggestions %1$s.</string>
+    <string name="onboarding_target_coach_note_prefs_more">Noted — I’ll keep suggestions %1$s and more.</string>
     <string name="onboarding_target_coach_note_default">I’ll suggest a mix of whole foods and keep portions realistic.</string>
 
     <!-- Onboarding: step 5 — done -->
