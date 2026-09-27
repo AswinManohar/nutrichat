@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -131,24 +135,36 @@ fun StatusPill(
                     }
                 }
 
-                Text(
-                    text = eatenLabel,
-                    style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
-                    color = colors.oliveText,
+                // Both labels are drawn twice, stacked, and clipped at the
+                // bite boundary (see [StatusPillLabels]): [colors.oliveTrackValue]
+                // for whichever glyphs sit over the oliveTrack background,
+                // [colors.oliveText] for whichever sit over the solid olive
+                // block. In light mode both tokens are the same dark ink, so
+                // this is visually identical to before; in dark mode
+                // oliveText is a near-black tuned for the light olive block
+                // and is illegible on the dark oliveTrack fill on its own —
+                // this dual-color clip is what keeps every character
+                // readable regardless of which segment it falls over (#47).
+                Box(
                     modifier =
                         Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 18.dp),
-                )
-                Text(
-                    text = stateLabel,
-                    style = MealsyType.body,
-                    color = colors.oliveText,
+                            .fillMaxSize()
+                            .drawWithContent {
+                                clipRect(right = biteXDp.toPx()) { this@drawWithContent.drawContent() }
+                            },
+                ) {
+                    StatusPillLabels(eatenLabel, stateLabel, textColor = colors.oliveTrackValue)
+                }
+                Box(
                     modifier =
                         Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 18.dp),
-                )
+                            .fillMaxSize()
+                            .drawWithContent {
+                                clipRect(left = biteXDp.toPx()) { this@drawWithContent.drawContent() }
+                            },
+                ) {
+                    StatusPillLabels(eatenLabel, stateLabel, textColor = colors.oliveText)
+                }
             }
 
             if (mascot != null) {
@@ -174,6 +190,37 @@ fun StatusPill(
             }
         }
     }
+}
+
+/**
+ * [StatusPill]'s two labels ("eaten" at the start, "state" at the end), both
+ * rendered in a single [textColor]. Called twice by [StatusPill] — once per
+ * clip region — to build the dual-color label described there.
+ */
+@Composable
+private fun BoxScope.StatusPillLabels(
+    eatenLabel: String,
+    stateLabel: String,
+    textColor: Color,
+) {
+    Text(
+        text = eatenLabel,
+        style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
+        color = textColor,
+        modifier =
+            Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 18.dp),
+    )
+    Text(
+        text = stateLabel,
+        style = MealsyType.body,
+        color = textColor,
+        modifier =
+            Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 18.dp),
+    )
 }
 
 /**
