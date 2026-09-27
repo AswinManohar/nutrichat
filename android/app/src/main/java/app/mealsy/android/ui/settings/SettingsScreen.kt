@@ -506,7 +506,9 @@ private fun PreferencesSection(
         Spacer(modifier = Modifier.height(10.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // 12dp so the 48dp touch targets of adjacent rows don't overlap
+            // (#48 item 6).
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             DietaryPref.entries.forEach { pref ->
                 FilterChipPill(

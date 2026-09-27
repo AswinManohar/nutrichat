@@ -2,20 +2,30 @@ package app.mealsy.android.design.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -48,39 +58,73 @@ fun <T> SegmentedControl(
     label: (T) -> String,
 ) {
     val colors = MealsyTheme.colors
+    val density = LocalDensity.current
+    var trackWidthPx by remember { mutableIntStateOf(0) }
+    val selectedIndex = options.indexOf(selected).coerceAtLeast(0)
+    val segmentWidthDp =
+        if (trackWidthPx == 0 || options.isEmpty()) {
+            0.dp
+        } else {
+            with(density) { (trackWidthPx / options.size).toDp() }
+        }
+    // A single sliding thumb, rather than per-segment background color
+    // animations, so the selection reads as one control moving rather than
+    // four buttons independently swapping color.
+    val thumbOffset by animateDpAsState(
+        targetValue = segmentWidthDp * selectedIndex,
+        animationSpec = mealsyTween(200),
+        label = "segment-thumb-offset",
+    )
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MealsyShapes.pill,
         color = colors.canvas,
         border = BorderStroke(1.dp, colors.hairline),
     ) {
-        Row(modifier = Modifier.padding(3.dp)) {
-            options.forEach { option ->
-                val isSelected = option == selected
-                val backgroundColor by animateColorAsState(
-                    targetValue = if (isSelected) colors.ink else Color.Transparent,
-                    animationSpec = mealsyTween(150),
-                    label = "segment-bg",
-                )
-                val textColor = if (isSelected) colors.canvas else colors.muted
+        Box(
+            modifier =
+                Modifier
+                    .padding(3.dp)
+                    .height(IntrinsicSize.Min)
+                    .onSizeChanged { trackWidthPx = it.width },
+        ) {
+            if (segmentWidthDp > 0.dp) {
                 Box(
                     modifier =
                         Modifier
-                            .weight(1f)
-                            .background(backgroundColor, MealsyShapes.pill)
-                            .semantics {
-                                role = Role.RadioButton
-                                this.selected = isSelected
-                            }
-                            .clickable { onSelect(option) }
-                            .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = label(option),
-                        style = MealsyType.badge.copy(fontSize = 13.sp),
-                        color = textColor,
+                            .offset(x = thumbOffset)
+                            .width(segmentWidthDp)
+                            .fillMaxHeight()
+                            .background(colors.ink, MealsyShapes.pill),
+                )
+            }
+            Row {
+                options.forEach { option ->
+                    val isSelected = option == selected
+                    val textColor by animateColorAsState(
+                        targetValue = if (isSelected) colors.canvas else colors.muted,
+                        animationSpec = mealsyTween(150),
+                        label = "segment-text",
                     )
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .semantics {
+                                    role = Role.RadioButton
+                                    this.selected = isSelected
+                                }
+                                .clickable { onSelect(option) }
+                                .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = label(option),
+                            style = MealsyType.badge.copy(fontSize = 13.sp),
+                            color = textColor,
+                        )
+                    }
                 }
             }
         }

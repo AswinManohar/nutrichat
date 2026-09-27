@@ -3,7 +3,6 @@ package app.mealsy.android.design.components
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -22,6 +21,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
+import app.mealsy.android.design.theme.mealsyTween
+import app.mealsy.android.design.theme.rememberMealsyHaptics
 
 /**
  * Mealsy's on/off toggle switch, used for preference and settings rows.
@@ -42,14 +43,15 @@ fun MealsyToggle(
     enabled: Boolean = true,
 ) {
     val colors = MealsyTheme.colors
+    val haptics = rememberMealsyHaptics()
     val trackColor by animateColorAsState(
         targetValue = if (checked) colors.olive else colors.hairline,
-        animationSpec = tween(150),
+        animationSpec = mealsyTween(150),
         label = "toggle-track",
     )
     val thumbOffset by animateDpAsState(
         targetValue = if (checked) 18.dp else 0.dp,
-        animationSpec = tween(150),
+        animationSpec = mealsyTween(150),
         label = "toggle-thumb",
     )
 
@@ -62,7 +64,10 @@ fun MealsyToggle(
                     value = checked,
                     enabled = enabled,
                     role = Role.Switch,
-                    onValueChange = onCheckedChange,
+                    onValueChange = {
+                        haptics.tick()
+                        onCheckedChange(it)
+                    },
                 )
                 .background(trackColor, MealsyShapes.pill)
                 .padding(3.dp),

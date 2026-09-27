@@ -1,6 +1,8 @@
 package app.mealsy.android.design.components
 
 import android.content.res.Configuration
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -29,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.mealsyTween
 
 /**
  * The visual style variants for [MealsyButton], mirroring the "Buttons"
@@ -80,13 +84,23 @@ fun MealsyButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val backgroundColor =
+    val targetBackgroundColor =
         when (style) {
             MealsyButtonStyle.Primary -> if (pressed) colors.inkPressed else colors.ink
             MealsyButtonStyle.Secondary -> if (pressed) colors.surface else Color.Transparent
             MealsyButtonStyle.Destructive -> colors.terracotta
             MealsyButtonStyle.DestructiveOutline -> Color.Transparent
         }
+    val backgroundColor by animateColorAsState(
+        targetValue = targetBackgroundColor,
+        animationSpec = mealsyTween(100),
+        label = "button-bg",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.98f else 1f,
+        animationSpec = mealsyTween(100),
+        label = "button-scale",
+    )
     val textColor =
         when (style) {
             MealsyButtonStyle.Primary -> colors.canvas
@@ -105,6 +119,7 @@ fun MealsyButton(
         modifier =
             modifier
                 .height(50.dp)
+                .scale(scale)
                 .alpha(if (enabled) 1f else 0.35f)
                 .semantics { this.contentDescription = contentDescription ?: text }
                 .clickable(

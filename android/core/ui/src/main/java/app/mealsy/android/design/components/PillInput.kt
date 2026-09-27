@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -74,26 +76,23 @@ fun PillInput(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 15.dp, horizontal = 20.dp),
+                    .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
-                if (value.isEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = MealsyType.button,
-                        color = colors.inactive,
-                        maxLines = if (singleLine) 1 else Int.MAX_VALUE,
-                        overflow = if (singleLine) TextOverflow.Ellipsis else TextOverflow.Clip,
-                    )
-                }
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
+                    // The 15dp vertical padding lives inside the text field's
+                    // own `decorationBox` (rather than on the outer `Row`) so
+                    // it is part of the field's hit-box: a tap on the top or
+                    // bottom of the visible pill focuses the field instead of
+                    // landing in a dead zone outside it.
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .onFocusChanged { focused = it.isFocused },
+                            .onFocusChanged { focused = it.isFocused }
+                            .semantics { contentDescription = placeholder },
                     enabled = enabled,
                     singleLine = singleLine,
                     textStyle = MealsyType.button.copy(color = colors.ink),
@@ -101,6 +100,22 @@ fun PillInput(
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
                     interactionSource = remember { MutableInteractionSource() },
+                    decorationBox = { innerTextField ->
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier.padding(vertical = 15.dp),
+                        ) {
+                            if (value.isEmpty()) {
+                                Text(
+                                    text = placeholder,
+                                    style = MealsyType.button,
+                                    color = colors.inactive,
+                                    maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                                    overflow = if (singleLine) TextOverflow.Ellipsis else TextOverflow.Clip,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
                 )
             }
             if (trailing != null) {

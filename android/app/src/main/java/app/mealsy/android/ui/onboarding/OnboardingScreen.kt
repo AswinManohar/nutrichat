@@ -391,7 +391,10 @@ private fun PrefsStep(
 
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // 12dp, not 8dp: chips are ~36dp visual but expand to a 48dp
+            // touch target, so rows need >=48-36=12dp of vertical gap or the
+            // targets overlap and the lower row wins the tap (#48 item 6).
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             DietaryPref.entries.forEach { pref ->
                 FilterChipPill(
