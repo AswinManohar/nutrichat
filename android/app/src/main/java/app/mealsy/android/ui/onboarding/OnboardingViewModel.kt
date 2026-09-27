@@ -83,6 +83,13 @@ private const val KCAL_STEP = 50
 private const val FALLBACK_KCAL_TARGET = 2200
 private const val LAST_STEP = 5
 
+/**
+ * Longest name accepted on step 1. Without a cap, a long typed/pasted name
+ * overflows the step-2 heading ("What are you here for, %1\$s?") and can
+ * leave the "?" orphaned on its own line (#46).
+ */
+internal const val MAX_NAME_LENGTH = 30
+
 private const val KEY_STEP = "onboarding_step"
 private const val KEY_NAME = "onboarding_name"
 private const val KEY_GOAL = "onboarding_goal"
@@ -206,8 +213,9 @@ class OnboardingViewModel
         private fun firstNameOf(name: String): String = name.trim().substringBefore(' ')
 
         fun setName(value: String) {
-            savedStateHandle[KEY_NAME] = value
-            _uiState.update { recompute(it.copy(name = value)) }
+            val truncated = value.take(MAX_NAME_LENGTH)
+            savedStateHandle[KEY_NAME] = truncated
+            _uiState.update { recompute(it.copy(name = truncated)) }
         }
 
         fun selectGoal(goal: OnboardingGoal) {

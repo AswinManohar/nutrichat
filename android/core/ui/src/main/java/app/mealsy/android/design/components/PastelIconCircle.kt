@@ -14,8 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -71,6 +70,10 @@ fun PastelIconCircle(
  * see `android/CLAUDE.md`.
  *
  * @param initial The single character to render, in [MealsyType.section].
+ *   Purely decorative — the initial always duplicates a sibling text label
+ *   (e.g. a [SelectableCard] title), so it's cleared from the semantics
+ *   tree rather than exposed as its own content description; otherwise
+ *   TalkBack announces the bare letter ("L") before every option.
  * @param tone Which pastel tone fills the circle.
  * @param modifier The modifier applied to the circle.
  * @param size The circle's diameter.
@@ -84,7 +87,7 @@ fun PastelIconCircle(
 ) {
     val resolved = tone.resolve()
     Surface(
-        modifier = modifier.size(size).semantics { this.contentDescription = initial.toString() },
+        modifier = modifier.size(size).clearAndSetSemantics {},
         shape = CircleShape,
         color = resolved.fill,
     ) {

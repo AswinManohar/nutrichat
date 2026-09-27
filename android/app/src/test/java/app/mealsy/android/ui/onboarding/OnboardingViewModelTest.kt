@@ -231,6 +231,19 @@ class OnboardingViewModelTest {
         }
 
     @Test
+    fun `setName truncates to MAX_NAME_LENGTH characters`() =
+        runTest {
+            val vm = viewModel()
+            vm.next() // 0 -> 1
+
+            val long = "Bartholomew-Maximilian-Alexandrovich-Windermere" // 48 chars
+            vm.setName(long)
+
+            assertEquals(MAX_NAME_LENGTH, vm.uiState.value.name.length)
+            assertEquals(long.take(MAX_NAME_LENGTH), vm.uiState.value.name)
+        }
+
+    @Test
     fun `step 2 continue disabled until a goal is picked`() =
         runTest {
             val vm = viewModel()
