@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
@@ -295,11 +296,22 @@ private fun StepScaffold(
 private fun StepTitle(text: String) {
     Text(
         text = text,
-        style = MealsyType.screenTitle,
+        // LineBreak.Heading favors more even, higher-quality line breaks
+        // for short headings — helps keep a trailing "?" from stranding
+        // itself alone on the last line (#46).
+        style = MealsyType.screenTitle.copy(lineBreak = LineBreak.Heading),
         color = MealsyTheme.colors.ink,
         modifier = Modifier.padding(top = 28.dp, bottom = 8.dp),
     )
 }
+
+/**
+ * Swaps a plain hyphen for U+2011 NON-BREAKING HYPHEN in a display name so a
+ * hyphenated name (e.g. "Anne-Marie") can't wrap mid-name and leave a
+ * trailing "?" stranded on its own line (#46). Only affects rendering —
+ * the raw [OnboardingUiState.firstName]/`name` fields are untouched.
+ */
+internal fun headingSafeName(name: String): String = name.replace('-', '‑')
 
 @Composable
 private fun StepSubtitle(text: String) {
@@ -369,7 +381,7 @@ private fun GoalStep(
             if (state.firstName.isBlank()) {
                 stringResource(R.string.onboarding_goal_title_no_name)
             } else {
-                stringResource(R.string.onboarding_goal_title, state.firstName)
+                stringResource(R.string.onboarding_goal_title, headingSafeName(state.firstName))
             }
         StepTitle(title)
         StepSubtitle(stringResource(R.string.onboarding_goal_subtitle))

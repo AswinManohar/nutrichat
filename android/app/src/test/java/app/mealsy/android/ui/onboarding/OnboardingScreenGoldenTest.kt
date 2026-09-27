@@ -109,6 +109,14 @@ class OnboardingScreenGoldenTest : AppScreenshotTestBase() {
             render(state(step = 2, name = "Alex", goal = OnboardingGoal.Maintain))
         }
 
+    // A long, hyphenated, near-cap-length name at 2x font — regression
+    // coverage for #46 (heading "?" must never strand on its own line).
+    @Test
+    fun step2Goal_light_longHyphenatedName_fontScale200() =
+        captureMealsy("Onboarding_step2Goal_longName", false, 2.0f) {
+            render(state(step = 2, name = "Anne-Marie-Louise", goal = OnboardingGoal.Maintain))
+        }
+
     // --- Step 3: Preferences (two selected) -------------------------------
 
     @Test

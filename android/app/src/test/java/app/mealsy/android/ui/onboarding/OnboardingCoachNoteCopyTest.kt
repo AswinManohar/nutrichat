@@ -87,3 +87,30 @@ class OnboardingCoachNoteCopyTest {
         assertEquals("Noted — I’ll keep suggestions vegetarian and no nuts and more.", result)
     }
 }
+
+/**
+ * Covers [headingSafeName] (#46 follow-up): a hyphenated name must not
+ * offer a line-break opportunity that could strand the goal-step heading's
+ * trailing "?" on its own line.
+ */
+class OnboardingHeadingSafeNameTest {
+    @Test
+    fun hyphens_becomeNonBreakingHyphens() {
+        assertEquals("Anne‑Marie", headingSafeName("Anne-Marie"))
+    }
+
+    @Test
+    fun multipleHyphens_allReplaced() {
+        assertEquals("A‑B‑C", headingSafeName("A-B-C"))
+    }
+
+    @Test
+    fun nameWithoutHyphen_unchanged() {
+        assertEquals("Alex", headingSafeName("Alex"))
+    }
+
+    @Test
+    fun blankName_unchanged() {
+        assertEquals("", headingSafeName(""))
+    }
+}
