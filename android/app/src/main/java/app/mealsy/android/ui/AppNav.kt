@@ -6,12 +6,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +37,7 @@ import app.mealsy.android.design.components.MealsyNavItem
 import app.mealsy.android.design.components.OliveFab
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.LocalReducedMotion
+import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.di.AppVersionCode
 import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
@@ -210,6 +211,11 @@ class AppNavViewModel
         private var onboardingChecked = false
 
         init {
+            // #49 item 4: `checkGate()` (GET /meta/app) and `observeSignIn()`
+            // (session restore, then GET /goals for the onboarding check) each
+            // launch their own coroutine here rather than one calling the other
+            // — they run in parallel, not as a serial `/meta/app -> /goals`
+            // waterfall, since neither depends on the other's result.
             checkGate()
             observeSignIn()
         }
@@ -270,6 +276,27 @@ class AppNavViewModel
          */
         fun onOnboardingComplete() {
             _onboardingState.value = OnboardingState.NotNeeded
+        }
+
+        /**
+         * Whether startup's routing decision is resolved — the gate check has
+         * cleared and (for a signed-in user) the onboarding check has too — so
+         * [MainActivity]'s splash screen can come down straight into real
+         * content (Home, onboarding, or login) instead of a spinner.
+         *
+         * #49 item 4: this is a plain synchronous snapshot, not a suspend
+         * function or a `Flow` collector, because
+         * `SplashScreen.setKeepOnScreenCondition`'s predicate is polled by the
+         * framework on the main thread every time it's about to draw a frame —
+         * it can't suspend.
+         */
+        fun isStartupReady(): Boolean {
+            if (gateState.value == GateState.Checking) return false
+            return when (val session = sessionState.value) {
+                SessionState.Loading -> false
+                SessionState.SignedOut -> true
+                is SessionState.SignedIn -> onboardingState.value != OnboardingState.Unknown
+            }
         }
 
         private fun checkGate() {
@@ -383,9 +410,13 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
 
     when (gateState) {
         GateState.Checking -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            // #49 item 4: this state (and the "awaiting onboarding check" branch
+            // below) is exactly the window MainActivity's splash screen now
+            // covers via AppNavViewModel.isStartupReady() — a bare canvas-colored
+            // box rather than a spinner, since it should never actually be
+            // visible under normal timing and shouldn't read as a second,
+            // different loading visual if it is (a slow first frame, etc.).
+            Box(modifier = Modifier.fillMaxSize().background(MealsyTheme.colors.canvas))
         }
 
         GateState.UpdateRequired -> UpdateRequiredScreen()
@@ -403,9 +434,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
             if (sessionState == SessionState.Loading || awaitingOnboardingCheck) {
                 // Session status isn't known yet — avoid flashing LoginScreen under the
                 // NavHost before the first real sessionState value arrives.
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                Box(modifier = Modifier.fillMaxSize().background(MealsyTheme.colors.canvas))
             } else {
                 // Login/onboarding/settings/meal-detail render with no bottom nav —
                 // only the four tab destinations (home/my-meals/trends/chat) get it.

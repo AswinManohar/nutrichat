@@ -3,10 +3,9 @@ package app.mealsy.android.ui.home
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.android.data.TodayRepository
 import app.mealsy.android.design.components.TagTone
-import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TodayResponse
-import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
 import app.mealsy.domain.Goals
@@ -144,8 +143,7 @@ data class HomeUiState(
 class HomeViewModel
     @Inject
     constructor(
-        private val api: MealsyApi,
-        private val goalsRepository: GoalsRepository,
+        private val todayRepository: TodayRepository,
         private val profileStore: ProfileStore,
         private val todayRefreshSignal: TodayRefreshSignal,
         private val clock: Clock,
@@ -183,14 +181,17 @@ class HomeViewModel
 
         private suspend fun loadOnce() {
             try {
-                val (today, goals, profile) =
+                // #49 item 4: routed through the shared TodayRepository (rather than
+                // calling the API/GoalsRepository directly) so a redundant concurrent
+                // load — e.g. this init load racing HomeScreen's synthetic ON_RESUME —
+                // joins the same in-flight request instead of duplicating it.
+                val (snapshot, profile) =
                     coroutineScope {
-                        val todayDeferred = async { api.today() }
-                        val goalsDeferred = async { goalsRepository.get() }
+                        val snapshotDeferred = async { todayRepository.get() }
                         val profileDeferred = async { profileStore.get() }
-                        Triple(todayDeferred.await(), goalsDeferred.await(), profileDeferred.await())
+                        snapshotDeferred.await() to profileDeferred.await()
                     }
-                _uiState.value = buildState(today, goals, profile?.firstName)
+                _uiState.value = buildState(snapshot.today, snapshot.goals, profile?.firstName)
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {

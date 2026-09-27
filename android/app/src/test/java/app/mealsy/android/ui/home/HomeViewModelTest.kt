@@ -1,5 +1,6 @@
 package app.mealsy.android.ui.home
 
+import app.mealsy.android.data.TodayRepository
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.ByTypeDto
 import app.mealsy.data.api.CategoryStatDto
@@ -26,8 +27,10 @@ import app.mealsy.data.repo.Profile
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
 import app.mealsy.domain.ProteinFood
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -166,6 +169,19 @@ private fun goalsResponse(
     dietaryPrefs = JsonObject(dietaryPrefs.mapValues { (_, v) -> JsonPrimitive(v) }),
 )
 
+/**
+ * A real [TodayRepository] over a [FakeMealsyApi] — [HomeViewModel] no
+ * longer talks to [MealsyApi]/[GoalsRepository] directly (#49 item 4's
+ * in-flight-coalescing dedupe), so tests build the repository the same way
+ * production DI does rather than faking it out.
+ */
+private fun todayRepository(api: FakeMealsyApi): TodayRepository =
+    TodayRepository(
+        api = api,
+        goalsRepository = GoalsRepository(api),
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+    )
+
 /** Clock fixed at a given local hour on an arbitrary date, in UTC. */
 private fun clockAtHour(
     hour: Int,
@@ -194,8 +210,7 @@ class HomeViewModelTest {
         val api = FakeMealsyApi(todayResponse, goals, throwOnToday)
         val vm =
             HomeViewModel(
-                api = api,
-                goalsRepository = GoalsRepository(api),
+                todayRepository = todayRepository(api),
                 profileStore = FakeProfileStore(profile),
                 todayRefreshSignal = TodayRefreshSignal(),
                 clock = clock,
@@ -484,8 +499,7 @@ class HomeViewModelTest {
             val signal = TodayRefreshSignal()
             val vm =
                 HomeViewModel(
-                    api = api,
-                    goalsRepository = GoalsRepository(api),
+                    todayRepository = todayRepository(api),
                     profileStore = FakeProfileStore(Profile(firstName = "Alex")),
                     todayRefreshSignal = signal,
                     clock = clockAtHour(13),
@@ -511,8 +525,7 @@ class HomeViewModelTest {
         val api = FakeMealsyApi(today(), goalsResponse(), throwOnToday = true)
         val vm =
             HomeViewModel(
-                api = api,
-                goalsRepository = GoalsRepository(api),
+                todayRepository = todayRepository(api),
                 profileStore = FakeProfileStore(Profile(firstName = "Alex")),
                 todayRefreshSignal = TodayRefreshSignal(),
                 clock = clockAtHour(13),

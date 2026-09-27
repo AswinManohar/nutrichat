@@ -1,16 +1,29 @@
 package app.mealsy.android.ui.home
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -20,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -39,11 +53,12 @@ import app.mealsy.android.design.components.StatusPillAwareness
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
+import app.mealsy.android.design.theme.LocalReducedMotion
+import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
 import app.mealsy.android.ui.common.ErrorState
-import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.domain.ProteinFood
 
 /**
@@ -107,10 +122,102 @@ internal fun HomeContent(
     modifier: Modifier = Modifier,
 ) {
     when {
-        state.loading -> LoadingState(message = stringResource(R.string.home_loading), modifier = modifier)
+        state.loading -> HomeSkeleton(modifier = modifier)
         state.error -> ErrorState(message = stringResource(R.string.home_error), onRetry = onRetry, modifier = modifier)
         else -> HomeLoaded(state, onOpenSettings, onOpenMealType, modifier)
     }
+}
+
+/**
+ * Home's initial-load placeholder (#49 item 4): a static outline of the real
+ * layout — status pill, three macro cards, four meal rows — in `surface`,
+ * rather than a bare "Loading…" [LoadingState] text. Paired with
+ * [app.mealsy.android.MainActivity]'s splash hold, this is the only loading
+ * visual most sign-ins ever see: the splash covers the gate/session/
+ * onboarding check, and this covers Home's own first `/goals` +
+ * `/meals/today` fetch.
+ */
+@Composable
+private fun HomeSkeleton(modifier: Modifier = Modifier) {
+    val colors = MealsyTheme.colors
+    Column(modifier = modifier.mealsyScreenPadding()) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(modifier = Modifier.weight(1f)) {
+                SkeletonBlock(width = 96.dp, height = 12.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+                SkeletonBlock(width = 200.dp, height = 30.dp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(44.dp))
+
+        SkeletonBlock(width = Dp.Unspecified, height = 64.dp, fillWidth = true)
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            repeat(3) {
+                SkeletonBlock(width = Dp.Unspecified, height = 78.dp, fillWidth = true, modifier = Modifier.weight(1f))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        SkeletonBlock(width = 140.dp, height = 16.dp)
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Surface(shape = MealsyShapes.card, color = colors.surface, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                repeat(4) { index ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SkeletonBlock(width = 34.dp, height = 34.dp, shape = CircleShape)
+                        SkeletonBlock(width = 90.dp, height = 14.dp)
+                    }
+                    if (index != 3) InsetDivider()
+                }
+            }
+        }
+    }
+}
+
+/** One skeleton placeholder shape — `divider`-colored, pulsing gently unless [LocalReducedMotion] is set. */
+@Composable
+private fun SkeletonBlock(
+    width: Dp,
+    height: Dp,
+    modifier: Modifier = Modifier,
+    fillWidth: Boolean = false,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp),
+) {
+    val colors = MealsyTheme.colors
+    val reducedMotion = LocalReducedMotion.current
+    val alpha =
+        if (reducedMotion) {
+            0.6f
+        } else {
+            val transition = rememberInfiniteTransition(label = "skeletonPulse")
+            val animated by transition.animateFloat(
+                initialValue = 0.45f,
+                targetValue = 0.85f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(900, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "skeletonPulseAlpha",
+            )
+            animated
+        }
+    val sized = if (fillWidth) modifier.fillMaxWidth().height(height) else modifier.width(width).height(height)
+    Box(modifier = sized.background(colors.divider.copy(alpha = alpha), shape))
 }
 
 @Composable

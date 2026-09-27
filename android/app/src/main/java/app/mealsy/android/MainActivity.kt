@@ -5,10 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.push.EXTRA_OPEN_CHAT
 import app.mealsy.android.ui.AppNav
+import app.mealsy.android.ui.AppNavViewModel
 import app.mealsy.data.auth.AuthCallbackErrors
 import app.mealsy.data.auth.parseAuthCallbackError
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,13 +33,26 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var authCallbackErrors: AuthCallbackErrors
 
+    // Same Hilt-provided `AppNavViewModel` instance `AppNav()`'s `hiltViewModel()`
+    // resolves to below (both are scoped to this Activity) — obtained here too
+    // so the splash screen's keep-on-screen predicate can poll its startup state
+    // before `setContent`/`AppNav()` ever composes.
+    private val appNavViewModel: AppNavViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         supabaseClient.handleDeeplinks(intent)
         handleAuthCallbackError(intent)
         logNotificationOpenIfPresent(intent)
+
+        // #49 item 4: one loading visual at startup, not three — hold the
+        // branded splash on screen until the version gate AND the
+        // session/onboarding check have both resolved, instead of dropping to
+        // a spinner (then a second spinner, then a bare "Loading…" screen)
+        // while those are still in flight.
+        splashScreen.setKeepOnScreenCondition { !appNavViewModel.isStartupReady() }
 
         setContent {
             MealsyTheme {
