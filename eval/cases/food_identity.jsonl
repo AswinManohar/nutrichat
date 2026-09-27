@@ -20,3 +20,4 @@
 {"query": "apple", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["apple, raw", "apples, raw"], "category": "bare_noun"}
 {"query": "cheese", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["cheese, nfs"], "category": "bare_noun"}
 {"query": "bread", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, white", "bread, wheat", "bread, whole wheat", "bread, nfs"], "category": "bare_noun"}
+{"query": "2 eggs and toast", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread,"], "category": "preparation"}

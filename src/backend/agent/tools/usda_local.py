@@ -36,6 +36,7 @@ from backend.agent.tools.usda_match import (
     _description_coverage,
     _generic_rank,
     _head_purity,
+    _normalize_preparation,
     _tokenize,
 )
 
@@ -405,6 +406,7 @@ def lookup(
         The best ``LocalMatch``, or None if the query tokenizes to nothing
         or no candidates are found.
     """
+    food_name = _normalize_preparation(food_name)
     tokens = _tokenize(food_name)
     if not tokens:
         return None
