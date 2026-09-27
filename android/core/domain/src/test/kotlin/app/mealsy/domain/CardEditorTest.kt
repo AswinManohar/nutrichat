@@ -223,4 +223,13 @@ class CardEditorTest {
         assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(23, 59)))
         assertEquals("snack", defaultMealCategory(java.time.LocalTime.of(0, 0)))
     }
+
+    @Test
+    fun `scaledQtyG multiplies targetQtyG by the card's portion`() {
+        val i = item(targetQtyG = 127.0)
+
+        assertEquals(127.0, scaledQtyG(i, portion = 1.0), 0.0001)
+        assertEquals(254.0, scaledQtyG(i, portion = 2.0), 0.0001)
+        assertEquals(63.5, scaledQtyG(i, portion = 0.5), 0.0001)
+    }
 }

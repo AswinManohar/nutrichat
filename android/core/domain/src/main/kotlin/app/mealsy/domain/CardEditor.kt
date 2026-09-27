@@ -41,6 +41,18 @@ object CardEditor {
         return card.copy(items = items)
     }
 
+    /**
+     * Returns [CardItem.targetQtyG] scaled by [portion] — the actual grams
+     * that will be logged for this item (and what `toSavedIngredientDto`
+     * sends on the wire as `qtyG`). Item-row UIs must render this, not the
+     * raw [CardItem.targetQtyG], or a portion change silently stops updating
+     * the displayed grams while still updating kcal (#46).
+     */
+    fun scaledQtyG(
+        item: CardItem,
+        portion: Double,
+    ): Double = item.targetQtyG * portion
+
     /** Returns a copy of [card] with its overall [ConfirmationCard.portion] set. */
     fun setPortion(
         card: ConfirmationCard,

@@ -46,7 +46,6 @@ import org.junit.Before
 import org.junit.Test
 import java.time.Clock
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneOffset
 
 /** A [MealsyApi] fake implementing only what [MealDetailViewModel] and its repositories use. */
@@ -384,16 +383,6 @@ class MealDetailViewModelTest {
             val state = vm.uiState.value as MealDetailUiState.Loaded
             assertEquals(MealDetailStatus.Logged, state.status)
         }
-
-    @Test
-    fun `mealTypeForLocalTime boundaries`() {
-        assertEquals("breakfast", mealTypeForLocalTime(LocalTime.of(10, 29)))
-        assertEquals("lunch", mealTypeForLocalTime(LocalTime.of(10, 30)))
-        assertEquals("lunch", mealTypeForLocalTime(LocalTime.of(14, 59)))
-        assertEquals("dinner", mealTypeForLocalTime(LocalTime.of(15, 0)))
-        assertEquals("dinner", mealTypeForLocalTime(LocalTime.of(19, 59)))
-        assertEquals("snack", mealTypeForLocalTime(LocalTime.of(20, 0)))
-    }
 
     @Test
     fun `log-again in logged mode builds a ConfirmationCard and calls confirmCard once`() =

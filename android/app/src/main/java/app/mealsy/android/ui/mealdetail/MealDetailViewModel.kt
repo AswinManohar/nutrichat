@@ -17,6 +17,7 @@ import app.mealsy.data.repo.SavedMealOverride
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.Goals
+import app.mealsy.domain.defaultMealCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -33,7 +34,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 import java.time.Clock
-import java.time.LocalTime
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -126,29 +126,6 @@ sealed interface MealDetailEvent {
     data object Deleted : MealDetailEvent
 }
 
-private const val MORNING_END_HOUR = 10
-private const val MORNING_END_MINUTE = 30
-private const val LUNCH_END_HOUR = 15
-private const val DINNER_END_HOUR = 20
-
-/**
- * Default meal-type bucket for "log this as" based on the current local
- * time: before 10:30 -> breakfast, before 15:00 -> lunch, before 20:00 ->
- * dinner, else snack. A pure function so it's directly unit-testable at its
- * boundaries.
- */
-internal fun mealTypeForLocalTime(time: LocalTime): String {
-    val morningEnd = LocalTime.of(MORNING_END_HOUR, MORNING_END_MINUTE)
-    val lunchEnd = LocalTime.of(LUNCH_END_HOUR, 0)
-    val dinnerEnd = LocalTime.of(DINNER_END_HOUR, 0)
-    return when {
-        time < morningEnd -> "breakfast"
-        time < lunchEnd -> "lunch"
-        time < dinnerEnd -> "dinner"
-        else -> "snack"
-    }
-}
-
 /**
  * Drives the meal-detail screen for both a logged meal
  * ([MealDetailMode.Logged]) and a saved "My Meal" ([MealDetailMode.MyMeal]),
@@ -219,7 +196,7 @@ class MealDetailViewModel
                 }
             val ingredients = detail.items.map { it.toUiIngredient() }
             loadedIngredients = ingredients
-            _sheetState.value = LogAgainSheetState(mealType = mealTypeForLocalTime(LocalTime.now(clock)))
+            _sheetState.value = LogAgainSheetState(mealType = defaultMealCategory(clock))
 
             val title =
                 detail.meal.label?.takeIf { it.isNotBlank() }
@@ -253,7 +230,7 @@ class MealDetailViewModel
                 }
             val ingredients = detail.ingredients.map { it.toUiIngredient() }
             loadedIngredients = ingredients
-            _sheetState.value = LogAgainSheetState(mealType = mealTypeForLocalTime(LocalTime.now(clock)))
+            _sheetState.value = LogAgainSheetState(mealType = defaultMealCategory(clock))
 
             _uiState.value =
                 MealDetailUiState.Loaded(
