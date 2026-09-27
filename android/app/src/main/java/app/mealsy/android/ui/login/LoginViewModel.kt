@@ -3,14 +3,24 @@ package app.mealsy.android.ui.login
 import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.data.auth.AuthCallbackErrorKind
+import app.mealsy.data.auth.AuthCallbackErrors
+import app.mealsy.data.auth.GoogleAuthAvailabilityGateway
 import app.mealsy.data.auth.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.jan.supabase.gotrue.exception.AuthErrorCode
+import io.github.jan.supabase.gotrue.exception.AuthRestException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/** Seconds a user must wait before [LoginViewModel.resendMagicLink] is allowed again. */
+internal const val RESEND_COOLDOWN_SECONDS = 60
 
 /**
  * Login-specific error kinds. Login's failures are validation/auth outcomes,
@@ -23,18 +33,39 @@ sealed interface LoginErrorKind {
     /** The entered address failed [isValidEmail]'s format check. */
     data object InvalidEmail : LoginErrorKind
 
-    /** [SessionManager.signInWithMagicLink] threw. */
+    /** [SessionManager.signInWithMagicLink] threw, for a reason not covered below. */
     data object MagicLinkFailed : LoginErrorKind
 
     /** [SessionManager.signInWithGoogle] threw. */
     data object GoogleSignInFailed : LoginErrorKind
+
+    /**
+     * The `mealsy://auth-callback` link was opened a second time, or after
+     * its TTL elapsed (`otp_expired`) — either from
+     * [AuthCallbackErrors] or from a fresh
+     * [SessionManager.signInWithMagicLink]/resend call (#34).
+     */
+    data object LinkExpired : LoginErrorKind
+
+    /**
+     * Supabase's per-address/per-project send limit was hit (HTTP 429 /
+     * `over_email_send_rate_limit`), from either path above (#34).
+     */
+    data object RateLimited : LoginErrorKind
 }
 
 /** UI state for the login screen. */
 sealed interface LoginUiState {
     data object Idle : LoginUiState
 
-    data object AwaitingEmail : LoginUiState
+    /**
+     * @param email The address the link was (most recently) sent to — kept
+     *   so [LoginViewModel.resendMagicLink] knows where to resend without
+     *   the caller re-passing it.
+     * @param resendCooldownSeconds Seconds until "Resend link" is enabled
+     *   again; 0 means it's enabled now.
+     */
+    data class AwaitingEmail(val email: String, val resendCooldownSeconds: Int) : LoginUiState
 
     data class Error(val kind: LoginErrorKind) : LoginUiState
 }
@@ -44,14 +75,70 @@ private val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 /** Returns true when `email` is a plausible address to send a magic link to. */
 fun isValidEmail(email: String): Boolean = EMAIL_REGEX.matches(email.trim())
 
+/**
+ * Maps an exception from [SessionManager.signInWithMagicLink] to a
+ * [LoginErrorKind] (#34). supabase-kt surfaces Supabase's JSON error body as
+ * [AuthRestException], which carries both the HTTP status and Supabase's own
+ * `error_code`; a rate limit can show up as either (a `429` with a generic
+ * body, or a `200`-adjacent body naming `over_email_send_rate_limit`
+ * depending on which layer rejects the request), so both are checked.
+ */
+internal fun mapMagicLinkException(exc: Exception): LoginErrorKind =
+    when {
+        exc is AuthRestException &&
+            (exc.errorCode == AuthErrorCode.OverEmailSendRateLimit || exc.statusCode == 429) -> LoginErrorKind.RateLimited
+        exc is AuthRestException && exc.errorCode == AuthErrorCode.OtpExpired -> LoginErrorKind.LinkExpired
+        else -> LoginErrorKind.MagicLinkFailed
+    }
+
+/** Maps a parsed [AuthCallbackErrorKind] (from a deep link, #34) to a [LoginErrorKind]. */
+internal fun mapCallbackErrorKind(kind: AuthCallbackErrorKind): LoginErrorKind =
+    when (kind) {
+        AuthCallbackErrorKind.LINK_EXPIRED_OR_USED -> LoginErrorKind.LinkExpired
+        AuthCallbackErrorKind.RATE_LIMITED -> LoginErrorKind.RateLimited
+        AuthCallbackErrorKind.OTHER -> LoginErrorKind.MagicLinkFailed
+    }
+
 @HiltViewModel
 class LoginViewModel
     @Inject
     constructor(
         private val sessionManager: SessionManager,
+        private val authCallbackErrors: AuthCallbackErrors = AuthCallbackErrors(),
+        private val googleAuthAvailabilityGateway: GoogleAuthAvailabilityGateway =
+            object : GoogleAuthAvailabilityGateway {
+                override suspend fun isGoogleSignInEnabled() = true
+            },
     ) : ViewModel() {
         private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
         val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+        // #32: hidden (rather than defaulted visible-but-broken) until the
+        // one-time /auth/v1/settings fetch resolves, then reflects it;
+        // GoogleAuthAvailabilityGateway itself fails open on error/timeout,
+        // so this only ever stays false when Supabase confirms the provider
+        // is off.
+        private val _googleSignInAvailable = MutableStateFlow(true)
+        val googleSignInAvailable: StateFlow<Boolean> = _googleSignInAvailable.asStateFlow()
+
+        private var cooldownJob: Job? = null
+
+        init {
+            viewModelScope.launch {
+                _googleSignInAvailable.value = googleAuthAvailabilityGateway.isGoogleSignInEnabled()
+            }
+            // MainActivity owns the raw deep-link Intent (see
+            // AuthCallbackErrors' kdoc) and publishes here whenever it
+            // carries an error instead of a successful `code` — most
+            // notably an already-used/expired magic link opened on this
+            // device after another one already consumed it (#34).
+            viewModelScope.launch {
+                authCallbackErrors.errors.collect { error ->
+                    cooldownJob?.cancel()
+                    _uiState.value = LoginUiState.Error(mapCallbackErrorKind(error.kind))
+                }
+            }
+        }
 
         /** Validates `email` and, if valid, requests a magic link via [SessionManager]. */
         fun submitEmail(email: String) {
@@ -59,27 +146,70 @@ class LoginViewModel
                 _uiState.value = LoginUiState.Error(LoginErrorKind.InvalidEmail)
                 return
             }
+            val trimmed = email.trim()
             viewModelScope.launch {
                 try {
-                    sessionManager.signInWithMagicLink(email.trim())
-                    _uiState.value = LoginUiState.AwaitingEmail
+                    sessionManager.signInWithMagicLink(trimmed)
+                    enterAwaitingEmail(trimmed)
                 } catch (exc: CancellationException) {
                     throw exc
                 } catch (exc: Exception) {
-                    _uiState.value = LoginUiState.Error(LoginErrorKind.MagicLinkFailed)
+                    _uiState.value = LoginUiState.Error(mapMagicLinkException(exc))
                 }
             }
         }
 
         /**
+         * Re-sends the magic link to the address already in
+         * [LoginUiState.AwaitingEmail], and resets its cooldown. A no-op
+         * outside that state, or while the cooldown hasn't elapsed yet —
+         * [LoginScreen] disables the action in both cases, this just guards
+         * against a stale click racing a state change.
+         */
+        fun resendMagicLink() {
+            val current = _uiState.value
+            if (current !is LoginUiState.AwaitingEmail || current.resendCooldownSeconds > 0) return
+            viewModelScope.launch {
+                try {
+                    sessionManager.signInWithMagicLink(current.email)
+                    enterAwaitingEmail(current.email)
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: Exception) {
+                    _uiState.value = LoginUiState.Error(mapMagicLinkException(exc))
+                }
+            }
+        }
+
+        private fun enterAwaitingEmail(email: String) {
+            _uiState.value = LoginUiState.AwaitingEmail(email, RESEND_COOLDOWN_SECONDS)
+            startCooldown()
+        }
+
+        private fun startCooldown() {
+            cooldownJob?.cancel()
+            cooldownJob =
+                viewModelScope.launch {
+                    while (true) {
+                        delay(1_000)
+                        val current = _uiState.value
+                        if (current !is LoginUiState.AwaitingEmail || current.resendCooldownSeconds <= 0) return@launch
+                        _uiState.value = current.copy(resendCooldownSeconds = current.resendCooldownSeconds - 1)
+                    }
+                }
+        }
+
+        /**
          * Returns from [LoginUiState.AwaitingEmail] to the email-entry step.
          * Wired to system Back (#29 — every in-screen multi-step flow should
-         * step back rather than exit) so a user who sent themselves a magic
-         * link can correct the address or pick Google sign-in instead,
-         * without leaving the screen.
+         * step back rather than exit) and to the "Use a different email"
+         * link (#34), so a user who sent themselves a magic link can
+         * correct the address or pick Google sign-in instead, without
+         * leaving the screen.
          */
         fun backToEmail() {
-            if (_uiState.value == LoginUiState.AwaitingEmail) {
+            if (_uiState.value is LoginUiState.AwaitingEmail) {
+                cooldownJob?.cancel()
                 _uiState.value = LoginUiState.Idle
             }
         }

@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.gotrue.ExternalAuthAction
 import io.github.jan.supabase.gotrue.FlowType
 import io.github.jan.supabase.gotrue.auth
 import javax.inject.Singleton
@@ -36,6 +37,11 @@ object AuthModule {
                 scheme = "mealsy"
                 host = "auth-callback"
                 flowType = FlowType.PKCE
+                // #32: open OAuth (Google) in a Custom Tab the user can
+                // close back into the app, instead of full Chrome with no
+                // way back but switching apps. supabase-kt 2.6.0 exposes
+                // this directly on AuthConfig.
+                defaultExternalAuthAction = ExternalAuthAction.CustomTabs()
             }
         }
     }
@@ -47,6 +53,10 @@ object AuthModule {
     @Provides
     @Singleton
     fun provideAuthGateway(gateway: SupabaseAuthGateway): AuthGateway = gateway
+
+    @Provides
+    @Singleton
+    fun provideGoogleAuthAvailabilityGateway(gateway: SupabaseGoogleAuthAvailabilityGateway): GoogleAuthAvailabilityGateway = gateway
 
     @Provides
     @Singleton

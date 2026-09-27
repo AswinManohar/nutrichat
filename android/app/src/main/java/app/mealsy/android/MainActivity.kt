@@ -9,6 +9,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.push.EXTRA_OPEN_CHAT
 import app.mealsy.android.ui.AppNav
+import app.mealsy.data.auth.AuthCallbackErrors
+import app.mealsy.data.auth.parseAuthCallbackError
 import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.gotrue.handleDeeplinks
@@ -22,11 +24,19 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var supabaseClient: SupabaseClient
 
+    // #34: handleDeeplinks only acts on a `code` param and silently no-ops
+    // otherwise, so an error redirect (e.g. an expired/already-used magic
+    // link) needs its own parse here and a way to reach LoginViewModel,
+    // which owns the login screen's UI state — see AuthCallbackErrors' kdoc.
+    @Inject
+    lateinit var authCallbackErrors: AuthCallbackErrors
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         supabaseClient.handleDeeplinks(intent)
+        handleAuthCallbackError(intent)
         logNotificationOpenIfPresent(intent)
 
         setContent {
@@ -40,7 +50,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         supabaseClient.handleDeeplinks(intent)
+        handleAuthCallbackError(intent)
         logNotificationOpenIfPresent(intent)
+    }
+
+    private fun handleAuthCallbackError(intent: Intent) {
+        val uri = intent.data?.toString() ?: return
+        parseAuthCallbackError(uri)?.let { authCallbackErrors.publish(it) }
     }
 
     /**

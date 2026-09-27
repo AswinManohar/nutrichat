@@ -314,6 +314,11 @@
     <string name="login_error_invalid_email">Enter a valid email address.</string>
     <string name="login_error_magic_link_failed">Could not send magic link. Try again.</string>
     <string name="login_error_google_sign_in_failed">Google sign-in failed. Try again.</string>
+    <string name="login_error_link_expired">That link has expired or was already used — request a new one.</string>
+    <string name="login_error_rate_limited">Too many attempts — try again in a few minutes.</string>
+    <string name="login_resend_link">Resend link</string>
+    <string name="login_resend_link_cooldown">Resend link (%1$ds)</string>
+    <string name="login_use_different_email">Use a different email</string>
 
     <!-- Update-required gate -->
     <string name="update_required_title">Update required</string>

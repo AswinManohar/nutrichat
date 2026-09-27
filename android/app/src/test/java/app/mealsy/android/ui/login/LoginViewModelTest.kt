@@ -3,14 +3,20 @@ package app.mealsy.android.ui.login
 import android.app.Activity
 import app.cash.turbine.test
 import app.mealsy.android.ui.isUpdateRequired
+import app.mealsy.data.auth.AuthCallbackError
+import app.mealsy.data.auth.AuthCallbackErrorKind
+import app.mealsy.data.auth.AuthCallbackErrors
 import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.GoogleAuthAvailabilityGateway
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
+import io.github.jan.supabase.gotrue.exception.AuthRestException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -53,17 +59,28 @@ private class FakeAuthGateway : AuthGateway {
     override suspend fun currentProfileMetadata(): ProfileMetadata? = null
 }
 
+private class FakeGoogleAuthAvailabilityGateway(private val enabled: Boolean = true) : GoogleAuthAvailabilityGateway {
+    override suspend fun isGoogleSignInEnabled(): Boolean = enabled
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private lateinit var fakeAuthGateway: FakeAuthGateway
+    private lateinit var authCallbackErrors: AuthCallbackErrors
     private lateinit var viewModel: LoginViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         fakeAuthGateway = FakeAuthGateway()
-        viewModel = LoginViewModel(SessionManager(fakeAuthGateway))
+        authCallbackErrors = AuthCallbackErrors()
+        viewModel =
+            LoginViewModel(
+                sessionManager = SessionManager(fakeAuthGateway),
+                authCallbackErrors = authCallbackErrors,
+                googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(),
+            )
     }
 
     @After
@@ -79,7 +96,10 @@ class LoginViewModelTest {
 
                 viewModel.submitEmail("user@example.com")
 
-                assertEquals(LoginUiState.AwaitingEmail, awaitItem())
+                assertEquals(
+                    LoginUiState.AwaitingEmail("user@example.com", RESEND_COOLDOWN_SECONDS),
+                    awaitItem(),
+                )
                 assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
             }
         }
@@ -115,13 +135,59 @@ class LoginViewModelTest {
         }
 
     @Test
+    fun `429 magic link failure shows RateLimited error`() =
+        runTest {
+            fakeAuthGateway.throwOnMagicLink = AuthRestException("over_email_send_rate_limit", "too many", 429)
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.RateLimited, (state as LoginUiState.Error).kind)
+            }
+        }
+
+    @Test
+    fun `over_email_send_rate_limit error code shows RateLimited even without 429 status`() =
+        runTest {
+            fakeAuthGateway.throwOnMagicLink =
+                AuthRestException("over_email_send_rate_limit", "too many", 200)
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.RateLimited, (state as LoginUiState.Error).kind)
+            }
+        }
+
+    @Test
+    fun `otp_expired error code shows LinkExpired`() =
+        runTest {
+            fakeAuthGateway.throwOnMagicLink = AuthRestException("otp_expired", "expired", 403)
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.LinkExpired, (state as LoginUiState.Error).kind)
+            }
+        }
+
+    @Test
     fun `backToEmail returns from AwaitingEmail to Idle`() =
         runTest {
             viewModel.uiState.test {
                 assertEquals(LoginUiState.Idle, awaitItem())
 
                 viewModel.submitEmail("user@example.com")
-                assertEquals(LoginUiState.AwaitingEmail, awaitItem())
+                awaitItem()
 
                 viewModel.backToEmail()
                 assertEquals(LoginUiState.Idle, awaitItem())
@@ -140,6 +206,87 @@ class LoginViewModelTest {
 
                 viewModel.backToEmail()
                 expectNoEvents()
+            }
+        }
+
+    @Test
+    fun `resend is a no-op before the cooldown elapses`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+                awaitItem()
+                assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
+
+                viewModel.resendMagicLink()
+                // No new call, no new state — still under cooldown.
+                assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
+                expectNoEvents()
+            }
+        }
+
+    @Test
+    fun `cooldown ticks down and resend succeeds once it reaches zero`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+                assertEquals(
+                    LoginUiState.AwaitingEmail("user@example.com", RESEND_COOLDOWN_SECONDS),
+                    awaitItem(),
+                )
+
+                // Drain every 1s tick down to 0.
+                repeat(RESEND_COOLDOWN_SECONDS) { tick ->
+                    advanceTimeBy(1_000)
+                    assertEquals(
+                        LoginUiState.AwaitingEmail("user@example.com", RESEND_COOLDOWN_SECONDS - tick - 1),
+                        awaitItem(),
+                    )
+                }
+
+                viewModel.resendMagicLink()
+                assertEquals(
+                    LoginUiState.AwaitingEmail("user@example.com", RESEND_COOLDOWN_SECONDS),
+                    awaitItem(),
+                )
+                assertEquals(
+                    listOf("user@example.com", "user@example.com"),
+                    fakeAuthGateway.magicLinkCalls,
+                )
+            }
+        }
+
+    @Test
+    fun `auth callback error updates state to the mapped LoginErrorKind`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                authCallbackErrors.publish(
+                    AuthCallbackError(AuthCallbackErrorKind.LINK_EXPIRED_OR_USED, "otp_expired", null),
+                )
+
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.LinkExpired, (state as LoginUiState.Error).kind)
+            }
+        }
+
+    @Test
+    fun `google sign-in availability reflects the gateway`() =
+        runTest {
+            val hiddenViewModel =
+                LoginViewModel(
+                    sessionManager = SessionManager(FakeAuthGateway()),
+                    authCallbackErrors = AuthCallbackErrors(),
+                    googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(enabled = false),
+                )
+            hiddenViewModel.googleSignInAvailable.test {
+                assertEquals(true, awaitItem()) // default before the fetch resolves
+                assertEquals(false, awaitItem())
             }
         }
 

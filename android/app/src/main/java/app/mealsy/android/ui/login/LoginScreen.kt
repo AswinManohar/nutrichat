@@ -2,6 +2,7 @@ package app.mealsy.android.ui.login
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -47,6 +49,7 @@ import app.mealsy.android.design.theme.MealsyType
 @Composable
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val googleSignInAvailable by viewModel.googleSignInAvailable.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var email by remember { mutableStateOf("") }
 
@@ -55,10 +58,12 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
         email = email,
         onEmailChange = { email = it },
         onSubmitEmail = { viewModel.submitEmail(email) },
+        googleSignInAvailable = googleSignInAvailable,
         onSignInWithGoogle = {
             (context as? Activity)?.let { viewModel.signInWithGoogle(it) }
         },
         onBackToEmail = viewModel::backToEmail,
+        onResendMagicLink = viewModel::resendMagicLink,
     )
 }
 
@@ -74,7 +79,9 @@ fun LoginContent(
     onEmailChange: (String) -> Unit,
     onSubmitEmail: () -> Unit,
     onSignInWithGoogle: () -> Unit,
+    googleSignInAvailable: Boolean = true,
     onBackToEmail: () -> Unit = {},
+    onResendMagicLink: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
@@ -113,6 +120,39 @@ fun LoginContent(
                         color = colors.muted,
                         textAlign = TextAlign.Center,
                     )
+
+                    val cooldown = uiState.resendCooldownSeconds
+                    MealsyButton(
+                        text =
+                            if (cooldown > 0) {
+                                stringResource(R.string.login_resend_link_cooldown, cooldown)
+                            } else {
+                                stringResource(R.string.login_resend_link)
+                            },
+                        onClick = onResendMagicLink,
+                        enabled = cooldown <= 0,
+                        style = MealsyButtonStyle.Secondary,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                    )
+
+                    val useDifferentEmail = stringResource(R.string.login_use_different_email)
+                    Text(
+                        text = useDifferentEmail,
+                        style = MealsyType.body,
+                        color = colors.ink,
+                        textAlign = TextAlign.Center,
+                        modifier =
+                            Modifier
+                                .padding(top = 16.dp)
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = useDifferentEmail,
+                                    onClick = onBackToEmail,
+                                ),
+                    )
                 }
 
                 else -> {
@@ -141,6 +181,8 @@ fun LoginContent(
                                         LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
                                         LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
                                         LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
+                                        LoginErrorKind.LinkExpired -> R.string.login_error_link_expired
+                                        LoginErrorKind.RateLimited -> R.string.login_error_rate_limited
                                     },
                                 ),
                             style = MealsyType.body,
@@ -158,15 +200,20 @@ fun LoginContent(
                                 .padding(top = 16.dp),
                     )
 
-                    MealsyButton(
-                        text = stringResource(R.string.login_continue_with_google),
-                        onClick = onSignInWithGoogle,
-                        style = MealsyButtonStyle.Secondary,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp),
-                    )
+                    // #32: hidden rather than shown-then-erroring when
+                    // Supabase reports the Google provider isn't enabled for
+                    // this project — see GoogleAuthAvailabilityGateway.
+                    if (googleSignInAvailable) {
+                        MealsyButton(
+                            text = stringResource(R.string.login_continue_with_google),
+                            onClick = onSignInWithGoogle,
+                            style = MealsyButtonStyle.Secondary,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp),
+                        )
+                    }
                 }
             }
         }
