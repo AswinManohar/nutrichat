@@ -16,7 +16,7 @@
 
     <!-- Chat: header, empty state, input bar -->
     <string name="chat_coach_title">Coach</string>
-    <string name="chat_coach_subtitle">answers in about 15 seconds</string>
+    <string name="chat_coach_subtitle">usually replies in a moment</string>
     <string name="chat_empty_prompt">Tell me what you ate, in plain words.</string>
     <string name="chat_suggestion_eggs">2 eggs and toast</string>
     <string name="chat_suggestion_salad">Chicken salad for lunch</string>
