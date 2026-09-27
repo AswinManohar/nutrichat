@@ -7,6 +7,7 @@ import app.mealsy.data.auth.AuthCallbackErrorKind
 import app.mealsy.data.auth.AuthCallbackErrors
 import app.mealsy.data.auth.GoogleAuthAvailabilityGateway
 import app.mealsy.data.auth.SessionManager
+import app.mealsy.data.auth.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.github.jan.supabase.gotrue.exception.AuthErrorCode
 import io.github.jan.supabase.gotrue.exception.AuthRestException
@@ -131,11 +132,30 @@ class LoginViewModel
             // AuthCallbackErrors' kdoc) and publishes here whenever it
             // carries an error instead of a successful `code` — most
             // notably an already-used/expired magic link opened on this
-            // device after another one already consumed it (#34).
+            // device after another one already consumed it (#34). This also
+            // covers the app being cold-started by the error link itself:
+            // AuthCallbackErrors.pending is a StateFlow, so a publish from
+            // MainActivity.onCreate before this collector starts is still
+            // replayed here rather than lost.
             viewModelScope.launch {
-                authCallbackErrors.errors.collect { error ->
+                authCallbackErrors.pending.collect { error ->
+                    if (error == null) return@collect
                     cooldownJob?.cancel()
                     _uiState.value = LoginUiState.Error(mapCallbackErrorKind(error.kind))
+                    // Consumed immediately so a *later* LoginViewModel
+                    // (e.g. after the user backs out and returns) doesn't
+                    // re-show an error already surfaced once.
+                    authCallbackErrors.consume()
+                }
+            }
+            // A stale pending error (from the deep link that carried the
+            // session's own successful sign-in, or a leftover from before
+            // it) has nothing left to say once the user is signed in.
+            viewModelScope.launch {
+                sessionManager.sessionState.collect { state ->
+                    if (state is SessionState.SignedIn) {
+                        authCallbackErrors.consume()
+                    }
                 }
             }
         }

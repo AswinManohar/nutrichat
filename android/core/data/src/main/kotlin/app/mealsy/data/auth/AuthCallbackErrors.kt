@@ -1,7 +1,7 @@
 package app.mealsy.data.auth
 
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.net.URLDecoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,22 +37,33 @@ data class AuthCallbackError(
  * [LoginViewModel][app.mealsy.android.ui.login.LoginViewModel], which owns
  * the login screen's UI state and has no reason to know about `Intent`.
  *
- * A `SharedFlow` with no replay (rather than the `StateFlow` pattern used
- * elsewhere in this package) so an error already shown to the user doesn't
- * replay into a new `LoginViewModel` created later (e.g. after the user
- * dismisses it and navigates away and back). `extraBufferCapacity = 1` lets
- * [publish] succeed via `tryEmit` from `MainActivity`'s UI thread even
- * before `LoginViewModel` has started collecting.
+ * A consume-once pending slot (`MutableStateFlow<AuthCallbackError?>`)
+ * rather than a `SharedFlow`: the main #34 scenario is the app cold-started
+ * *by* the error deep link (killed, user taps an expired magic link) —
+ * `MainActivity.onCreate` calls [publish] before `LoginViewModel` exists to
+ * collect it. A `SharedFlow`'s `extraBufferCapacity` only buffers for
+ * subscribers already collecting when a value is emitted; with replay = 0
+ * and no subscriber yet, a value published before the first collector
+ * arrives is dropped, not delivered late. A `StateFlow` always replays its
+ * latest value to a new collector, so [publish] there can never lose an
+ * error to that race — [consume] is what stops it from then also replaying
+ * into some *later* `LoginViewModel` (e.g. after the user backs out and a
+ * new one is created) after it's already been shown once.
  */
 @Singleton
 class AuthCallbackErrors
     @Inject
     constructor() {
-        private val _errors = MutableSharedFlow<AuthCallbackError>(extraBufferCapacity = 1)
-        val errors: SharedFlow<AuthCallbackError> = _errors
+        private val _pending = MutableStateFlow<AuthCallbackError?>(null)
+        val pending: StateFlow<AuthCallbackError?> = _pending
 
         fun publish(error: AuthCallbackError) {
-            _errors.tryEmit(error)
+            _pending.value = error
+        }
+
+        /** Clears the pending error, e.g. once it's been shown or is no longer relevant. */
+        fun consume() {
+            _pending.value = null
         }
     }
 

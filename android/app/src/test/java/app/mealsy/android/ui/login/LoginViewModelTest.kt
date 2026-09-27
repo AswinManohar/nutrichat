@@ -276,6 +276,89 @@ class LoginViewModelTest {
         }
 
     @Test
+    fun `auth callback error published before the ViewModel exists is still shown (cold start)`() =
+        runTest {
+            // Mirrors MainActivity.onCreate publishing from a killed-app
+            // cold start, before LoginViewModel is constructed and starts
+            // collecting.
+            val coldStartErrors = AuthCallbackErrors()
+            coldStartErrors.publish(
+                AuthCallbackError(AuthCallbackErrorKind.LINK_EXPIRED_OR_USED, "otp_expired", null),
+            )
+
+            val coldStartViewModel =
+                LoginViewModel(
+                    sessionManager = SessionManager(FakeAuthGateway()),
+                    authCallbackErrors = coldStartErrors,
+                    googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(),
+                )
+
+            coldStartViewModel.uiState.test {
+                // The StateFlow's own initial value (Idle) is always
+                // replayed to a new collector first; the mapped error
+                // follows as soon as init's collector coroutine runs.
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+                assertEquals(LoginErrorKind.LinkExpired, (state as LoginUiState.Error).kind)
+            }
+        }
+
+    @Test
+    fun `a consumed auth callback error does not replay into a later ViewModel`() =
+        runTest {
+            val sharedErrors = AuthCallbackErrors()
+            sharedErrors.publish(
+                AuthCallbackError(AuthCallbackErrorKind.LINK_EXPIRED_OR_USED, "otp_expired", null),
+            )
+
+            val firstViewModel =
+                LoginViewModel(
+                    sessionManager = SessionManager(FakeAuthGateway()),
+                    authCallbackErrors = sharedErrors,
+                    googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(),
+                )
+            firstViewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+                val state = awaitItem()
+                assertTrue(state is LoginUiState.Error)
+            }
+
+            val secondViewModel =
+                LoginViewModel(
+                    sessionManager = SessionManager(FakeAuthGateway()),
+                    authCallbackErrors = sharedErrors,
+                    googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(),
+                )
+            secondViewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+                expectNoEvents()
+            }
+        }
+
+    @Test
+    fun `a pending auth callback error is cleared once the session is signed in`() =
+        runTest {
+            val fakeAuthGatewayForSession = FakeAuthGateway()
+            val sharedErrors = AuthCallbackErrors()
+            sharedErrors.publish(
+                AuthCallbackError(AuthCallbackErrorKind.OTHER, "server_error", null),
+            )
+
+            LoginViewModel(
+                sessionManager = SessionManager(fakeAuthGatewayForSession),
+                authCallbackErrors = sharedErrors,
+                googleAuthAvailabilityGateway = FakeGoogleAuthAvailabilityGateway(),
+            )
+
+            fakeAuthGatewayForSession.sessionState.value = SessionState.SignedIn(userId = "user-1")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(null, sharedErrors.pending.value)
+        }
+
+    @Test
     fun `google sign-in availability reflects the gateway`() =
         runTest {
             val hiddenViewModel =
