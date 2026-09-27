@@ -25,6 +25,7 @@ import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.Profile
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
+import app.mealsy.domain.ProteinFood
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -154,7 +157,14 @@ private fun goalsResponse(
     trackingMode: String = "goals",
     kcalGoal: Double? = 1900.0,
     proteinGoal: Double? = 140.0,
-) = GoalsResponse(trackingMode = trackingMode, kcalGoal = kcalGoal, proteinGoal = proteinGoal, fiberGoal = 30.0)
+    dietaryPrefs: Map<String, Boolean> = emptyMap(),
+) = GoalsResponse(
+    trackingMode = trackingMode,
+    kcalGoal = kcalGoal,
+    proteinGoal = proteinGoal,
+    fiberGoal = 30.0,
+    dietaryPrefs = JsonObject(dietaryPrefs.mapValues { (_, v) -> JsonPrimitive(v) }),
+)
 
 /** Clock fixed at a given local hour on an arbitrary date, in UTC. */
 private fun clockAtHour(
@@ -323,48 +333,85 @@ class HomeViewModelTest {
     // --- Coach note branches -----------------------------------------------
 
     @Test
-    fun coachNote_proteinGapAfternoon() {
+    fun coachNote_proteinGapAfternoon_singleFoodForSmallGap() {
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 110.0),
+                goals = goalsResponse(proteinGoal = 125.0),
+                clock = clockAtHour(13),
+            )
+        assertEquals(
+            HomeCoachNote.ProteinGapSingleFood(gapG = 15, food = ProteinFood.GreekYogurt),
+            vm.uiState.value.coachNote,
+        )
+    }
+
+    @Test
+    fun coachNote_proteinGapMorning_singleFoodForSmallGap() {
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 110.0),
+                goals = goalsResponse(proteinGoal = 125.0),
+                clock = clockAtHour(8),
+            )
+        assertEquals(HomeCoachNote.ProteinGapSingleFood(gapG = 15, food = ProteinFood.Egg), vm.uiState.value.coachNote)
+    }
+
+    @Test
+    fun coachNote_proteinGapEvening_singleFoodForSmallGap() {
+        val (vm, _) =
+            buildViewModel(
+                todayResponse = today(proteinG = 110.0),
+                goals = goalsResponse(proteinGoal = 125.0),
+                clock = clockAtHour(19),
+            )
+        assertEquals(HomeCoachNote.ProteinGapSingleFood(gapG = 15, food = ProteinFood.Milk), vm.uiState.value.coachNote)
+    }
+
+    @Test
+    fun coachNote_proteinGapSpread_forLargeGap() {
         val (vm, _) =
             buildViewModel(
                 todayResponse = today(proteinG = 100.0),
                 goals = goalsResponse(proteinGoal = 140.0),
                 clock = clockAtHour(13),
             )
-        assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon), vm.uiState.value.coachNote)
+        assertEquals(HomeCoachNote.ProteinGapSpread(gapG = 40), vm.uiState.value.coachNote)
     }
 
     @Test
-    fun coachNote_proteinGapMorning() {
+    fun coachNote_proteinGapRespectsVeganPrefs() {
         val (vm, _) =
             buildViewModel(
-                todayResponse = today(proteinG = 100.0),
-                goals = goalsResponse(proteinGoal = 140.0),
+                todayResponse = today(proteinG = 110.0),
+                goals = goalsResponse(proteinGoal = 125.0, dietaryPrefs = mapOf("vegan" to true)),
                 clock = clockAtHour(8),
             )
-        assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Morning), vm.uiState.value.coachNote)
+        assertEquals(HomeCoachNote.ProteinGapSingleFood(gapG = 15, food = ProteinFood.Tofu), vm.uiState.value.coachNote)
     }
 
     @Test
-    fun coachNote_proteinGapEvening() {
+    fun coachNote_noProteinGapNudgeBeforeFirstMeal() {
         val (vm, _) =
             buildViewModel(
-                todayResponse = today(proteinG = 100.0),
-                goals = goalsResponse(proteinGoal = 140.0),
-                clock = clockAtHour(19),
+                todayResponse = today(proteinG = 0.0, nMeals = 0),
+                goals = goalsResponse(proteinGoal = 140.0, kcalGoal = null),
             )
-        assertEquals(HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Evening), vm.uiState.value.coachNote)
+        assertFalse(vm.uiState.value.coachNote is HomeCoachNote.ProteinGapSingleFood)
+        assertFalse(vm.uiState.value.coachNote is HomeCoachNote.ProteinGapSpread)
     }
 
     @Test
     fun coachNote_proteinGapBoundary_14gIsNotAGap() {
         val (vm, _) = buildViewModel(todayResponse = today(proteinG = 126.0), goals = goalsResponse(proteinGoal = 140.0))
-        assertFalse(vm.uiState.value.coachNote is HomeCoachNote.ProteinGap)
+        assertFalse(vm.uiState.value.coachNote is HomeCoachNote.ProteinGapSingleFood)
+        assertFalse(vm.uiState.value.coachNote is HomeCoachNote.ProteinGapSpread)
     }
 
     @Test
     fun coachNote_proteinGapBoundary_15gIsAGap() {
         val (vm, _) = buildViewModel(todayResponse = today(proteinG = 125.0), goals = goalsResponse(proteinGoal = 140.0))
-        assertTrue(vm.uiState.value.coachNote is HomeCoachNote.ProteinGap)
+        assertTrue(vm.uiState.value.coachNote is HomeCoachNote.ProteinGapSingleFood)
     }
 
     @Test

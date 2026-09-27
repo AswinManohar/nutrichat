@@ -10,6 +10,10 @@ import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
 import app.mealsy.domain.Goals
+import app.mealsy.domain.ProteinFood
+import app.mealsy.domain.ProteinGapDayPart
+import app.mealsy.domain.ProteinGapSuggestion
+import app.mealsy.domain.proteinGapSuggestion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -35,9 +39,6 @@ enum class DayPart { Morning, Afternoon, Evening }
 private const val MORNING_END_HOUR = 12
 private const val AFTERNOON_END_HOUR = 17
 
-/** A protein gap of at least this many grams is worth a coach note (see [HomeCoachNote.ProteinGap]). */
-private const val PROTEIN_GAP_THRESHOLD_G = 15
-
 /** Logcat tag for [HomeViewModel]'s non-network load failures. */
 private const val TAG = "HomeViewModel"
 
@@ -49,8 +50,14 @@ private const val TAG = "HomeViewModel"
  * in `strings.xml` (mirrors [app.mealsy.android.ui.onboarding.ContinueLabel]).
  */
 sealed interface HomeCoachNote {
-    /** The user is short of their protein goal by [gapG] grams; [dayPart] picks which suggestion reads best. */
-    data class ProteinGap(val gapG: Int, val dayPart: DayPart) : HomeCoachNote
+    /**
+     * The user is short of their protein goal by [gapG] grams, and [food] plausibly closes it
+     * (see [app.mealsy.domain.proteinGapSuggestion] — only offered for small gaps, respecting prefs).
+     */
+    data class ProteinGapSingleFood(val gapG: Int, val food: ProteinFood) : HomeCoachNote
+
+    /** The user is short of their protein goal by [gapG] grams, too large for one food to close. */
+    data class ProteinGapSpread(val gapG: Int) : HomeCoachNote
 
     /** [kcal] calories remain under the daily calorie goal. */
     data class KcalRemaining(val kcal: Int) : HomeCoachNote
@@ -235,11 +242,25 @@ class HomeViewModel
             val proteinGoal = goals?.proteinGoal
             val proteinGapG = proteinGoal?.let { (it - today.proteinG).roundToInt() }
             val kcalRemainingRounded = kcalGoal?.let { (it - today.kcal).roundToInt() }
+            val proteinGapSuggestion =
+                proteinGapG?.let {
+                    proteinGapSuggestion(
+                        gapG = it,
+                        mealsLoggedToday = today.nMeals,
+                        dayPart = dayPart.toProteinGapDayPart(),
+                        dietaryPrefs = goals?.dietaryPrefs ?: emptyMap(),
+                    )
+                }
             val coachNote: HomeCoachNote =
                 when {
                     mindful -> HomeCoachNote.Mindful(nMeals = today.nMeals)
-                    proteinGapG != null && proteinGapG >= PROTEIN_GAP_THRESHOLD_G ->
-                        HomeCoachNote.ProteinGap(gapG = proteinGapG, dayPart = dayPart)
+                    proteinGapSuggestion is ProteinGapSuggestion.SingleFood ->
+                        HomeCoachNote.ProteinGapSingleFood(
+                            gapG = proteinGapSuggestion.gapG,
+                            food = proteinGapSuggestion.food,
+                        )
+                    proteinGapSuggestion is ProteinGapSuggestion.Spread ->
+                        HomeCoachNote.ProteinGapSpread(gapG = proteinGapSuggestion.gapG)
                     kcalRemainingRounded != null && kcalRemainingRounded > 0 ->
                         HomeCoachNote.KcalRemaining(kcal = kcalRemainingRounded)
                     else -> HomeCoachNote.TargetReached
@@ -272,5 +293,12 @@ class HomeViewModel
                 hour < MORNING_END_HOUR -> DayPart.Morning
                 hour < AFTERNOON_END_HOUR -> DayPart.Afternoon
                 else -> DayPart.Evening
+            }
+
+        private fun DayPart.toProteinGapDayPart(): ProteinGapDayPart =
+            when (this) {
+                DayPart.Morning -> ProteinGapDayPart.Morning
+                DayPart.Afternoon -> ProteinGapDayPart.Afternoon
+                DayPart.Evening -> ProteinGapDayPart.Evening
             }
     }

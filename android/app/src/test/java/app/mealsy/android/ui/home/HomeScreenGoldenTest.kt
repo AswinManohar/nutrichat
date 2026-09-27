@@ -87,7 +87,7 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
             carbsValue = "152g",
             fatValue = "48g",
             meals = partialMeals,
-            coachNote = HomeCoachNote.ProteinGap(gapG = 40, dayPart = DayPart.Afternoon),
+            coachNote = HomeCoachNote.ProteinGapSpread(gapG = 40),
         )
 
     @Test

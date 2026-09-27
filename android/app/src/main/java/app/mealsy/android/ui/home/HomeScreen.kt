@@ -44,6 +44,7 @@ import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
+import app.mealsy.domain.ProteinFood
 
 /**
  * The Home dashboard: today's status pill, macro tiles, meal list and
@@ -273,15 +274,18 @@ private fun mealTypeLabelRes(mealType: String): Int =
 @Composable
 private fun coachNoteText(note: HomeCoachNote): String =
     when (note) {
-        is HomeCoachNote.ProteinGap ->
+        is HomeCoachNote.ProteinGapSingleFood ->
             stringResource(
-                when (note.dayPart) {
-                    DayPart.Morning -> R.string.home_coach_protein_gap_morning
-                    DayPart.Afternoon -> R.string.home_coach_protein_gap_afternoon
-                    DayPart.Evening -> R.string.home_coach_protein_gap_evening
+                when (note.food) {
+                    ProteinFood.Egg -> R.string.home_coach_protein_gap_egg
+                    ProteinFood.GreekYogurt -> R.string.home_coach_protein_gap_yogurt
+                    ProteinFood.Milk -> R.string.home_coach_protein_gap_milk
+                    ProteinFood.Tofu -> R.string.home_coach_protein_gap_tofu
+                    ProteinFood.Lentils -> R.string.home_coach_protein_gap_lentils
                 },
                 note.gapG,
             )
+        is HomeCoachNote.ProteinGapSpread -> stringResource(R.string.home_coach_protein_gap_spread, note.gapG)
         is HomeCoachNote.KcalRemaining -> stringResource(R.string.home_coach_kcal_remaining, note.kcal)
         is HomeCoachNote.TargetReached -> stringResource(R.string.home_coach_target_reached)
         is HomeCoachNote.Mindful -> stringResource(R.string.home_coach_mindful, note.nMeals)

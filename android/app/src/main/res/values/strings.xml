@@ -158,9 +158,17 @@
     <string name="home_state_no_target">no target</string>
 
     <!-- Home dashboard: coach notes -->
-    <string name="home_coach_protein_gap_afternoon">You\'re %1$dg short on protein today. Greek yogurt this afternoon would close the gap.</string>
-    <string name="home_coach_protein_gap_morning">You\'re %1$dg short on protein today. An egg at lunch would close the gap.</string>
-    <string name="home_coach_protein_gap_evening">You\'re %1$dg short on protein today. A glass of milk tonight would close the gap.</string>
+    <!-- Single-food protein-gap suggestions: only shown when the gap is small
+         enough that one everyday food plausibly closes it (see
+         app.mealsy.domain.proteinGapSuggestion), and filtered by the user's
+         dietary prefs. -->
+    <string name="home_coach_protein_gap_egg">You\'re %1$dg short on protein today. An egg would close the gap.</string>
+    <string name="home_coach_protein_gap_yogurt">You\'re %1$dg short on protein today. Greek yogurt would close the gap.</string>
+    <string name="home_coach_protein_gap_milk">You\'re %1$dg short on protein today. A glass of milk would close the gap.</string>
+    <string name="home_coach_protein_gap_tofu">You\'re %1$dg short on protein today. Some tofu would close the gap.</string>
+    <string name="home_coach_protein_gap_lentils">You\'re %1$dg short on protein today. A serving of lentils would close the gap.</string>
+    <!-- Larger gaps: no single food is a fair suggestion, so spread it out. -->
+    <string name="home_coach_protein_gap_spread">You\'re %1$dg short on protein today. Spread it across your next few meals.</string>
     <string name="home_coach_kcal_remaining">%1$d kcal available for the rest of today. A normal dinner fits comfortably.</string>
     <string name="home_coach_target_reached">You\'ve reached today\'s target. A light evening keeps things steady.</string>
     <string name="home_coach_mindful">You\'ve logged %1$d meals today. Keep noticing what fills you up.</string>
