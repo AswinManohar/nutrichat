@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +28,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
@@ -138,7 +143,7 @@ fun OnboardingContent(
                     animate = animate,
                 ) {
                     when (state.step) {
-                        1 -> NameStep(state = state, onName = onName)
+                        1 -> NameStep(state = state, onName = onName, onNext = onNext)
                         2 -> GoalStep(state = state, onSelectGoal = onSelectGoal)
                         3 -> PrefsStep(state = state, onTogglePref = onTogglePref)
                         4 -> TargetStep(state = state, onKcalTarget = onKcalTarget)
@@ -237,7 +242,11 @@ private fun StepScaffold(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
+                .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp)
+                // So the Continue button sits above the keyboard instead of
+                // being covered by it — enableEdgeToEdge() means the window
+                // no longer resizes for the IME on its own (#35).
+                .imePadding(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -308,6 +317,7 @@ private fun StepSubtitle(text: String) {
 private fun NameStep(
     state: OnboardingUiState,
     onName: (String) -> Unit,
+    onNext: () -> Unit,
 ) {
     Column {
         StepTitle(stringResource(R.string.onboarding_name_title))
@@ -317,6 +327,12 @@ private fun NameStep(
             onValueChange = onName,
             placeholder = stringResource(R.string.onboarding_name_placeholder),
             modifier = Modifier.fillMaxWidth(),
+            keyboardOptions =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
+            keyboardActions = KeyboardActions(onNext = { onNext() }),
         )
     }
 }
