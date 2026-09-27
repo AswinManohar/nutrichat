@@ -488,6 +488,7 @@ private fun TargetStepperRow(
             onValueChange = onValueChange,
             step = step,
             min = min,
+            label = label,
             valueLabel = valueLabel,
         )
     }

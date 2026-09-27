@@ -634,6 +634,11 @@ private fun ItemRow(
                 onValueChange = { callbacks.onQtyChange(index, it.toDouble()) },
                 step = 5,
                 min = 5,
+                label =
+                    stringResource(
+                        R.string.confirm_card_stepper_label,
+                        FoodNameHumanizer.humanize(item.foodName),
+                    ),
             )
         }
     }

@@ -81,9 +81,31 @@ class SemanticsTest {
         composeRule.waitForIdle()
         assertEquals(125, value)
 
-        // The +/- buttons remain individually reachable with their own labels.
-        composeRule.onNodeWithContentDescription("Increase").assertExists()
-        composeRule.onNodeWithContentDescription("Decrease").assertExists()
+        // The +/- buttons remain individually reachable, and name the value
+        // they act on (not just "Increase"/"Decrease") so TalkBack users can
+        // tell steppers apart when several are on screen at once.
+        composeRule.onNodeWithContentDescription("Increase Quantity").assertExists()
+        composeRule.onNodeWithContentDescription("Decrease Quantity").assertExists()
+    }
+
+    @Test
+    fun stepper_buttonDescriptionsUseCustomLabel() {
+        composeRule.setContent {
+            MealsyTheme {
+                Surface {
+                    Stepper(
+                        value = 40,
+                        onValueChange = {},
+                        step = 5,
+                        min = 5,
+                        label = "Protein target",
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Increase Protein target").assertExists()
+        composeRule.onNodeWithContentDescription("Decrease Protein target").assertExists()
     }
 
     @Test

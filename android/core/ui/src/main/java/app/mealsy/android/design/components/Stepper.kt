@@ -92,7 +92,10 @@ private const val MINUS_SIGN = "−"
  * @param min The minimum allowed value; the decrease button disables here.
  * @param max The maximum allowed value; the increase button disables here.
  * @param label The accessibility label announced together with the current
- *   value, e.g. "Quantity, 120 g".
+ *   value, e.g. "Quantity, 120 g". Also named in the individual +/- buttons'
+ *   own descriptions ("Decrease $label" / "Increase $label"), so TalkBack
+ *   users can tell which stepper they're on when several are visible (e.g.
+ *   separate protein/carbs/fat/fiber steppers in Settings).
  * @param valueLabel Formats [value] for both the visible label and the
  *   accessibility [androidx.compose.ui.semantics.stateDescription].
  */
@@ -146,7 +149,7 @@ fun Stepper(
             RepeatingStepperButton(
                 symbol = MINUS_SIGN,
                 enabled = canDecrease,
-                contentDescription = "Decrease",
+                contentDescription = "Decrease $label",
                 onStep = { onValueChange((value - step).coerceAtLeast(min)) },
                 onRepeatTick = haptics::tick,
             )
@@ -201,7 +204,7 @@ fun Stepper(
             RepeatingStepperButton(
                 symbol = "+",
                 enabled = canIncrease,
-                contentDescription = "Increase",
+                contentDescription = "Increase $label",
                 onStep = { onValueChange((value + step).coerceAtMost(max)) },
                 onRepeatTick = haptics::tick,
             )

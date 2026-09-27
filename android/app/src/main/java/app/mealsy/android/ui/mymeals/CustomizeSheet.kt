@@ -467,6 +467,7 @@ private fun IngredientRow(
         Stepper(
             value = ingredient.qtyG,
             onValueChange = onQtyChange,
+            label = ingredient.humanizedName,
             modifier = Modifier.semantics { contentDescription = stepperDescription },
         )
         CircleIconButton(
