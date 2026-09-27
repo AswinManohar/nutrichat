@@ -348,7 +348,7 @@ class MealDetailViewModelTest {
 
             val state = vm.uiState.value as MealDetailUiState.Loaded
             assertTrue(state.status is MealDetailStatus.FitsBudget)
-            assertEquals(500, (state.status as MealDetailStatus.FitsBudget).kcalRemaining)
+            assertEquals("500", (state.status as MealDetailStatus.FitsBudget).kcalRemaining)
         }
 
     @Test
@@ -365,7 +365,57 @@ class MealDetailViewModelTest {
 
             val state = vm.uiState.value as MealDetailUiState.Loaded
             assertTrue(state.status is MealDetailStatus.OverBudget)
-            assertEquals(200, (state.status as MealDetailStatus.OverBudget).kcalOver)
+            assertEquals("200", (state.status as MealDetailStatus.OverBudget).kcalOver)
+        }
+
+    @Test
+    fun `status kcal values use a locale thousands separator above 999`() =
+        runBlockingTest {
+            val api =
+                FakeMealsyApi(
+                    mealLogDetail = mealLogDetail(listOf(usdaItem())),
+                    goalsResponse = goalsResponse(kcalGoal = 4000.0),
+                    todayResponse = TodayResponse(kcal = 1989.0, proteinG = 0.0, carbsG = 0.0, fatG = 0.0, fiberG = 0.0, nMeals = 1),
+                )
+            val vm = buildViewModel(api, mapOf("mealId" to "meal_1"), clock = clockAtHour(13))
+            vm.readyJob.join()
+
+            val state = vm.uiState.value as MealDetailUiState.Loaded
+            assertEquals("2,011", (state.status as MealDetailStatus.FitsBudget).kcalRemaining)
+        }
+
+    @Test
+    fun `coach note skips the protein-source line for a single-item meal`() =
+        runBlockingTest {
+            val api =
+                FakeMealsyApi(
+                    mealLogDetail = mealLogDetail(listOf(usdaItem(estimated = false))),
+                    goalsResponse = goalsResponse(),
+                )
+            val vm = buildViewModel(api, mapOf("mealId" to "meal_1"), clock = clockAtHour(13))
+            vm.readyJob.join()
+
+            val state = vm.uiState.value as MealDetailUiState.Loaded
+            assertEquals(MealDetailCoachNote.None, state.coachNote)
+        }
+
+    @Test
+    fun `coach note names the protein source for a multi-item meal`() =
+        runBlockingTest {
+            val api =
+                FakeMealsyApi(
+                    mealLogDetail =
+                        mealLogDetail(
+                            listOf(usdaItem(foodName = "Rice", proteinG = 4.0), usdaItem(foodName = "Chicken", proteinG = 30.0)),
+                        ),
+                    goalsResponse = goalsResponse(),
+                )
+            val vm = buildViewModel(api, mapOf("mealId" to "meal_1"), clock = clockAtHour(13))
+            vm.readyJob.join()
+
+            val state = vm.uiState.value as MealDetailUiState.Loaded
+            assertTrue(state.coachNote is MealDetailCoachNote.ProteinSource)
+            assertEquals("Chicken", (state.coachNote as MealDetailCoachNote.ProteinSource).itemName)
         }
 
     @Test

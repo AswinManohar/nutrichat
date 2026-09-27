@@ -56,6 +56,10 @@ import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
 import app.mealsy.android.ui.meals.formatLoggedAtTime
 import app.mealsy.android.ui.mymeals.CustomizeSheet
+import kotlinx.coroutines.delay
+
+/** How long the "Log again" [InkToast] stays up before the screen navigates away (mirrors Settings' saved-toast delay). */
+private const val LOGGED_TOAST_VISIBLE_MS = 1500L
 
 /**
  * Meal detail: shows a logged meal or a saved "My Meal", with a "log again"
@@ -86,7 +90,11 @@ fun MealDetailScreen(
             when (event) {
                 MealDetailEvent.Deleted -> onDeleted()
                 MealDetailEvent.Logged -> {
+                    // Show the confirmation before navigating away — popping
+                    // immediately (as this did before) unmounts the screen
+                    // before the toast can ever be seen (#46).
                     showLoggedToast = true
+                    delay(LOGGED_TOAST_VISIBLE_MS)
                     onLogged()
                 }
             }

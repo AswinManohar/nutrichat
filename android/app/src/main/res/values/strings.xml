@@ -194,9 +194,9 @@
     <string name="meal_detail_usda_verified">USDA verified</string>
     <string name="meal_detail_estimated">estimated</string>
     <string name="meal_detail_status_fits_label">Fits today\'s budget</string>
-    <string name="meal_detail_status_fits_value">%1$d kcal remaining</string>
+    <string name="meal_detail_status_fits_value">%1$s kcal remaining</string>
     <string name="meal_detail_status_over_label">Over today\'s target</string>
-    <string name="meal_detail_status_over_value">%1$d kcal over</string>
+    <string name="meal_detail_status_over_value">%1$s kcal over</string>
     <string name="meal_detail_status_logged_label">Logged</string>
     <string name="meal_detail_status_no_target">no target</string>
     <string name="meal_detail_whats_in_it">What\'s in it</string>

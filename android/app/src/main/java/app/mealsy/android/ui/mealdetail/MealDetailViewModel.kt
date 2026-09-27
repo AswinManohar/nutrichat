@@ -33,6 +33,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
+import java.text.NumberFormat
 import java.time.Clock
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -63,11 +64,16 @@ private fun UiIngredient.source(): String? = extras["source"]?.jsonPrimitive?.co
 /** Which optional third tag to show, after the always-present kcal/protein tags. */
 enum class MealDetailThirdTag { UsdaVerified, Estimated, None }
 
-/** The status-pill variant for meal detail — mirrors [app.mealsy.android.ui.home.HomeKcalState]. */
+/**
+ * The status-pill variant for meal detail — mirrors
+ * [app.mealsy.android.ui.home.HomeKcalState]. [FitsBudget.kcalRemaining] and
+ * [OverBudget.kcalOver] are already locale-formatted (e.g. "2,011"), not raw
+ * ints, so the thousands separator matches Home (#46).
+ */
 sealed interface MealDetailStatus {
-    data class FitsBudget(val kcalRemaining: Int) : MealDetailStatus
+    data class FitsBudget(val kcalRemaining: String) : MealDetailStatus
 
-    data class OverBudget(val kcalOver: Int) : MealDetailStatus
+    data class OverBudget(val kcalOver: String) : MealDetailStatus
 
     data object Logged : MealDetailStatus
 }
@@ -259,10 +265,11 @@ class MealDetailViewModel
             val mindful = goals == null || goals.trackingMode == "mindful" || kcalGoal == null
             if (mindful) return MealDetailStatus.Logged
             checkNotNull(kcalGoal)
+            val kcalFormat = NumberFormat.getIntegerInstance()
             return if (todayKcal <= kcalGoal) {
-                MealDetailStatus.FitsBudget((kcalGoal - todayKcal).roundToInt())
+                MealDetailStatus.FitsBudget(kcalFormat.format((kcalGoal - todayKcal).roundToInt()))
             } else {
-                MealDetailStatus.OverBudget((todayKcal - kcalGoal).roundToInt())
+                MealDetailStatus.OverBudget(kcalFormat.format((todayKcal - kcalGoal).roundToInt()))
             }
         }
 
@@ -276,7 +283,10 @@ class MealDetailViewModel
 
         private fun coachNoteFor(items: List<UiIngredient>): MealDetailCoachNote {
             val anyEstimated = items.any { it.estimated }
-            val topProtein = items.filter { it.proteinG > 0 }.maxByOrNull { it.proteinG }
+            // "Most of the protein here comes from X" only makes sense when there's
+            // something to single X out from — skip it for single-item meals (#46).
+            val topProtein =
+                items.takeIf { it.size > 1 }?.filter { it.proteinG > 0 }?.maxByOrNull { it.proteinG }
             return when {
                 topProtein != null ->
                     MealDetailCoachNote.ProteinSource(
