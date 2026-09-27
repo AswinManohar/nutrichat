@@ -52,4 +52,54 @@ class TrendsChartHelpersTest {
         assertEquals(bars.last().date.dayOfMonth.toString(), labels.last())
         assertEquals(bars[6].date.dayOfMonth.toString(), labels[6])
     }
+
+    @Test
+    fun `month labels never wrap two-digit days onto two lines`() {
+        // Every rendered (non-empty) month label must be a single unbroken
+        // token with no embedded whitespace/newline for maxLines=1 + softWrap
+        // = false to keep it on one line, e.g. never "2\n9" or "2 9" for day 29.
+        val bars = buildTrendsDayBars(TrendsWindow.MONTH, emptyList(), today)
+        val labels = trendsDayLabels(TrendsWindow.MONTH, bars)
+
+        labels.filter { it.isNotEmpty() }.forEach { label ->
+            assertEquals(false, label.contains(" "))
+            assertEquals(false, label.contains("\n"))
+            assertEquals(true, label.toIntOrNull() != null)
+        }
+    }
+
+    @Test
+    fun `protein line segments group only consecutive logged days`() {
+        val days =
+            listOf(
+                DayPoint("2026-09-11", kcal = 1900.0, proteinG = 90.0, carbsG = 0.0, fiberG = 0.0, nMeals = 2, junkMeals = 0),
+                DayPoint("2026-09-12", kcal = 2000.0, proteinG = 100.0, carbsG = 0.0, fiberG = 0.0, nMeals = 2, junkMeals = 0),
+                DayPoint("2026-09-15", kcal = 1800.0, proteinG = 80.0, carbsG = 0.0, fiberG = 0.0, nMeals = 1, junkMeals = 0),
+            )
+        val bars = buildTrendsDayBars(TrendsWindow.WEEK, days, today) // 2026-09-10..09-16
+        // Logged: index 1 (09-11), 2 (09-12), 5 (09-15). Day 0, 3, 4, 6 unlogged.
+
+        val segments = proteinLineSegments(bars)
+
+        assertEquals(listOf(listOf(1, 2), listOf(5)), segments)
+    }
+
+    @Test
+    fun `protein line segments is empty when nothing is logged`() {
+        val bars = buildTrendsDayBars(TrendsWindow.WEEK, emptyList(), today)
+
+        assertEquals(emptyList<List<Int>>(), proteinLineSegments(bars))
+    }
+
+    @Test
+    fun `protein line segments is one run when every day is logged`() {
+        val days =
+            (0 until 7).map { offset ->
+                val date = today.minusDays((6 - offset).toLong())
+                DayPoint(date.toString(), kcal = 2000.0, proteinG = 100.0, carbsG = 0.0, fiberG = 0.0, nMeals = 1, junkMeals = 0)
+            }
+        val bars = buildTrendsDayBars(TrendsWindow.WEEK, days, today)
+
+        assertEquals(listOf((0..6).toList()), proteinLineSegments(bars))
+    }
 }

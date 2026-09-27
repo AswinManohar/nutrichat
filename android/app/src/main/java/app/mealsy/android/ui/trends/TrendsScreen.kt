@@ -1,7 +1,10 @@
 package app.mealsy.android.ui.trends
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,14 +12,20 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -29,6 +38,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -48,9 +59,11 @@ import app.mealsy.android.design.components.niceAxisMax
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
+import app.mealsy.android.design.theme.MealsyColors
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
+import app.mealsy.android.design.theme.mealsyTween
 import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
@@ -193,6 +206,29 @@ private fun TrendsLoadedContent(
     val bars = buildTrendsDayBars(window, state.trends.days, today)
     val labels = trendsDayLabels(window, bars)
 
+    // A refreshing Week/Month toggle keeps this whole stale Loaded content
+    // on screen (see TrendsViewModel's stale-while-revalidate load()) rather
+    // than blanking to Loading; a light fade is the only visual cue that a
+    // refetch is in flight.
+    val contentAlpha by
+        animateFloatAsState(
+            targetValue = if (state.refreshing) 0.6f else 1f,
+            animationSpec = mealsyTween(150),
+            label = "trendsRefreshingAlpha",
+        )
+
+    Column(modifier = Modifier.alpha(contentAlpha)) {
+        TrendsLoadedBody(window, state, bars, labels)
+    }
+}
+
+@Composable
+private fun TrendsLoadedBody(
+    window: TrendsWindow,
+    state: TrendsUiState.Loaded,
+    bars: List<TrendsDayBar>,
+    labels: List<String>,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -278,40 +314,60 @@ private fun KcalBarChart(
     modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
+    val chartHeight = 120.dp
+    // Grows bar heights from the floor up whenever `bars` changes identity —
+    // i.e. on a Week/Month toggle — so the chart visibly morphs between
+    // ranges instead of snapping. `remember(bars)` resets `revealed` to
+    // false on each new bar set; ReducedMotion's zero-duration tween makes
+    // the resulting animateFloatAsState land on 1f effectively instantly.
+    var revealed by remember(bars) { mutableStateOf(false) }
+    LaunchedEffect(bars) { revealed = true }
+    val revealProgress by animateFloatAsState(
+        targetValue = if (revealed) 1f else 0f,
+        animationSpec = mealsyTween(280),
+        label = "trendsKcalReveal",
+    )
     Column(modifier = modifier.fillMaxWidth()) {
         val maxRaw = maxOf(bars.maxOfOrNull { it.kcal }?.toFloat() ?: 0f, (goalKcal ?: 0.0).toFloat())
         val axisMax = niceAxisMax(maxRaw)
-        Canvas(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .clearAndSetSemantics { contentDescription = contentDescriptionText },
-        ) {
-            val slotWidth = if (bars.isEmpty()) size.width else size.width / bars.size
-            val barWidth = slotWidth * 0.5f
-            bars.forEachIndexed { index, bar ->
-                val left = index * slotWidth + (slotWidth - barWidth) / 2f
-                drawRoundRect(
-                    color = colors.oliveTrack,
-                    topLeft = Offset(left, 0f),
-                    size = Size(barWidth, size.height),
-                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
-                )
-                if (axisMax > 0f && bar.kcal > 0.0) {
-                    val fraction = (bar.kcal.toFloat() / axisMax).coerceIn(0f, 1f)
-                    val barHeight = size.height * fraction
+        val goalFraction =
+            if (goalKcal != null && axisMax > 0f) (goalKcal.toFloat() / axisMax).coerceIn(0f, 1f) else null
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Canvas(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight)
+                        .clearAndSetSemantics { contentDescription = contentDescriptionText },
+            ) {
+                val slotWidth = if (bars.isEmpty()) size.width else size.width / bars.size
+                val barWidth = slotWidth * 0.5f
+                bars.forEachIndexed { index, bar ->
+                    val left = index * slotWidth + (slotWidth - barWidth) / 2f
                     drawRoundRect(
-                        color = colors.olive,
-                        topLeft = Offset(left, size.height - barHeight),
-                        size = Size(barWidth, barHeight),
+                        color = colors.oliveTrack,
+                        topLeft = Offset(left, 0f),
+                        size = Size(barWidth, size.height),
                         cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
                     )
+                    if (axisMax > 0f && bar.kcal > 0.0) {
+                        val fraction = (bar.kcal.toFloat() / axisMax).coerceIn(0f, 1f)
+                        val barHeight = size.height * fraction * revealProgress
+                        drawRoundRect(
+                            color = colors.olive,
+                            topLeft = Offset(left, size.height - barHeight),
+                            size = Size(barWidth, barHeight),
+                            cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                        )
+                    }
+                }
+                if (goalFraction != null) {
+                    val goalY = size.height * (1f - goalFraction)
+                    drawDashedHorizontalLine(y = goalY, color = colors.ink, strokeWidthPx = 1.dp.toPx())
                 }
             }
-            if (goalKcal != null && axisMax > 0f) {
-                val goalY = size.height * (1f - (goalKcal.toFloat() / axisMax).coerceIn(0f, 1f))
-                drawDashedHorizontalLine(y = goalY, color = colors.ink, strokeWidthPx = 1.dp.toPx())
+            if (goalFraction != null) {
+                TargetLineLabel(goalFraction = goalFraction, chartHeight = chartHeight, colors = colors)
             }
         }
         Spacer(modifier = Modifier.height(6.dp))
@@ -322,11 +378,40 @@ private fun KcalBarChart(
                     style = MealsyType.label.copy(fontSize = 11.sp),
                     color = colors.muted,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
                     modifier = Modifier.weight(1f),
                 )
             }
         }
     }
+}
+
+/**
+ * Small "Target" caption for a chart's dashed goal/target line, positioned
+ * just above the line so it never overlaps the bars/points beneath it. Kept
+ * as a tiny label rather than an in-line annotation to stay within the
+ * design system's existing type scale ([MealsyType.tinyTag]).
+ */
+@Composable
+private fun BoxScope.TargetLineLabel(
+    goalFraction: Float,
+    chartHeight: Dp,
+    colors: MealsyColors,
+) {
+    val labelHeight = 13.dp
+    val lineOffset = chartHeight * (1f - goalFraction)
+    val topOffset = (lineOffset - labelHeight).coerceAtLeast(0.dp)
+    Text(
+        text = stringResource(R.string.trends_target_label),
+        style = MealsyType.tinyTag,
+        color = colors.muted,
+        modifier =
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(y = topOffset),
+    )
 }
 
 /**
@@ -342,43 +427,66 @@ private fun ProteinLineChart(
     modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
+    val chartHeight = 100.dp
     val maxRaw = maxOf(bars.maxOfOrNull { it.proteinG }?.toFloat() ?: 0f, (goalProtein ?: 0.0).toFloat())
     val axisMax = niceAxisMax(maxRaw)
-    Canvas(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(100.dp)
-                .clearAndSetSemantics { contentDescription = contentDescriptionText },
-    ) {
-        repeat(3) { i ->
-            val y = size.height * (i + 1) / 4f
-            drawLine(
-                color = colors.divider,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1.dp.toPx(),
-            )
-        }
-        if (bars.size >= 2 && axisMax > 0f) {
-            val path = Path()
-            val horizontalInset = 4.dp.toPx()
-            val plotWidth = size.width - horizontalInset * 2f
-            bars.forEachIndexed { index, bar ->
-                val x = horizontalInset + index * plotWidth / (bars.size - 1)
-                val fraction = (bar.proteinG.toFloat() / axisMax).coerceIn(0f, 1f)
-                val y = size.height * (1f - fraction)
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    val goalFraction =
+        if (goalProtein != null && axisMax > 0f) (goalProtein.toFloat() / axisMax).coerceIn(0f, 1f) else null
+    // Same reveal-on-window-change treatment as KcalBarChart's bars, so the
+    // line visibly grows from the floor rather than snapping between ranges.
+    var revealed by remember(bars) { mutableStateOf(false) }
+    LaunchedEffect(bars) { revealed = true }
+    val revealProgress by animateFloatAsState(
+        targetValue = if (revealed) 1f else 0f,
+        animationSpec = mealsyTween(280),
+        label = "trendsProteinReveal",
+    )
+    Box(modifier = modifier.fillMaxWidth()) {
+        Canvas(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(chartHeight)
+                    .clearAndSetSemantics { contentDescription = contentDescriptionText },
+        ) {
+            repeat(3) { i ->
+                val y = size.height * (i + 1) / 4f
+                drawLine(
+                    color = colors.divider,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1.dp.toPx(),
+                )
             }
-            drawPath(
-                path = path,
-                color = colors.ink,
-                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+            if (bars.size >= 2 && axisMax > 0f) {
+                // Days with no logs break the line into separate segments
+                // ("no point" for that day) instead of plotting 0 g, which
+                // would otherwise read as "ate zero protein".
+                val horizontalInset = 4.dp.toPx()
+                val plotWidth = size.width - horizontalInset * 2f
+                proteinLineSegments(bars).forEach { indices ->
+                    val segment = Path()
+                    indices.forEachIndexed { i, index ->
+                        val bar = bars[index]
+                        val x = horizontalInset + index * plotWidth / (bars.size - 1)
+                        val fraction = (bar.proteinG.toFloat() / axisMax).coerceIn(0f, 1f)
+                        val y = size.height * (1f - fraction * revealProgress)
+                        if (i == 0) segment.moveTo(x, y) else segment.lineTo(x, y)
+                    }
+                    drawPath(
+                        path = segment,
+                        color = colors.ink,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
+            }
+            if (goalFraction != null) {
+                val goalY = size.height * (1f - goalFraction)
+                drawDashedHorizontalLine(y = goalY, color = colors.ink, strokeWidthPx = 1.dp.toPx())
+            }
         }
-        if (goalProtein != null && axisMax > 0f) {
-            val goalY = size.height * (1f - (goalProtein.toFloat() / axisMax).coerceIn(0f, 1f))
-            drawDashedHorizontalLine(y = goalY, color = colors.ink, strokeWidthPx = 1.dp.toPx())
+        if (goalFraction != null) {
+            TargetLineLabel(goalFraction = goalFraction, chartHeight = chartHeight, colors = colors)
         }
     }
 }
@@ -529,3 +637,28 @@ private fun weekdayInitial(date: LocalDate): String =
         DayOfWeek.SATURDAY -> "S"
         DayOfWeek.SUNDAY -> "S"
     }
+
+/**
+ * Groups [bars] into runs of consecutive indices that all [TrendsDayBar.hasData],
+ * so [ProteinLineChart] can draw one path per run instead of a single path
+ * that would otherwise plot no-log days as 0 g. A day with no logs ends the
+ * current run and starts a new one on the next logged day — that day is
+ * simply not plotted, leaving a gap in the line rather than a dip to zero.
+ *
+ * Returns each run as a list of bar indices (length 1 for an isolated logged
+ * day surrounded by gaps, which draws as a zero-length path and thus no
+ * visible mark).
+ */
+internal fun proteinLineSegments(bars: List<TrendsDayBar>): List<List<Int>> {
+    val segments = mutableListOf<MutableList<Int>>()
+    bars.forEachIndexed { index, bar ->
+        if (!bar.hasData) return@forEachIndexed
+        val current = segments.lastOrNull()
+        if (current != null && current.last() == index - 1) {
+            current.add(index)
+        } else {
+            segments.add(mutableListOf(index))
+        }
+    }
+    return segments
+}

@@ -271,6 +271,7 @@
     <string name="trends_empty_message">Log a few meals to see trends.</string>
     <string name="trends_loading">Loading trends…</string>
     <string name="trends_error_load_failed">Something went wrong loading trends.</string>
+    <string name="trends_target_label">Target</string>
 
     <!-- Settings screen -->
     <string name="settings_eyebrow">Settings</string>
