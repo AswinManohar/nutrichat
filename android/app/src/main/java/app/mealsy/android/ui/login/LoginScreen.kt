@@ -1,6 +1,7 @@
 package app.mealsy.android.ui.login
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -57,6 +58,7 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
         onSignInWithGoogle = {
             (context as? Activity)?.let { viewModel.signInWithGoogle(it) }
         },
+        onBackToEmail = viewModel::backToEmail,
     )
 }
 
@@ -72,10 +74,18 @@ fun LoginContent(
     onEmailChange: (String) -> Unit,
     onSubmitEmail: () -> Unit,
     onSignInWithGoogle: () -> Unit,
+    onBackToEmail: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = MealsyTheme.colors
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    // The "check your email" step is a second in-screen step, same shape as
+    // onboarding's (#29) — system Back should return to email entry rather
+    // than exit the screen.
+    BackHandler(enabled = uiState is LoginUiState.AwaitingEmail) {
+        onBackToEmail()
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.canvas) {
         Column(

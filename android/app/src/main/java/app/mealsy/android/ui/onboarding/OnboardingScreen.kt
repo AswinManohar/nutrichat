@@ -1,5 +1,6 @@
 package app.mealsy.android.ui.onboarding
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -108,6 +109,15 @@ fun OnboardingContent(
 ) {
     val colors = MealsyTheme.colors
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    // System back should do exactly what the in-app chevron does (step N ->
+    // N-1), not fall through to the activity and discard onboarding
+    // progress (#29). Disabled at/before startStep (the welcome screen, or a
+    // signed-in user's floor step) and on the done step, where there's no
+    // step to go back to and [OnboardingViewModel.back] wouldn't apply.
+    BackHandler(enabled = state.step > state.startStep && state.step != 5) {
+        onBack()
+    }
 
     Surface(modifier = modifier.fillMaxSize(), color = colors.canvas) {
         when (state.step) {

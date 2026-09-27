@@ -71,6 +71,19 @@ class LoginViewModel
             }
         }
 
+        /**
+         * Returns from [LoginUiState.AwaitingEmail] to the email-entry step.
+         * Wired to system Back (#29 — every in-screen multi-step flow should
+         * step back rather than exit) so a user who sent themselves a magic
+         * link can correct the address or pick Google sign-in instead,
+         * without leaving the screen.
+         */
+        fun backToEmail() {
+            if (_uiState.value == LoginUiState.AwaitingEmail) {
+                _uiState.value = LoginUiState.Idle
+            }
+        }
+
         /** Starts the Google OAuth sign-in flow via [SessionManager]. */
         fun signInWithGoogle(activity: Activity) {
             viewModelScope.launch {

@@ -115,6 +115,35 @@ class LoginViewModelTest {
         }
 
     @Test
+    fun `backToEmail returns from AwaitingEmail to Idle`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("user@example.com")
+                assertEquals(LoginUiState.AwaitingEmail, awaitItem())
+
+                viewModel.backToEmail()
+                assertEquals(LoginUiState.Idle, awaitItem())
+            }
+        }
+
+    @Test
+    fun `backToEmail is a no-op outside AwaitingEmail`() =
+        runTest {
+            viewModel.uiState.test {
+                assertEquals(LoginUiState.Idle, awaitItem())
+
+                viewModel.submitEmail("not-an-email")
+                val errorState = awaitItem()
+                assertTrue(errorState is LoginUiState.Error)
+
+                viewModel.backToEmail()
+                expectNoEvents()
+            }
+        }
+
+    @Test
     fun `gate blocks when versionCode below min`() {
         assertTrue(isUpdateRequired(currentVersionCode = 1, minSupportedVersionCode = 2))
         assertFalse(isUpdateRequired(currentVersionCode = 2, minSupportedVersionCode = 2))
