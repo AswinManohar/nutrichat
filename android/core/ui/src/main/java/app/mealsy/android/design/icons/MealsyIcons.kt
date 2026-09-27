@@ -328,6 +328,24 @@ object MealsyIcons {
                 pathData = arrayOf("M6 6l12 12", "M18 6L6 18"),
             ).also { _close = it }
 
+    private var _trash: ImageVector? = null
+
+    /** Swipe-to-delete background glyph (#48 item 2). */
+    val Trash: ImageVector
+        get() =
+            _trash ?: strokedIcon(
+                name = "Trash",
+                strokeWidth = 2f,
+                pathData =
+                    arrayOf(
+                        "M4 7h16",
+                        "M9 7V4h6v3",
+                        "M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13",
+                        "M10 11v6",
+                        "M14 11v6",
+                    ),
+            ).also { _trash = it }
+
     private var _sparkle: ImageVector? = null
 
     /** Filled coach-note sparkle. The one filled (non-stroked) icon in the set. */

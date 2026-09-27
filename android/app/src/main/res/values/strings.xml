@@ -156,6 +156,7 @@
     <string name="home_state_left">%1$s left</string>
     <string name="home_state_over">%1$s over</string>
     <string name="home_state_no_target">no target</string>
+    <string name="home_meal_row_open_label">Open %1$s meals</string>
 
     <!-- Home dashboard: coach notes -->
     <!-- Single-food protein-gap suggestions: only shown when the gap is small
@@ -182,6 +183,8 @@
     <string name="meal_type_deleted_message">Meal deleted</string>
     <string name="meal_type_deleted_undo_label">Undo</string>
     <string name="meal_type_error_load_failed">Something went wrong loading your meals.</string>
+    <string name="meal_type_open_label">Open meal</string>
+    <string name="meal_type_swipe_delete_icon">Delete</string>
 
     <!-- Meal detail -->
     <string name="meal_detail_back">Back</string>

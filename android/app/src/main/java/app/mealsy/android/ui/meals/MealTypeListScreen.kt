@@ -1,8 +1,10 @@
 package app.mealsy.android.ui.meals
 
 import android.text.format.DateFormat
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,21 +15,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,6 +48,7 @@ import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
+import app.mealsy.android.design.theme.LocalReducedMotion
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
@@ -169,8 +177,10 @@ internal fun MealTypeListContent(
     }
 }
 
-private const val SWIPE_DELETE_THRESHOLD_PX = 300f
+/** [SwipeToDismissBoxState]'s positional threshold for a swipe-to-delete — dp-based (not px) so it's density-independent (#48 item 2). */
+private val SWIPE_DELETE_THRESHOLD = 96.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableMealRow(
     meal: LoggedMeal,
@@ -178,51 +188,85 @@ private fun SwipeableMealRow(
     onSwipeDelete: () -> Unit,
 ) {
     val colors = MealsyTheme.colors
-    var dragOffset by remember { mutableStateOf(0f) }
     val context = LocalContext.current
+    val reducedMotion = LocalReducedMotion.current
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { SWIPE_DELETE_THRESHOLD.toPx() }
+
+    val dismissState =
+        rememberSwipeToDismissBoxState(
+            positionalThreshold = { thresholdPx },
+        )
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onSwipeDelete()
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
 
     val displayLabel =
         remember(meal.label) {
             meal.label?.takeIf { it.isNotBlank() }?.let { FoodNameHumanizer.humanize(it) }
         }
     val timeLabel = remember(meal.loggedAt) { formatLoggedAtTime(meal.loggedAt, context) }
+    val rowLabel = displayLabel ?: stringResource(R.string.meal_type_generic_label)
+    val openLabel = stringResource(R.string.meal_type_open_label)
 
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 9.dp, horizontal = 16.dp)
-                .pointerInput(meal.mealId) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (dragOffset < -SWIPE_DELETE_THRESHOLD_PX) onSwipeDelete()
-                            dragOffset = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount -> dragOffset += dragAmount },
-                    )
-                }
-                .pointerInput(meal.mealId) {
-                    detectTapGestures(onTap = { onOpen() })
-                },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        gesturesEnabled = !reducedMotion,
+        backgroundContent = {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(colors.terracotta)
+                        .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    imageVector = MealsyIcons.Trash,
+                    contentDescription = stringResource(R.string.meal_type_swipe_delete_icon),
+                    tint = colors.terracottaText,
+                )
+            }
+        },
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = displayLabel ?: stringResource(R.string.meal_type_generic_label),
-                style = MealsyType.body,
-                color = colors.ink,
+        val interactionSource = remember { MutableInteractionSource() }
+        val pressed by interactionSource.collectIsPressedAsState()
+        val background = if (pressed) colors.surfacePressed else colors.surface
+
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(background)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClickLabel = openLabel,
+                        role = Role.Button,
+                        onClick = onOpen,
+                    )
+                    .padding(vertical = 9.dp, horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = rowLabel, style = MealsyType.body, color = colors.ink)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = timeLabel, style = MealsyType.label, color = colors.muted)
+            }
+            TagChip(text = stringResource(R.string.meal_type_kcal_chip, meal.kcal.roundToInt()), tone = TagTone.Butter)
+            Icon(
+                imageVector = MealsyIcons.ChevronRight,
+                contentDescription = null,
+                tint = colors.inactive,
+                modifier = Modifier.height(13.dp).width(13.dp),
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(text = timeLabel, style = MealsyType.label, color = colors.muted)
         }
-        TagChip(text = stringResource(R.string.meal_type_kcal_chip, meal.kcal.roundToInt()), tone = TagTone.Butter)
-        androidx.compose.material3.Icon(
-            imageVector = MealsyIcons.ChevronRight,
-            contentDescription = null,
-            tint = colors.inactive,
-            modifier = Modifier.height(13.dp).width(13.dp),
-        )
     }
 }
 

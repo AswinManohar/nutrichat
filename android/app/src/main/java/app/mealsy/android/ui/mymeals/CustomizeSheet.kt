@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -301,7 +302,10 @@ fun CustomizeSheet(
         viewModel.logged.collect { onLogged() }
     }
 
-    val sheetState = rememberModalBottomSheetState()
+    // #48 item 3: a partially-expanded sheet clips the primary "Log meal"
+    // button under the gesture bar until the user drags it up further.
+    // Skipping the half-expanded step means it always opens fully expanded.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
@@ -431,15 +435,18 @@ internal fun CustomizeSheetContent(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        // #48 item 3: pinned below the scrollable content and padded for the
+        // gesture/navigation bar, so "Log meal" is always fully visible and
+        // tappable rather than clipped under the system nav area.
         MealsyButton(
             text = stringResource(R.string.customize_sheet_confirm),
             onClick = onConfirm,
             enabled = !submitting && state.keptIngredients.isNotEmpty(),
             style = MealsyButtonStyle.Primary,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 

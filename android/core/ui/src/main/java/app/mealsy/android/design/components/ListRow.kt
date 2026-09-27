@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.icons.MealsyIcons
@@ -39,6 +40,9 @@ import app.mealsy.android.design.theme.MealsyType
  * @param onClick Invoked when the row is tapped, or null to render a
  *   non-interactive row (no pressed state).
  * @param modifier The modifier applied to the row's root container.
+ * @param onClickLabel Describes the tap action for TalkBack (e.g. "Open
+ *   meal"), announced alongside the row's label. Ignored when [onClick] is
+ *   null.
  * @param leading An optional leading slot, typically a 34dp
  *   [PastelIconCircle].
  * @param badgeCount When non-null, renders an ink count badge as the
@@ -52,6 +56,7 @@ fun ListRow(
     label: String,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onClickLabel: String? = null,
     leading: @Composable (() -> Unit)? = null,
     badgeCount: Int? = null,
     trailingText: String? = null,
@@ -62,11 +67,17 @@ fun ListRow(
     val pressed by interactionSource.collectIsPressedAsState()
     val background = if (pressed && onClick != null) colors.surfacePressed else Color.Transparent
 
+    // #48 item 1: `clickable(role = Role.Button, onClickLabel = ...)` gives
+    // TalkBack/Switch Access a click action and a "Button" role — plain
+    // `pointerInput(detectTapGestures)` (the old approach elsewhere in this
+    // screen family) exposes none of that.
     val clickableModifier =
         if (onClick != null) {
             Modifier.clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                onClickLabel = onClickLabel,
+                role = Role.Button,
                 onClick = onClick,
             )
         } else {

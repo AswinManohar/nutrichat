@@ -194,9 +194,11 @@ private fun HomeLoaded(
 
         ListContainer {
             state.meals.forEachIndexed { index, row ->
+                val mealTypeLabel = stringResource(mealTypeLabelRes(row.mealType))
                 ListRow(
-                    label = stringResource(mealTypeLabelRes(row.mealType)),
+                    label = mealTypeLabel,
                     onClick = { onOpenMealType(row.mealType) },
+                    onClickLabel = stringResource(R.string.home_meal_row_open_label, mealTypeLabel),
                     leading = {
                         PastelIconCircle(
                             icon = mealTypeIcon(row.mealType),
