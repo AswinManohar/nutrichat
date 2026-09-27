@@ -8,6 +8,7 @@ import app.mealsy.data.offline.DroppedLogStore
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -114,7 +115,16 @@ class ChatViewModelTest {
         return retrofit.create(MealsyApi::class.java)
     }
 
-    private fun buildViewModel(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatViewModel {
+    private fun buildViewModel(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatViewModel =
+        ChatViewModel(buildSessionStore(droppedLogStore))
+
+    /**
+     * Builds the [ChatSessionStore] a [ChatViewModel] forwards to. Tests use
+     * [Dispatchers.Unconfined] for the store's app-scoped [CoroutineScope]
+     * too (not just `Dispatchers.setMain` below) — see the class KDoc on
+     * mixing real `MockWebServer` I/O with a virtual-time dispatcher.
+     */
+    private fun buildSessionStore(droppedLogStore: DroppedLogStore = FakeDroppedLogStore()): ChatSessionStore {
         val api = buildApi()
         val todayRefreshSignal = app.mealsy.data.repo.TodayRefreshSignal()
         val repository =
@@ -125,14 +135,67 @@ class ChatViewModelTest {
                 json,
                 todayRefreshSignal,
             )
-        return ChatViewModel(
+        return ChatSessionStore(
             repository,
             FakeOnlineConnectivityObserver(),
             app.mealsy.data.repo.MyMealsRepository(api, todayRefreshSignal),
             droppedLogStore,
+            CoroutineScope(Dispatchers.Unconfined),
             fixedClock,
         )
     }
+
+    /**
+     * #40: a FAB-opened `ChatViewModel` and a Chat-tab `ChatViewModel` are
+     * two different `hiltViewModel()` instances (one per nav backstack
+     * entry), but must render the SAME conversation — because they both
+     * forward to the one [ChatSessionStore] singleton behind them, not two
+     * independent transcripts.
+     */
+    @Test
+    fun `quick-log and the chat tab share the same conversation via one session store`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val session = buildSessionStore()
+            val quickLogViewModel = ChatViewModel(session)
+            val chatTabViewModel = ChatViewModel(session)
+            quickLogViewModel.readyJob.join()
+
+            quickLogViewModel.send("an egg").join()
+
+            // The Chat tab's own ViewModel instance sees the same messages —
+            // there is only ever one transcript.
+            assertEquals(quickLogViewModel.messages.value, chatTabViewModel.messages.value)
+            assertTrue(chatTabViewModel.messages.value.any { it is ChatMsg.User && it.text == "an egg" })
+        }
+
+    /**
+     * #40 part 2: leaving the screen (a cleared `ViewModel`) must not cancel
+     * an in-flight send — the work runs on [ChatSessionStore]'s app-scoped
+     * coroutine, not `viewModelScope`. This models "the screen goes away"
+     * by simply never calling `onCleared()`/holding a `ViewModel` at all
+     * once `send` is kicked off: the session store's own `send()` Job is
+     * awaited directly, standing in for "the app process keeps running the
+     * request after the screen that launched it is gone."
+     */
+    @Test
+    fun `send on the session store completes independent of any ViewModel instance`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val session = buildSessionStore()
+            session.readyJob.join()
+
+            // No ChatViewModel is ever constructed here — send() is driven
+            // straight off the store, exactly as it would keep running after
+            // a ChatViewModel wrapping it was cleared by navigation.
+            session.send("two eggs").join()
+
+            val card = session.messages.value.lastOrNull { it is ChatMsg.Card } as? ChatMsg.Card
+            assertTrue(card != null)
+            assertTrue(card?.state is CardState.Active)
+        }
 
     private fun activeCardOf(viewModel: ChatViewModel): ChatMsg.Card? =
         viewModel.messages.value.lastOrNull { it is ChatMsg.Card } as? ChatMsg.Card

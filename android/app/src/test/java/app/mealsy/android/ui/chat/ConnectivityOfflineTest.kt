@@ -9,6 +9,7 @@ import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.MyMealsRepository
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -91,10 +92,13 @@ class ConnectivityOfflineTest {
             val connectivity = FakeConnectivityObserver(initial = true)
             val viewModel =
                 ChatViewModel(
-                    repository,
-                    connectivity,
-                    MyMealsRepository(api, todayRefreshSignal),
-                    NoopDroppedLogStore(),
+                    ChatSessionStore(
+                        repository,
+                        connectivity,
+                        MyMealsRepository(api, todayRefreshSignal),
+                        NoopDroppedLogStore(),
+                        CoroutineScope(Dispatchers.Unconfined),
+                    ),
                 )
             viewModel.readyJob.join()
 
@@ -134,10 +138,13 @@ class ConnectivityOfflineTest {
             val connectivity = FakeConnectivityObserver(initial = true)
             val viewModel =
                 ChatViewModel(
-                    repository,
-                    connectivity,
-                    MyMealsRepository(api, todayRefreshSignal),
-                    NoopDroppedLogStore(),
+                    ChatSessionStore(
+                        repository,
+                        connectivity,
+                        MyMealsRepository(api, todayRefreshSignal),
+                        NoopDroppedLogStore(),
+                        CoroutineScope(Dispatchers.Unconfined),
+                    ),
                 )
             viewModel.readyJob.join()
             assertTrue(!viewModel.offline.value)
