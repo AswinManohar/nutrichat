@@ -1,5 +1,11 @@
 package app.mealsy.android.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +33,7 @@ import app.mealsy.android.design.components.BottomNavPill
 import app.mealsy.android.design.components.MealsyNavItem
 import app.mealsy.android.design.components.OliveFab
 import app.mealsy.android.design.icons.MealsyIcons
+import app.mealsy.android.design.theme.LocalReducedMotion
 import app.mealsy.android.di.AppVersionCode
 import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
@@ -56,6 +63,12 @@ import java.io.IOException
 import javax.inject.Inject
 
 private const val APP_META_TIMEOUT_MS = 3_000L
+
+/** Push-screen (meal detail, settings, My Meal, onboarding, login) transition duration — #49 item 1. */
+private const val PUSH_TRANSITION_MS = 220
+
+/** Bottom-nav tab-switch transition duration — kept short/near-instant so it doesn't read as lag. */
+private const val TAB_TRANSITION_MS = 120
 
 private const val ROUTE_LOGIN = "login"
 private const val ROUTE_HOME = "home"
@@ -397,11 +410,33 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 val backStackEntry by navController.currentBackStackEntryAsState()
                 val activeTab = backStackEntry?.destination?.tabRoute()
 
+                // #49 item 1: Navigation-Compose 2.8's un-set default is a 700ms
+                // crossfade on every destination change. Push screens (meal
+                // detail, settings, onboarding, login) get a slide+fade at the
+                // product register's ~220ms; the four tab destinations override
+                // this per-`composable` below with a near-instant fade instead,
+                // so switching tabs doesn't feel like navigating "into" a screen.
+                // Both durations collapse to 0 (a snap) under ReducedMotion.
+                val reducedMotion = LocalReducedMotion.current
+                val pushMs = if (reducedMotion) 0 else PUSH_TRANSITION_MS
+                val tabMs = if (reducedMotion) 0 else TAB_TRANSITION_MS
+                val pushEasing = FastOutSlowInEasing
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(
                         navController = navController,
                         startDestination = onboardingRoute(startStep = 0),
                         modifier = Modifier.fillMaxSize(),
+                        enterTransition = {
+                            slideInHorizontally(tween(pushMs, easing = pushEasing)) { it / 4 } +
+                                fadeIn(tween(pushMs, easing = pushEasing))
+                        },
+                        exitTransition = { fadeOut(tween(pushMs, easing = pushEasing)) },
+                        popEnterTransition = { fadeIn(tween(pushMs, easing = pushEasing)) },
+                        popExitTransition = {
+                            slideOutHorizontally(tween(pushMs, easing = pushEasing)) { it / 4 } +
+                                fadeOut(tween(pushMs, easing = pushEasing))
+                        },
                     ) {
                         composable(ROUTE_LOGIN) { LoginScreen() }
                         composable(
@@ -425,7 +460,13 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 onNavigateToLogin = { navController.navigate(ROUTE_LOGIN) },
                             )
                         }
-                        composable(ROUTE_HOME) {
+                        composable(
+                            ROUTE_HOME,
+                            enterTransition = { fadeIn(tween(tabMs)) },
+                            exitTransition = { fadeOut(tween(tabMs)) },
+                            popEnterTransition = { fadeIn(tween(tabMs)) },
+                            popExitTransition = { fadeOut(tween(tabMs)) },
+                        ) {
                             HomeScreen(
                                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onOpenMealType = { mealType -> navController.navigate(mealTypeRoute(mealType)) },
@@ -440,12 +481,28 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                         defaultValue = false
                                     },
                                 ),
+                            enterTransition = { fadeIn(tween(tabMs)) },
+                            exitTransition = { fadeOut(tween(tabMs)) },
+                            popEnterTransition = { fadeIn(tween(tabMs)) },
+                            popExitTransition = { fadeOut(tween(tabMs)) },
                         ) { chatEntry ->
                             val quickLog = chatEntry.arguments?.getBoolean(ARG_QUICK_LOG) ?: false
                             ChatScreen(quickLog = quickLog)
                         }
-                        composable(ROUTE_TRENDS) { TrendsScreen() }
-                        composable(ROUTE_MY_MEALS) {
+                        composable(
+                            ROUTE_TRENDS,
+                            enterTransition = { fadeIn(tween(tabMs)) },
+                            exitTransition = { fadeOut(tween(tabMs)) },
+                            popEnterTransition = { fadeIn(tween(tabMs)) },
+                            popExitTransition = { fadeOut(tween(tabMs)) },
+                        ) { TrendsScreen() }
+                        composable(
+                            ROUTE_MY_MEALS,
+                            enterTransition = { fadeIn(tween(tabMs)) },
+                            exitTransition = { fadeOut(tween(tabMs)) },
+                            popEnterTransition = { fadeIn(tween(tabMs)) },
+                            popExitTransition = { fadeOut(tween(tabMs)) },
+                        ) {
                             // Home's TodayRefreshSignal-driven ON_RESUME refresh is what
                             // picks up a quick-log now, not this pop specifically — but
                             // popping back (rather than a plain nav) still avoids leaving

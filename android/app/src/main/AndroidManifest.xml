@@ -29,6 +29,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.Mealsy">
 
         <!-- WorkManager's default initializer builds a Configuration with a
