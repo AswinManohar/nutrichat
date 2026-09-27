@@ -34,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +51,6 @@ import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
-import app.mealsy.android.design.theme.LocalReducedMotion
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyScreenPadding
@@ -189,7 +191,6 @@ private fun SwipeableMealRow(
 ) {
     val colors = MealsyTheme.colors
     val context = LocalContext.current
-    val reducedMotion = LocalReducedMotion.current
     val density = LocalDensity.current
     val thresholdPx = with(density) { SWIPE_DELETE_THRESHOLD.toPx() }
 
@@ -212,11 +213,15 @@ private fun SwipeableMealRow(
     val timeLabel = remember(meal.loggedAt) { formatLoggedAtTime(meal.loggedAt, context) }
     val rowLabel = displayLabel ?: stringResource(R.string.meal_type_generic_label)
     val openLabel = stringResource(R.string.meal_type_open_label)
+    val deleteLabel = stringResource(R.string.meal_type_swipe_delete_icon)
 
+    // #48 follow-up: reduced motion shortens/skips animation, it doesn't take the
+    // swipe-to-delete gesture away — gesturesEnabled stays true unconditionally.
+    // TalkBack can't perform the drag gesture at all, so it gets an equivalent
+    // "Delete" CustomAccessibilityAction below (mirrors MyMealsScreen's rows).
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
-        gesturesEnabled = !reducedMotion,
         backgroundContent = {
             Box(
                 modifier =
@@ -250,6 +255,15 @@ private fun SwipeableMealRow(
                         role = Role.Button,
                         onClick = onOpen,
                     )
+                    .semantics {
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(deleteLabel) {
+                                    onSwipeDelete()
+                                    true
+                                },
+                            )
+                    }
                     .padding(vertical = 9.dp, horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
