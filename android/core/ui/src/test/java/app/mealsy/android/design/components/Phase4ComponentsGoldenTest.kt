@@ -90,6 +90,7 @@ class Phase4ComponentsGoldenTest : ScreenshotTestBase() {
         resultsState: PickerResultsState,
         online: Boolean = true,
         query: String = "toast",
+        suggestions: List<PickerRow> = emptyList(),
     ) {
         CandidatePickerSheetContent(
             currentName = "Shrimp toast",
@@ -98,10 +99,32 @@ class Phase4ComponentsGoldenTest : ScreenshotTestBase() {
             online = online,
             resultsState = resultsState,
             onSelectResult = { _, _ -> },
+            suggestions = suggestions,
+            onSelectSuggestion = { _, _ -> },
             onRemove = {},
             onDescribeDifferently = {},
         )
     }
+
+    // --- CandidatePickerSheetContent: Suggestions + Results (spec 003, US2, T037) ---
+
+    private val suggestionsWithResults =
+        listOf(
+            pickerRow("Shrimp toast", 2345, isCurrent = true),
+            pickerRow("Melba toast", 111222),
+        )
+
+    @Test
+    fun candidatePickerSheetContent_suggestions_light() =
+        captureMealsy("CandidatePickerSheetContent_suggestions", false) {
+            pickerContent(loadedResults, suggestions = suggestionsWithResults)
+        }
+
+    @Test
+    fun candidatePickerSheetContent_suggestions_dark() =
+        captureMealsy("CandidatePickerSheetContent_suggestions", true) {
+            pickerContent(loadedResults, suggestions = suggestionsWithResults)
+        }
 
     @Test
     fun candidatePickerSheetContent_loaded_light() =

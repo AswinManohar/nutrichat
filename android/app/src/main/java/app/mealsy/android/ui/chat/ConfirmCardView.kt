@@ -312,6 +312,7 @@ fun ConfirmCardView(
                     // log-items double-scales (contracts/android-picker-ui.md, U2).
                     previewQtyG = item.targetQtyG * card.portion,
                     baseQtyG = item.qtyG,
+                    candidateDetails = item.candidateDetails,
                 )
             }
         var swapError by remember(sheetIndex, item.fdcId) { mutableStateOf(false) }
@@ -354,6 +355,23 @@ fun ConfirmCardView(
                             candidateSheetIndex = null
                         } else {
                             pickerViewModel.select(fdcId, method = "search", query = query)
+                        }
+                    },
+                    suggestions =
+                        pickerViewModel.suggestions.map { hit ->
+                            PickerRow(
+                                fdcId = hit.fdcId,
+                                name = hit.name,
+                                kcal = hit.kcal,
+                                proteinG = hit.proteinG,
+                                isCurrent = hit.fdcId == item.fdcId,
+                            )
+                        },
+                    onSelectSuggestion = { fdcId, _ ->
+                        if (fdcId == item.fdcId) {
+                            candidateSheetIndex = null
+                        } else {
+                            pickerViewModel.select(fdcId, method = "suggestion")
                         }
                     },
                     onRemove = {

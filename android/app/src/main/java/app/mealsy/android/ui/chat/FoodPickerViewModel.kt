@@ -4,6 +4,7 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.repo.FoodRepository
 import app.mealsy.data.repo.FoodSearchHit
 import app.mealsy.data.repo.FoodSearchOutcome
+import app.mealsy.domain.CandidateDetail
 import app.mealsy.domain.CardItem
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -81,6 +82,9 @@ sealed interface FoodPickerEvent {
  *   `targetQtyG`). Sent as `GET /foods/{fdc_id}?qty_g=` on [select] so the
  *   picked item's own `targetQtyG`/portion keep governing the display —
  *   passing the edited/target quantity here would double-scale (U2).
+ * @param candidateDetails The item's [CardItem.candidateDetails], scaled by
+ *   [suggestions] to [previewQtyG] for the sheet's Suggestions section
+ *   (spec 003, US2). Empty when the backend sent none.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class FoodPickerViewModel(
@@ -91,9 +95,30 @@ class FoodPickerViewModel(
     initialQuery: String,
     private val previewQtyG: Double,
     private val baseQtyG: Double,
+    candidateDetails: List<CandidateDetail> = emptyList(),
 ) {
     private val _query = MutableStateFlow(initialQuery)
     val query: StateFlow<String> = _query.asStateFlow()
+
+    /**
+     * [candidateDetails] previewed at [previewQtyG] — what the user
+     * currently sees on the card, matching the Results section's scaling
+     * (contracts/android-picker-ui.md "Suggestions"). Empty hides the
+     * sheet's Suggestions section entirely.
+     */
+    val suggestions: List<FoodSearchHit> =
+        candidateDetails.map { detail ->
+            val scale = previewQtyG / 100.0
+            FoodSearchHit(
+                fdcId = detail.fdcId,
+                name = detail.name,
+                dataType = detail.dataType,
+                kcalPer100g = detail.kcalPer100g,
+                proteinGPer100g = detail.proteinGPer100g,
+                kcal = detail.kcalPer100g * scale,
+                proteinG = detail.proteinGPer100g * scale,
+            )
+        }
 
     val isOnline: StateFlow<Boolean> =
         connectivityObserver.isOnline.stateIn(scope, SharingStarted.Eagerly, true)
@@ -176,6 +201,7 @@ class FoodPickerViewModel(
                 initialQuery: String,
                 previewQtyG: Double,
                 baseQtyG: Double,
+                candidateDetails: List<CandidateDetail> = emptyList(),
             ): FoodPickerViewModel =
                 FoodPickerViewModel(
                     repository = repository,
@@ -185,6 +211,7 @@ class FoodPickerViewModel(
                     initialQuery = initialQuery,
                     previewQtyG = previewQtyG,
                     baseQtyG = baseQtyG,
+                    candidateDetails = candidateDetails,
                 )
         }
 }
