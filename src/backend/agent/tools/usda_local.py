@@ -67,6 +67,10 @@ class LocalMatch:
             per ``_confidence`` -- the real coverage score, never boosted.
         candidates: Descriptions of the top-ranked candidates (best first),
             capped at ``max_candidates``.
+        candidate_details: Per-candidate nutrition summaries, same order and
+            names as ``candidates`` (spec 003, US2). Each dict has fdc_id,
+            name, data_type, kcal_per_100g, protein_g_per_100g. Empty when
+            ``lookup`` is not the source (data-model.md CandidateDetail).
         macros_per_100g: Headline macros (kcal, protein_g, carbs_g, fat_g,
             fiber_g, sugar_g, sat_fat_g), per 100 g, unscaled.
         nutrients_per_100g: Full nutrient map, name -> {"amount", "unit"},
@@ -77,6 +81,7 @@ class LocalMatch:
     description: str
     match_confidence: float
     candidates: list[str] = field(default_factory=list)
+    candidate_details: list[dict] = field(default_factory=list)
     macros_per_100g: dict[str, float] = field(default_factory=dict)
     nutrients_per_100g: dict[str, dict] = field(default_factory=dict)
 
@@ -364,6 +369,32 @@ def _load_row(conn: sqlite3.Connection, fdc_id: int) -> tuple[dict[str, float], 
     return macros, nutrients
 
 
+def _load_candidate_summary(conn: sqlite3.Connection, fdc_id: int) -> dict:
+    """Load one candidate's data_type, kcal and protein per 100 g.
+
+    Cheaper than ``_load_row``: skips decompressing ``nutrients_z`` since
+    only the headline summary is needed for ``CandidateDetail`` (T034).
+
+    Args:
+        conn: Open read-only connection.
+        fdc_id: FDC id to load.
+
+    Returns:
+        Dict with fdc_id, data_type, kcal_per_100g, protein_g_per_100g.
+    """
+    row = conn.execute(
+        "SELECT data_type, kcal, protein_g FROM food WHERE fdc_id = ?",
+        (fdc_id,),
+    ).fetchone()
+    raw_data_type, kcal, protein_g = row
+    return {
+        "fdc_id": fdc_id,
+        "data_type": _DATA_TYPE_MAP.get(raw_data_type, raw_data_type),
+        "kcal_per_100g": kcal,
+        "protein_g_per_100g": protein_g,
+    }
+
+
 def lookup(
     food_name: str, *, pool_size: int = 25, max_candidates: int = 3
 ) -> LocalMatch | None:
@@ -406,11 +437,18 @@ def lookup(
     best_fdc_id, (best_description, _) = ranked[0]
     macros, nutrients = _load_row(conn, best_fdc_id)
 
+    top = ranked[:max_candidates]
+    candidate_details = []
+    for cand_fdc_id, (cand_description, _) in top:
+        summary = _load_candidate_summary(conn, cand_fdc_id)
+        candidate_details.append({**summary, "name": cand_description})
+
     return LocalMatch(
         fdc_id=best_fdc_id,
         description=best_description,
         match_confidence=_confidence(food_name, best_description),
-        candidates=[desc for _, (desc, _) in ranked[:max_candidates]],
+        candidates=[desc for _, (desc, _) in top],
+        candidate_details=candidate_details,
         macros_per_100g=macros,
         nutrients_per_100g=nutrients,
     )

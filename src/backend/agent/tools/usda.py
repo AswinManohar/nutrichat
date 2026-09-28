@@ -331,6 +331,9 @@ def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
         qty_g=entity.qty_g,
         match_confidence=match.match_confidence,
         candidates=match.candidates,
+        candidate_details=[
+            CandidateDetail(**detail) for detail in match.candidate_details
+        ],
         **macros,
         nutrients=nutrients,
     )
