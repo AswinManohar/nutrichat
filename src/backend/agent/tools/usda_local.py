@@ -44,6 +44,17 @@ _DB_PATH_ENV_VAR = "USDA_DB_PATH"
 
 _local = threading.local()
 
+# Raw sqlite `data_type` values -> the API-facing enum (data-model.md).
+_DATA_TYPE_MAP = {
+    "foundation_food": "foundation",
+    "sr_legacy_food": "sr_legacy",
+    "survey_fndds_food": "survey_fndds",
+}
+
+
+class FoodDbUnavailable(Exception):
+    """Raised when the local USDA reference database cannot be read."""
+
 
 @dataclass(frozen=True)
 class LocalMatch:
@@ -403,3 +414,169 @@ def lookup(
         macros_per_100g=macros,
         nutrients_per_100g=nutrients,
     )
+
+
+@dataclass(frozen=True)
+class LocalFoodHit:
+    """One search result row, per-100 g only (spec 003, FoodSearchResult).
+
+    Attributes:
+        fdc_id: USDA FoodData Central id.
+        name: FDC description.
+        data_type: One of "foundation", "sr_legacy", "survey_fndds".
+        kcal_per_100g: Energy per 100 g, unscaled.
+        protein_g_per_100g: Protein per 100 g, unscaled.
+    """
+
+    fdc_id: int
+    name: str
+    data_type: str
+    kcal_per_100g: float
+    protein_g_per_100g: float
+
+
+@dataclass(frozen=True)
+class LocalFood:
+    """A single food's full per-100 g macro/nutrient data.
+
+    Attributes:
+        fdc_id: USDA FoodData Central id.
+        name: FDC description.
+        data_type: One of "foundation", "sr_legacy", "survey_fndds".
+        macros_per_100g: Headline macros, per 100 g, unscaled.
+        nutrients_per_100g: Full nutrient map, per 100 g, unscaled.
+    """
+
+    fdc_id: int
+    name: str
+    data_type: str
+    macros_per_100g: dict[str, float]
+    nutrients_per_100g: dict[str, dict]
+
+    @property
+    def kcal_per_100g(self) -> float:
+        """Energy per 100 g, from ``macros_per_100g``."""
+        return self.macros_per_100g["kcal"]
+
+    @property
+    def protein_g_per_100g(self) -> float:
+        """Protein per 100 g, from ``macros_per_100g``."""
+        return self.macros_per_100g["protein_g"]
+
+
+def _require_available() -> None:
+    """Raise ``FoodDbUnavailable`` unless the local DB can be read.
+
+    Raises:
+        FoodDbUnavailable: If ``is_available()`` is False.
+    """
+    if not is_available():
+        raise FoodDbUnavailable(
+            f"USDA reference database unavailable at {database_path()}"
+        )
+
+
+def search_foods(query: str, limit: int = 10) -> list[LocalFoodHit]:
+    """Free-text search of the bundled USDA database (GET /foods/search).
+
+    Applies the same preparation normalisation and ranking as automatic
+    matching (``lookup``), via the FTS5 candidate pool and ``_rank_key``, so
+    search and automatic matching never disagree (research R2). Sync
+    (SQLite); callers on the event loop must wrap this in
+    ``asyncio.to_thread`` (research R8).
+
+    Args:
+        query: User-facing free-text food name.
+        limit: Max results to return.
+
+    Returns:
+        Best-first list of ``LocalFoodHit``, capped at ``limit``. Empty if
+        the query tokenizes to nothing or no candidates are found.
+
+    Raises:
+        FoodDbUnavailable: If the local database cannot be read.
+    """
+    _require_available()
+    normalized = _normalize_preparation(query)
+    tokens = _tokenize(normalized)
+    if not tokens:
+        return []
+
+    conn = _get_connection()
+    pool_size = max(limit, 25)
+    candidates = _fts_candidates(conn, tokens, pool_size)
+    _substring_rescue(conn, normalized, candidates, pool_size)
+    _head_match_supplement(conn, normalized, candidates, pool_size)
+    if not candidates:
+        return []
+
+    ranked = sorted(
+        candidates.items(),
+        key=lambda item: _rank_key(normalized, item[1][0], item[1][1], item[0]),
+        reverse=True,
+    )
+
+    hits: list[LocalFoodHit] = []
+    for fdc_id, (description, _bm25) in ranked[:limit]:
+        macros, _nutrients = _load_row(conn, fdc_id)
+        data_type = _row_data_type(conn, fdc_id)
+        hits.append(
+            LocalFoodHit(
+                fdc_id=fdc_id,
+                name=description,
+                data_type=data_type,
+                kcal_per_100g=macros["kcal"],
+                protein_g_per_100g=macros["protein_g"],
+            )
+        )
+    return hits
+
+
+def get_food(fdc_id: int) -> LocalFood | None:
+    """Load one food's full per-100 g data by id (GET /foods/{fdc_id}).
+
+    Sync (SQLite); callers on the event loop must wrap this in
+    ``asyncio.to_thread`` (research R8).
+
+    Args:
+        fdc_id: USDA FoodData Central id to load.
+
+    Returns:
+        The matching ``LocalFood``, or None if ``fdc_id`` is unknown.
+
+    Raises:
+        FoodDbUnavailable: If the local database cannot be read.
+    """
+    _require_available()
+    conn = _get_connection()
+    row = conn.execute(
+        "SELECT description, data_type FROM food WHERE fdc_id = ?", (fdc_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    description, raw_data_type = row
+    macros, nutrients = _load_row(conn, fdc_id)
+    return LocalFood(
+        fdc_id=fdc_id,
+        name=description,
+        data_type=_DATA_TYPE_MAP.get(raw_data_type, raw_data_type),
+        macros_per_100g=macros,
+        nutrients_per_100g=nutrients,
+    )
+
+
+def _row_data_type(conn: sqlite3.Connection, fdc_id: int) -> str:
+    """Look up and normalise one food's ``data_type`` enum value.
+
+    Args:
+        conn: Open read-only connection.
+        fdc_id: FDC id to look up.
+
+    Returns:
+        One of "foundation", "sr_legacy", "survey_fndds".
+    """
+    row = conn.execute(
+        "SELECT data_type FROM food WHERE fdc_id = ?", (fdc_id,)
+    ).fetchone()
+    raw_data_type = row[0] if row else ""
+    return _DATA_TYPE_MAP.get(raw_data_type, raw_data_type)

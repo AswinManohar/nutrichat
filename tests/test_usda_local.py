@@ -255,3 +255,50 @@ def test_generic_rank_only_fires_when_all_modifiers_are_generic() -> None:
     # No modifier at all is not "generic" -- "Peanut butter" must not be
     # promoted over an entry the query specified more precisely.
     assert _generic_rank("Peanut butter") == 0.0
+
+
+def test_search_foods_ranks_toasted_bread_above_shrimp_toast(fixture_db: Path) -> None:
+    results = usda_local.search_foods("toast")
+    assert results, "expected at least one result"
+    assert results[0].name == "Bread, white, toasted"
+
+
+def test_search_foods_respects_limit(fixture_db: Path) -> None:
+    results = usda_local.search_foods("rice", limit=2)
+    assert len(results) <= 2
+
+
+def test_search_foods_empty_for_gibberish(fixture_db: Path) -> None:
+    results = usda_local.search_foods("zzxxqqvv12345")
+    assert results == []
+
+
+def test_search_foods_raises_when_db_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("USDA_DB_PATH", "/nonexistent/path/to.sqlite3")
+    with pytest.raises(usda_local.FoodDbUnavailable):
+        usda_local.search_foods("rice")
+
+
+def test_get_food_returns_scaled_ready_nutrients(fixture_db: Path) -> None:
+    match = usda_local.lookup("toast")
+    assert match is not None
+    food = usda_local.get_food(match.fdc_id)
+    assert food is not None
+    assert food.fdc_id == match.fdc_id
+    assert food.kcal_per_100g == _SAMPLE_MACROS["kcal"]
+    assert food.protein_g_per_100g == _SAMPLE_MACROS["protein_g"]
+    assert food.nutrients_per_100g["Energy"]["amount"] == 130.0
+
+
+def test_get_food_returns_none_for_unknown_fdc_id(fixture_db: Path) -> None:
+    assert usda_local.get_food(999999) is None
+
+
+def test_get_food_raises_when_db_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("USDA_DB_PATH", "/nonexistent/path/to.sqlite3")
+    with pytest.raises(usda_local.FoodDbUnavailable):
+        usda_local.get_food(1001)
