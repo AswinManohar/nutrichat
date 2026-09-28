@@ -124,6 +124,21 @@ def test_candidates_capped_and_best_first(fixture_db: Path) -> None:
     assert match.candidates[0] == match.description
 
 
+def test_candidate_details_match_candidates_names_and_order(
+    fixture_db: Path,
+) -> None:
+    """T032/T034: candidate_details names equal candidates, same order."""
+    match = usda_local.lookup("rice", max_candidates=3)
+    assert match is not None
+    assert len(match.candidate_details) == len(match.candidates)
+    assert [d["name"] for d in match.candidate_details] == match.candidates
+    for detail in match.candidate_details:
+        assert detail["data_type"] == "sr_legacy"
+        assert detail["kcal_per_100g"] == pytest.approx(130.0)
+        assert detail["protein_g_per_100g"] == pytest.approx(2.7)
+        assert isinstance(detail["fdc_id"], int)
+
+
 def test_lookup_is_deterministic(fixture_db: Path) -> None:
     first = usda_local.lookup("white rice")
     second = usda_local.lookup("white rice")

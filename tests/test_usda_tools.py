@@ -542,6 +542,91 @@ async def test_local_path_scales_macros_and_skips_cache_lookup():
     assert r.fat_g == pytest.approx(3.6 * 2.5)
 
 
+_LOCAL_MATCH_WITH_DETAILS = LocalMatch(
+    fdc_id=555,
+    description="Chicken, broilers or fryers, breast, meat only, cooked, grilled",
+    match_confidence=0.9,
+    candidates=[
+        "Chicken, broilers or fryers, breast, meat only, cooked, grilled",
+        "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+    ],
+    candidate_details=[
+        {
+            "fdc_id": 555,
+            "name": "Chicken, broilers or fryers, breast, meat only, cooked, grilled",
+            "data_type": "sr_legacy",
+            "kcal_per_100g": 165.0,
+            "protein_g_per_100g": 31.0,
+        },
+        {
+            "fdc_id": 556,
+            "name": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+            "data_type": "sr_legacy",
+            "kcal_per_100g": 172.0,
+            "protein_g_per_100g": 30.0,
+        },
+    ],
+    macros_per_100g={
+        "kcal": 165.0,
+        "protein_g": 31.0,
+        "carbs_g": 0.0,
+        "fat_g": 3.6,
+        "fiber_g": 0.0,
+        "sugar_g": 0.0,
+        "sat_fat_g": 1.0,
+    },
+    nutrients_per_100g={
+        "Energy": {"amount": 165.0, "unit": "kcal"},
+        "Protein": {"amount": 31.0, "unit": "g"},
+    },
+)
+
+
+@pytest.mark.asyncio
+async def test_local_path_populates_candidate_details_in_order():
+    """T032: candidate_details survive USDAResult, same order/names as
+    candidates, for the local FTS path (T034)."""
+    entity = FoodEntity(food_name="grilled chicken breast", qty_g=100.0, unit="g")
+
+    with (
+        patch("backend.agent.tools.usda._use_local", return_value=True),
+        patch(
+            "backend.agent.tools.usda.usda_local.lookup",
+            return_value=_LOCAL_MATCH_WITH_DETAILS,
+        ),
+        patch("backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    r = results[0]
+    assert [d.name for d in r.candidate_details] == r.candidates
+    assert r.candidate_details[0].fdc_id == 555
+    assert r.candidate_details[0].kcal_per_100g == pytest.approx(165.0)
+    assert r.candidate_details[1].fdc_id == 556
+
+
+@pytest.mark.asyncio
+async def test_fdc_api_path_leaves_candidate_details_empty():
+    """T032: the live-FDC path never populates candidate_details."""
+    entity = FoodEntity(food_name="scrambled egg", qty_g=100.0, unit="g")
+
+    with (
+        patch(
+            "backend.agent.tools.usda._cache_lookup",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch(
+            "aiohttp.ClientSession.get",
+            return_value=_mock_http_response(MOCK_FDC_RESPONSE),
+        ),
+    ):
+        results = await usda_lookup_batch([entity])
+
+    assert results[0].candidate_details == []
+
+
 @pytest.mark.asyncio
 async def test_local_path_low_confidence_falls_back_to_llm_estimate():
     entity = FoodEntity(food_name="chicken biryani", qty_g=300.0, unit="bowl")
