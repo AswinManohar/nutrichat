@@ -437,8 +437,19 @@ async def _insert_meal_log(
     totals: dict,
     label: str | None = None,
     client_request_id: str | None = None,
+    corrections: list[dict] | None = None,
 ) -> str:
-    """Insert a meal_log row and return the generated meal_id.
+    """Insert a meal_log row (and any food_correction rows) in one transaction.
+
+    Args:
+        corrections: Optional list of correction dicts (spec 003, FR-012),
+            aligned index-for-index with `usda_results` (already filtered
+            the same way, i.e. one entry — possibly None — per resolved
+            item). Each non-None entry gets one `food_correction` row
+            written in the same session/transaction as the meal_log insert,
+            using the generated `meal_id` and that item's final `food_name`
+            as `to_name`, so a correction can never be orphaned from its
+            meal (research R6, data-model.md).
 
     Raises:
         sqlalchemy.exc.IntegrityError: If client_request_id is set and a row
@@ -475,6 +486,31 @@ async def _insert_meal_log(
                 "client_request_id": client_request_id,
             },
         )
+        for result, correction in zip(usda_results, corrections or [], strict=False):
+            if correction is None:
+                continue
+            await session.execute(
+                sa_text(
+                    "INSERT INTO food_correction "
+                    "(id, user_id, meal_log_id, original_phrase, from_fdc_id, "
+                    "from_name, to_fdc_id, to_name, method, query) "
+                    "VALUES (:id, :user_id, :meal_log_id, :original_phrase, "
+                    ":from_fdc_id, :from_name, :to_fdc_id, :to_name, :method, "
+                    ":query)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "user_id": user_id,
+                    "meal_log_id": meal_id,
+                    "original_phrase": correction["original_phrase"],
+                    "from_fdc_id": correction["from_fdc_id"],
+                    "from_name": correction["from_name"],
+                    "to_fdc_id": correction["to_fdc_id"],
+                    "to_name": result.food_name,
+                    "method": correction["method"],
+                    "query": correction.get("query"),
+                },
+            )
         await session.commit()
     return meal_id
 
@@ -485,6 +521,7 @@ async def log_meal(
     meal_type: str = "unspecified",
     label: str | None = None,
     client_request_id: str | None = None,
+    corrections: list[dict | None] | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 
@@ -496,6 +533,11 @@ async def log_meal(
             set, the insert is guarded by a unique index on
             (user_id, client_request_id); a duplicate raises IntegrityError
             for the caller to translate into a dedup response.
+        corrections: Optional list aligned index-for-index with
+            `usda_results` (spec 003, FR-012): `corrections[i]` is either
+            None or a correction dict for `usda_results[i]`. Entries whose
+            item is excluded from `resolved` (fdc_id == -1 and not
+            estimated) are dropped along with that item.
 
     Returns:
         MealLogResult with meal_id, totals, and confirmation message.
@@ -505,7 +547,13 @@ async def log_meal(
     """
     # LLM estimates also carry fdc_id=-1 (no real FDC row) but ARE usable
     # nutrition data — only exclude true misses (no estimate either).
-    resolved = [r for r in usda_results if r.fdc_id != -1 or r.estimated]
+    corrections = corrections or [None] * len(usda_results)
+    resolved: list = []
+    resolved_corrections: list[dict | None] = []
+    for r, c in zip(usda_results, corrections, strict=False):
+        if r.fdc_id != -1 or r.estimated:
+            resolved.append(r)
+            resolved_corrections.append(c)
     totals = {
         "kcal": round(sum(r.kcal for r in resolved), 1),
         "protein_g": round(sum(r.protein_g for r in resolved), 1),
@@ -518,7 +566,13 @@ async def log_meal(
     async def _persist() -> str:
         """Insert the row, bump Redis, enqueue the embedding; return meal_id."""
         meal_id = await _insert_meal_log(
-            user_id, meal_type, resolved, totals, label, client_request_id
+            user_id,
+            meal_type,
+            resolved,
+            totals,
+            label,
+            client_request_id,
+            resolved_corrections,
         )
         await increment_today(
             user_id,

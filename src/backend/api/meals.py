@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -155,6 +156,25 @@ async def pending_card(
     )
 
 
+class CorrectionIn(BaseModel):
+    """A user's correction of one logged item's USDA match (spec 003).
+
+    Sent on the item that was swapped via the food picker. Validated
+    against the item's own `fdc_id` by the endpoint (`to_fdc_id` must
+    match, 422 otherwise) and written as one `food_correction` row in the
+    same transaction as the meal (data-model.md, FR-012).
+    """
+
+    original_phrase: str = Field(min_length=1, max_length=200)
+    from_fdc_id: int | None = None
+    from_name: str = Field(min_length=1, max_length=300)
+    to_fdc_id: int
+    method: Literal["suggestion", "search"]
+    query: str | None = Field(default=None, max_length=200)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class LogItemIn(BaseModel):
     """One resolved confirmation-card item to log directly (no LLM).
 
@@ -162,11 +182,16 @@ class LogItemIn(BaseModel):
     `target_qty_g` is the user-edited weight before the portion multiplier.
     Extra fields (nutrients, fdc_id, macros, source, estimated, source_dish)
     are kept verbatim so the logged row carries full nutrition.
+
+    `correction` is optional (spec 003): when set, its `to_fdc_id` must
+    equal this item's own `fdc_id` (an extra field kept via `extra="allow"`)
+    — the endpoint validates this and returns 422 on a mismatch.
     """
 
     food_name: str
     qty_g: float = Field(gt=0)
     target_qty_g: float = Field(gt=0)
+    correction: CorrectionIn | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -268,10 +293,20 @@ async def log_items(
     pending-recovery poll could resurrect the stale, unswapped card.
 
     Raises:
-        HTTPException 422: Invalid meal_type.
+        HTTPException 422: Invalid meal_type, or an item's
+            `correction.to_fdc_id` doesn't match its own `fdc_id`.
     """
     if req.meal_type not in MEAL_CATEGORIES:
         raise HTTPException(status_code=422, detail="Invalid meal_type")
+
+    for item in req.items:
+        if item.correction is not None and item.correction.to_fdc_id != item.model_extra.get(
+            "fdc_id"
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="correction.to_fdc_id must equal the item's fdc_id",
+            )
 
     if req.client_request_id:
         existing = await _find_by_client_request_id(user_id, req.client_request_id)
@@ -279,7 +314,11 @@ async def log_items(
             await _resolve_pending_if_any(request, user_id, req.conversation_id)
             return _dedup_result(existing)
 
-    item_dicts = [it.model_dump() for it in req.items]
+    item_dicts = [it.model_dump(exclude={"correction"}) for it in req.items]
+    corrections = [
+        it.correction.model_dump() if it.correction is not None else None
+        for it in req.items
+    ]
     results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
     try:
@@ -289,6 +328,7 @@ async def log_items(
             req.meal_type,
             label=label,
             client_request_id=req.client_request_id,
+            corrections=corrections,
         )
         await _resolve_pending_if_any(request, user_id, req.conversation_id)
         return result
