@@ -354,6 +354,13 @@ async def _handle_meal_logging(
                     "from_saved": False,
                     "meal_id": None,
                     "decomposed_entities": [],
+                    # A new user turn always starts unresolved, even when the
+                    # thread was reused after a previous card was logged via
+                    # POST /meals/log-items (resolve_pending, T008/T009).
+                    # Without this, a leftover resolved=True from that prior
+                    # card would make get_pending_card treat THIS turn's new
+                    # card as already handled the moment it pauses again.
+                    "resolved": False,
                 },
                 config=config,
             )
