@@ -302,3 +302,72 @@ def test_get_food_raises_when_db_unavailable(
     monkeypatch.setenv("USDA_DB_PATH", "/nonexistent/path/to.sqlite3")
     with pytest.raises(usda_local.FoodDbUnavailable):
         usda_local.get_food(1001)
+
+
+# ---------------------------------------------------------------------------
+# T022a: regression cases from #51 against the REAL bundled database (not
+# the small fixture above), for both automatic matching (lookup) and search.
+# Skipped if the bundled DB isn't present in this checkout.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def real_db() -> Iterator[None]:
+    """Point usda_local at the real bundled database, restoring env after."""
+    if not usda_local.is_available():
+        pytest.skip("bundled usda_fdc.sqlite3 not present in this checkout")
+    usda_local._local = usda_local.threading.local()
+    yield
+    usda_local._local = usda_local.threading.local()
+
+
+def test_regression_51_rice_lookup(real_db: None) -> None:
+    match = usda_local.lookup("rice")
+    assert match is not None
+    assert "rice crackers" not in match.description.lower()
+
+
+def test_regression_51_toast_lookup(real_db: None) -> None:
+    match = usda_local.lookup("toast")
+    assert match is not None
+    assert "shrimp toast" not in match.description.lower()
+
+
+def test_regression_51_blueberries_lookup(real_db: None) -> None:
+    match = usda_local.lookup("blueberries")
+    assert match is not None
+    assert "blueberry juice" not in match.description.lower()
+
+
+def test_regression_51_water_lookup(real_db: None) -> None:
+    match = usda_local.lookup("water")
+    assert match is not None
+    assert "tonic water" not in match.description.lower()
+
+
+@pytest.mark.xfail(
+    reason=(
+        "known miss after #51's port (T001/T022a): automatic matching for "
+        "bare 'chicken breast' still picks 'Chicken breast, roll, "
+        "oven-roasted' (a deli product) over plain chicken breast, because "
+        "the roll variant's shorter/more literal description out-scores it "
+        "on _rank_key. The real cut ('Chicken, breast, boneless, skinless, "
+        "raw') IS in the top-5 search pool (see the passing search-mode "
+        "case for the same query), so this is a ranking gap, not a pool "
+        "gap. Left as a known miss per the 2026-09-24 decision not to "
+        "retune the ranker for this feature; tracked, not silently lost."
+    ),
+    strict=True,
+)
+def test_regression_51_chicken_breast_lookup(real_db: None) -> None:
+    match = usda_local.lookup("chicken breast")
+    assert match is not None
+    assert "roll" not in match.description.lower()
+
+
+def test_regression_51_chicken_breast_in_top5_search(real_db: None) -> None:
+    """Even though automatic matching misses (see xfail above), plain
+    chicken breast is reachable via search within the top 5 results."""
+    hits = usda_local.search_foods("chicken breast", limit=5)
+    names = [h.name.lower() for h in hits]
+    assert any("roll" not in n and "chicken" in n and "breast" in n for n in names)
