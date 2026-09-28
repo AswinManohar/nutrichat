@@ -63,7 +63,17 @@ def test_delete_account_removes_all_rows(
     auth_del.assert_awaited_once_with(_UID)
     session.commit.assert_awaited_once()
     # 1 select (telegram chat_ids) + N deletes issued within the transaction
-    assert session.execute.await_count >= 8
+    assert session.execute.await_count >= 9
+
+    # One of the deletes must target food_correction rows for this user
+    # (spec 003, FR-012 / research R6): a corrected item's audit row must
+    # not survive account deletion.
+    deleted_tables = {
+        call.args[0].table.name
+        for call in session.execute.await_args_list
+        if hasattr(call.args[0], "table")
+    }
+    assert "food_correction" in deleted_tables
 
 
 def test_delete_account_fails_closed_when_auth_delete_fails(

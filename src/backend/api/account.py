@@ -12,6 +12,7 @@ from backend.auth.supabase import get_current_user_id
 from backend.db.models import (
     DailySummary,
     DeviceToken,
+    FoodCorrection,
     IntegrationToken,
     MealLog,
     NutrientCheckup,
@@ -122,9 +123,9 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
         # Tables below all cascade from user_goal (ondelete="CASCADE" on
         # their user_id FK): telegram_link, integration_token, device_token,
         # meal_log, user_meal, user_memory, daily_summary, weekly_summary,
-        # nutrient_checkup. Deleted explicitly anyway for clarity and to
-        # keep this endpoint correct even if a future migration drops a
-        # cascade.
+        # nutrient_checkup, food_correction. Deleted explicitly anyway for
+        # clarity and to keep this endpoint correct even if a future
+        # migration drops a cascade.
         await session.execute(
             delete(TelegramLink).where(TelegramLink.user_id == user_id)
         )
@@ -132,6 +133,9 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
             delete(IntegrationToken).where(IntegrationToken.user_id == user_id)
         )
         await session.execute(delete(DeviceToken).where(DeviceToken.user_id == user_id))
+        await session.execute(
+            delete(FoodCorrection).where(FoodCorrection.user_id == user_id)
+        )
         await session.execute(delete(MealLog).where(MealLog.user_id == user_id))
         await session.execute(delete(UserMeal).where(UserMeal.user_id == user_id))
         await session.execute(delete(UserMemory).where(UserMemory.user_id == user_id))
