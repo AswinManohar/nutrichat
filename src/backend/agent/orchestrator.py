@@ -211,10 +211,14 @@ def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "fiber_g": r["fiber_g"],
                 "fdc_id": r["fdc_id"],
                 "candidates": r.get("candidates", []),
+                "candidate_details": r.get("candidate_details", []),
                 "source": r.get("source", "USDA"),
                 "estimated": r.get("estimated", False),
                 "source_dish": r.get("source_dish"),
                 "is_composite": r.get("is_composite", False),
+                # Spec 003 research R9: the user's original words, when not
+                # already derivable from food_name (picker prefill).
+                "input_phrase": r.get("input_phrase"),
                 # Full breakdown so "Save to My Meals" preserves micros.
                 "sugar_g": r.get("sugar_g", 0.0),
                 "sat_fat_g": r.get("sat_fat_g", 0.0),

@@ -239,6 +239,10 @@ async def usda_batch_node(state: AgentState) -> dict:
     for entity, result in zip(entities, results):
         result.source_dish = entity.source_dish
         result.is_composite = entity.is_composite
+        # Spec 003 research R9: only set input_phrase when the user's words
+        # aren't already recoverable from the matched food_name.
+        if entity.food_name.strip().lower() not in result.food_name.lower():
+            result.input_phrase = entity.food_name
     return {"usda_results": [r.model_dump() for r in results]}
 
 

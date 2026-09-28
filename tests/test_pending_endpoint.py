@@ -39,6 +39,16 @@ async def test_paused_returns_card():
         "fiber_g": 3.1,
         "match_confidence": 0.95,
         "estimated": False,
+        "input_phrase": "banana",
+        "candidate_details": [
+            {
+                "fdc_id": 123,
+                "name": "banana, raw",
+                "data_type": "sr_legacy",
+                "kcal_per_100g": 89.0,
+                "protein_g_per_100g": 1.1,
+            }
+        ],
     }
 
     class Msg:
@@ -55,6 +65,10 @@ async def test_paused_returns_card():
     assert out["paused"] is True
     assert out["items"][0]["food_name"] == "banana, raw"
     assert out["message"] == "Here's your card"
+    # Spec 003 (T021): input_phrase and candidate_details pass through the
+    # card shape unchanged.
+    assert out["items"][0]["input_phrase"] == "banana"
+    assert out["items"][0]["candidate_details"][0]["fdc_id"] == 123
 
 
 # ---------------------------------------------------------------------------

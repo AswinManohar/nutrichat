@@ -94,6 +94,12 @@ class USDAResult(BaseModel):
     # ingredient dish that can still be broken into ingredients. Lets the
     # frontend offer "Break into ingredients" only where it makes sense.
     is_composite: bool = False
+    # Spec 003 research R9: the user's original words for this item, set by
+    # usda_batch_node from the originating FoodEntity.food_name when that
+    # differs from the matched food_name (e.g. "toast" -> "Bread, white,
+    # toasted"). None when the matched name already carries the user's
+    # words, so the picker's initial query has something to prefill with.
+    input_phrase: str | None = None
 
 
 class NutritionEstimate(BaseModel):
