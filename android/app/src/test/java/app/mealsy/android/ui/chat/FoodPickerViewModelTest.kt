@@ -4,6 +4,7 @@ import app.mealsy.android.util.ConnectivityObserver
 import app.mealsy.data.repo.FoodRepository
 import app.mealsy.data.repo.FoodSearchHit
 import app.mealsy.data.repo.FoodSearchOutcome
+import app.mealsy.domain.CandidateDetail
 import app.mealsy.domain.CardItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -162,6 +163,7 @@ class FoodPickerViewModelTest {
         currentFdcId: Long = 111,
         previewQtyG: Double = 28.0,
         baseQtyG: Double = 28.0,
+        candidateDetails: List<CandidateDetail> = emptyList(),
     ): Triple<FoodPickerViewModel, RecordingFoodRepository, FakeConnectivityObserver> {
         val vm =
             FoodPickerViewModel(
@@ -172,9 +174,65 @@ class FoodPickerViewModelTest {
                 initialQuery = initialQuery,
                 previewQtyG = previewQtyG,
                 baseQtyG = baseQtyG,
+                candidateDetails = candidateDetails,
             )
         return Triple(vm, repo, connectivity)
     }
+
+    @Test
+    fun `suggestions preview kcal and protein at previewQtyG, not baseQtyG`() =
+        runTest(dispatcher) {
+            val repo = RecordingFoodRepository()
+            val details =
+                listOf(
+                    CandidateDetail(
+                        fdcId = 172687,
+                        name = "Bread, white, commercially prepared, toasted",
+                        dataType = "sr_legacy",
+                        kcalPer100g = 293.0,
+                        proteinGPer100g = 9.0,
+                    ),
+                )
+            val (vm, _, _) =
+                buildViewModel(
+                    backgroundScope,
+                    repo,
+                    currentFdcId = 111,
+                    previewQtyG = 56.0,
+                    baseQtyG = 28.0,
+                    candidateDetails = details,
+                )
+
+            assertEquals(1, vm.suggestions.size)
+            val hit = vm.suggestions[0]
+            assertEquals(172687L, hit.fdcId)
+            assertEquals(293.0 * 0.56, hit.kcal, 0.001)
+            assertEquals(9.0 * 0.56, hit.proteinG, 0.001)
+        }
+
+    @Test
+    fun `empty candidateDetails yields no suggestions`() =
+        runTest(dispatcher) {
+            val repo = RecordingFoodRepository()
+            val (vm, _, _) = buildViewModel(backgroundScope, repo, candidateDetails = emptyList())
+            assertTrue(vm.suggestions.isEmpty())
+        }
+
+    @Test
+    fun `selecting a suggestion records method suggestion`() =
+        runTest(dispatcher) {
+            val repo = RecordingFoodRepository()
+            repo.getFoodResult = sampleItem(172687)
+            val (vm, _, _) = buildViewModel(backgroundScope, repo, currentFdcId = 111)
+            var event: FoodPickerEvent? = null
+            val job = launch { vm.eventsFlow.collect { event = it } }
+            vm.select(172687, method = "suggestion")
+            advanceTimeBy(10)
+            advanceUntilIdle()
+            job.cancel()
+            check(event is FoodPickerEvent.SwapReady)
+            assertEquals("suggestion", (event as FoodPickerEvent.SwapReady).method)
+        }
 
     @Test
     fun `initial query equals the item's original phrase and results load on open`() =

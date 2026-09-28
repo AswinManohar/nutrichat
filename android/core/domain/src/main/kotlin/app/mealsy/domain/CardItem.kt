@@ -30,6 +30,10 @@ import kotlinx.serialization.json.JsonObject
  * @property inputPhrase The user's original words for this item, when not
  *   already derivable from [foodName] (spec 003, research R9). Used to
  *   pre-fill the food picker's search field.
+ * @property candidateDetails Per-candidate nutrition for [candidates], same
+ *   order and names (spec 003, US2 "Compare the suggested alternatives").
+ *   Empty for estimated items and the live-FDC path (data-model.md
+ *   CandidateDetail) — the picker sheet falls back to name-only rows then.
  * @property pendingCorrection UI/wire state set by
  *   [CardEditor.swapItem] (spec 003's local swap path, distinct from
  *   [pendingCandidate]'s chat round-trip): records the picker-driven
@@ -58,6 +62,29 @@ data class CardItem(
     val pendingCandidate: String? = null,
     val inputPhrase: String? = null,
     val pendingCorrection: FoodCorrection? = null,
+    val candidateDetails: List<CandidateDetail> = emptyList(),
+)
+
+/**
+ * One [CardItem.candidates] alternative's nutrition, for the picker sheet's
+ * Suggestions section (spec 003, US2). Matches the wire shape of
+ * `FoodSearchResult` minus the request-scaled fields — the client scales
+ * for preview at the item's current grams (data-model.md).
+ *
+ * @property fdcId USDA FoodData Central id.
+ * @property name Equals the matching entry in the sibling `candidates`,
+ *   same order.
+ * @property dataType One of `"foundation"`, `"sr_legacy"`, `"survey_fndds"`.
+ * @property kcalPer100g Energy per 100 g, unscaled.
+ * @property proteinGPer100g Protein per 100 g, unscaled.
+ */
+@Serializable
+data class CandidateDetail(
+    val fdcId: Long,
+    val name: String,
+    val dataType: String,
+    val kcalPer100g: Double,
+    val proteinGPer100g: Double,
 )
 
 /**

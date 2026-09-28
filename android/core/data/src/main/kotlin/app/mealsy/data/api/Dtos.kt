@@ -1,5 +1,6 @@
 package app.mealsy.data.api
 
+import app.mealsy.domain.CandidateDetail
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.Goals
@@ -80,6 +81,9 @@ data class LogTurnResponse(
  * @property correction Wire key `correction` — **client -> server only**,
  *   set on `POST /meals/log-items` items that were swapped via the food
  *   picker (spec 003). Never present on a decoded response.
+ * @property candidateDetails Wire key `candidate_details` — per-candidate
+ *   nutrition for [candidates], same order/names (spec 003, US2). Older
+ *   servers may omit the key entirely; that decodes to an empty list.
  */
 @Serializable(with = ItemDtoSerializer::class)
 data class ItemDto(
@@ -101,6 +105,21 @@ data class ItemDto(
     val isComposite: Boolean = false,
     val inputPhrase: String? = null,
     val correction: CorrectionDto? = null,
+    val candidateDetails: List<CandidateDetailDto> = emptyList(),
+)
+
+/**
+ * One [ItemDto.candidateDetails] entry — a candidate's per-100g nutrition
+ * (spec 003, US2, `contracts/foods-api.md` "candidate_details"). Matches
+ * `FoodSearchResultDto` minus the request-scaled `kcal`/`protein_g` fields.
+ */
+@Serializable
+data class CandidateDetailDto(
+    @SerialName("fdc_id") val fdcId: Long,
+    val name: String,
+    @SerialName("data_type") val dataType: String,
+    @SerialName("kcal_per_100g") val kcalPer100g: Double,
+    @SerialName("protein_g_per_100g") val proteinGPer100g: Double,
 )
 
 /**
@@ -124,7 +143,7 @@ private val ITEM_DTO_KNOWN_KEYS =
         "food_name", "qty_g", "target_qty_g", "kcal", "protein_g",
         "carbs_g", "fat_g", "fiber_g", "fdc_id", "estimated",
         "candidates", "source", "confidence", "source_dish", "is_composite",
-        "input_phrase", "correction",
+        "input_phrase", "correction", "candidate_details",
     )
 
 object ItemDtoSerializer : KSerializer<ItemDto> {
@@ -156,6 +175,13 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
             inputPhrase = obj["input_phrase"]?.jsonPrimitive?.contentOrNull,
             // `correction` is client -> server only; the backend never
             // echoes it back, so it is not parsed here.
+            candidateDetails =
+                obj["candidate_details"]?.let {
+                    jsonDecoder.json.decodeFromJsonElement(
+                        kotlinx.serialization.builtins.ListSerializer(CandidateDetailDto.serializer()),
+                        it,
+                    )
+                } ?: emptyList(),
         )
     }
 
@@ -223,6 +249,13 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
         // gain it on re-encode either.
         if (value.isComposite) fields["is_composite"] = JsonPrimitive(true)
         value.inputPhrase?.let { fields["input_phrase"] = JsonPrimitive(it) }
+        if (value.candidateDetails.isNotEmpty()) {
+            fields["candidate_details"] =
+                jsonEncoder.json.encodeToJsonElement(
+                    kotlinx.serialization.builtins.ListSerializer(CandidateDetailDto.serializer()),
+                    value.candidateDetails,
+                )
+        }
         value.correction?.let {
             fields["correction"] =
                 JsonObject(
@@ -280,6 +313,16 @@ private fun ItemDto.toCardItem(): CardItem =
         sourceDish = sourceDish,
         isComposite = isComposite,
         inputPhrase = inputPhrase,
+        candidateDetails = candidateDetails.map { it.toCandidateDetail() },
+    )
+
+private fun CandidateDetailDto.toCandidateDetail(): CandidateDetail =
+    CandidateDetail(
+        fdcId = fdcId,
+        name = name,
+        dataType = dataType,
+        kcalPer100g = kcalPer100g,
+        proteinGPer100g = proteinGPer100g,
     )
 
 // ---------------------------------------------------------------------------

@@ -268,6 +268,52 @@ class MealsyApiTest {
     }
 
     @Test
+    fun `candidate_details parses fdc_id name data_type and per-100g macros`() {
+        val wire =
+            """
+            {
+              "food_name": "Shrimp toast", "qty_g": 100, "kcal": 221, "protein_g": 8.1,
+              "carbs_g": 10, "fat_g": 5, "fiber_g": 1, "fdc_id": 2345,
+              "candidates": ["Shrimp toast", "Melba toast"],
+              "candidate_details": [
+                {"fdc_id": 2345, "name": "Shrimp toast", "data_type": "survey_fndds",
+                 "kcal_per_100g": 221.0, "protein_g_per_100g": 8.1},
+                {"fdc_id": 172687, "name": "Melba toast", "data_type": "sr_legacy",
+                 "kcal_per_100g": 395.0, "protein_g_per_100g": 12.0}
+              ]
+            }
+            """.trimIndent()
+
+        val dto = json.decodeFromString(ItemDto.serializer(), wire)
+
+        assertEquals(2, dto.candidateDetails.size)
+        assertEquals(listOf("Shrimp toast", "Melba toast"), dto.candidateDetails.map { it.name })
+        assertEquals(2345L, dto.candidateDetails[0].fdcId)
+        assertEquals("survey_fndds", dto.candidateDetails[0].dataType)
+        assertEquals(221.0, dto.candidateDetails[0].kcalPer100g, 0.001)
+        assertEquals(8.1, dto.candidateDetails[0].proteinGPer100g, 0.001)
+
+        val reEncoded = json.encodeToString(ItemDto.serializer(), dto)
+        val reDecoded = json.decodeFromString(ItemDto.serializer(), reEncoded)
+        assertEquals(dto, reDecoded)
+    }
+
+    @Test
+    fun `candidate_details absent decodes to an empty list`() {
+        val wire =
+            """
+            {"food_name": "egg", "qty_g": 100, "kcal": 155, "protein_g": 13,
+             "carbs_g": 1.1, "fat_g": 11, "fiber_g": 0, "fdc_id": 12345}
+            """.trimIndent()
+
+        val dto = json.decodeFromString(ItemDto.serializer(), wire)
+
+        assertEquals(emptyList<CandidateDetailDto>(), dto.candidateDetails)
+        val reEncoded = json.encodeToString(ItemDto.serializer(), dto)
+        assertTrue(!reEncoded.contains("candidate_details"))
+    }
+
+    @Test
     fun `item without the five new keys decodes to defaults and encodes no stray keys`() {
         val wire =
             """
