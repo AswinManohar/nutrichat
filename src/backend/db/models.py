@@ -6,6 +6,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -482,3 +483,48 @@ class IntegrationToken(Base):
     )
 
     __table_args__ = (Index("ix_integration_token_token_hash", "token_hash"),)
+
+
+class FoodCorrection(Base):
+    """A user's correction of a logged item's USDA food match.
+
+    Written only inside a successful POST /meals/log-items, in the same
+    transaction as the meal rows (spec 003, FR-012). Write-only for this
+    feature: nothing here reads it to influence matching.
+    """
+
+    __tablename__ = "food_correction"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    meal_log_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("meal_log.meal_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    original_phrase: Mapped[str] = mapped_column(Text, nullable=False)
+    from_fdc_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    from_name: Mapped[str] = mapped_column(Text, nullable=False)
+    to_fdc_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_name: Mapped[str] = mapped_column(Text, nullable=False)
+    method: Mapped[str] = mapped_column(Text, nullable=False)
+    query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_food_correction_user_id", "user_id"),
+        CheckConstraint(
+            "method IN ('suggestion', 'search')",
+            name="ck_food_correction_method",
+        ),
+    )
