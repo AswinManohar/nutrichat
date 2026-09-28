@@ -115,4 +115,74 @@ object CardEditor {
         items[index] = items[index].copy(pendingCandidate = newName)
         return card.copy(items = items)
     }
+
+    /**
+     * Swaps the item at [index] for [newItem] (typically fetched from
+     * `GET /foods/{fdc_id}`), keeping the old item's [CardItem.targetQtyG]
+     * and meal type (FR-004, U2), and recording a [FoodCorrection] so the
+     * swap can be sent on `POST /meals/log-items`.
+     *
+     * If [index] already carries a [CardItem.pendingCorrection] (a repeat
+     * swap), the new correction's `from*` fields still point at the
+     * **originally** matched food, not the intermediate one — only one
+     * correction is ever pending per item.
+     *
+     * No-op (returns [card] unchanged) if [index] is out of range or if
+     * [newItem] is already the current match ([CardItem.fdcId] unchanged).
+     */
+    fun swapItem(
+        card: ConfirmationCard,
+        index: Int,
+        newItem: CardItem,
+        method: String,
+        query: String? = null,
+    ): ConfirmationCard {
+        if (index !in card.items.indices) return card
+        val old = card.items[index]
+        if (old.fdcId == newItem.fdcId) return card
+
+        val originalPhrase = old.pendingCorrection?.originalPhrase ?: (old.inputPhrase ?: old.foodName)
+        val fromFdcId = old.pendingCorrection?.fromFdcId ?: (if (old.estimated) null else old.fdcId)
+        val fromName = old.pendingCorrection?.fromName ?: old.foodName
+
+        val swapped =
+            newItem.copy(
+                targetQtyG = old.targetQtyG,
+                inputPhrase = old.inputPhrase,
+                // A fresh USDA lookup for [newItem] knows nothing about the
+                // composite dish it's replacing a part of — carry the old
+                // item's group membership over so the rest of the group
+                // stays intact (contracts, E2).
+                sourceDish = old.sourceDish,
+                isComposite = old.isComposite,
+                pendingCorrection =
+                    FoodCorrection(
+                        originalPhrase = originalPhrase,
+                        fromFdcId = fromFdcId,
+                        fromName = fromName,
+                        toFdcId = newItem.fdcId,
+                        method = method,
+                        query = query,
+                    ),
+            )
+        val items = card.items.toMutableList()
+        items[index] = swapped
+        return card.copy(items = items)
+    }
+
+    /**
+     * Restores the item at [index] to [previous] exactly, undoing the most
+     * recent [swapItem] — including dropping its [CardItem.pendingCorrection].
+     * No-op if [index] is out of range.
+     */
+    fun undoSwap(
+        card: ConfirmationCard,
+        index: Int,
+        previous: CardItem,
+    ): ConfirmationCard {
+        if (index !in card.items.indices) return card
+        val items = card.items.toMutableList()
+        items[index] = previous
+        return card.copy(items = items)
+    }
 }

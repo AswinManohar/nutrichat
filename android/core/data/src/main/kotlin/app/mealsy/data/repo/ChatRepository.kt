@@ -1,6 +1,7 @@
 package app.mealsy.data.repo
 
 import app.mealsy.data.api.CoachingFeedbackRequest
+import app.mealsy.data.api.CorrectionDto
 import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogTurnRequest
@@ -262,6 +263,7 @@ class ChatRepository
                     portion = card.portion,
                     items = card.items.map { it.toItemDto() },
                     clientRequestId = clientRequestId,
+                    conversationId = conversationId(),
                 )
 
             val response =
@@ -373,4 +375,16 @@ private fun CardItem.toItemDto(): ItemDto =
         confidence = confidence,
         sourceDish = sourceDish,
         isComposite = isComposite,
+        inputPhrase = inputPhrase,
+        correction = pendingCorrection?.toCorrectionDto(),
+    )
+
+private fun app.mealsy.domain.FoodCorrection.toCorrectionDto(): CorrectionDto =
+    CorrectionDto(
+        originalPhrase = originalPhrase,
+        fromFdcId = fromFdcId,
+        fromName = fromName,
+        toFdcId = toFdcId,
+        method = method,
+        query = query,
     )

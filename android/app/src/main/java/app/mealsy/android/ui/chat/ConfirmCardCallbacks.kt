@@ -31,6 +31,21 @@ interface ConfirmCardCallbacks {
     )
 
     /**
+     * The user picked a suggestion/result in the food picker (spec 003):
+     * a local, network-free swap of item [index] for [newItem], already
+     * fetched from `GET /foods/{fdc_id}`.
+     */
+    fun onSwapItem(
+        index: Int,
+        newItem: app.mealsy.domain.CardItem,
+        method: String,
+        query: String?,
+    )
+
+    /** The user tapped "Undo" on the "Swapped to X" toast. */
+    fun onUndoSwap()
+
+    /**
      * The user typed a free-text replacement description for an item after
      * none of the candidate picker's rows matched ("None of these — describe
      * it differently").

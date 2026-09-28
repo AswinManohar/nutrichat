@@ -27,6 +27,15 @@ import kotlinx.serialization.json.JsonObject
  *   authoritative swap round-trips through a `use X instead of Y` text turn.
  *   This is never sent to the backend — it is deliberately absent from
  *   [app.mealsy.data.api.ItemDto], and `toItemDto()` ignores it.
+ * @property inputPhrase The user's original words for this item, when not
+ *   already derivable from [foodName] (spec 003, research R9). Used to
+ *   pre-fill the food picker's search field.
+ * @property pendingCorrection UI/wire state set by
+ *   [CardEditor.swapItem] (spec 003's local swap path, distinct from
+ *   [pendingCandidate]'s chat round-trip): records the picker-driven
+ *   correction so `POST /meals/log-items` can send it on this item. Its
+ *   `from*` fields always point at the item's **originally** matched food,
+ *   preserved across repeat swaps.
  */
 @Serializable
 data class CardItem(
@@ -47,4 +56,30 @@ data class CardItem(
     val sourceDish: String? = null,
     val isComposite: Boolean = false,
     val pendingCandidate: String? = null,
+    val inputPhrase: String? = null,
+    val pendingCorrection: FoodCorrection? = null,
+)
+
+/**
+ * A pending correction of one card item's USDA match, recorded locally by
+ * [CardEditor.swapItem] and sent on `POST /meals/log-items` as the item's
+ * `correction` field (spec 003).
+ *
+ * @property originalPhrase The user's words for the item.
+ * @property fromFdcId The **originally** matched food's fdc id, or `null` if
+ *   that match was an estimate.
+ * @property fromName The originally matched food's display name.
+ * @property toFdcId The newly chosen food's fdc id.
+ * @property method How the user picked the replacement: `"suggestion"` or
+ *   `"search"`.
+ * @property query The search text, when [method] is `"search"`.
+ */
+@Serializable
+data class FoodCorrection(
+    val originalPhrase: String,
+    val fromFdcId: Long?,
+    val fromName: String,
+    val toFdcId: Long,
+    val method: String,
+    val query: String? = null,
 )

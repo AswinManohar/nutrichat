@@ -232,4 +232,107 @@ class CardEditorTest {
         assertEquals(254.0, CardEditor.scaledQtyG(i, portion = 2.0), 0.0001)
         assertEquals(63.5, CardEditor.scaledQtyG(i, portion = 0.5), 0.0001)
     }
+
+    private fun card(items: List<CardItem>): ConfirmationCard =
+        ConfirmationCard(message = "", items = items, mealType = "lunch", portion = 1.0)
+
+    @Test
+    fun `swapItem keeps targetQtyG and meal type, replacing the matched food`() {
+        val old = item(foodName = "Shrimp toast", qtyG = 28.0, targetQtyG = 56.0, fdcId = 2345L)
+        val newFood = item(foodName = "Bread, white, toasted", qtyG = 28.0, targetQtyG = 28.0, fdcId = 172687L)
+        val c = card(listOf(old))
+
+        val result = CardEditor.swapItem(c, 0, newFood, method = "search", query = "white bread toasted")
+
+        assertEquals("lunch", result.mealType)
+        assertEquals(56.0, result.items[0].targetQtyG, 0.0001)
+        assertEquals(172687L, result.items[0].fdcId)
+        val correction = result.items[0].pendingCorrection
+        assertEquals(2345L, correction?.fromFdcId)
+        assertEquals("Shrimp toast", correction?.fromName)
+        assertEquals(172687L, correction?.toFdcId)
+        assertEquals("search", correction?.method)
+    }
+
+    @Test
+    fun `swapItem twice keeps from_ pointing at the originally matched food`() {
+        val original = item(foodName = "Shrimp toast", fdcId = 2345L)
+        var c = card(listOf(original))
+
+        val first = item(foodName = "Melba toast", fdcId = 111L)
+        c = CardEditor.swapItem(c, 0, first, method = "suggestion")
+        val second = item(foodName = "Bread, white, toasted", fdcId = 172687L)
+        c = CardEditor.swapItem(c, 0, second, method = "search", query = "white bread toasted")
+
+        val correction = c.items[0].pendingCorrection
+        assertEquals(2345L, correction?.fromFdcId)
+        assertEquals("Shrimp toast", correction?.fromName)
+        assertEquals(172687L, correction?.toFdcId)
+    }
+
+    @Test
+    fun `swapItem is a no-op when selecting the current match`() {
+        val current = item(fdcId = 42L)
+        val c = card(listOf(current))
+
+        val result = CardEditor.swapItem(c, 0, item(fdcId = 42L, foodName = "Same food"), method = "search")
+
+        assertEquals(c, result)
+    }
+
+    @Test
+    fun `swapItem from an estimate leaves from_fdc_id null`() {
+        val estimate =
+            CardItem(
+                foodName = "Homemade soup",
+                qtyG = 200.0,
+                targetQtyG = 200.0,
+                kcal = 150.0,
+                proteinG = 8.0,
+                carbsG = 10.0,
+                fatG = 5.0,
+                fiberG = 2.0,
+                fdcId = 0L,
+                estimated = true,
+                extras = JsonObject(emptyMap()),
+            )
+        val c = card(listOf(estimate))
+
+        val result = CardEditor.swapItem(c, 0, item(fdcId = 555L, foodName = "Chicken soup"), method = "search")
+
+        assertEquals(null, result.items[0].pendingCorrection?.fromFdcId)
+    }
+
+    @Test
+    fun `swapping one part of a composite dish keeps the rest of the group intact (E2)`() {
+        val chicken =
+            item(foodName = "Chicken, broilers or fryers, breast, meat only, cooked, roasted", fdcId = 1L)
+                .copy(sourceDish = "Chicken caesar salad")
+        val lettuce =
+            item(foodName = "Lettuce, cos or romaine, raw", fdcId = 2L)
+                .copy(sourceDish = "Chicken caesar salad")
+        val c = card(listOf(chicken, lettuce))
+
+        val replacement = item(foodName = "Chicken, broilers or fryers, breast, meat only, cooked, grilled", fdcId = 9L)
+        val result = CardEditor.swapItem(c, 0, replacement, method = "search", query = "grilled chicken breast")
+
+        // The swapped item keeps its place in the composite group...
+        assertEquals("Chicken caesar salad", result.items[0].sourceDish)
+        assertEquals(9L, result.items[0].fdcId)
+        // ...and the untouched sibling is unaffected.
+        assertEquals("Chicken caesar salad", result.items[1].sourceDish)
+        assertEquals(2L, result.items[1].fdcId)
+        assertEquals(lettuce, result.items[1])
+    }
+
+    @Test
+    fun `undoSwap restores the previous item exactly`() {
+        val old = item(fdcId = 2345L, foodName = "Shrimp toast")
+        val c = card(listOf(old))
+        val swapped = CardEditor.swapItem(c, 0, item(fdcId = 172687L, foodName = "Bread, white, toasted"), method = "search")
+
+        val restored = CardEditor.undoSwap(swapped, 0, old)
+
+        assertEquals(old, restored.items[0])
+    }
 }

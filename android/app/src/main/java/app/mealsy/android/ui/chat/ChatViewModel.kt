@@ -156,6 +156,17 @@ class ChatViewModel
             newName: String,
         ): Job? = session.onSwapCandidate(index, newName)
 
+        /** Local, network-free swap from the food picker (spec 003, T027). */
+        fun swapItem(
+            index: Int,
+            newItem: app.mealsy.domain.CardItem,
+            method: String,
+            query: String? = null,
+        ) = session.swapItem(index, newItem, method, query)
+
+        /** Undoes the most recent [swapItem]. */
+        fun undoSwap() = session.undoSwap()
+
         fun onDescribeItemDifferently(
             index: Int,
             description: String,

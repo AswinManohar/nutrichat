@@ -465,6 +465,41 @@ class ChatSessionStore
             replaceActiveCard(CardEditor.setPortion(card, portion), CardState.Active)
         }
 
+        /** The active card exactly as it was just before the most recent [swapItem] call. */
+        private var lastSwap: Pair<Int, app.mealsy.domain.CardItem>? = null
+
+        /**
+         * Applies the food picker's local swap (spec 003, T027) to the active
+         * card's item at [index]: replaces it with [newItem] (already fetched
+         * from `GET /foods/{fdc_id}`) via [CardEditor.swapItem], keeping its
+         * grams and meal type, no network round trip. A no-op if [index] is
+         * stale.
+         */
+        fun swapItem(
+            index: Int,
+            newItem: app.mealsy.domain.CardItem,
+            method: String,
+            query: String? = null,
+        ) {
+            val card = activeCard() ?: return
+            if (index !in card.items.indices) return
+            lastSwap = index to card.items[index]
+            replaceActiveCard(CardEditor.swapItem(card, index, newItem, method, query), CardState.Active)
+        }
+
+        /**
+         * Restores the item most recently changed by [swapItem], dropping its
+         * pending correction. A no-op if nothing has been swapped since the
+         * last [undoSwap].
+         */
+        fun undoSwap() {
+            val (index, previous) = lastSwap ?: return
+            lastSwap = null
+            val card = activeCard() ?: return
+            if (index !in card.items.indices) return
+            replaceActiveCard(CardEditor.undoSwap(card, index, previous), CardState.Active)
+        }
+
         /**
          * Applies a candidate correction to the active card's item at [index]:
          * marks the card [CardState.Swapping] and sends a `use X instead of Y`
