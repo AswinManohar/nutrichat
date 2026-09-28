@@ -129,6 +129,17 @@ private class FakeMealsyApi(
         deleteMealLogCalls += id
     }
 
+    override suspend fun searchFoods(
+        q: String,
+        qtyG: Double,
+        limit: Int,
+    ): app.mealsy.data.api.FoodSearchResponseDto = notImplemented()
+
+    override suspend fun getFood(
+        fdcId: Long,
+        qtyG: Double,
+    ): app.mealsy.data.api.ItemDto = notImplemented()
+
     override suspend fun deleteAccount(): Unit = notImplemented()
 
     override suspend fun coachingFeedback(

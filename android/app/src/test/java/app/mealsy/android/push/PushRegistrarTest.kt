@@ -78,6 +78,17 @@ private class FakeMealsyApi : MealsyApi {
 
     override suspend fun deleteMealLog(id: String) = error("not used")
 
+    override suspend fun searchFoods(
+        q: String,
+        qtyG: Double,
+        limit: Int,
+    ) = error("not used")
+
+    override suspend fun getFood(
+        fdcId: Long,
+        qtyG: Double,
+    ) = error("not used")
+
     override suspend fun deleteAccount() = error("not used")
 
     override suspend fun coachingFeedback(

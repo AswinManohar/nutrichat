@@ -33,6 +33,21 @@ interface MealsyApi {
         @Body body: LogItemsRequest,
     ): LogItemsResponse
 
+    /** Free-text search of the bundled USDA reference DB (spec 003). */
+    @GET("foods/search")
+    suspend fun searchFoods(
+        @Query("q") q: String,
+        @Query("qty_g") qtyG: Double,
+        @Query("limit") limit: Int = 10,
+    ): FoodSearchResponseDto
+
+    /** Builds a ready-to-log card item for [fdcId] scaled to [qtyG] (spec 003). */
+    @GET("foods/{fdcId}")
+    suspend fun getFood(
+        @Path("fdcId") fdcId: Long,
+        @Query("qty_g") qtyG: Double,
+    ): ItemDto
+
     @GET("meals/today")
     suspend fun today(): TodayResponse
 

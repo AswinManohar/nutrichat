@@ -74,6 +74,12 @@ data class LogTurnResponse(
  * @property confidence Wire key `confidence` — resolver match confidence.
  * @property sourceDish Wire key `source_dish` — parent composite dish name.
  * @property isComposite Wire key `is_composite`.
+ * @property inputPhrase Wire key `input_phrase` — the user's original words
+ *   for this item, when not already derivable from [foodName] (spec 003,
+ *   research R9). `null` when absent.
+ * @property correction Wire key `correction` — **client -> server only**,
+ *   set on `POST /meals/log-items` items that were swapped via the food
+ *   picker (spec 003). Never present on a decoded response.
  */
 @Serializable(with = ItemDtoSerializer::class)
 data class ItemDto(
@@ -93,6 +99,23 @@ data class ItemDto(
     val confidence: Double? = null,
     val sourceDish: String? = null,
     val isComposite: Boolean = false,
+    val inputPhrase: String? = null,
+    val correction: CorrectionDto? = null,
+)
+
+/**
+ * A user's correction of one logged item's USDA match, sent on
+ * `POST /meals/log-items` (spec 003, `contracts/foods-api.md`). Matches the
+ * backend's `CorrectionIn`.
+ */
+@Serializable
+data class CorrectionDto(
+    @SerialName("original_phrase") val originalPhrase: String,
+    @SerialName("from_fdc_id") val fromFdcId: Long? = null,
+    @SerialName("from_name") val fromName: String,
+    @SerialName("to_fdc_id") val toFdcId: Long,
+    val method: String,
+    val query: String? = null,
 )
 
 /** Wire keys [ItemDto] models explicitly; everything else round-trips via [ItemDto.extras]. */
@@ -101,6 +124,7 @@ private val ITEM_DTO_KNOWN_KEYS =
         "food_name", "qty_g", "target_qty_g", "kcal", "protein_g",
         "carbs_g", "fat_g", "fiber_g", "fdc_id", "estimated",
         "candidates", "source", "confidence", "source_dish", "is_composite",
+        "input_phrase", "correction",
     )
 
 object ItemDtoSerializer : KSerializer<ItemDto> {
@@ -129,6 +153,9 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
             confidence = obj["confidence"]?.jsonPrimitive?.doubleOrNull,
             sourceDish = obj["source_dish"]?.jsonPrimitive?.contentOrNull,
             isComposite = obj["is_composite"]?.jsonPrimitive?.booleanOrNull ?: false,
+            inputPhrase = obj["input_phrase"]?.jsonPrimitive?.contentOrNull,
+            // `correction` is client -> server only; the backend never
+            // echoes it back, so it is not parsed here.
         )
     }
 
@@ -195,6 +222,20 @@ object ItemDtoSerializer : KSerializer<ItemDto> {
         // non-composite item never gained this key on decode, so it must not
         // gain it on re-encode either.
         if (value.isComposite) fields["is_composite"] = JsonPrimitive(true)
+        value.inputPhrase?.let { fields["input_phrase"] = JsonPrimitive(it) }
+        value.correction?.let {
+            fields["correction"] =
+                JsonObject(
+                    LinkedHashMap<String, kotlinx.serialization.json.JsonElement>().apply {
+                        put("original_phrase", JsonPrimitive(it.originalPhrase))
+                        it.fromFdcId?.let { id -> put("from_fdc_id", JsonPrimitive(id)) }
+                        put("from_name", JsonPrimitive(it.fromName))
+                        put("to_fdc_id", JsonPrimitive(it.toFdcId))
+                        put("method", JsonPrimitive(it.method))
+                        it.query?.let { q -> put("query", JsonPrimitive(q)) }
+                    },
+                )
+        }
         // Flatten extras back to top level — never nest an "extras" object,
         // and never let a stale extras key shadow a field we set explicitly.
         value.extras.forEach { (key, element) ->
@@ -238,7 +279,32 @@ private fun ItemDto.toCardItem(): CardItem =
         confidence = confidence,
         sourceDish = sourceDish,
         isComposite = isComposite,
+        inputPhrase = inputPhrase,
     )
+
+// ---------------------------------------------------------------------------
+// GET /foods/search, GET /foods/{fdc_id}
+// ---------------------------------------------------------------------------
+
+/** One search hit, preview-scaled to the request's `qty_g`. Matches `FoodSearchResult`. */
+@Serializable
+data class FoodSearchResultDto(
+    @SerialName("fdc_id") val fdcId: Long,
+    val name: String,
+    @SerialName("data_type") val dataType: String,
+    @SerialName("kcal_per_100g") val kcalPer100g: Double,
+    @SerialName("protein_g_per_100g") val proteinGPer100g: Double,
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+)
+
+/** Response body for `GET /foods/search`. */
+@Serializable
+data class FoodSearchResponseDto(
+    val query: String,
+    @SerialName("normalized_query") val normalizedQuery: String,
+    val results: List<FoodSearchResultDto> = emptyList(),
+)
 
 // ---------------------------------------------------------------------------
 // POST /meals/log-items
@@ -250,6 +316,7 @@ data class LogItemsRequest(
     val portion: Double = 1.0,
     val items: List<ItemDto>,
     @SerialName("client_request_id") val clientRequestId: String? = null,
+    @SerialName("conversation_id") val conversationId: String? = null,
 )
 
 @Serializable
