@@ -1,5 +1,12 @@
 package app.mealsy.android.ui.settings
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,10 +35,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.android.BuildConfig
 import app.mealsy.android.R
@@ -82,9 +96,38 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.signedOut) {
         if (uiState.signedOut) onSignedOut()
+    }
+
+    // Re-checks notification permission whenever the user comes back to this
+    // screen (e.g. after visiting system settings from the "Open settings"
+    // link below), and reflects a revoked/re-granted permission on the
+    // reminder switch either way (#44).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) viewModel.onResume()
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val requestPermissionLauncher =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted -> viewModel.onNotificationPermissionResult(granted) }
+        } else {
+            null
+        }
+    LaunchedEffect(viewModel, requestPermissionLauncher) {
+        viewModel.requestNotificationPermission.collect {
+            requestPermissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     SettingsContent(
@@ -104,6 +147,13 @@ fun SettingsScreen(
         onSetFiberGoal = viewModel::setFiberGoal,
         onToggleDietaryPref = viewModel::toggleDietaryPref,
         onSetReminderEnabled = viewModel::setReminderEnabled,
+        onOpenNotificationSettings = {
+            val intent =
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                }
+            context.startActivity(intent)
+        },
         onOpenPrivacyPolicy = { uriHandler.openUri(BuildConfig.PRIVACY_POLICY_URL) },
         onSignOut = viewModel::signOut,
         onSetDeleteConfirmationText = viewModel::setDeleteConfirmationText,
@@ -136,6 +186,7 @@ fun SettingsContent(
     onSetFiberGoal: (Double) -> Unit,
     onToggleDietaryPref: (String) -> Unit,
     onSetReminderEnabled: (Boolean) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     onSignOut: () -> Unit,
     onSetDeleteConfirmationText: (String) -> Unit,
@@ -244,7 +295,11 @@ fun SettingsContent(
             item { Spacer(modifier = Modifier.height(24.dp)) }
 
             item {
-                RemindersSection(uiState = uiState, onSetReminderEnabled = onSetReminderEnabled)
+                RemindersSection(
+                    uiState = uiState,
+                    onSetReminderEnabled = onSetReminderEnabled,
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                )
             }
             item { Spacer(modifier = Modifier.height(24.dp)) }
 
@@ -416,7 +471,15 @@ private fun TargetsSection(
         Spacer(modifier = Modifier.height(10.dp))
         ListContainer {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = uiState.trackingMode == "goals",
+                            role = Role.Switch,
+                            onValueChange = onSetTrackingEnabled,
+                        )
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -427,7 +490,8 @@ private fun TargetsSection(
                 )
                 MealsyToggle(
                     checked = uiState.trackingMode == "goals",
-                    onCheckedChange = onSetTrackingEnabled,
+                    onCheckedChange = {},
+                    interactive = false,
                 )
             }
 
@@ -488,7 +552,9 @@ private fun TargetStepperRow(
             onValueChange = onValueChange,
             step = step,
             min = min,
-            label = label,
+            // "$label target" so TalkBack says "Decrease protein target",
+            // not just "Decrease Protein" (#43).
+            label = "$label target",
             valueLabel = valueLabel,
         )
     }
@@ -528,13 +594,22 @@ private fun PreferencesSection(
 private fun RemindersSection(
     uiState: SettingsUiState,
     onSetReminderEnabled: (Boolean) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
 ) {
     Column {
         Eyebrow(text = stringResource(R.string.settings_section_reminders))
         Spacer(modifier = Modifier.height(10.dp))
         ListContainer {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = uiState.reminderEnabled,
+                            role = Role.Switch,
+                            onValueChange = onSetReminderEnabled,
+                        )
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -545,8 +620,40 @@ private fun RemindersSection(
                 )
                 MealsyToggle(
                     checked = uiState.reminderEnabled,
-                    onCheckedChange = onSetReminderEnabled,
+                    onCheckedChange = {},
+                    interactive = false,
                 )
+            }
+            // Permission is permanently denied (or, pre-API-33, notifications
+            // are off at the OS level) — nothing in-app can turn the switch on,
+            // so point at system settings instead (#44).
+            if (uiState.notificationsBlocked) {
+                InsetDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_notifications_blocked),
+                        style = MealsyType.label,
+                        color = MealsyTheme.colors.terracotta,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_open_notification_settings),
+                        style = MealsyType.label,
+                        color = MealsyTheme.colors.ink,
+                        modifier =
+                            Modifier
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = stringResource(R.string.settings_open_notification_settings),
+                                    onClick = onOpenNotificationSettings,
+                                )
+                                .padding(start = 8.dp),
+                    )
+                }
             }
         }
     }

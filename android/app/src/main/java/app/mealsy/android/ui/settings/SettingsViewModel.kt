@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import app.mealsy.android.di.AppVersionCode
 import app.mealsy.android.di.AppVersionName
 import app.mealsy.android.push.DeviceTokenStore
+import app.mealsy.android.push.NotificationPermissionChecker
+import app.mealsy.android.push.NotificationPermissionState
 import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.onboarding.DEFAULT_FIBER_GOAL
 import app.mealsy.android.ui.onboarding.DEFAULT_KCAL_GOAL
@@ -20,8 +22,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -37,6 +42,31 @@ const val DELETE_CONFIRMATION_PHRASE: String = "DELETE"
  * rationale as onboarding's own top-level validators.
  */
 fun isDeleteConfirmed(typedText: String): Boolean = typedText == DELETE_CONFIRMATION_PHRASE
+
+/** Kcal/protein/fiber targets, used for [goalFocusDefaults]'s return value. */
+data class GoalFocusDefaults(val kcalGoal: Double, val proteinGoal: Double, val fiberGoal: Double)
+
+/**
+ * The targets a fresh "goals" mode should start from for [goalFocusKey], using
+ * the same [OnboardingGoal.defaultKcal] / protein-share / fiber formula
+ * onboarding step 4 uses (`OnboardingViewModel.kt`), rather than the flat
+ * [DEFAULT_KCAL_GOAL]/[DEFAULT_PROTEIN_GOAL]/[DEFAULT_FIBER_GOAL] constants,
+ * which ignore what the user actually picked. Falls back to those flat
+ * constants only when [goalFocusKey] doesn't match a known [OnboardingGoal]
+ * or resolves to one with no numeric targets (e.g. [OnboardingGoal.Learn]).
+ * Top-level so it's directly unit-testable.
+ */
+fun goalFocusDefaults(goalFocusKey: String): GoalFocusDefaults {
+    val goal = OnboardingGoal.entries.find { it.key == goalFocusKey }
+    val proteinShare = goal?.proteinShare
+    if (goal == null || proteinShare == null) {
+        return GoalFocusDefaults(DEFAULT_KCAL_GOAL, DEFAULT_PROTEIN_GOAL, DEFAULT_FIBER_GOAL)
+    }
+    val kcal = goal.defaultKcal.toDouble()
+    val protein = Math.round(kcal * proteinShare / 4.0).toDouble()
+    val fiber = Math.round(14.0 * kcal / 1000.0).toDouble()
+    return GoalFocusDefaults(kcal, protein, fiber)
+}
 
 /**
  * How long a numeric goal / dietary-pref edit waits, with no further edits,
@@ -61,6 +91,11 @@ data class SettingsUiState(
     /** Non-null while the "use this goal's default kcal target" prompt is showing. */
     val kcalPromptGoal: OnboardingGoal? = null,
     val reminderEnabled: Boolean = false,
+    /** True when notification permission is permanently denied (or, pre-API-33,
+     *  notifications are off at the OS level) — the reminder switch stays off and
+     *  the screen shows an inline "Notifications are off for Mealsy" message with
+     *  an Open Settings action (#44). */
+    val notificationsBlocked: Boolean = false,
     val versionName: String = "",
     val versionCode: Int = 0,
     val updateAvailable: Boolean = false,
@@ -99,6 +134,7 @@ class SettingsViewModel
         private val api: MealsyApi,
         private val pushRegistrar: PushRegistrar,
         private val tokenStore: DeviceTokenStore,
+        private val notificationPermissionChecker: NotificationPermissionChecker,
         private val profileStore: ProfileStore,
         @AppVersionCode private val currentVersionCode: Int,
         @AppVersionName versionName: String,
@@ -108,6 +144,12 @@ class SettingsViewModel
                 SettingsUiState(versionName = versionName, versionCode = currentVersionCode),
             )
         val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+        /** One-shot events telling the screen to launch the system
+         *  `POST_NOTIFICATIONS` request (permission is [NotificationPermissionState.ASKABLE]) —
+         *  the result comes back through [onNotificationPermissionResult]. */
+        private val _requestNotificationPermission = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val requestNotificationPermission: SharedFlow<Unit> = _requestNotificationPermission.asSharedFlow()
 
         /** The last goals fetched/saved while in `goals` mode — restored when the tracking toggle is switched back on. */
         private var lastKnownGoals: Goals? = null
@@ -183,7 +225,39 @@ class SettingsViewModel
                         false
                     }
                 _uiState.update { it.copy(reminderEnabled = enabled) }
+                // Chained (not a separate launch) so this always sees the
+                // reminderEnabled value just set above, rather than racing it.
+                syncReminderWithNotificationPermission()
             }
+        }
+
+        /**
+         * Reconciles [SettingsUiState.reminderEnabled]/[SettingsUiState.notificationsBlocked]
+         * with the OS-level notification permission — called after loading the
+         * stored reminder flag ([loadReminderState]) and again on every
+         * `ON_RESUME` ([SettingsScreen]), since permission can change out from
+         * under the app (system settings, the app-info screen) at any time (#44).
+         */
+        private suspend fun syncReminderWithNotificationPermission() {
+            val current = _uiState.value
+            val state = notificationPermissionChecker.currentState()
+            if (state == NotificationPermissionState.GRANTED) {
+                if (current.notificationsBlocked) _uiState.update { it.copy(notificationsBlocked = false) }
+                return
+            }
+            if (current.reminderEnabled) {
+                _uiState.update {
+                    it.copy(
+                        reminderEnabled = false,
+                        notificationsBlocked = state == NotificationPermissionState.DENIED_PERMANENTLY,
+                    )
+                }
+            }
+        }
+
+        /** Called by [SettingsScreen] on `ON_RESUME`. */
+        fun onResume() {
+            viewModelScope.launch { syncReminderWithNotificationPermission() }
         }
 
         private fun loadAppMeta() {
@@ -299,21 +373,26 @@ class SettingsViewModel
         // --- Targets: tracking mode + numeric goals -----------------------------
 
         /**
-         * Turning tracking **on** restores [lastKnownGoals] (or the 2000/100/30
-         * defaults when there is none) and saves immediately. Turning it **off**
-         * nulls the goals via a `tracking_mode = "mindful"` `PUT /goals`,
-         * immediately as well — neither transition waits for
-         * [GOALS_SAVE_DEBOUNCE_MS].
+         * Turning tracking **on** restores [lastKnownGoals] when there is
+         * one. Otherwise (the server preserves targets across mindful mode
+         * now too — see `src/backend/api/goals.py` — so this path is mostly
+         * "never saved goals before") it falls back to the current
+         * [SettingsUiState.goalFocus]'s own [OnboardingGoal.defaultKcal]
+         * (same formula onboarding step 4 uses), not a flat 2000/100/30 that
+         * ignores what the user picked. Turning it **off** nulls the goals
+         * via a `tracking_mode = "mindful"` `PUT /goals`, immediately as
+         * well — neither transition waits for [GOALS_SAVE_DEBOUNCE_MS].
          */
         fun setTrackingEnabled(enabled: Boolean) {
             if (enabled) {
                 val restored = lastKnownGoals
+                val fallback = goalFocusDefaults(_uiState.value.goalFocus)
                 _uiState.update {
                     it.copy(
                         trackingMode = "goals",
-                        kcalGoal = restored?.kcalGoal ?: DEFAULT_KCAL_GOAL,
-                        proteinGoal = restored?.proteinGoal ?: DEFAULT_PROTEIN_GOAL,
-                        fiberGoal = restored?.fiberGoal ?: DEFAULT_FIBER_GOAL,
+                        kcalGoal = restored?.kcalGoal ?: fallback.kcalGoal,
+                        proteinGoal = restored?.proteinGoal ?: fallback.proteinGoal,
+                        fiberGoal = restored?.fiberGoal ?: fallback.fiberGoal,
                     )
                 }
                 saveJob?.cancel()
@@ -394,27 +473,78 @@ class SettingsViewModel
          * Toggle-off both unregisters the current device and sets the
          * "reminders disabled" flag ([DeviceTokenStore.setRemindersDisabled])
          * so that `AppNavViewModel`'s unconditional post-sign-in
-         * [PushRegistrar.ensureRegistered] call can't silently undo it. Toggle-on
-         * clears the flag first (so [PushRegistrar.ensureRegistered] doesn't
-         * immediately no-op) and then registers.
+         * [PushRegistrar.ensureRegistered] call can't silently undo it.
+         *
+         * Toggle-on first checks [NotificationPermissionChecker.currentState] (#44):
+         * - [NotificationPermissionState.GRANTED]: turns on immediately.
+         * - [NotificationPermissionState.ASKABLE]: emits [requestNotificationPermission]
+         *   so the screen launches the system dialog; [onNotificationPermissionResult]
+         *   finishes the job. The switch does not flip on yet.
+         * - [NotificationPermissionState.DENIED_PERMANENTLY]: the switch stays off and
+         *   [SettingsUiState.notificationsBlocked] is set, so the screen shows the
+         *   inline "Notifications are off for Mealsy" / Open Settings message.
          */
         fun setReminderEnabled(enabled: Boolean) {
+            if (!enabled) {
+                _uiState.update { it.copy(reminderEnabled = false) }
+                viewModelScope.launch { disableReminders() }
+                return
+            }
             viewModelScope.launch {
-                _uiState.update { it.copy(reminderEnabled = enabled) }
-                try {
-                    if (enabled) {
-                        tokenStore.setRemindersDisabled(false)
-                        pushRegistrar.ensureRegistered()
-                    } else {
-                        pushRegistrar.unregisterCurrentDevice()
-                        tokenStore.setRemindersDisabled(true)
-                    }
-                } catch (exc: CancellationException) {
-                    throw exc
-                } catch (exc: Exception) {
-                    // Best-effort, matching PushRegistrar's own contract — reflect
-                    // the requested state either way; the next toggle/app-open retries.
+                when (notificationPermissionChecker.currentState()) {
+                    NotificationPermissionState.GRANTED -> enableReminders()
+                    NotificationPermissionState.ASKABLE -> _requestNotificationPermission.emit(Unit)
+                    NotificationPermissionState.DENIED_PERMANENTLY ->
+                        _uiState.update { it.copy(reminderEnabled = false, notificationsBlocked = true) }
                 }
+            }
+        }
+
+        /**
+         * Resolves the [requestNotificationPermission] system dialog: the screen
+         * calls this with the launcher's result. `granted = true` finishes turning
+         * the switch on; otherwise the switch stays off and
+         * [SettingsUiState.notificationsBlocked] reflects whether Android will
+         * still show the dialog next time.
+         */
+        fun onNotificationPermissionResult(granted: Boolean) {
+            viewModelScope.launch {
+                notificationPermissionChecker.recordRequestAttempt()
+                if (granted) {
+                    enableReminders()
+                } else {
+                    val state = notificationPermissionChecker.currentState()
+                    _uiState.update {
+                        it.copy(
+                            reminderEnabled = false,
+                            notificationsBlocked = state == NotificationPermissionState.DENIED_PERMANENTLY,
+                        )
+                    }
+                }
+            }
+        }
+
+        private suspend fun enableReminders() {
+            _uiState.update { it.copy(reminderEnabled = true, notificationsBlocked = false) }
+            try {
+                tokenStore.setRemindersDisabled(false)
+                pushRegistrar.ensureRegistered()
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                // Best-effort, matching PushRegistrar's own contract — the next
+                // toggle/app-open retries.
+            }
+        }
+
+        private suspend fun disableReminders() {
+            try {
+                pushRegistrar.unregisterCurrentDevice()
+                tokenStore.setRemindersDisabled(true)
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                // Best-effort — the next toggle/app-open retries.
             }
         }
 

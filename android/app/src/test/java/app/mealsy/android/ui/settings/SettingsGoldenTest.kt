@@ -40,6 +40,12 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
             deleteConfirmationText = "DEL",
         )
 
+    private val notificationsBlockedState =
+        goalsModeState.copy(
+            reminderEnabled = false,
+            notificationsBlocked = true,
+        )
+
     @Composable
     private fun render(state: SettingsUiState) {
         SettingsContent(
@@ -59,6 +65,7 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
             onSetFiberGoal = {},
             onToggleDietaryPref = {},
             onSetReminderEnabled = {},
+            onOpenNotificationSettings = {},
             onOpenPrivacyPolicy = {},
             onSignOut = {},
             onSetDeleteConfirmationText = {},
@@ -85,6 +92,12 @@ class SettingsGoldenTest : AppScreenshotTestBase() {
 
     @Test
     fun mindfulMode_dark() = captureMealsy("Settings_mindfulMode", true) { render(mindfulModeState) }
+
+    @Test
+    fun notificationsBlocked_light() = captureMealsy("Settings_notificationsBlocked", false) { render(notificationsBlockedState) }
+
+    @Test
+    fun notificationsBlocked_dark() = captureMealsy("Settings_notificationsBlocked", true) { render(notificationsBlockedState) }
 
     @Test
     fun deleteDialog_light() =

@@ -2,7 +2,12 @@ package app.mealsy.android.ui.settings
 
 import app.mealsy.android.push.DeviceTokenStore
 import app.mealsy.android.push.FcmTokenProvider
+import app.mealsy.android.push.NotificationPermissionChecker
+import app.mealsy.android.push.NotificationPermissionState
 import app.mealsy.android.push.PushRegistrar
+import app.mealsy.android.ui.onboarding.DEFAULT_FIBER_GOAL
+import app.mealsy.android.ui.onboarding.DEFAULT_KCAL_GOAL
+import app.mealsy.android.ui.onboarding.DEFAULT_PROTEIN_GOAL
 import app.mealsy.android.ui.onboarding.OnboardingGoal
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.CoachingFeedbackRequest
@@ -31,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -215,6 +221,35 @@ private class FakeDeviceTokenStore : DeviceTokenStore {
     }
 }
 
+/**
+ * In-memory [NotificationPermissionChecker] fake — mirrors the real
+ * [app.mealsy.android.push.AndroidNotificationPermissionChecker]'s
+ * "permanently denied after [permanentlyDeniedAfter] requests" behavior
+ * without touching `PackageManager`/`NotificationManagerCompat`.
+ */
+private class FakeNotificationPermissionChecker(
+    private var granted: Boolean = true,
+    private val permanentlyDeniedAfter: Int = 2,
+) : NotificationPermissionChecker {
+    var requestAttempts: Int = 0
+        private set
+
+    fun setGranted(value: Boolean) {
+        granted = value
+    }
+
+    override suspend fun currentState(): NotificationPermissionState =
+        when {
+            granted -> NotificationPermissionState.GRANTED
+            requestAttempts < permanentlyDeniedAfter -> NotificationPermissionState.ASKABLE
+            else -> NotificationPermissionState.DENIED_PERMANENTLY
+        }
+
+    override suspend fun recordRequestAttempt() {
+        requestAttempts++
+    }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
     private val dispatcher = StandardTestDispatcher()
@@ -234,6 +269,7 @@ class SettingsViewModelTest {
         authGateway: FakeAuthGateway = FakeAuthGateway(),
         onSignOut: suspend () -> Unit = {},
         tokenStore: FakeDeviceTokenStore = FakeDeviceTokenStore(),
+        notificationPermissionChecker: FakeNotificationPermissionChecker = FakeNotificationPermissionChecker(),
         profileStore: FakeProfileStore = FakeProfileStore(),
         fcmToken: String? = null,
     ): Quad<SettingsViewModel, FakeMealsyApi, FakeAuthGateway, FakeDeviceTokenStore> {
@@ -254,6 +290,7 @@ class SettingsViewModelTest {
                 api = api,
                 pushRegistrar = pushRegistrar,
                 tokenStore = tokenStore,
+                notificationPermissionChecker = notificationPermissionChecker,
                 profileStore = profileStore,
                 currentVersionCode = 1,
                 versionName = "1.0",
@@ -270,6 +307,44 @@ class SettingsViewModelTest {
         assertFalse(isDeleteConfirmed("DELET"))
         assertTrue(isDeleteConfirmed("DELETE"))
     }
+
+    @Test
+    fun `goalFocusDefaults derives targets from the chosen goal, not a flat 2000`() {
+        val maintain = goalFocusDefaults(OnboardingGoal.Maintain.key)
+        assertEquals(2200.0, maintain.kcalGoal, 0.0)
+        assertEquals(110.0, maintain.proteinGoal, 0.0) // round(2200 * 0.20 / 4)
+        assertEquals(31.0, maintain.fiberGoal, 0.0) // round(14 * 2200 / 1000)
+
+        val build = goalFocusDefaults(OnboardingGoal.Build.key)
+        assertEquals(2600.0, build.kcalGoal, 0.0)
+        assertEquals(195.0, build.proteinGoal, 0.0) // round(2600 * 0.30 / 4)
+    }
+
+    @Test
+    fun `goalFocusDefaults falls back to flat defaults for Learn and unknown keys`() {
+        val learn = goalFocusDefaults(OnboardingGoal.Learn.key)
+        assertEquals(DEFAULT_KCAL_GOAL, learn.kcalGoal, 0.0)
+        assertEquals(DEFAULT_PROTEIN_GOAL, learn.proteinGoal, 0.0)
+        assertEquals(DEFAULT_FIBER_GOAL, learn.fiberGoal, 0.0)
+
+        val unknown = goalFocusDefaults("not-a-real-goal")
+        assertEquals(DEFAULT_KCAL_GOAL, unknown.kcalGoal, 0.0)
+    }
+
+    @Test
+    fun `turning tracking on with no saved goals falls back to the goal-focus default, not flat 2000`() =
+        runTest {
+            val profileStore = FakeProfileStore(Profile(goalFocus = OnboardingGoal.Build.key))
+            val api = FakeMealsyApi(onGoals = { error("404") })
+            val (viewModel, _, _) = viewModel(api = api, profileStore = profileStore)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.setTrackingEnabled(true)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(2600.0, viewModel.uiState.value.kcalGoal, 0.0)
+            assertEquals(195.0, viewModel.uiState.value.proteinGoal, 0.0)
+        }
 
     @Test
     fun `deleteAccount does nothing until confirmation text matches`() =
@@ -427,6 +502,93 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `toggling reminders on while permission is askable requests it, not turns on directly`() =
+        runTest {
+            val checker = FakeNotificationPermissionChecker(granted = false)
+            val (viewModel, _, _) = viewModel(notificationPermissionChecker = checker)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            var requested = false
+            val collectJob = launch(dispatcher) { viewModel.requestNotificationPermission.collect { requested = true } }
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.setReminderEnabled(true)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(requested)
+            assertFalse(viewModel.uiState.value.reminderEnabled)
+            collectJob.cancel()
+        }
+
+    @Test
+    fun `permission granted after request turns reminders on`() =
+        runTest {
+            val checker = FakeNotificationPermissionChecker(granted = false)
+            val (viewModel, _, _, tokenStore) =
+                viewModel(notificationPermissionChecker = checker, fcmToken = "token-a")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.onNotificationPermissionResult(granted = true)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(viewModel.uiState.value.reminderEnabled)
+            assertFalse(viewModel.uiState.value.notificationsBlocked)
+            assertEquals("token-a", tokenStore.getLastSentToken())
+        }
+
+    @Test
+    fun `permission denied twice shows the blocked message and keeps reminders off`() =
+        runTest {
+            val checker = FakeNotificationPermissionChecker(granted = false, permanentlyDeniedAfter = 2)
+            val (viewModel, _, _) = viewModel(notificationPermissionChecker = checker)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.onNotificationPermissionResult(granted = false) // 1st denial: still askable
+            dispatcher.scheduler.advanceUntilIdle()
+            assertFalse(viewModel.uiState.value.notificationsBlocked)
+
+            viewModel.onNotificationPermissionResult(granted = false) // 2nd denial: permanently denied
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.reminderEnabled)
+            assertTrue(viewModel.uiState.value.notificationsBlocked)
+        }
+
+    @Test
+    fun `toggling reminders on while permanently denied shows the blocked message directly`() =
+        runTest {
+            val checker = FakeNotificationPermissionChecker(granted = false, permanentlyDeniedAfter = 0)
+            val (viewModel, _, _) = viewModel(notificationPermissionChecker = checker)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.setReminderEnabled(true)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.reminderEnabled)
+            assertTrue(viewModel.uiState.value.notificationsBlocked)
+        }
+
+    @Test
+    fun `resuming with reminders on but permission revoked turns the switch off`() =
+        runTest {
+            val checker = FakeNotificationPermissionChecker(granted = true)
+            val tokenStore = FakeDeviceTokenStore()
+            val (viewModel, _, _) =
+                viewModel(tokenStore = tokenStore, notificationPermissionChecker = checker, fcmToken = "token-a")
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.setReminderEnabled(true)
+            dispatcher.scheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.reminderEnabled)
+
+            // The user revoked the permission from system settings, then came back.
+            checker.setGranted(false)
+            viewModel.onResume()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.reminderEnabled)
+        }
+
+    @Test
     fun `editing the name writes both ProfileStore and updateProfileMetadata`() =
         runTest {
             val authGateway = FakeAuthGateway()
@@ -501,16 +663,18 @@ class SettingsViewModelTest {
             assertEquals(100.0, onRequest.proteinGoal)
             assertEquals(30.0, onRequest.fiberGoal)
 
-            // With no prior goals at all, toggling on falls back to 2000/100/30.
+            // With no prior goals at all, toggling on falls back to the default
+            // profile's goal focus ("maintain", the SettingsUiState default) —
+            // 2200/110/31, not a flat 2000/100/30 that ignores it (#43).
             val neverHadGoalsApi = FakeMealsyApi(onGoals = { error("404") })
             val (freshViewModel, freshApi, _) = viewModel(api = neverHadGoalsApi)
             dispatcher.scheduler.advanceUntilIdle()
             freshViewModel.setTrackingEnabled(true)
             dispatcher.scheduler.advanceUntilIdle()
             val fallbackRequest = freshApi.updateGoalsCalls.last()
-            assertEquals(2000.0, fallbackRequest.kcalGoal)
-            assertEquals(100.0, fallbackRequest.proteinGoal)
-            assertEquals(30.0, fallbackRequest.fiberGoal)
+            assertEquals(2200.0, fallbackRequest.kcalGoal)
+            assertEquals(110.0, fallbackRequest.proteinGoal)
+            assertEquals(31.0, fallbackRequest.fiberGoal)
         }
 
     @Test
