@@ -10,6 +10,7 @@ from backend.api import (
     account,
     billing,
     devices,
+    foods,
     goals,
     integrations,
     meals,
@@ -78,6 +79,7 @@ app.include_router(push.router)
 app.include_router(devices.router)
 app.include_router(meta.router)
 app.include_router(account.router)
+app.include_router(foods.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook

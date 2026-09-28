@@ -300,9 +300,8 @@ async def log_items(
         raise HTTPException(status_code=422, detail="Invalid meal_type")
 
     for item in req.items:
-        if item.correction is not None and item.correction.to_fdc_id != item.model_extra.get(
-            "fdc_id"
-        ):
+        item_fdc_id = (item.model_extra or {}).get("fdc_id")
+        if item.correction is not None and item.correction.to_fdc_id != item_fdc_id:
             raise HTTPException(
                 status_code=422,
                 detail="correction.to_fdc_id must equal the item's fdc_id",

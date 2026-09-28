@@ -40,12 +40,34 @@ class NutrientValue(BaseModel):
     unit: str  # g, mg, mcg, kcal
 
 
+class CandidateDetail(BaseModel):
+    """One candidate's nutrition, for the confirm card's picker (spec 003).
+
+    Same shape as ``FoodSearchResult`` minus the request-scaled fields — the
+    client scales for preview (data-model.md). ``name`` matches the
+    corresponding entry in the sibling ``candidates: list[str]``, same
+    order.
+    """
+
+    fdc_id: int
+    name: str
+    data_type: str
+    kcal_per_100g: float = Field(ge=0.0)
+    protein_g_per_100g: float = Field(ge=0.0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class USDAResult(BaseModel):
     fdc_id: int
     food_name: str
     qty_g: float
     match_confidence: float
     candidates: list[str]
+    # Spec 003, "Compare the suggested alternatives" (US2): per-candidate
+    # nutrition, same order as `candidates`. Empty for estimated items and
+    # the live-FDC path (only usda_local.lookup's pool populates it, T034).
+    candidate_details: list[CandidateDetail] = []
 
     # Promoted macros scaled to qty_g
     kcal: float
