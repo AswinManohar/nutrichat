@@ -12,4 +12,18 @@
     <string name="candidate_sheet_describe_differently">Describe it differently</string>
     <string name="candidate_sheet_describe_placeholder">What is it, really?</string>
     <string name="candidate_sheet_describe_submit">Use this</string>
+    <string name="candidate_sheet_search_label">Search foods</string>
+    <string name="candidate_sheet_search_placeholder">Search foods</string>
+    <string name="candidate_sheet_offline">You\'re offline</string>
+    <string name="candidate_sheet_no_results">No foods found for \'%1$s\'</string>
+    <string name="candidate_sheet_unavailable">Can\'t search right now</string>
+    <string name="candidate_sheet_suggestions_heading">Suggestions</string>
+    <string name="candidate_sheet_results_heading">Results</string>
+    <string name="candidate_sheet_row_kcal_protein">%1$s kcal · %2$s g protein</string>
+    <string name="candidate_sheet_row_content_description">%1$s, %2$s kilocalories, %3$s grams protein</string>
+    <string name="candidate_sheet_row_content_description_selected">%1$s, %2$s kilocalories, %3$s grams protein, selected</string>
+    <plurals name="candidate_sheet_results_announcement">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$d results</item>
+    </plurals>
 </resources>

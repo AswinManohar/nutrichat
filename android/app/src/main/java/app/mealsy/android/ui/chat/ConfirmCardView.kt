@@ -22,7 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -53,6 +56,8 @@ import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
 import app.mealsy.android.design.components.PastelIconCircle
+import app.mealsy.android.design.components.PickerResultsState
+import app.mealsy.android.design.components.PickerRow
 import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.components.SegmentedControl
 import app.mealsy.android.design.components.Stepper
@@ -65,12 +70,16 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.design.theme.rememberMealsyHaptics
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.FoodNameHumanizer
 import app.mealsy.domain.PastelTone
 import app.mealsy.domain.pastelToneFor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -179,6 +188,10 @@ fun ConfirmCardView(
     // the auto-dismiss timer rather than being silently swallowed.
     var pendingUndo by remember { mutableStateOf<Pair<String, Int>?>(null) }
 
+    // "Swapped to X" toast (spec 003) — separate from [pendingUndo], which is
+    // for row removal.
+    var swapToastName by remember { mutableStateOf<String?>(null) }
+
     // Which item's candidate sheet is open, if any.
     var candidateSheetIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -258,12 +271,69 @@ fun ConfirmCardView(
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
+
+        swapToastName?.let { name ->
+            val haptics = rememberMealsyHaptics()
+            LaunchedEffect(name) {
+                haptics.confirm()
+                delay(UNDO_TOAST_MS)
+                swapToastName = null
+            }
+            UndoToast(
+                text = stringResource(R.string.confirm_card_swapped_to, name),
+                onUndo = {
+                    swapToastName = null
+                    callbacks.onUndoSwap()
+                },
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
     }
 
     val sheetIndex = candidateSheetIndex
     if (sheetIndex != null && sheetIndex in card.items.indices) {
         val item = card.items[sheetIndex]
-        val sheetState = rememberModalBottomSheetState()
+        // Fully expanded per contract (#48) — the search field + results
+        // need the full sheet height, not a partial peek.
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val context = LocalContext.current
+        val pickerScope =
+            remember(sheetIndex, item.fdcId) { CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate) }
+        DisposableEffect(pickerScope) { onDispose { pickerScope.cancel() } }
+        val pickerViewModel =
+            remember(sheetIndex, item.fdcId) {
+                foodPickerViewModelFactory(context).create(
+                    scope = pickerScope,
+                    currentFdcId = item.fdcId,
+                    initialQuery = item.inputPhrase ?: item.foodName,
+                    // Preview rows show what the user currently sees on the
+                    // card (target × portion); the actual swap fetch must use
+                    // the item's BASE qty_g, never the edited target — or
+                    // log-items double-scales (contracts/android-picker-ui.md, U2).
+                    previewQtyG = item.targetQtyG * card.portion,
+                    baseQtyG = item.qtyG,
+                )
+            }
+        var swapError by remember(sheetIndex, item.fdcId) { mutableStateOf(false) }
+
+        LaunchedEffect(pickerViewModel) {
+            pickerViewModel.eventsFlow.collect { event ->
+                when (event) {
+                    is FoodPickerEvent.SwapReady -> {
+                        swapError = false
+                        candidateSheetIndex = null
+                        callbacks.onSwapItem(sheetIndex, event.item, event.method, event.query)
+                        swapToastName = event.item.foodName
+                    }
+                    FoodPickerEvent.SwapFailed -> swapError = true
+                }
+            }
+        }
+
+        val query by pickerViewModel.query.collectAsState()
+        val online by pickerViewModel.isOnline.collectAsState()
+        val searchState by pickerViewModel.searchState.collectAsState()
+
         ModalBottomSheet(
             onDismissRequest = { candidateSheetIndex = null },
             sheetState = sheetState,
@@ -275,10 +345,16 @@ fun ConfirmCardView(
                 // here.
                 CandidatePickerSheetContent(
                     currentName = item.foodName,
-                    candidates = item.candidates,
-                    onSelect = { newName ->
-                        callbacks.onSwapCandidate(sheetIndex, newName)
-                        candidateSheetIndex = null
+                    query = query,
+                    onQueryChange = pickerViewModel::onQueryChange,
+                    online = online,
+                    resultsState = searchState.toPickerResultsState(),
+                    onSelectResult = { fdcId, _ ->
+                        if (fdcId == item.fdcId) {
+                            candidateSheetIndex = null
+                        } else {
+                            pickerViewModel.select(fdcId, method = "search", query = query)
+                        }
                     },
                     onRemove = {
                         pendingUndo = item.foodName to sheetIndex
@@ -290,10 +366,33 @@ fun ConfirmCardView(
                         candidateSheetIndex = null
                     },
                 )
+                if (swapError) {
+                    Text(
+                        text = stringResource(R.string.confirm_card_swap_failed),
+                        style = MealsyType.label,
+                        color = colors.muted,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
+                    )
+                }
             }
         }
     }
 }
+
+/** Maps [FoodPickerViewModel]'s [SearchState] onto `:core:ui`'s decoupled [PickerResultsState]. */
+private fun SearchState.toPickerResultsState(): PickerResultsState =
+    when (this) {
+        SearchState.Idle -> PickerResultsState.Idle
+        SearchState.Loading -> PickerResultsState.Loading
+        is SearchState.Loaded ->
+            PickerResultsState.Loaded(
+                hits.map { hit ->
+                    PickerRow(fdcId = hit.fdcId, name = hit.name, kcal = hit.kcal, proteinG = hit.proteinG)
+                },
+            )
+        SearchState.Empty -> PickerResultsState.Empty
+        SearchState.Unavailable -> PickerResultsState.Unavailable
+    }
 
 @Composable
 private fun HeaderRow(itemCount: Int) {
@@ -587,14 +686,12 @@ private fun ItemRow(
                                     true
                                 },
                             )
-                            if (item.candidates.size > 1) {
-                                add(
-                                    CustomAccessibilityAction(swapLabel) {
-                                        onOpenCandidateSheet()
-                                        true
-                                    },
-                                )
-                            }
+                            add(
+                                CustomAccessibilityAction(swapLabel) {
+                                    onOpenCandidateSheet()
+                                    true
+                                },
+                            )
                         }
                 },
     ) {
@@ -625,7 +722,7 @@ private fun ItemRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ItemMetaLine(item = item, card = card)
+                ItemMetaLine(item = item, card = card, onOpenCandidateSheet = onOpenCandidateSheet)
             }
             RemoveButton(
                 onClick = {
@@ -641,20 +738,16 @@ private fun ItemRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (item.candidates.size > 1) {
-                Text(
-                    text = stringResource(R.string.confirm_card_not_right_food),
-                    style =
-                        MealsyType.label.copy(
-                            fontSize = 12.sp,
-                            textDecoration = TextDecoration.Underline,
-                        ),
-                    color = colors.muted,
-                    modifier = Modifier.clickable(enabled = !disabled) { onOpenCandidateSheet() },
-                )
-            } else {
-                Box(modifier = Modifier)
-            }
+            Text(
+                text = stringResource(R.string.confirm_card_not_right_food),
+                style =
+                    MealsyType.label.copy(
+                        fontSize = 12.sp,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                color = colors.muted,
+                modifier = Modifier.clickable(enabled = !disabled) { onOpenCandidateSheet() },
+            )
             // Displayed grams must reflect the card's overall portion
             // multiplier, not just the item's own qty edit — otherwise a 2×
             // portion doubles kcal while the row still shows the unscaled
@@ -694,6 +787,7 @@ private fun ItemRow(
 private fun ItemMetaLine(
     item: CardItem,
     card: ConfirmationCard,
+    onOpenCandidateSheet: () -> Unit,
 ) {
     val colors = MealsyTheme.colors
     val factor = if (item.qtyG != 0.0) (item.targetQtyG / item.qtyG) * card.portion else 0.0
@@ -716,18 +810,24 @@ private fun ItemMetaLine(
             TagChip(text = stringResource(R.string.confirm_card_estimated), tone = TagTone.Powder)
         }
         if ((item.confidence ?: 1.0) < 0.6) {
-            CheckMatchTag()
+            CheckMatchTag(onClick = onOpenCandidateSheet)
         }
     }
 }
 
+/**
+ * A clickable "check match" tag: a second entry point into the picker
+ * sheet for low-confidence/estimated items, alongside "Not the right
+ * food?" (spec 003, E1).
+ */
 @Composable
-private fun CheckMatchTag() {
+private fun CheckMatchTag(onClick: () -> Unit) {
     val colors = MealsyTheme.colors
     Surface(
         shape = MealsyShapes.pill,
         color = Color.Transparent,
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.hairline),
+        modifier = Modifier.clickable(onClick = onClick),
     ) {
         Text(
             text = stringResource(R.string.confirm_card_check_match),
@@ -878,6 +978,15 @@ private fun previewCallbacks(): ConfirmCardCallbacks =
             index: Int,
             newName: String,
         ) = Unit
+
+        override fun onSwapItem(
+            index: Int,
+            newItem: app.mealsy.domain.CardItem,
+            method: String,
+            query: String?,
+        ) = Unit
+
+        override fun onUndoSwap() = Unit
 
         override fun onDescribeItemDifferently(
             index: Int,

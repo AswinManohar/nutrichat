@@ -244,6 +244,8 @@ fun ChatScreen(
                             onSetMealType = viewModel::setMealType,
                             onSetPortion = viewModel::setPortion,
                             onSwapCandidate = viewModel::onSwapCandidate,
+                            onSwapItem = viewModel::swapItem,
+                            onUndoSwap = viewModel::undoSwap,
                             onDescribeItemDifferently = viewModel::onDescribeItemDifferently,
                             onDecompose = viewModel::onDecompose,
                             onCombine = viewModel::onCombine,
@@ -445,6 +447,8 @@ internal fun ChatMessageRow(
     onSetMealType: (String) -> Unit,
     onSetPortion: (Double) -> Unit,
     onSwapCandidate: (Int, String) -> Unit,
+    onSwapItem: (Int, app.mealsy.domain.CardItem, String, String?) -> Unit,
+    onUndoSwap: () -> Unit,
     onDescribeItemDifferently: (Int, String) -> Unit,
     onDecompose: () -> Unit,
     onCombine: () -> Unit,
@@ -550,6 +554,8 @@ internal fun ChatMessageRow(
                             val doRemoveItem = onRemoveItem
                             val doUndoRemove = onUndoRemove
                             val doSwapCandidate = onSwapCandidate
+                            val doSwapItem = onSwapItem
+                            val doUndoSwap = onUndoSwap
                             val doDescribeItemDifferently = onDescribeItemDifferently
                             val doDecompose = onDecompose
                             val doCombine = onCombine
@@ -578,6 +584,15 @@ internal fun ChatMessageRow(
                                                 index: Int,
                                                 newName: String,
                                             ) = doSwapCandidate(index, newName)
+
+                                            override fun onSwapItem(
+                                                index: Int,
+                                                newItem: app.mealsy.domain.CardItem,
+                                                method: String,
+                                                query: String?,
+                                            ) = doSwapItem(index, newItem, method, query)
+
+                                            override fun onUndoSwap() = doUndoSwap()
 
                                             override fun onDescribeItemDifferently(
                                                 index: Int,

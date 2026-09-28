@@ -1,6 +1,7 @@
 package app.mealsy.android.design.components
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.ScreenshotTestBase
@@ -67,34 +68,87 @@ class Phase4ComponentsGoldenTest : ScreenshotTestBase() {
             )
         }
 
-    // --- CandidatePickerSheetContent: 4 candidates, one current ------------
+    // --- CandidatePickerSheetContent: search field + results states (spec 003, T031) ---
 
-    private val candidates =
-        listOf(
-            "Vinaigrette dressing",
-            "Balsamic vinaigrette",
-            "Italian dressing",
-            "Red wine vinaigrette",
+    private fun pickerRow(
+        name: String,
+        fdcId: Long,
+        isCurrent: Boolean = false,
+    ) = PickerRow(fdcId = fdcId, name = name, kcal = 82.0, proteinG = 2.5, isCurrent = isCurrent)
+
+    private val loadedResults =
+        PickerResultsState.Loaded(
+            listOf(
+                pickerRow("Bread, white, commercially prepared, toasted", 172687, isCurrent = true),
+                pickerRow("Melba toast", 111222),
+                pickerRow("Anisette toast", 333444),
+            ),
         )
 
+    @Composable
+    private fun pickerContent(
+        resultsState: PickerResultsState,
+        online: Boolean = true,
+        query: String = "toast",
+    ) {
+        CandidatePickerSheetContent(
+            currentName = "Shrimp toast",
+            query = query,
+            onQueryChange = {},
+            online = online,
+            resultsState = resultsState,
+            onSelectResult = { _, _ -> },
+            onRemove = {},
+            onDescribeDifferently = {},
+        )
+    }
+
     @Test
-    fun candidatePickerSheetContent_light() =
-        captureMealsy("CandidatePickerSheetContent", false) {
-            CandidatePickerSheetContent(
-                currentName = "Vinaigrette dressing",
-                candidates = candidates,
-                onSelect = {},
-            )
+    fun candidatePickerSheetContent_loaded_light() =
+        captureMealsy("CandidatePickerSheetContent_loaded", false) { pickerContent(loadedResults) }
+
+    @Test
+    fun candidatePickerSheetContent_loaded_dark() =
+        captureMealsy("CandidatePickerSheetContent_loaded", true) { pickerContent(loadedResults) }
+
+    @Test
+    fun candidatePickerSheetContent_loaded_font2x() =
+        captureMealsy("CandidatePickerSheetContent_loaded", false, fontScale = 2.0f) { pickerContent(loadedResults) }
+
+    @Test
+    fun candidatePickerSheetContent_loading_light() =
+        captureMealsy("CandidatePickerSheetContent_loading", false) { pickerContent(PickerResultsState.Loading) }
+
+    @Test
+    fun candidatePickerSheetContent_loading_dark() =
+        captureMealsy("CandidatePickerSheetContent_loading", true) { pickerContent(PickerResultsState.Loading) }
+
+    @Test
+    fun candidatePickerSheetContent_empty_light() =
+        captureMealsy("CandidatePickerSheetContent_empty", false) { pickerContent(PickerResultsState.Empty) }
+
+    @Test
+    fun candidatePickerSheetContent_empty_dark() =
+        captureMealsy("CandidatePickerSheetContent_empty", true) { pickerContent(PickerResultsState.Empty) }
+
+    @Test
+    fun candidatePickerSheetContent_unavailable_light() =
+        captureMealsy("CandidatePickerSheetContent_unavailable", false) { pickerContent(PickerResultsState.Unavailable) }
+
+    @Test
+    fun candidatePickerSheetContent_unavailable_dark() =
+        captureMealsy("CandidatePickerSheetContent_unavailable", true) { pickerContent(PickerResultsState.Unavailable) }
+
+    @Test
+    fun candidatePickerSheetContent_offline_light() =
+        captureMealsy("CandidatePickerSheetContent_offline", false) {
+            pickerContent(PickerResultsState.Idle, online = false, query = "")
         }
 
     @Test
-    fun candidatePickerSheetContent_dark() =
-        captureMealsy("CandidatePickerSheetContent", true) {
-            CandidatePickerSheetContent(
-                currentName = "Vinaigrette dressing",
-                candidates = candidates,
-                onSelect = {},
-            )
+    fun candidatePickerSheetContent_offline_dark() =
+        captureMealsy("CandidatePickerSheetContent_offline", true) {
+            pickerContent(PickerResultsState.Idle, online = false, query = "")
         }
 
     // --- MarkdownText: paragraph + bold + 3-item bullet list ----------------

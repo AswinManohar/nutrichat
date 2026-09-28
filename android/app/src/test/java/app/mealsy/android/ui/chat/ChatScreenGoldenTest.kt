@@ -50,6 +50,8 @@ class ChatScreenGoldenTest : AppScreenshotTestBase() {
             onSetMealType = {},
             onSetPortion = {},
             onSwapCandidate = { _, _ -> },
+            onSwapItem = { _, _, _, _ -> },
+            onUndoSwap = {},
             onDescribeItemDifferently = { _, _ -> },
             onDecompose = {},
             onCombine = {},
