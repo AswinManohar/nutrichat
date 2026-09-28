@@ -43,6 +43,11 @@ class AgentState(TypedDict):
     # Cache for the "Break into ingredients" decomposition — populated on first
     # LLM call; subsequent presses read from here and skip the LLM.
     decomposed_entities: list[dict]
+    # Set by resolve_pending() (spec 003, T008) when a local client-side
+    # logging path (POST /meals/log-items) has already handled this paused
+    # card, so get_pending_card must stop returning it even though the
+    # LangGraph interrupt after "present" is technically still pending.
+    resolved: bool
 
 
 # ---------------------------------------------------------------------------

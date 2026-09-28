@@ -247,7 +247,7 @@ async def get_pending_card(
     graph = _graph_for(checkpointer)
     config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
     state = await graph.aget_state(config)
-    if not state.next:
+    if not state.next or state.values.get("resolved"):
         return {"paused": False}
     messages = state.values.get("messages", [])
     ai_texts = [m.content for m in messages if getattr(m, "type", "") == "ai"]
@@ -257,6 +257,38 @@ async def get_pending_card(
         "message": ai_texts[-1] if ai_texts else "",
         "items": _serialize_items(state.values.get("usda_results", [])),
     }
+
+
+async def resolve_pending(
+    user_id: str,
+    thread_id: str,
+    checkpointer: Any,
+) -> None:
+    """Mark a paused thread's confirmation card resolved (spec 003, T008).
+
+    Called from `POST /meals/log-items` after a client-side local swap/edit
+    flow logs a meal directly (no LLM round trip), so the LangGraph
+    checkpoint that produced the original card never learns the card was
+    handled. Without this, `get_pending_card` would keep returning the
+    stale, unswapped card on the next pending-recovery poll (research R4).
+
+    This never deletes checkpoint rows (rule U1) -- it writes one more
+    checkpoint on top with `resolved=True`, which `get_pending_card` checks.
+    The full history therefore stays intact for debugging/audit.
+
+    Idempotent and a no-op if nothing is paused for this thread.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        thread_id: LangGraph thread ID (`{user_id}:{conversation_id}`).
+        checkpointer: AsyncPostgresSaver instance from app.state.
+    """
+    graph = _graph_for(checkpointer)
+    config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
+    state = await graph.aget_state(config)
+    if not state.next or state.values.get("resolved"):
+        return
+    await graph.aupdate_state(config, {"resolved": True}, as_node="present")
 
 
 async def _handle_meal_logging(
