@@ -10,7 +10,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agent.orchestrator import get_pending_card, handle_message
+from backend.agent.orchestrator import get_pending_card, handle_message, resolve_pending
 from backend.agent.tools.history import get_category_breakdown
 from backend.agent.tools.meals import (
     MEAL_CATEGORIES,
@@ -176,14 +176,16 @@ class LogItemsRequest(BaseModel):
 
     The frontend applies removals and quantity edits locally and sends only
     the kept items; removing or re-weighing an ingredient never calls the LLM.
-    Food swaps still go through the chat correction path (they need
-    re-resolution) before the card is logged this way.
+    A swapped item (spec 003, "Correct a Wrong Food Match") can now also be
+    logged this way, via the item's own ``correction`` field, instead of
+    round-tripping through chat.
     """
 
     meal_type: str
     portion: float = Field(default=1.0, gt=0)
     items: list[LogItemIn] = Field(min_length=1)
     client_request_id: str | None = Field(default=None, max_length=64)
+    conversation_id: str | None = Field(default=None)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -241,6 +243,7 @@ def _dedup_result(row: MealLog) -> MealLogResult:
 @router.post("/log-items")
 async def log_items(
     req: LogItemsRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
 ) -> MealLogResult:
     """Log a client-provided resolved item set without any LLM round-trip.
@@ -257,6 +260,13 @@ async def log_items(
     pre-select race is still caught via the unique index on
     (user_id, client_request_id) and answered the same way.
 
+    When ``conversation_id`` is set, the paused LangGraph thread that
+    produced this card (if any) is marked resolved on every successful
+    return path, so `GET /meals/pending` stops returning it (spec 003,
+    research R4). Card items may have been swapped locally on the client
+    without the graph ever learning about it, so without this a later
+    pending-recovery poll could resurrect the stale, unswapped card.
+
     Raises:
         HTTPException 422: Invalid meal_type.
     """
@@ -266,19 +276,22 @@ async def log_items(
     if req.client_request_id:
         existing = await _find_by_client_request_id(user_id, req.client_request_id)
         if existing is not None:
+            await _resolve_pending_if_any(request, user_id, req.conversation_id)
             return _dedup_result(existing)
 
     item_dicts = [it.model_dump() for it in req.items]
     results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
     try:
-        return await persist_meal(
+        result = await persist_meal(
             user_id,
             results,
             req.meal_type,
             label=label,
             client_request_id=req.client_request_id,
         )
+        await _resolve_pending_if_any(request, user_id, req.conversation_id)
+        return result
     except IntegrityError:
         # Lost the race: another request with the same client_request_id
         # committed between our pre-select and our insert. Re-select the
@@ -290,7 +303,27 @@ async def log_items(
         existing = await _find_by_client_request_id(user_id, req.client_request_id)
         if existing is None:
             raise
+        await _resolve_pending_if_any(request, user_id, req.conversation_id)
         return _dedup_result(existing)
+
+
+async def _resolve_pending_if_any(
+    request: Request, user_id: str, conversation_id: str | None
+) -> None:
+    """Mark the paused card for `conversation_id` resolved, if one was sent.
+
+    No-op when the client didn't send a `conversation_id` (older clients,
+    or a log-items call with no matching chat thread).
+
+    Args:
+        request: The current FastAPI request (for `app.state.checkpointer`).
+        user_id: Authenticated Supabase Auth UUID.
+        conversation_id: Client-supplied conversation id, or None.
+    """
+    if not conversation_id:
+        return
+    thread_id = f"{user_id}:{conversation_id}"
+    await resolve_pending(user_id, thread_id, request.app.state.checkpointer)
 
 
 @router.delete("/log/{meal_id}", status_code=204)
