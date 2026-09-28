@@ -151,6 +151,59 @@ def test_put_goals_updates_existing(client: TestClient) -> None:
     assert body["dietary_prefs"] == {"vegan": True}
 
 
+def test_put_goals_mindful_preserves_targets(client: TestClient) -> None:
+    """Switching to mindful mode without targets must not null them out,
+    and switching back to goals mode must restore the preserved values.
+    """
+    existing = UserGoal(
+        user_id="user-1",
+        tracking_mode="goals",
+        kcal_goal=2200,
+        protein_goal=110,
+        fiber_goal=31,
+        dietary_prefs={},
+        streak_days=2,
+    )
+
+    session = MagicMock()
+    session.get = AsyncMock(return_value=existing)
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+    factory = _mock_session_factory(session)
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        mindful_resp = client.put(
+            "/goals",
+            json={"tracking_mode": "mindful", "dietary_prefs": {}},
+            headers=_auth_headers("user-1"),
+        )
+
+        assert mindful_resp.status_code == 200
+        mindful_body = mindful_resp.json()
+        assert mindful_body["tracking_mode"] == "mindful"
+        assert mindful_body["kcal_goal"] == 2200
+        assert mindful_body["protein_goal"] == 110
+        assert mindful_body["fiber_goal"] == 31
+
+        goals_resp = client.put(
+            "/goals",
+            json={
+                "tracking_mode": "goals",
+                "kcal_goal": 2200,
+                "protein_goal": 110,
+                "fiber_goal": 31,
+                "dietary_prefs": {},
+            },
+            headers=_auth_headers("user-1"),
+        )
+
+    assert goals_resp.status_code == 200
+    goals_body = goals_resp.json()
+    assert goals_body["kcal_goal"] == 2200
+    assert goals_body["protein_goal"] == 110
+    assert goals_body["fiber_goal"] == 31
+
+
 def test_put_goals_404_before_onboarding(client: TestClient) -> None:
     session = MagicMock()
     session.get = AsyncMock(return_value=None)

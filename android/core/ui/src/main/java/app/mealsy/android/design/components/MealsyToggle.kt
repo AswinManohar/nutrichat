@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.theme.MealsyShapes
@@ -34,6 +35,11 @@ import app.mealsy.android.design.theme.rememberMealsyHaptics
  * @param onCheckedChange Invoked with the new checked state on tap.
  * @param modifier The modifier applied to the toggle's track.
  * @param enabled Whether the toggle responds to taps.
+ * @param interactive When false, the toggle draws itself but takes no tap
+ *   gesture and exposes no `Role.Switch` semantics of its own — for a caller
+ *   (e.g. a settings row) that puts `Modifier.toggleable(role = Role.Switch)`
+ *   on a *larger* container (the whole row, merged with its label) and only
+ *   wants this composable as the visual thumb/track (#43).
  */
 @Composable
 fun MealsyToggle(
@@ -41,6 +47,7 @@ fun MealsyToggle(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    interactive: Boolean = true,
 ) {
     val colors = MealsyTheme.colors
     val haptics = rememberMealsyHaptics()
@@ -60,13 +67,19 @@ fun MealsyToggle(
             modifier
                 .size(width = 46.dp, height = 28.dp)
                 .alpha(if (enabled) 1f else 0.35f)
-                .toggleable(
-                    value = checked,
-                    enabled = enabled,
-                    role = Role.Switch,
-                    onValueChange = {
-                        haptics.tick()
-                        onCheckedChange(it)
+                .then(
+                    if (interactive) {
+                        Modifier.toggleable(
+                            value = checked,
+                            enabled = enabled,
+                            role = Role.Switch,
+                            onValueChange = {
+                                haptics.tick()
+                                onCheckedChange(it)
+                            },
+                        )
+                    } else {
+                        Modifier.clearAndSetSemantics {}
                     },
                 )
                 .background(trackColor, MealsyShapes.pill)

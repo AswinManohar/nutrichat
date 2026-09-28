@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -397,5 +398,5 @@ private fun coachNoteText(note: HomeCoachNote): String =
         is HomeCoachNote.ProteinGapSpread -> stringResource(R.string.home_coach_protein_gap_spread, note.gapG)
         is HomeCoachNote.KcalRemaining -> stringResource(R.string.home_coach_kcal_remaining, note.kcal)
         is HomeCoachNote.TargetReached -> stringResource(R.string.home_coach_target_reached)
-        is HomeCoachNote.Mindful -> stringResource(R.string.home_coach_mindful, note.nMeals)
+        is HomeCoachNote.Mindful -> pluralStringResource(R.plurals.home_coach_mindful, note.nMeals, note.nMeals)
     }

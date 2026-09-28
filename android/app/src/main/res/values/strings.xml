@@ -172,7 +172,10 @@
     <string name="home_coach_protein_gap_spread">You\'re %1$dg short on protein today. Spread it across your next few meals.</string>
     <string name="home_coach_kcal_remaining">%1$d kcal available for the rest of today. A normal dinner fits comfortably.</string>
     <string name="home_coach_target_reached">You\'ve reached today\'s target. A light evening keeps things steady.</string>
-    <string name="home_coach_mindful">You\'ve logged %1$d meals today. Keep noticing what fills you up.</string>
+    <plurals name="home_coach_mindful">
+        <item quantity="one">You\'ve logged %1$d meal today. Keep noticing what fills you up.</item>
+        <item quantity="other">You\'ve logged %1$d meals today. Keep noticing what fills you up.</item>
+    </plurals>
 
     <!-- Meal-type list -->
     <string name="meal_type_back">Back</string>
@@ -297,6 +300,8 @@
 
     <string name="settings_section_reminders">Reminders</string>
     <string name="settings_daily_summary">Daily summary at 07:00</string>
+    <string name="settings_notifications_blocked">Notifications are off for Mealsy</string>
+    <string name="settings_open_notification_settings">Open settings</string>
 
     <string name="settings_section_about">About</string>
     <string name="settings_privacy_policy">Privacy policy</string>

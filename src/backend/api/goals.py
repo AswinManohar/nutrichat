@@ -137,9 +137,22 @@ async def update_goals(
             raise HTTPException(status_code=404, detail="User has not been onboarded")
 
         goal.tracking_mode = req.tracking_mode
-        goal.kcal_goal = req.kcal_goal
-        goal.protein_goal = req.protein_goal
-        goal.fiber_goal = req.fiber_goal
+        # In mindful mode the client may omit the numeric targets entirely
+        # (e.g. the 27-byte "just turn tracking off" request). Keep the
+        # previously-set targets on file instead of nulling them out, so
+        # switching back to "goals" mode restores the user's own values
+        # rather than resetting to generic defaults.
+        if req.tracking_mode == "mindful":
+            if req.kcal_goal is not None:
+                goal.kcal_goal = req.kcal_goal
+            if req.protein_goal is not None:
+                goal.protein_goal = req.protein_goal
+            if req.fiber_goal is not None:
+                goal.fiber_goal = req.fiber_goal
+        else:
+            goal.kcal_goal = req.kcal_goal
+            goal.protein_goal = req.protein_goal
+            goal.fiber_goal = req.fiber_goal
         goal.dietary_prefs = req.dietary_prefs
         goal.first_meal_time = req.first_meal_time
         await session.commit()
