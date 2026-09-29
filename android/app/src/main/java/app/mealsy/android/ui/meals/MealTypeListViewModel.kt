@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
 
@@ -77,6 +78,10 @@ class MealTypeListViewModel
         private val _hiddenIds = MutableStateFlow<Set<String>>(emptySet())
         val hiddenIds: StateFlow<Set<String>> = _hiddenIds.asStateFlow()
 
+        /** Ids whose `DELETE` failed — already restored to the list (#52); drives the "Retry" snackbar. */
+        private val _failedDeleteIds = MutableStateFlow<Set<String>>(emptySet())
+        val failedDeleteIds: StateFlow<Set<String>> = _failedDeleteIds.asStateFlow()
+
         private val pendingDeleteJobs = mutableMapOf<String, Job>()
 
         /** Exposed only so tests can [Job.join] the initial load deterministically. */
@@ -113,12 +118,21 @@ class MealTypeListViewModel
          */
         fun deleteWithUndo(id: String) {
             pendingDeleteJobs.remove(id)?.cancel()
+            _failedDeleteIds.value = _failedDeleteIds.value - id
             _hiddenIds.value = _hiddenIds.value + id
             pendingDeleteJobs[id] =
                 appScope.launch {
                     delay(mealTypeUndoWindowMs)
                     commitDelete(id)
                 }
+        }
+
+        /** Retries a delete that failed: hides [id] again and restarts the undo window. */
+        fun retryDelete(id: String) = deleteWithUndo(id)
+
+        /** Drops [id]'s "couldn't delete" feedback without retrying. */
+        fun dismissDeleteFailure(id: String) {
+            _failedDeleteIds.value = _failedDeleteIds.value - id
         }
 
         /** Cancels [id]'s pending delete (if the undo window hasn't elapsed) and un-hides it. */
@@ -139,16 +153,28 @@ class MealTypeListViewModel
 
         /** See [app.mealsy.android.ui.mymeals.MyMealsViewModel.commitDelete]. */
         private suspend fun commitDelete(id: String) {
-            try {
-                repository.delete(id)
-            } catch (exc: CancellationException) {
-                throw exc
-            } catch (exc: Exception) {
-                // Best-effort: the meal stays hidden client-side either way; a
-                // failed delete just means it reappears on the next [load].
-            }
+            val deleted =
+                try {
+                    repository.delete(id)
+                    true
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: HttpException) {
+                    // 404: already gone server-side, which is what the user wanted.
+                    exc.code() == 404
+                } catch (exc: IOException) {
+                    false
+                } catch (exc: Exception) {
+                    false
+                }
             withContext(Dispatchers.Main.immediate) {
                 pendingDeleteJobs.remove(id)
+                if (!deleted) {
+                    // #52: restore the meal and surface a retry.
+                    _hiddenIds.value = _hiddenIds.value - id
+                    _failedDeleteIds.value = _failedDeleteIds.value + id
+                    return@withContext
+                }
                 val current = _uiState.value
                 if (current is MealTypeListUiState.Loaded) {
                     val remaining = current.meals.filterNot { it.mealId == id }

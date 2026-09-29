@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -86,6 +87,37 @@ fun MealTypeListScreen(
     val scope = rememberCoroutineScope()
     val undoneLabel = stringResource(R.string.meal_type_deleted_undo_label)
     val deletedMessage = stringResource(R.string.meal_type_deleted_message)
+    val failedIds by viewModel.failedDeleteIds.collectAsStateWithLifecycle()
+    val failedMessage = stringResource(R.string.meal_type_delete_failed_message)
+    val retryLabel = stringResource(R.string.meal_type_delete_retry_label)
+
+    // #52: a failed DELETE restores the meal to the list; say so, with a retry.
+    val failedId = failedIds.firstOrNull()
+    val startDelete: (String) -> Unit = { id ->
+        viewModel.deleteWithUndo(id)
+        scope.launch {
+            val result =
+                snackbarHostState.showSnackbar(
+                    message = deletedMessage,
+                    actionLabel = undoneLabel,
+                )
+            if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(id)
+        }
+    }
+    LaunchedEffect(failedIds) {
+        if (failedId == null) return@LaunchedEffect
+        val result =
+            snackbarHostState.showSnackbar(
+                message = failedMessage,
+                actionLabel = retryLabel,
+                duration = SnackbarDuration.Long,
+            )
+        if (result == SnackbarResult.ActionPerformed) {
+            startDelete(failedId)
+        } else {
+            viewModel.dismissDeleteFailure(failedId)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         MealTypeListContent(
@@ -95,17 +127,7 @@ fun MealTypeListScreen(
             onBack = onBack,
             onOpenMeal = onOpenMeal,
             onRetry = viewModel::load,
-            onSwipeDelete = { id ->
-                viewModel.deleteWithUndo(id)
-                scope.launch {
-                    val result =
-                        snackbarHostState.showSnackbar(
-                            message = deletedMessage,
-                            actionLabel = undoneLabel,
-                        )
-                    if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(id)
-                }
-            },
+            onSwipeDelete = startDelete,
             modifier = Modifier.fillMaxSize(),
         )
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))

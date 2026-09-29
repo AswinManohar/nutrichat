@@ -90,6 +90,7 @@ fun MyMealsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val hiddenIds by viewModel.hiddenIds.collectAsStateWithLifecycle()
     val pendingUndoIds by viewModel.pendingUndoIds.collectAsStateWithLifecycle()
+    val failedDeleteIds by viewModel.failedDeleteIds.collectAsStateWithLifecycle()
 
     MyMealsContent(
         uiState = uiState,
@@ -99,6 +100,9 @@ fun MyMealsScreen(
         onRetry = viewModel::load,
         onDeleteWithUndo = viewModel::deleteWithUndo,
         onUndoDelete = viewModel::undoDelete,
+        failedDeleteIds = failedDeleteIds,
+        onRetryDelete = viewModel::retryDelete,
+        onDismissDeleteFailure = viewModel::dismissDeleteFailure,
     )
 }
 
@@ -117,6 +121,9 @@ internal fun MyMealsContent(
     onDeleteWithUndo: (String) -> Unit,
     onUndoDelete: (String) -> Unit,
     pendingUndoIds: Set<String> = emptySet(),
+    failedDeleteIds: Set<String> = emptySet(),
+    onRetryDelete: (String) -> Unit = {},
+    onDismissDeleteFailure: (String) -> Unit = {},
 ) {
     // The most recently swiped meal, kept only so the toast has a name/id to
     // render — its *visibility* is driven by [pendingUndoIds] (the
@@ -190,6 +197,49 @@ internal fun MyMealsContent(
                     lastSwiped = null
                 },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+            )
+        }
+
+        // #52: a failed DELETE restores the meal to the list; say so, with a retry.
+        val failedId = failedDeleteIds.firstOrNull()
+        if (failedId != null) {
+            DeleteFailedToast(
+                onRetry = { onRetryDelete(failedId) },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+            )
+            LaunchedEffect(failedId) {
+                kotlinx.coroutines.delay(DELETE_FAILED_TOAST_MS)
+                onDismissDeleteFailure(failedId)
+            }
+        }
+    }
+}
+
+private const val DELETE_FAILED_TOAST_MS = 6_000L
+
+/** "Couldn't delete" [InkToast] with a tappable "Retry" pill, shown when a delete fails. */
+@Composable
+private fun DeleteFailedToast(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MealsyTheme.colors
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        InkToast(text = stringResource(R.string.my_meals_delete_failed_toast))
+        androidx.compose.material3.Surface(
+            shape = app.mealsy.android.design.theme.MealsyShapes.pill,
+            color = colors.ink,
+            modifier = Modifier.clickable(onClick = onRetry),
+        ) {
+            androidx.compose.material3.Text(
+                text = stringResource(R.string.my_meals_delete_retry),
+                style = MealsyType.badge,
+                color = colors.olive,
+                modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
             )
         }
     }

@@ -228,4 +228,91 @@ class MealTypeListViewModelTest {
             assertEquals("DELETE", deleteRequest.method)
             assertEquals("/meals/log/m_1", deleteRequest.path)
         }
+
+    private suspend fun awaitFailed(viewModel: MealTypeListViewModel) {
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (viewModel.failedDeleteIds.value.isEmpty()) kotlinx.coroutines.delay(10)
+        }
+    }
+
+    @Test
+    fun `a failed DELETE over IOException restores the meal and flags the failure`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
+
+            viewModel.deleteWithUndo("m_1")
+            assertTrue("m_1" in viewModel.hiddenIds.value)
+            // OkHttp transparently retries a dropped connection once, so drop two.
+            repeat(2) {
+                server.enqueue(
+                    MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST),
+                )
+            }
+            awaitFailed(viewModel)
+
+            assertEquals(setOf("m_1"), viewModel.failedDeleteIds.value)
+            assertFalse("m_1" in viewModel.hiddenIds.value) // back in the visible list
+            val state = viewModel.uiState.value
+            assertTrue(state is MealTypeListUiState.Loaded)
+            assertEquals(listOf("m_1"), (state as MealTypeListUiState.Loaded).meals.map { it.mealId })
+        }
+
+    @Test
+    fun `a failed DELETE over a 5xx restores the meal and flags the failure`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
+
+            viewModel.deleteWithUndo("m_1")
+            server.enqueue(MockResponse().setResponseCode(503))
+            awaitFailed(viewModel)
+
+            assertEquals(setOf("m_1"), viewModel.failedDeleteIds.value)
+            assertFalse("m_1" in viewModel.hiddenIds.value)
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Loaded)
+        }
+
+    @Test
+    fun `retryDelete after a failure clears it and removes the meal once the DELETE succeeds`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
+
+            viewModel.deleteWithUndo("m_1")
+            server.enqueue(MockResponse().setResponseCode(500))
+            awaitFailed(viewModel)
+
+            server.enqueue(MockResponse().setResponseCode(204))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("[]")) // post-delete refresh reload
+            viewModel.retryDelete("m_1")
+            assertTrue(viewModel.failedDeleteIds.value.isEmpty())
+            assertTrue("m_1" in viewModel.hiddenIds.value)
+            kotlinx.coroutines.delay(mealTypeUndoWindowMs + 300)
+
+            assertTrue(viewModel.failedDeleteIds.value.isEmpty())
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Empty)
+        }
+
+    @Test
+    fun `a 404 on DELETE counts as deleted, not as a failure`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(listGoldenJson))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            server.takeRequest() // the initial GET
+
+            viewModel.deleteWithUndo("m_1")
+            server.enqueue(MockResponse().setResponseCode(404))
+            kotlinx.coroutines.delay(mealTypeUndoWindowMs + 300)
+
+            assertTrue(viewModel.failedDeleteIds.value.isEmpty())
+            assertTrue(viewModel.uiState.value is MealTypeListUiState.Empty)
+        }
 }

@@ -203,6 +203,8 @@
     <string name="meal_type_empty">Nothing logged for %1$s yet.</string>
     <string name="meal_type_deleted_message">Meal deleted</string>
     <string name="meal_type_deleted_undo_label">Undo</string>
+    <string name="meal_type_delete_failed_message">Couldn\'t delete</string>
+    <string name="meal_type_delete_retry_label">Retry</string>
     <string name="meal_type_error_load_failed">Something went wrong loading your meals.</string>
     <string name="meal_type_open_label">Open meal</string>
     <string name="meal_type_swipe_delete_icon">Delete</string>
@@ -256,6 +258,8 @@
     <string name="my_meals_open_label">Open meal</string>
     <string name="my_meals_deleted_toast">Deleted</string>
     <string name="my_meals_undo">Undo</string>
+    <string name="my_meals_delete_failed_toast">Couldn\'t delete</string>
+    <string name="my_meals_delete_retry">Retry</string>
     <string name="my_meals_error_load_failed">Something went wrong loading your meals.</string>
 
     <!-- Customize sheet ("Edit portions") -->
