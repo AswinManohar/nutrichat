@@ -1,9 +1,14 @@
 package app.mealsy.android.ui.onboarding
 
+import android.app.Activity
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mealsy.android.ui.login.LoginErrorKind
+import app.mealsy.android.ui.login.toLoginErrorKind
+import app.mealsy.data.auth.GoogleSignInException
 import app.mealsy.data.auth.SessionManager
+import app.mealsy.data.auth.SessionState
 import app.mealsy.data.error.ErrorReporter
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.ProfileStore
@@ -84,6 +89,14 @@ private const val FALLBACK_KCAL_TARGET = 2200
 private const val LAST_STEP = 5
 
 /**
+ * The "Save your plan" account step (#31). Shown after Target when the user
+ * is signed out, and again if `POST /goals` answers 401. Not part of the
+ * 1-4 progress sequence, so it lives past [LAST_STEP].
+ */
+internal const val ACCOUNT_STEP = 6
+private const val TARGET_STEP = 4
+
+/**
  * Longest name accepted on step 1. Without a cap, a long typed/pasted name
  * overflows the step-2 heading ("What are you here for, %1\$s?") and can
  * leave the "?" orphaned on its own line (#46).
@@ -122,6 +135,10 @@ data class OnboardingUiState(
     val saving: Boolean,
     val error: Boolean,
     val done: Boolean,
+    /** A Google sign-in is in flight on the account step. */
+    val accountBusy: Boolean = false,
+    /** The last Google sign-in failure on the account step, or null. */
+    val accountError: LoginErrorKind? = null,
 )
 
 /**
@@ -149,9 +166,29 @@ class OnboardingViewModel
         private val profileStore: ProfileStore,
         private val goalsRepository: GoalsRepository,
         private val errorReporter: ErrorReporter = ErrorReporter {},
+        private val accountGate: OnboardingAccountGate = OnboardingAccountGate(),
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(loadInitialState())
         val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
+
+        init {
+            // Answers live in this ViewModel's SavedStateHandle, so the nav graph must
+            // not replace this screen while sign-in is pending (see OnboardingAccountGate).
+            viewModelScope.launch {
+                _uiState.collect { accountGate.hold.value = it.startStep == 0 && it.step >= LAST_STEP && !it.done }
+            }
+            // Sign-in can complete elsewhere (magic link via the login screen, or after
+            // process death), so resume whenever a session appears on the account step.
+            viewModelScope.launch {
+                sessionManager.sessionState.collect { state ->
+                    if (state is SessionState.SignedIn) resumeAfterSignIn()
+                }
+            }
+        }
+
+        override fun onCleared() {
+            accountGate.hold.value = false
+        }
 
         private fun loadInitialState(): OnboardingUiState {
             val startStep = savedStateHandle.get<Int>(KEY_START_STEP) ?: 0
@@ -203,7 +240,7 @@ class OnboardingViewModel
                 firstName = firstNameOf(base.name),
                 continueEnabled = continueEnabled,
                 continueLabel = continueLabel,
-                progress = base.step / 4f,
+                progress = (base.step / 4f).coerceAtMost(1f),
                 isMindful = base.goal == OnboardingGoal.Learn,
                 coachNotePrefs = orderedSelected.take(2),
                 hasMorePrefs = orderedSelected.size > 2,
@@ -257,11 +294,13 @@ class OnboardingViewModel
                     savedStateHandle[KEY_KCAL] = goal.defaultKcal
                     _uiState.update { recompute(it.copy(step = nextStep, kcalTarget = goal.defaultKcal)) }
                 }
-                4 -> {
-                    val nextStep = 5
+                TARGET_STEP -> {
+                    // #31: no session means POST /goals would 401 — collect an account first.
+                    val signedIn = sessionManager.sessionState.value is SessionState.SignedIn
+                    val nextStep = if (signedIn) LAST_STEP else ACCOUNT_STEP
                     savedStateHandle[KEY_STEP] = nextStep
                     _uiState.update { recompute(it.copy(step = nextStep)) }
-                    startFinish()
+                    if (signedIn) startFinish()
                 }
                 else -> {
                     val nextStep = (current.step + 1).coerceAtMost(LAST_STEP)
@@ -274,9 +313,45 @@ class OnboardingViewModel
         /** Moves back one step, clamped at [OnboardingUiState.startStep]. */
         fun back() {
             val current = _uiState.value
-            val prevStep = (current.step - 1).coerceAtLeast(current.startStep)
+            val prevStep =
+                if (current.step == ACCOUNT_STEP) TARGET_STEP else (current.step - 1).coerceAtLeast(current.startStep)
             savedStateHandle[KEY_STEP] = prevStep
-            _uiState.update { recompute(it.copy(step = prevStep)) }
+            _uiState.update { recompute(it.copy(step = prevStep, accountError = null)) }
+        }
+
+        /**
+         * Native Google sign-in from the account step. Cancel is silent; other
+         * failures set [OnboardingUiState.accountError]. Success resumes the
+         * finish sequence (metadata + ProfileStore + POST /goals).
+         */
+        fun signInWithGoogle(activity: Activity) {
+            if (_uiState.value.accountBusy) return
+            _uiState.update { it.copy(accountBusy = true, accountError = null) }
+            viewModelScope.launch {
+                try {
+                    sessionManager.signInWithGoogle(activity)
+                    // The session flow may not re-emit an equal SignedIn (e.g. re-auth after a
+                    // 401), so resume explicitly; resumeAfterSignIn is idempotent.
+                    resumeAfterSignIn()
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: GoogleSignInException) {
+                    _uiState.update { it.copy(accountBusy = false, accountError = exc.toLoginErrorKind()) }
+                } catch (exc: Exception) {
+                    errorReporter.record(exc)
+                    _uiState.update { it.copy(accountBusy = false, accountError = LoginErrorKind.GoogleSignInFailed) }
+                } finally {
+                    _uiState.update { it.copy(accountBusy = false) }
+                }
+            }
+        }
+
+        /** Leaves the account step and runs the finish sequence; a no-op anywhere else. */
+        private fun resumeAfterSignIn() {
+            if (_uiState.value.step != ACCOUNT_STEP) return
+            savedStateHandle[KEY_STEP] = LAST_STEP
+            _uiState.update { recompute(it.copy(step = LAST_STEP, accountBusy = false, accountError = null)) }
+            startFinish()
         }
 
         /** Re-runs the finish sequence after [OnboardingUiState.error]. */
@@ -338,6 +413,14 @@ class OnboardingViewModel
                 _uiState.update { recompute(it.copy(saving = false, done = true)) }
             } catch (exc: CancellationException) {
                 throw exc
+            } catch (exc: HttpException) {
+                if (exc.code() == 401) {
+                    // #31: not signed in (or the session is dead) — retrying can't help.
+                    savedStateHandle[KEY_STEP] = ACCOUNT_STEP
+                    _uiState.update { recompute(it.copy(step = ACCOUNT_STEP, saving = false, error = false)) }
+                } else {
+                    _uiState.update { recompute(it.copy(saving = false, error = true)) }
+                }
             } catch (exc: Exception) {
                 _uiState.update { recompute(it.copy(saving = false, error = true)) }
             }

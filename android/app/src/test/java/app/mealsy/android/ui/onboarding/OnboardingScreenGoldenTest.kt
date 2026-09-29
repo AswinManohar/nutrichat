@@ -73,6 +73,26 @@ class OnboardingScreenGoldenTest : AppScreenshotTestBase() {
         )
     }
 
+    // --- Step 6: Save your plan (signed-out account step, #31) ------------
+
+    @Test
+    fun step6Account_light() =
+        captureMealsy("Onboarding_step6Account", false) {
+            render(state(step = ACCOUNT_STEP, name = "Alex", goal = OnboardingGoal.Maintain))
+        }
+
+    @Test
+    fun step6Account_dark() =
+        captureMealsy("Onboarding_step6Account", true) {
+            render(state(step = ACCOUNT_STEP, name = "Alex", goal = OnboardingGoal.Maintain))
+        }
+
+    @Test
+    fun step6Account_light_fontScale200() =
+        captureMealsy("Onboarding_step6Account", false, 2.0f) {
+            render(state(step = ACCOUNT_STEP, name = "Alex", goal = OnboardingGoal.Maintain))
+        }
+
     // --- Step 0: Welcome -----------------------------------------------
 
     @Test

@@ -134,6 +134,10 @@
     <string name="onboarding_done_pill_no_target">%1$s · no target</string>
     <string name="onboarding_done_error">Could not save your goals. Try again.</string>
     <string name="onboarding_done_try_again">Try again</string>
+    <string name="onboarding_account_title">Save your plan</string>
+    <string name="onboarding_account_subtitle">Sign in so your goals and meals are waiting for you on any device.</string>
+    <string name="onboarding_account_progress">Almost done</string>
+    <string name="onboarding_account_use_email">Use email instead</string>
 
     <!-- Home dashboard -->
     <string name="home_greeting_morning">Good morning</string>
@@ -334,6 +338,10 @@
     <string name="login_error_invalid_email">Enter a valid email address.</string>
     <string name="login_error_magic_link_failed">Could not send magic link. Try again.</string>
     <string name="login_error_google_sign_in_failed">Google sign-in failed. Try again.</string>
+    <string name="login_error_google_no_account">No Google account on this device. Add one in Settings, or use email.</string>
+    <string name="login_error_google_not_configured">Google sign-in isn\'t configured.</string>
+    <string name="login_error_google_unavailable">Google sign-in isn\'t available right now.</string>
+    <string name="login_or_use_email">Or use email</string>
     <string name="login_error_link_expired">That link has expired or was already used — request a new one.</string>
     <string name="login_error_rate_limited">Too many attempts — try again in a few minutes.</string>
     <string name="login_resend_link">Resend link</string>

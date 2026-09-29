@@ -1,6 +1,7 @@
 package app.mealsy.android.ui.onboarding
 
 import androidx.lifecycle.SavedStateHandle
+import app.mealsy.android.ui.login.LoginErrorKind
 import app.mealsy.data.api.AppMetaResponse
 import app.mealsy.data.api.CoachingFeedbackRequest
 import app.mealsy.data.api.GoalRequest
@@ -18,6 +19,8 @@ import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.TodayResponse
 import app.mealsy.data.auth.AuthGateway
+import app.mealsy.data.auth.GoogleSignInError
+import app.mealsy.data.auth.GoogleSignInException
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
@@ -48,14 +51,22 @@ import retrofit2.Response
 /** Minimal [AuthGateway] fake — only [updateProfileMetadata] is exercised here. */
 private class FakeAuthGateway(
     private val onUpdateProfileMetadata: (suspend (String, String) -> Unit)? = null,
+    initialState: SessionState = SessionState.SignedIn("user-1"),
+    private val googleFailure: Exception? = null,
 ) : AuthGateway {
-    override val sessionState = MutableStateFlow<SessionState>(SessionState.SignedOut)
+    override val sessionState = MutableStateFlow(initialState)
+
+    var googleCalls = 0
 
     var lastMetadataCall: Pair<String, String>? = null
 
     override suspend fun signInWithMagicLink(email: String) = Unit
 
-    override suspend fun signInWithGoogle(activity: android.app.Activity) = Unit
+    override suspend fun signInWithGoogle(activity: android.app.Activity) {
+        googleCalls++
+        googleFailure?.let { throw it }
+        sessionState.value = SessionState.SignedIn("user-1")
+    }
 
     override suspend fun refreshCurrentSession(): String? = null
 
@@ -497,6 +508,133 @@ class OnboardingViewModelTest {
 
             vm.back()
             assertEquals(1, vm.uiState.value.step)
+        }
+
+    // ---- Account step (#31) ----
+
+    private fun signedOutGateway(failure: Exception? = null) =
+        FakeAuthGateway(initialState = SessionState.SignedOut, googleFailure = failure)
+
+    @Test
+    fun `signed-out Finish shows the account step and posts nothing`() =
+        runTest {
+            val api = FakeMealsyApi(onCreateGoals = ::echoResponse)
+            val vm = viewModel(authGateway = signedOutGateway(), api = api)
+            driveToFinish(vm, OnboardingGoal.Maintain)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(ACCOUNT_STEP, vm.uiState.value.step)
+            assertFalse(vm.uiState.value.done)
+            assertEquals(null, api.lastCreateRequest)
+        }
+
+    @Test
+    fun `Google sign-in on the account step runs finish and posts the answers`() =
+        runTest {
+            val gateway = signedOutGateway()
+            val api = FakeMealsyApi(onCreateGoals = ::echoResponse)
+            val vm = viewModel(authGateway = gateway, api = api)
+            driveToFinish(vm, OnboardingGoal.Maintain)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.signInWithGoogle(android.app.Activity())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(1, gateway.googleCalls)
+            assertEquals("Ada" to "maintain", gateway.lastMetadataCall)
+            assertEquals(2200.0, api.lastCreateRequest?.kcalGoal)
+            assertTrue(vm.uiState.value.done)
+            assertEquals(null, vm.uiState.value.accountError)
+        }
+
+    @Test
+    fun `cancelling Google sign-in stays on the account step with no error`() =
+        runTest {
+            val gateway = signedOutGateway(GoogleSignInException(GoogleSignInError.Cancelled))
+            val vm = viewModel(authGateway = gateway)
+            driveToFinish(vm, OnboardingGoal.Maintain)
+            vm.signInWithGoogle(android.app.Activity())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(ACCOUNT_STEP, vm.uiState.value.step)
+            assertEquals(null, vm.uiState.value.accountError)
+            assertFalse(vm.uiState.value.accountBusy)
+        }
+
+    @Test
+    fun `no Google account surfaces a message on the account step`() =
+        runTest {
+            val gateway = signedOutGateway(GoogleSignInException(GoogleSignInError.NoAccount))
+            val vm = viewModel(authGateway = gateway)
+            driveToFinish(vm, OnboardingGoal.Maintain)
+            vm.signInWithGoogle(android.app.Activity())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(LoginErrorKind.GoogleNoAccount, vm.uiState.value.accountError)
+            assertEquals(ACCOUNT_STEP, vm.uiState.value.step)
+        }
+
+    @Test
+    fun `session appearing elsewhere (magic link) resumes finish from the account step`() =
+        runTest {
+            val gateway = signedOutGateway()
+            val api = FakeMealsyApi(onCreateGoals = ::echoResponse)
+            val vm = viewModel(authGateway = gateway, api = api)
+            driveToFinish(vm, OnboardingGoal.Build)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            gateway.sessionState.value = SessionState.SignedIn("user-2")
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.done)
+            assertEquals(2600.0, api.lastCreateRequest?.kcalGoal)
+        }
+
+    @Test
+    fun `401 from create routes to the account step instead of the error loop`() =
+        runTest {
+            val api =
+                FakeMealsyApi(onCreateGoals = {
+                    throw HttpException(Response.error<Any>(401, "".toResponseBody(null)))
+                })
+            val vm = viewModel(api = api)
+            driveToFinish(vm, OnboardingGoal.Maintain)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(ACCOUNT_STEP, vm.uiState.value.step)
+            assertFalse(vm.uiState.value.error)
+            assertFalse(vm.uiState.value.saving)
+        }
+
+    @Test
+    fun `back from the account step returns to Target, keeping the answers`() =
+        runTest {
+            val vm = viewModel(authGateway = signedOutGateway())
+            driveToFinish(vm, OnboardingGoal.Build)
+            vm.back()
+
+            assertEquals(4, vm.uiState.value.step)
+            assertEquals("Ada", vm.uiState.value.name)
+            assertEquals(OnboardingGoal.Build, vm.uiState.value.goal)
+        }
+
+    @Test
+    fun `restored on the account step while already signed in resumes finish`() =
+        runTest {
+            val handle =
+                SavedStateHandle(
+                    mapOf(
+                        "startStep" to 0,
+                        "onboarding_step" to ACCOUNT_STEP,
+                        "onboarding_name" to "Ada",
+                        "onboarding_goal" to "maintain",
+                    ),
+                )
+            val api = FakeMealsyApi(onCreateGoals = ::echoResponse)
+            val vm = viewModel(savedStateHandle = handle, api = api)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.done)
         }
 
     /** Drives the flow from step 0 through step 4, choosing [goal], then calls [OnboardingViewModel.next] to finish. */

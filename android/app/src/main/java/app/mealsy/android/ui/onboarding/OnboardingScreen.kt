@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -59,6 +60,8 @@ import app.mealsy.android.design.mascot.OlliSize
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.ui.common.findActivity
+import app.mealsy.android.ui.login.messageRes
 
 /**
  * Hilt/state entry point for the six-state onboarding flow. Collects
@@ -73,6 +76,7 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     LaunchedEffect(uiState.done) {
         if (uiState.done) onDone()
@@ -88,6 +92,7 @@ fun OnboardingScreen(
         onBack = viewModel::back,
         onRetry = viewModel::retry,
         onNavigateToLogin = onNavigateToLogin,
+        onSignInWithGoogle = { context.findActivity()?.let(viewModel::signInWithGoogle) },
     )
 }
 
@@ -112,6 +117,7 @@ fun OnboardingContent(
     onNavigateToLogin: () -> Unit,
     modifier: Modifier = Modifier,
     animate: Boolean = true,
+    onSignInWithGoogle: () -> Unit = {},
 ) {
     val colors = MealsyTheme.colors
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -135,6 +141,15 @@ fun OnboardingContent(
                     onNavigateToLogin = onNavigateToLogin,
                 )
             5 -> DoneStep(state = state, animate = animate, onRetry = onRetry)
+            ACCOUNT_STEP ->
+                AccountStep(
+                    state = state,
+                    statusBarTop = statusBarTop,
+                    animate = animate,
+                    onBack = onBack,
+                    onSignInWithGoogle = onSignInWithGoogle,
+                    onUseEmail = onNavigateToLogin,
+                )
             else ->
                 StepScaffold(
                     state = state,
@@ -649,5 +664,76 @@ private fun DoneStep(
                 )
             }
         }
+    }
+}
+
+// --- Step 6: Save your plan (#31) -------------------------------------------
+
+@Composable
+private fun AccountStep(
+    state: OnboardingUiState,
+    statusBarTop: androidx.compose.ui.unit.Dp,
+    animate: Boolean,
+    onBack: () -> Unit,
+    onSignInWithGoogle: () -> Unit,
+    onUseEmail: () -> Unit,
+) {
+    val colors = MealsyTheme.colors
+    val topPadding = max(60.dp, statusBarTop + 16.dp)
+    val backLabel = stringResource(R.string.onboarding_back)
+    val progressLabel = stringResource(R.string.onboarding_account_progress)
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(top = topPadding, start = 24.dp, end = 24.dp, bottom = 28.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            CircleIconButton(
+                icon = MealsyIcons.ChevronLeft,
+                contentDescription = backLabel,
+                onClick = onBack,
+                size = 38.dp,
+            )
+            MealsyProgressBar(
+                progress = 1f,
+                modifier = Modifier.weight(1f),
+                animate = animate,
+                contentDescription = progressLabel,
+            )
+            Text(text = progressLabel, style = MealsyType.label, color = colors.muted)
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            StepTitle(stringResource(R.string.onboarding_account_title))
+            StepSubtitle(stringResource(R.string.onboarding_account_subtitle))
+        }
+
+        state.accountError?.let { error ->
+            Text(
+                text = stringResource(error.messageRes()),
+                style = MealsyType.body,
+                color = colors.muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            )
+        }
+        MealsyButton(
+            text = stringResource(R.string.login_continue_with_google),
+            onClick = onSignInWithGoogle,
+            enabled = !state.accountBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        MealsyButton(
+            text = stringResource(R.string.onboarding_account_use_email),
+            onClick = onUseEmail,
+            style = MealsyButtonStyle.Secondary,
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        )
     }
 }

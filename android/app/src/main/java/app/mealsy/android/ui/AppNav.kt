@@ -47,6 +47,7 @@ import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.android.ui.mealdetail.MealDetailScreen
 import app.mealsy.android.ui.meals.MealTypeListScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
+import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
 import app.mealsy.android.ui.settings.SettingsScreen
 import app.mealsy.android.ui.trends.TrendsScreen
@@ -192,6 +193,7 @@ class AppNavViewModel
         private val pushRegistrar: PushRegistrar,
         private val goalsRepository: GoalsRepository,
         private val profileRefresher: ProfileRefresher,
+        val accountGate: OnboardingAccountGate = OnboardingAccountGate(),
     ) : ViewModel() {
         val sessionState: StateFlow<SessionState> = sessionManager.sessionState
 
@@ -632,6 +634,14 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
 
                 LaunchedEffect(sessionState, onboardingState) {
                     val destination = startRouteFor(sessionState, onboardingState) ?: return@LaunchedEffect
+                    // #31: a signed-out user's onboarding answers live in the current
+                    // onboarding entry's ViewModel. When a session appears (or the app
+                    // restarts mid-flow), go back to that entry rather than replacing it
+                    // with a fresh, empty onboarding?startStep=1.
+                    if (viewModel.accountGate.hold.value && destination.startsWith(ROUTE_ONBOARDING)) {
+                        navController.popBackStack(ROUTE_ONBOARDING_PATTERN, inclusive = false)
+                        return@LaunchedEffect
+                    }
                     navController.navigate(destination) {
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
