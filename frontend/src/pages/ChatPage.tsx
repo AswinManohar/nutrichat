@@ -14,6 +14,7 @@ export function ChatPage() {
     messages,
     conversationId,
     isProcessing,
+    confirmError,
     lastLoggedMealId,
     addMessage,
     setConversationId,
@@ -181,6 +182,7 @@ export function ChatPage() {
           onDecompose={handleDecompose}
           onCombine={handleCombine}
           isLoading={isProcessing}
+          confirmError={confirmError}
         />
 
         {undoMealId && (

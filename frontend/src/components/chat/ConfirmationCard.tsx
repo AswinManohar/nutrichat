@@ -14,6 +14,8 @@ interface ConfirmationCardProps {
   onDecompose: () => void
   onCombine: () => void
   isLoading: boolean
+  // Set after a failed confirm; shows an inline error with a Retry button.
+  confirmError?: string | null
 }
 
 const PORTION_STEPS = [0.5, 1, 1.5, 2]
@@ -60,6 +62,7 @@ export function ConfirmationCard({
   onDecompose,
   onCombine,
   isLoading,
+  confirmError,
 }: ConfirmationCardProps) {
   const [qtys, setQtys] = useState<number[]>(() => items.map((i) => i.qty_g))
   const [openCandidates, setOpenCandidates] = useState<number | null>(null)
@@ -503,6 +506,23 @@ export function ConfirmationCard({
           ))}
         </div>
       </div>
+
+      {confirmError && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 px-4 py-2.5 border-t border-sand-border text-[13px] text-danger"
+        >
+          <span className="flex-1">{confirmError}</span>
+          <button
+            type="button"
+            onClick={handlePrimary}
+            disabled={isLoading}
+            className="cursor-pointer font-semibold underline underline-offset-2 disabled:opacity-50"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Primary action buttons */}
       <div className="flex items-center gap-2 px-4 py-3 border-t border-sand-border">

@@ -1,5 +1,13 @@
 import { create } from 'zustand'
+import { queryClient } from '../api/queryClient'
 import { supabase } from '../lib/supabase'
+import { useMealStore } from './mealStore'
+
+/** Drop everything cached for the previous user (chat transcript + queries). */
+export function clearUserState(): void {
+  useMealStore.getState().resetChat()
+  queryClient.clear()
+}
 
 interface UserSession {
   id: string;
@@ -49,6 +57,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // Subscribe to auth state updates
     supabase.auth.onAuthStateChange((_event, session) => {
+      const prevId = useAuthStore.getState().user?.id
+      if (!session || (prevId && prevId !== session.user.id)) {
+        clearUserState()
+      }
       if (session) {
         set({
           user: {
@@ -70,6 +82,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (error) {
       console.error('Sign out error', error)
     } finally {
+      clearUserState()
       set({ user: null, token: null, isLoading: false })
     }
   },

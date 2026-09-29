@@ -67,11 +67,16 @@ interface MealStoreState {
   isProcessing: boolean;
   // Set to the meal_id on a successful log; cleared by calling consumeLastLoggedMealId().
   lastLoggedMealId: string | null;
+  // Inline error for the live confirmation card after a failed confirm. The card
+  // stays interactive (Retry re-sends); cleared on the next attempt or reset.
+  confirmError: string | null;
 
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => ChatMessage;
   updateLastAgentMessage: (updates: Partial<ChatMessage>) => void;
   setConversationId: (id: string | null) => void;
   clearMessages: () => void;
+  // Wipes all per-user chat state (sign-out / user change).
+  resetChat: () => void;
   // Fires the /meals/log request and handles the response in the store so the
   // result is never lost when the user navigates away from ChatPage mid-flight.
   logToApi: (payload: LogMealRequest) => Promise<void>;
@@ -97,6 +102,7 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
   conversationId: null,
   isProcessing: false,
   lastLoggedMealId: null,
+  confirmError: null,
 
   addMessage: (msg) => {
     const newMsg: ChatMessage = {
@@ -124,7 +130,16 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
 
   setConversationId: (id) => set({ conversationId: id }),
 
-  clearMessages: () => set({ messages: [], conversationId: null }),
+  clearMessages: () => set({ messages: [], conversationId: null, confirmError: null }),
+
+  resetChat: () =>
+    set({
+      messages: [],
+      conversationId: null,
+      isProcessing: false,
+      lastLoggedMealId: null,
+      confirmError: null,
+    }),
 
   logToApi: async (payload) => {
     set({ isProcessing: true })
@@ -157,7 +172,7 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
   },
 
   logItemsDirect: async (items, mealType, portion) => {
-    set({ isProcessing: true })
+    set({ isProcessing: true, confirmError: null })
     // Optimistic macro-ring update: the card's totals are already on screen, so
     // bump today's dashboard totals immediately rather than waiting on the
     // round-trip. Mirrors the card's linear scaling exactly. The server response
@@ -200,17 +215,16 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
         }),
       }))
       get().addMessage({ sender: 'agent', text: data.message })
-      set({ conversationId: null, lastLoggedMealId: data.meal_id })
+      set({ conversationId: null, lastLoggedMealId: data.meal_id, confirmError: null })
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'today'] })
     } catch {
       // The meal never logged — roll the rings back to the pre-confirm snapshot.
       if (prevTotals) {
         queryClient.setQueryData(['dashboard', 'today'], prevTotals)
       }
-      get().addMessage({
-        sender: 'agent',
-        text: "Couldn't log that — check your connection and try again.",
-      })
+      // No new chat bubble: it would push the card out of the last slot and
+      // strip its controls. Surface the error on the card and let it retry.
+      set({ confirmError: "Couldn't log that — check your connection and try again." })
     } finally {
       set({ isProcessing: false })
     }
@@ -224,7 +238,7 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
 
   discardCard: () => {
     set((state) => ({ messages: stampResolvedCard(state.messages, 'discarded') }))
-    set({ conversationId: null })
+    set({ conversationId: null, confirmError: null })
   },
 
   cancelCard: () => {

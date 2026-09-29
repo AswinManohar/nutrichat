@@ -41,6 +41,7 @@ interface ChatThreadProps {
   onDecompose: () => void
   onCombine: () => void
   isLoading: boolean
+  confirmError?: string | null
 }
 
 /** Compact one-line stand-in for a confirmation card whose turn has ended. */
@@ -114,6 +115,7 @@ export function ChatThread({
   onDecompose,
   onCombine,
   isLoading,
+  confirmError,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -214,6 +216,7 @@ export function ChatThread({
                   onDecompose={onDecompose}
                   onCombine={onCombine}
                   isLoading={isLoading}
+                  confirmError={confirmError}
                 />
               )}
 
