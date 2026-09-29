@@ -21,9 +21,6 @@ interface ConfirmCardCallbacks {
     /** The user tapped the remove ("×") affordance on an item row. */
     fun onRemoveItem(index: Int)
 
-    /** The user tapped "Undo" on the remove toast, restoring the last-removed item. */
-    fun onUndoRemove()
-
     /** The user picked a different food from an item's candidate list. */
     fun onSwapCandidate(
         index: Int,
@@ -41,9 +38,6 @@ interface ConfirmCardCallbacks {
         method: String,
         query: String?,
     )
-
-    /** The user tapped "Undo" on the "Swapped to X" toast. */
-    fun onUndoSwap()
 
     /**
      * The user typed a free-text replacement description for an item after

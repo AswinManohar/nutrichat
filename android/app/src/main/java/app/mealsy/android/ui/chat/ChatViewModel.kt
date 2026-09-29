@@ -124,6 +124,7 @@ class ChatViewModel
         val offline: StateFlow<Boolean> = session.offline
         val savingMeal: StateFlow<Boolean> = session.savingMeal
         val toasts: SharedFlow<String> = session.toasts
+        val undoToast: StateFlow<UndoToast?> = session.undoToast
 
         /**
          * Re-runs pending-card recovery for this screen open (see
@@ -146,6 +147,8 @@ class ChatViewModel
         fun removeItem(index: Int) = session.removeItem(index)
 
         fun undoRemove() = session.undoRemove()
+
+        fun dismissUndoToast() = session.dismissUndoToast()
 
         fun setMealType(mealType: String) = session.setMealType(mealType)
 

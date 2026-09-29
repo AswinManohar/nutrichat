@@ -232,3 +232,10 @@ interface FoodPickerEntryPoint {
 /** Convenience accessor for [FoodPickerEntryPoint] from a [android.content.Context]. */
 fun foodPickerViewModelFactory(context: android.content.Context): FoodPickerViewModel.Factory =
     EntryPointAccessors.fromApplication(context, FoodPickerEntryPoint::class.java).foodPickerViewModelFactory()
+
+/**
+ * The picker search field's initial text for [item]: the user's own words
+ * ([CardItem.inputPhrase], e.g. "toast") when the backend sent them, else the
+ * matched food's name (#56 — never prefer the FDC name over the user's words).
+ */
+internal fun pickerInitialQuery(item: CardItem): String = item.inputPhrase ?: item.foodName

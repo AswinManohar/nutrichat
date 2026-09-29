@@ -245,8 +245,97 @@ class CardSwapTest {
             assertTrue(request.path?.contains("pending") == true || true)
         }
 
+    @Test
+    fun `swapping emits a Swapped undo toast and Undo restores the item and clears it`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val vm = buildViewModel()
+            vm.readyJob.join()
+            vm.send("two eggs").join()
+            val before = activeCardOf(vm)?.card
+            assertNull(vm.undoToast.value)
+
+            vm.swapItem(0, newFood(), method = "search")
+
+            val toast = vm.undoToast.value
+            assertTrue(toast is UndoToast.Swapped)
+            assertEquals(newFood().foodName, toast?.name)
+
+            vm.undoSwap()
+
+            assertEquals(before, activeCardOf(vm)?.card)
+            assertNull(vm.undoToast.value)
+        }
+
+    @Test
+    fun `a no-op swap to the current match emits no toast`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val vm = buildViewModel()
+            vm.readyJob.join()
+            vm.send("two eggs").join()
+
+            vm.swapItem(0, newFood(fdcId = 12345L), method = "search")
+
+            assertNull(vm.undoToast.value)
+        }
+
+    @Test
+    fun `a second swap replaces the toast with a fresh token`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val vm = buildViewModel()
+            vm.readyJob.join()
+            vm.send("two eggs").join()
+
+            vm.swapItem(0, newFood(fdcId = 111L), method = "suggestion")
+            val first = vm.undoToast.value
+            vm.swapItem(0, newFood(fdcId = 222L), method = "search")
+
+            assertTrue(vm.undoToast.value!!.token != first!!.token)
+        }
+
+    @Test
+    fun `correction original_phrase is the user words when the card carries input_phrase (#56)`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(TOAST_CARD_BODY))
+            val vm = buildViewModel()
+            vm.readyJob.join()
+            vm.send("toast").join()
+
+            vm.swapItem(0, newFood(fdcId = 172687L), method = "search")
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"meal_id": "m1", "meal_type": "lunch", "n_items": 1, "kcal": 82.0,
+                     "protein_g": 2.5, "carbs_g": 15.0, "fat_g": 1.0, "fiber_g": 0.8,
+                     "message": "Logged!", "deduplicated": false}""",
+                ),
+            )
+            vm.confirm()?.join()
+
+            server.takeRequest()
+            server.takeRequest()
+            val body = server.takeRequest().body.readUtf8()
+            assertTrue(body, body.contains("\"original_phrase\":\"toast\""))
+            assertTrue(body, body.contains("\"from_name\":\"Bread, egg, toasted\""))
+        }
+
     private companion object {
         const val EMPTY_PENDING_BODY = """{"status": "ok", "message": "", "paused": false, "items": []}"""
+        const val TOAST_CARD_BODY = """
+            {
+              "status": "confirm",
+              "message": "Got it. Log as breakfast?",
+              "paused": true,
+              "items": [
+                {"food_name": "Bread, egg, toasted", "input_phrase": "toast", "qty_g": 30, "kcal": 90, "protein_g": 3, "carbs_g": 12, "fat_g": 3, "fiber_g": 1, "fdc_id": 999}
+              ]
+            }
+        """
         const val PAUSED_CARD_BODY = """
             {
               "status": "confirm",

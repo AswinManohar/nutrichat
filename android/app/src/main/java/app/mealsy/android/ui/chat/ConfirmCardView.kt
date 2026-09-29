@@ -51,7 +51,6 @@ import app.mealsy.android.R
 import app.mealsy.android.design.components.CandidatePickerSheetContent
 import app.mealsy.android.design.components.CompositeDishHeader
 import app.mealsy.android.design.components.Eyebrow
-import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
@@ -70,7 +69,6 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
-import app.mealsy.android.design.theme.rememberMealsyHaptics
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
@@ -80,7 +78,6 @@ import app.mealsy.domain.pastelToneFor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
@@ -104,9 +101,6 @@ private fun mealTypeLabels(): Map<String, String> =
 
 /** The four portion multipliers offered by [ConfirmCardView], display-labelled. */
 private val PORTION_OPTIONS = listOf("0.5×" to 0.5, "1×" to 1.0, "1.5×" to 1.5, "2×" to 2.0)
-
-/** How long the remove-with-undo toast stays visible before it auto-dismisses. */
-private const val UNDO_TOAST_MS = 4_000L
 
 /** Local grouping of item indices sharing a [CardItem.sourceDish]. */
 private data class ItemGroup(val dish: String?, val indices: List<Int>)
@@ -183,15 +177,6 @@ fun ConfirmCardView(
 ) {
     val colors = MealsyTheme.colors
 
-    // Track a pending single-row undo: the item + its original index, and a
-    // monotonic token so a second removal while the toast is showing resets
-    // the auto-dismiss timer rather than being silently swallowed.
-    var pendingUndo by remember { mutableStateOf<Pair<String, Int>?>(null) }
-
-    // "Swapped to X" toast (spec 003) — separate from [pendingUndo], which is
-    // for row removal.
-    var swapToastName by remember { mutableStateOf<String?>(null) }
-
     // Which item's candidate sheet is open, if any.
     var candidateSheetIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -219,7 +204,6 @@ fun ConfirmCardView(
                     busy = busy,
                     callbacks = callbacks,
                     onOpenCandidateSheet = { candidateSheetIndex = it },
-                    onRemoved = { name, index -> pendingUndo = name to index },
                 )
 
                 TotalsStrip(entries = totalsEntries(card))
@@ -253,41 +237,6 @@ fun ConfirmCardView(
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
         }
-
-        // Remove-with-undo toast. InkToast has no action slot, so this
-        // renders its own ink pill matching InkToast's styling rather than
-        // modifying :core:ui — see the class doc for why.
-        pendingUndo?.let { (name, index) ->
-            LaunchedEffect(pendingUndo) {
-                delay(UNDO_TOAST_MS)
-                pendingUndo = null
-            }
-            UndoToast(
-                text = stringResource(R.string.confirm_card_removed, name),
-                onUndo = {
-                    pendingUndo = null
-                    callbacks.onUndoRemove()
-                },
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
-
-        swapToastName?.let { name ->
-            val haptics = rememberMealsyHaptics()
-            LaunchedEffect(name) {
-                haptics.confirm()
-                delay(UNDO_TOAST_MS)
-                swapToastName = null
-            }
-            UndoToast(
-                text = stringResource(R.string.confirm_card_swapped_to, name),
-                onUndo = {
-                    swapToastName = null
-                    callbacks.onUndoSwap()
-                },
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
     }
 
     val sheetIndex = candidateSheetIndex
@@ -305,7 +254,7 @@ fun ConfirmCardView(
                 foodPickerViewModelFactory(context).create(
                     scope = pickerScope,
                     currentFdcId = item.fdcId,
-                    initialQuery = item.inputPhrase ?: item.foodName,
+                    initialQuery = pickerInitialQuery(item),
                     // Preview rows show what the user currently sees on the
                     // card (target × portion); the actual swap fetch must use
                     // the item's BASE qty_g, never the edited target — or
@@ -324,7 +273,6 @@ fun ConfirmCardView(
                         swapError = false
                         candidateSheetIndex = null
                         callbacks.onSwapItem(sheetIndex, event.item, event.method, event.query)
-                        swapToastName = event.item.foodName
                     }
                     FoodPickerEvent.SwapFailed -> swapError = true
                 }
@@ -375,7 +323,6 @@ fun ConfirmCardView(
                         }
                     },
                     onRemove = {
-                        pendingUndo = item.foodName to sheetIndex
                         callbacks.onRemoveItem(sheetIndex)
                         candidateSheetIndex = null
                     },
@@ -629,7 +576,6 @@ private fun ItemRows(
     busy: Boolean,
     callbacks: ConfirmCardCallbacks,
     onOpenCandidateSheet: (Int) -> Unit,
-    onRemoved: (name: String, index: Int) -> Unit,
 ) {
     val groups = groupByDish(card.items)
     val visibleGroups = groups.filter { it.dish == null || it.indices.isNotEmpty() }
@@ -664,7 +610,6 @@ private fun ItemRows(
                     busy = busy,
                     callbacks = callbacks,
                     onOpenCandidateSheet = { onOpenCandidateSheet(index) },
-                    onRemoved = onRemoved,
                 )
                 if (!(groupIdx == visibleGroups.lastIndex && rowIdx == group.indices.lastIndex)) {
                     InsetDivider()
@@ -683,7 +628,6 @@ private fun ItemRow(
     busy: Boolean,
     callbacks: ConfirmCardCallbacks,
     onOpenCandidateSheet: () -> Unit,
-    onRemoved: (name: String, index: Int) -> Unit,
 ) {
     val colors = MealsyTheme.colors
     val removeLabel = stringResource(R.string.confirm_card_remove_action, item.foodName)
@@ -700,7 +644,7 @@ private fun ItemRow(
                         buildList {
                             add(
                                 CustomAccessibilityAction(removeLabel) {
-                                    onRemoved(item.foodName, index)
+                                    callbacks.onRemoveItem(index)
                                     true
                                 },
                             )
@@ -744,7 +688,6 @@ private fun ItemRow(
             }
             RemoveButton(
                 onClick = {
-                    onRemoved(item.foodName, index)
                     callbacks.onRemoveItem(index)
                 },
                 enabled = !disabled,
@@ -878,35 +821,6 @@ private fun RemoveButton(
     }
 }
 
-/**
- * A self-drawn variant of [InkToast] with an "Undo" affordance. [InkToast]
- * has no action slot, so rather than modifying `:core:ui` this reproduces
- * its ink-pill styling locally — see [ConfirmCardView]'s class doc.
- */
-@Composable
-private fun UndoToast(
-    text: String,
-    onUndo: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MealsyTheme.colors
-    Surface(shape = MealsyShapes.pill, color = colors.ink, modifier = modifier) {
-        Row(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(text = text, style = MealsyType.badge, color = colors.canvas)
-            Text(
-                text = stringResource(R.string.confirm_card_undo),
-                style = MealsyType.badge.copy(textDecoration = TextDecoration.Underline),
-                color = colors.olive,
-                modifier = Modifier.clickable { onUndo() },
-            )
-        }
-    }
-}
-
 @Preview(name = "ConfirmCardView light", widthDp = 390)
 @Composable
 private fun ConfirmCardViewLightPreview() {
@@ -990,8 +904,6 @@ private fun previewCallbacks(): ConfirmCardCallbacks =
 
         override fun onRemoveItem(index: Int) = Unit
 
-        override fun onUndoRemove() = Unit
-
         override fun onSwapCandidate(
             index: Int,
             newName: String,
@@ -1003,8 +915,6 @@ private fun previewCallbacks(): ConfirmCardCallbacks =
             method: String,
             query: String?,
         ) = Unit
-
-        override fun onUndoSwap() = Unit
 
         override fun onDescribeItemDifferently(
             index: Int,

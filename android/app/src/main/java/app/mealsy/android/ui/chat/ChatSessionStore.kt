@@ -95,6 +95,22 @@ class ChatSessionStore
         private val _savingMeal = MutableStateFlow(false)
         val savingMeal: StateFlow<Boolean> = _savingMeal.asStateFlow()
 
+        /**
+         * The "Swapped to X" / "Removed X" toast currently offering Undo, or
+         * `null`. Owned here — not by the confirm card — because removing a
+         * card's last item drops the card (and its composable) entirely, and a
+         * card-local toast state would die with it (#56).
+         */
+        private val _undoToast = MutableStateFlow<UndoToast?>(null)
+        val undoToast: StateFlow<UndoToast?> = _undoToast.asStateFlow()
+
+        private var undoToastSeq = 0L
+
+        /** Hides the undo toast (auto-dismiss timer elapsed on the screen). */
+        fun dismissUndoToast() {
+            _undoToast.value = null
+        }
+
         /** One-shot toast events — `Logged`/save results and other transient copy. */
         private val _toasts = MutableSharedFlow<String>(extraBufferCapacity = 4)
         val toasts: SharedFlow<String> = _toasts
@@ -180,6 +196,9 @@ class ChatSessionStore
             _messages.value = emptyList()
             _sending.value = false
             _savingMeal.value = false
+            _undoToast.value = null
+            lastRemoved = null
+            lastSwap = null
         }
 
         /** An already-completed [Job], for [attach] call sites that have nothing to run. */
@@ -425,6 +444,7 @@ class ChatSessionStore
             val stateBefore =
                 (_messages.value.firstOrNull { it.id == activeId } as? ChatMsg.Card)?.state ?: CardState.Active
             lastRemoved = Triple(activeId, card, stateBefore)
+            _undoToast.value = UndoToast.Removed(card.items[index].foodName, ++undoToastSeq)
             if (card.items.size == 1) {
                 dropActiveCard()
                 return
@@ -441,6 +461,7 @@ class ChatSessionStore
          */
         fun undoRemove() {
             val (id, card, state) = lastRemoved ?: return
+            _undoToast.value = null
             lastRemoved = null
             val stillPresent = _messages.value.any { it.id == id }
             _messages.value =
@@ -483,8 +504,11 @@ class ChatSessionStore
         ) {
             val card = activeCard() ?: return
             if (index !in card.items.indices) return
+            val swapped = CardEditor.swapItem(card, index, newItem, method, query)
+            if (swapped == card) return
             lastSwap = index to card.items[index]
-            replaceActiveCard(CardEditor.swapItem(card, index, newItem, method, query), CardState.Active)
+            replaceActiveCard(swapped, CardState.Active)
+            _undoToast.value = UndoToast.Swapped(newItem.foodName, ++undoToastSeq)
         }
 
         /**
@@ -495,6 +519,7 @@ class ChatSessionStore
         fun undoSwap() {
             val (index, previous) = lastSwap ?: return
             lastSwap = null
+            _undoToast.value = null
             val card = activeCard() ?: return
             if (index !in card.items.indices) return
             replaceActiveCard(CardEditor.undoSwap(card, index, previous), CardState.Active)

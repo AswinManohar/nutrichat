@@ -235,6 +235,26 @@ class FoodPickerViewModelTest {
         }
 
     @Test
+    fun `picker pre-fills the user's words, not the matched FDC name (#56)`() {
+        val item =
+            CardItem(
+                foodName = "Bread, egg, toasted",
+                qtyG = 28.0,
+                targetQtyG = 28.0,
+                kcal = 80.0,
+                proteinG = 3.0,
+                carbsG = 12.0,
+                fatG = 2.0,
+                fiberG = 1.0,
+                fdcId = 1L,
+                inputPhrase = "toast",
+            )
+
+        assertEquals("toast", pickerInitialQuery(item))
+        assertEquals("Bread, egg, toasted", pickerInitialQuery(item.copy(inputPhrase = null)))
+    }
+
+    @Test
     fun `initial query equals the item's original phrase and results load on open`() =
         runTest(dispatcher) {
             val repo = RecordingFoodRepository()

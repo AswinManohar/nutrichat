@@ -122,6 +122,7 @@ fun ChatScreen(
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val offline by viewModel.offline.collectAsStateWithLifecycle()
     val savingMeal by viewModel.savingMeal.collectAsStateWithLifecycle()
+    val undoToast by viewModel.undoToast.collectAsStateWithLifecycle()
 
     var input by remember { mutableStateOf("") }
     var showCameraSheet by remember { mutableStateOf(false) }
@@ -240,12 +241,10 @@ fun ChatScreen(
                             savingMeal = savingMeal,
                             onEditQty = viewModel::editQty,
                             onRemoveItem = viewModel::removeItem,
-                            onUndoRemove = viewModel::undoRemove,
                             onSetMealType = viewModel::setMealType,
                             onSetPortion = viewModel::setPortion,
                             onSwapCandidate = viewModel::onSwapCandidate,
                             onSwapItem = viewModel::swapItem,
-                            onUndoSwap = viewModel::undoSwap,
                             onDescribeItemDifferently = viewModel::onDescribeItemDifferently,
                             onDecompose = viewModel::onDecompose,
                             onCombine = viewModel::onCombine,
@@ -310,6 +309,19 @@ fun ChatScreen(
             )
             activeToast?.let { text ->
                 InkToast(text = text, visible = true, modifier = Modifier.padding(top = 8.dp))
+            }
+            undoToast?.let { toast ->
+                ChatUndoToast(
+                    toast = toast,
+                    onUndo = { t ->
+                        when (t) {
+                            is UndoToast.Swapped -> viewModel.undoSwap()
+                            is UndoToast.Removed -> viewModel.undoRemove()
+                        }
+                    },
+                    onDismiss = viewModel::dismissUndoToast,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
     }
@@ -443,12 +455,10 @@ internal fun ChatMessageRow(
     savingMeal: Boolean,
     onEditQty: (Int, Double) -> Unit,
     onRemoveItem: (Int) -> Unit,
-    onUndoRemove: () -> Unit,
     onSetMealType: (String) -> Unit,
     onSetPortion: (Double) -> Unit,
     onSwapCandidate: (Int, String) -> Unit,
     onSwapItem: (Int, app.mealsy.domain.CardItem, String, String?) -> Unit,
-    onUndoSwap: () -> Unit,
     onDescribeItemDifferently: (Int, String) -> Unit,
     onDecompose: () -> Unit,
     onCombine: () -> Unit,
@@ -552,10 +562,8 @@ internal fun ChatMessageRow(
                             val doSetPortion = onSetPortion
                             val doEditQty = onEditQty
                             val doRemoveItem = onRemoveItem
-                            val doUndoRemove = onUndoRemove
                             val doSwapCandidate = onSwapCandidate
                             val doSwapItem = onSwapItem
-                            val doUndoSwap = onUndoSwap
                             val doDescribeItemDifferently = onDescribeItemDifferently
                             val doDecompose = onDecompose
                             val doCombine = onCombine
@@ -578,8 +586,6 @@ internal fun ChatMessageRow(
 
                                             override fun onRemoveItem(index: Int) = doRemoveItem(index)
 
-                                            override fun onUndoRemove() = doUndoRemove()
-
                                             override fun onSwapCandidate(
                                                 index: Int,
                                                 newName: String,
@@ -591,8 +597,6 @@ internal fun ChatMessageRow(
                                                 method: String,
                                                 query: String?,
                                             ) = doSwapItem(index, newItem, method, query)
-
-                                            override fun onUndoSwap() = doUndoSwap()
 
                                             override fun onDescribeItemDifferently(
                                                 index: Int,

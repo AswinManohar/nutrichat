@@ -440,6 +440,64 @@ class ChatViewModelTest {
         }
 
     @Test
+    fun `removing an item emits a Removed undo toast and undo clears it`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_TWO_ITEMS_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("egg and toast").join()
+            val name = activeCardOf(viewModel)?.card?.items?.get(0)?.foodName
+
+            viewModel.removeItem(0)
+
+            val toast = viewModel.undoToast.value
+            assertTrue(toast is UndoToast.Removed)
+            assertEquals(name, toast?.name)
+
+            viewModel.undoRemove()
+
+            assertNull(viewModel.undoToast.value)
+        }
+
+    @Test
+    fun `removing the last item drops the card but still emits the Removed toast, and Undo restores it`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("an egg").join()
+            val name = activeCardOf(viewModel)?.card?.items?.get(0)?.foodName
+
+            viewModel.removeItem(0)
+
+            assertNull(activeCardOf(viewModel))
+            assertEquals(UndoToast.Removed::class, viewModel.undoToast.value!!::class)
+            assertEquals(name, viewModel.undoToast.value?.name)
+
+            viewModel.undoRemove()
+
+            assertEquals(1, activeCardOf(viewModel)?.card?.items?.size)
+            assertNull(viewModel.undoToast.value)
+        }
+
+    @Test
+    fun `dismissUndoToast clears the toast`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("an egg").join()
+            viewModel.removeItem(0)
+
+            viewModel.dismissUndoToast()
+
+            assertNull(viewModel.undoToast.value)
+        }
+
+    @Test
     fun `undoRemove is a no-op when nothing has been removed`() =
         runBlocking {
             enqueueEmptyStartup()
