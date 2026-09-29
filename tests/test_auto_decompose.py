@@ -30,7 +30,10 @@ async def test_only_composite_decomposes_order_preserved() -> None:
         FoodEntity(food_name="chicken thigh", qty_g=120, unit="g"),
     ]
     # Only the composite entity triggers a decompose call; the atomic one skips it.
-    with patch("backend.agent.graph.decompose_to_entities", return_value=sub):
+    with (
+        patch("backend.agent.graph._auto_decompose_enabled", return_value=True),
+        patch("backend.agent.graph.decompose_to_entities", return_value=sub),
+    ):
         out = await auto_decompose_node(state)
 
     names = [e["food_name"] for e in out["entities"]]
@@ -42,7 +45,10 @@ async def test_only_composite_decomposes_order_preserved() -> None:
 
 async def test_empty_decompose_keeps_dish() -> None:
     state = _state([_entity("mystery stew", True)])
-    with patch("backend.agent.graph.decompose_to_entities", return_value=[]):
+    with (
+        patch("backend.agent.graph._auto_decompose_enabled", return_value=True),
+        patch("backend.agent.graph.decompose_to_entities", return_value=[]),
+    ):
         out = await auto_decompose_node(state)
     assert [e["food_name"] for e in out["entities"]] == ["mystery stew"]
 

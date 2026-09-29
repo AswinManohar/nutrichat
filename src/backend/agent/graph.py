@@ -43,6 +43,10 @@ class AgentState(TypedDict):
     # Cache for the "Break into ingredients" decomposition — populated on first
     # LLM call; subsequent presses read from here and skip the LLM.
     decomposed_entities: list[dict]
+    # The composite dishes (with the extractor's qty_g) that were broken into
+    # ingredients, kept so combine_node can restore them with their real
+    # weight instead of a placeholder (#57).
+    pre_decompose_entities: list[dict]
     # Set by resolve_pending() (spec 003, T008) when a local client-side
     # logging path (POST /meals/log-items) has already handled this paused
     # card, so get_pending_card must stop returning it even though the
@@ -104,13 +108,18 @@ async def saved_lookup_node(state: AgentState) -> dict:
     text = last_human.content if last_human else ""
     meal = await find_saved_meal(state["user_id"], text)
     if meal is None:
-        return {"from_saved": False, "decomposed_entities": []}
+        return {
+            "from_saved": False,
+            "decomposed_entities": [],
+            "pre_decompose_entities": [],
+        }
     usda_results, entities = saved_meal_to_results(meal)
     return {
         "from_saved": True,
         "usda_results": usda_results,
         "entities": entities,
         "decomposed_entities": [],
+        "pre_decompose_entities": [],
     }
 
 
@@ -130,6 +139,24 @@ async def decompose_node(state: AgentState) -> dict:
     # message — the first message may belong to an earlier turn on the same
     # thread if the user typed a new meal without confirming the previous card.
     entities = state.get("entities") or []
+    composites = [FoodEntity(**e) for e in entities if e.get("is_composite")]
+    if composites:
+        # Every composite dish on the card is broken down (there is no
+        # per-dish targeting on the wire); atomic items are left as-is. Each
+        # ingredient carries source_dish so "Log as single item" can undo it.
+        parsed = [FoodEntity(**e) for e in entities]
+        groups = await asyncio.gather(*(_decompose_one(e) for e in parsed))
+        serialised = [ing.model_dump() for g in groups for ing in g]
+        if not any(e.get("source_dish") for e in serialised):
+            return {"action": None}
+        return {
+            "action": None,
+            "entities": serialised,
+            "decomposed_entities": serialised,
+            "pre_decompose_entities": _merge_originals(
+                state, [c.model_dump() for c in composites]
+            ),
+        }
     if entities:
         description = ", ".join(f"{e['qty_g']:g} g {e['food_name']}" for e in entities)
     else:
@@ -137,22 +164,42 @@ async def decompose_node(state: AgentState) -> dict:
             (m for m in state["messages"] if isinstance(m, HumanMessage)), None
         )
         description = first_human.content if first_human else ""
-    parsed = await asyncio.to_thread(decompose_to_entities, description)
-    valid = [e for e in parsed if e.qty_g > 0]
+    parsed_flat = await asyncio.to_thread(decompose_to_entities, description)
+    valid = [e for e in parsed_flat if e.qty_g > 0]
     if not valid:
         return {"action": None}
     serialised = [e.model_dump() for e in valid]
     return {"action": None, "entities": serialised, "decomposed_entities": serialised}
 
 
+def _merge_originals(state: AgentState, new: list[dict]) -> list[dict]:
+    """Merge newly broken-down composites into pre_decompose_entities by name."""
+    merged = {e["food_name"]: e for e in state.get("pre_decompose_entities") or []}
+    for e in new:
+        merged[e["food_name"]] = e
+    return list(merged.values())
+
+
 async def combine_node(state: AgentState) -> dict:
     """Collapse every auto-decomposed ingredient group back to its source dish.
 
     Triggered by the card's "Log as single item" action. Each source_dish group
-    becomes a single entity named after the dish (default 1g placeholder qty so
-    usda_batch re-resolves it); entities without provenance are kept as-is.
-    Falls through to usda_batch → present.
+    becomes a single entity named after the dish, restored from
+    pre_decompose_entities (the extractor's own gram estimate). If the original
+    is unavailable (e.g. a resumed older checkpoint), the dish weight falls back
+    to the sum of the group's ingredient qty_g — never a 1 g placeholder.
+    Entities without provenance are kept as-is. Falls through to
+    usda_batch → present.
     """
+    originals = {
+        e["food_name"]: e for e in state.get("pre_decompose_entities") or []
+    }
+    totals: dict[str, float] = {}
+    for raw in state["entities"]:
+        dish = raw.get("source_dish")
+        if dish is not None:
+            totals[dish] = totals.get(dish, 0.0) + float(raw.get("qty_g") or 0)
+
     rebuilt: list[dict] = []
     seen: set[str] = set()
     for raw in state["entities"]:
@@ -165,11 +212,21 @@ async def combine_node(state: AgentState) -> dict:
         if dish in seen:
             continue
         seen.add(dish)
-        rebuilt.append(
-            FoodEntity(
-                food_name=dish, qty_g=1, unit="g", is_composite=True
-            ).model_dump()
-        )
+        orig = originals.get(dish)
+        if orig is not None and float(orig.get("qty_g") or 0) > 0:
+            restored = dict(orig)
+            restored["source_dish"] = None
+            restored["is_composite"] = True
+            rebuilt.append(FoodEntity(**restored).model_dump())
+        else:
+            rebuilt.append(
+                FoodEntity(
+                    food_name=dish,
+                    qty_g=max(totals[dish], 1.0),
+                    unit="g",
+                    is_composite=True,
+                ).model_dump()
+            )
     return {"action": None, "entities": rebuilt}
 
 
@@ -179,14 +236,17 @@ async def extract_node(state: AgentState) -> dict:
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
     )
     if last_human is None:
-        return {"entities": []}
+        return {"entities": [], "pre_decompose_entities": []}
     try:
         result = await asyncio.to_thread(extract_entities, last_human.content)
         # Filter out any entity the LLM returned with qty_g <= 0 (can't be logged)
         valid = [e for e in result.entities if e.qty_g > 0]
     except Exception:
         valid = []
-    return {"entities": [e.model_dump() for e in valid]}
+    return {
+        "entities": [e.model_dump() for e in valid],
+        "pre_decompose_entities": [],
+    }
 
 
 def _auto_decompose_enabled() -> bool:
@@ -229,7 +289,9 @@ async def auto_decompose_node(state: AgentState) -> dict:
     entities = [FoodEntity(**raw) for raw in state["entities"]]
     groups = await asyncio.gather(*(_decompose_one(e) for e in entities))
     out = [ing.model_dump() for group in groups for ing in group]
-    return {"entities": out}
+    broken = {ing.source_dish for group in groups for ing in group if ing.source_dish}
+    originals = [e.model_dump() for e in entities if e.food_name in broken]
+    return {"entities": out, "pre_decompose_entities": originals}
 
 
 async def usda_batch_node(state: AgentState) -> dict:

@@ -271,7 +271,9 @@ nutrient_checkup:
     "Vitamin B-12": 2.4   # mcg
 
 features:
-  auto_decompose_enabled: true
+  # Off on feat/android-app (#57): a composite dish arrives as ONE item with the
+  # extractor's gram estimate; the user opts in via "Break into ingredients".
+  auto_decompose_enabled: false
 
 routing:
   # Keyword pre-filter for the orchestrator's log_meal/coaching intent router
