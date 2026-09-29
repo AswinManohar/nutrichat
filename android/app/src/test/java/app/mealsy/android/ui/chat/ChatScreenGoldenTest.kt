@@ -8,6 +8,7 @@ import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.PastelTone
 import org.junit.Test
+import org.robolectric.annotation.Config
 
 /**
  * Goldens for [ChatScreen]'s designed states, light and dark.
@@ -174,7 +175,10 @@ class ChatScreenGoldenTest : AppScreenshotTestBase() {
             renderRow(cardMsg(defaultCard(), CardState.Active))
         }
 
+    // Taller than the default 844dp viewport: at 2.0 the whole card is ~1100dp,
+    // and a cropped capture cannot prove the bottom controls don't clip (#53).
     @Test
+    @Config(qualifiers = "w390dp-h1400dp-xhdpi")
     fun chatConfirmCardDefault_light_fontScale200() =
         captureMealsy("Chat_confirmCardDefault", false, 2.0f) {
             renderRow(cardMsg(defaultCard(), CardState.Active))

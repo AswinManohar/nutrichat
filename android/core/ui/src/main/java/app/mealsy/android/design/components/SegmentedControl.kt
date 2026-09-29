@@ -6,12 +6,16 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -20,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +53,10 @@ import app.mealsy.android.design.theme.mealsyTween
  * @param onSelect Invoked when the user taps a different segment.
  * @param modifier The modifier applied to the control's track.
  * @param label Renders the display text for a given option.
+ *
+ * At large font scales the labels no longer fit one equal-width row. Segments
+ * never wrap or clip: when any label overflows its segment, the control
+ * re-lays itself out as a two-column grid of individual pill segments (#53).
  */
 @Composable
 fun <T> SegmentedControl(
@@ -59,6 +68,19 @@ fun <T> SegmentedControl(
 ) {
     val colors = MealsyTheme.colors
     val density = LocalDensity.current
+    // Latches once a label overflows its equal-width segment; reset when the
+    // font scale or option set changes.
+    var stacked by remember(density.fontScale, options.size) { mutableStateOf(false) }
+    if (stacked) {
+        StackedSegments(
+            options = options,
+            selected = selected,
+            onSelect = onSelect,
+            modifier = modifier,
+            label = label,
+        )
+        return
+    }
     var trackWidthPx by remember { mutableIntStateOf(0) }
     val selectedIndex = options.indexOf(selected).coerceAtLeast(0)
     val segmentWidthDp =
@@ -123,6 +145,9 @@ fun <T> SegmentedControl(
                             text = label(option),
                             style = MealsyType.badge.copy(fontSize = 13.sp),
                             color = textColor,
+                            maxLines = 1,
+                            softWrap = false,
+                            onTextLayout = { if (it.hasVisualOverflow) stacked = true },
                         )
                     }
                 }
@@ -130,6 +155,55 @@ fun <T> SegmentedControl(
         }
     }
 }
+
+/** Two-column grid fallback for [SegmentedControl] when labels overflow a single row. */
+@Composable
+private fun <T> StackedSegments(
+    options: List<T>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier,
+    label: (T) -> String,
+) {
+    val colors = MealsyTheme.colors
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.chunked(STACKED_COLUMNS).forEach { rowOptions ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                rowOptions.forEach { option ->
+                    val isSelected = option == selected
+                    Surface(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .semantics {
+                                    role = Role.RadioButton
+                                    this.selected = isSelected
+                                }
+                                .clickable { onSelect(option) },
+                        shape = MealsyShapes.pill,
+                        color = if (isSelected) colors.ink else colors.canvas,
+                        border = if (isSelected) null else BorderStroke(1.dp, colors.hairline),
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = label(option),
+                                style = MealsyType.badge.copy(fontSize = 13.sp),
+                                color = if (isSelected) colors.canvas else colors.muted,
+                            )
+                        }
+                    }
+                }
+                repeat(STACKED_COLUMNS - rowOptions.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+private const val STACKED_COLUMNS = 2
 
 @Preview(name = "SegmentedControl light", widthDp = 390)
 @Composable

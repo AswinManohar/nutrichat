@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -465,20 +466,42 @@ private fun ActionsRow(
     onConfirm: () -> Unit,
 ) {
     val enabled = !busy && !swapping
+    val cancelLabel = stringResource(R.string.confirm_card_cancel)
+    val confirmLabel = stringResource(R.string.confirm_card_confirm)
+    if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        // #53: side-by-side buttons can't fit their labels at large font scales.
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MealsyButton(
+                text = confirmLabel,
+                onClick = onConfirm,
+                style = MealsyButtonStyle.Primary,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            MealsyButton(
+                text = cancelLabel,
+                onClick = onCancel,
+                style = MealsyButtonStyle.Secondary,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        return
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MealsyButton(
-            text = stringResource(R.string.confirm_card_cancel),
+            text = cancelLabel,
             onClick = onCancel,
             style = MealsyButtonStyle.Secondary,
             enabled = enabled,
             modifier = Modifier.width(104.dp),
         )
         MealsyButton(
-            text = stringResource(R.string.confirm_card_confirm),
+            text = confirmLabel,
             onClick = onConfirm,
             style = MealsyButtonStyle.Primary,
             enabled = enabled,
@@ -486,6 +509,9 @@ private fun ActionsRow(
         )
     }
 }
+
+/** Font scale from which the card stacks its side-by-side controls vertically. */
+private const val LARGE_FONT_SCALE = 1.5f
 
 @Composable
 private fun SaveAsMyMealSection(
@@ -504,35 +530,57 @@ private fun SaveAsMyMealSection(
                     .background(colors.hairline)
                     .padding(bottom = 16.dp),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        val input: @Composable (Modifier) -> Unit = { m ->
             PillInput(
                 value = name,
                 onValueChange = { name = it },
                 placeholder = stringResource(R.string.confirm_card_my_meal_name_hint),
                 enabled = !savingMeal,
-                modifier = Modifier.weight(1f),
+                modifier = m,
             )
-            MealsyButton(
-                text = stringResource(R.string.confirm_card_add_to_my_meals),
-                onClick = {
-                    onSave(name.trim())
-                    name = ""
-                },
-                style = MealsyButtonStyle.Secondary,
-                enabled = name.isNotBlank() && !savingMeal,
-                // MealsyButton's content Row is `fillMaxWidth()`, so in an
-                // unconstrained Row it would otherwise greedily claim the
-                // entire row (starving the PillInput's weight(1f) neighbor
-                // down to zero width). `unbounded = true` is required here:
-                // the default `wrapContentWidth()` still measures content
-                // against the incoming max-width constraint, which is
-                // exactly what lets `fillMaxWidth()` inside claim it all.
-                modifier = Modifier.wrapContentWidth(unbounded = true),
-            )
+        }
+        val saveLabel = stringResource(R.string.confirm_card_add_to_my_meals)
+        val onSaveClick = {
+            onSave(name.trim())
+            name = ""
+        }
+        if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+            // #53: the input and button can't share a row at large font scales.
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                input(Modifier.fillMaxWidth())
+                MealsyButton(
+                    text = saveLabel,
+                    onClick = onSaveClick,
+                    style = MealsyButtonStyle.Secondary,
+                    enabled = name.isNotBlank() && !savingMeal,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                input(Modifier.weight(1f))
+                MealsyButton(
+                    text = saveLabel,
+                    onClick = onSaveClick,
+                    style = MealsyButtonStyle.Secondary,
+                    enabled = name.isNotBlank() && !savingMeal,
+                    // MealsyButton's content Row is `fillMaxWidth()`, so in an
+                    // unconstrained Row it would otherwise greedily claim the
+                    // entire row (starving the PillInput's weight(1f) neighbor
+                    // down to zero width). `unbounded = true` is required here:
+                    // the default `wrapContentWidth()` still measures content
+                    // against the incoming max-width constraint, which is
+                    // exactly what lets `fillMaxWidth()` inside claim it all.
+                    modifier = Modifier.wrapContentWidth(unbounded = true),
+                )
+            }
         }
     }
 }
@@ -618,6 +666,7 @@ private fun ItemRows(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ItemRow(
     item: CardItem,
@@ -693,10 +742,12 @@ private fun ItemRow(
             )
         }
 
-        Row(
+        // FlowRow: at large font scales the link and the stepper can't share a
+        // line, so the stepper wraps beneath it instead of squeezing its value (#53).
+        FlowRow(
             modifier = Modifier.fillMaxWidth().padding(start = 42.dp, top = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 text = stringResource(R.string.confirm_card_not_right_food),

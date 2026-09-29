@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Surface
@@ -118,7 +118,7 @@ fun MealsyButton(
     Surface(
         modifier =
             modifier
-                .height(50.dp)
+                .heightIn(min = 48.dp)
                 .scale(scale)
                 .alpha(if (enabled) 1f else 0.35f)
                 .semantics { this.contentDescription = contentDescription ?: text }
@@ -136,7 +136,7 @@ fun MealsyButton(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {

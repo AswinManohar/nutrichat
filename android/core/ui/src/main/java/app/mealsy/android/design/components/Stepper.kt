@@ -197,6 +197,8 @@ fun Stepper(
                             ),
                         color = colors.ink,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.widthIn(min = 44.dp),
                     )
                 }
