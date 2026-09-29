@@ -148,13 +148,43 @@ flowchart TD
 
 The response LLM (Gemini 2.5 Flash) only ever sees fetched data — the system
 prompt forbids inventing numbers, and graceful "no data" replies short-circuit
-before the LLM is called.
+before the LLM is called. Two further inputs frame every coaching call:
+
+- **User context** (`agent/context.py` `build_context` → `build_system_prompt`):
+  today's totals, goals/streak, the latest weekly pattern, mindful-mode
+  safety alerts, and the top-k pgvector preferences for this message. Appended
+  to the response agent's instructions; built concurrently with `parse_query`
+  and dropped (with a warning) if any of its backends fail.
+- **Conversation history** (`db/redis_client.py` `get_coaching_history`): the
+  last `memory.coaching_history_turns` exchanges, written by the orchestrator
+  after *every* turn — coaching replies verbatim, logging turns as a one-line
+  summary of the card or the post-log reply. Replayed as message history for
+  the response agent and as a transcript block for `parse_query`, so
+  "and yesterday?" can inherit the nutrient from the previous question.
+
+**Guideline retrieval and the feedback loop.** When `parse_query` sets
+`needs_guidance`, `guidelines/retrieval.py` embeds the message and runs a
+condition-filtered pgvector cosine search over `guideline_chunk` (the user's
+`user_goal.conditions` map to chunk tags, always including `general`). It
+fetches `retrieval.guideline_top_k` rows and drops anything scoring below
+`retrieval.guideline_min_score`, so an uncovered question retrieves nothing
+rather than the nearest irrelevant passage. Survivors are rendered as a
+delimited, numbered reference block the model cites as `[n]`; the numbers are
+mapped back to chunk ids by `extract_citations`. Retrieval is enrichment only —
+any failure logs a warning and the coach answers without citations. Every
+coaching turn is then persisted by `agent/coaching_store.py` as a
+`coaching_response` row (query, parsed query, a snapshot of the passages shown,
+citations, reply, model, trace id). The web UI rates it thumbs up/down with an
+optional comment via `POST /coaching/{id}/feedback`, and
+`guidelines/export_feedback.py` exports the rows as JSONL — the seed for a
+coaching eval set.
 
 ## 5. Memory layers (PRD §5.1)
 
 | Layer | Storage | Writer | Reader | Status |
 |---|---|---|---|---|
 | Session (today totals) | Redis, TTL 24h | `log_meal` | coaching, dashboard | ✅ |
+| Conversation (last N turns, both intents) | Redis `coach_history:{user}`, TTL 12h | `orchestrator._record_turn` | `CoachingAgent` (parse + respond) | ✅ |
 | Episodic (meals) | `meal_log` + embedding | `log_meal` + `embed_meal_summary` | `get_history` | ✅ |
 | Semantic (preferences) | `user_memory` + pgvector | `extract_and_store_facts` | `build_context` ANN | ⚠️ task exists, not yet enqueued |
 | Procedural (templates) | `meal_template` | — | — | deferred (post-MVP) |

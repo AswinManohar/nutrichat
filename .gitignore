@@ -13,6 +13,8 @@ wheels/
 .env
 .env.local
 frontend/.env*
+# ...but the template carries no secrets and documents the required vars.
+!frontend/.env.example
 
 # Local Netlify folder
 .netlify
@@ -37,3 +39,4 @@ skills-lock.json
 # Android app
 android/local.properties
 android/app/google-services.json
+eval/coaching_feedback.jsonl

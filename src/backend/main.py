@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.agent.system_one import warm_up, warn_if_unconfigured
 from backend.api import (
     account,
     billing,
+    coaching_feedback,
     devices,
     foods,
     goals,
@@ -29,6 +32,9 @@ from backend.ratelimit import RateLimitMiddleware
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    warn_if_unconfigured()
+    # Background: never delays startup; the reference keeps it from being GC'd.
+    app_instance.state.typesafe_warm_up = asyncio.create_task(warm_up())
     async with pooled_checkpointer() as checkpointer:
         app_instance.state.checkpointer = checkpointer
         yield
@@ -80,6 +86,7 @@ app.include_router(devices.router)
 app.include_router(meta.router)
 app.include_router(account.router)
 app.include_router(foods.router)
+app.include_router(coaching_feedback.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook

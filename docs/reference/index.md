@@ -8,6 +8,7 @@ subpackage; within a page, modules are documented in source order.
 
 agent
 api
+guidelines
 db
 workers
 config

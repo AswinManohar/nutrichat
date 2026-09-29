@@ -6,6 +6,11 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { ShieldAlert, Sparkles, LogIn, Mail, Lock, User } from 'lucide-react'
 
+// Public origin this app is served from. Supabase builds its confirmation email
+// links against it, so it must be the deployed URL in production (Netlify)
+// rather than whatever Site URL the Supabase project falls back to.
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate()
   const { enableBypass } = useAuthStore()
@@ -48,6 +53,7 @@ export const LoginPage: React.FC = () => {
           email,
           password,
           options: {
+            emailRedirectTo: `${APP_URL}/auth/callback`,
             data: {
               full_name: fullName,
             },
@@ -114,7 +120,7 @@ export const LoginPage: React.FC = () => {
                   Dev Bypass Mode
                 </CardTitle>
                 <CardDescription>
-                  Bypass Supabase credential checks and run directly against the backend.
+                  Skip the sign-in check and run directly against the backend.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -154,7 +160,7 @@ export const LoginPage: React.FC = () => {
                 </CardTitle>
                 <CardDescription>
                   {authMode === 'signin'
-                    ? 'Sign in securely with your Supabase account.'
+                    ? 'Sign in securely with your Mealsy account.'
                     : 'Sign up for a free tracker account.'}
                 </CardDescription>
               </CardHeader>

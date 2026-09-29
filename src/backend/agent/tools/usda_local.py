@@ -156,8 +156,12 @@ def _fts_query(tokens: set[str]) -> str:
     malformed FTS5 query, and tokens are sorted first so the resulting
     query string -- and therefore bm25 ranking -- is deterministic.
 
+    Callers pass both the singularized and the raw word forms: the index
+    stores raw description terms, so a singularized token is not always a
+    prefix of the term it should match (see ``_search_terms``).
+
     Args:
-        tokens: Tokenized query words.
+        tokens: Query words to search for, already in index vocabulary.
 
     Returns:
         An FTS5 MATCH expression, e.g. ``'"chicken"* OR "rice"*'``.
@@ -217,6 +221,34 @@ def _raw_words(text_value: str) -> set[str]:
     """
     raw = re.sub(r"[^\w\s]", " ", text_value.lower()).split()
     return {t for t in raw if t not in _MATCH_STOPWORDS}
+
+
+def _search_terms(food_name: str) -> set[str]:
+    """Query words in the FTS index's own vocabulary: singular *and* raw.
+
+    ``_tokenize`` singularizes so that set-overlap scoring works on both
+    sides, but the FTS5 index stores the description's raw terms. Most
+    singularizing rules leave the result a valid prefix of the plural
+    ("eggs" -> "egg", "peaches" -> "peach"), so prefix search still reaches
+    the row. The ``-ies`` -> ``-y`` rule does not: "blueberries" becomes
+    "blueberry", which cannot prefix-match the indexed "blueberries", and
+    the food the user actually named is unreachable. Substring rescue only
+    backfills a *thin* pool, so a full pool of singular-form distractors
+    ("Blueberry juice", "Blueberry syrup") hid the real row entirely and
+    the lookup returned juice at confidence 1.0 -- above the floor, so not
+    even the LLM fallback caught it.
+
+    Searching for both forms restores reachability. This widens the
+    candidate pool only; ranking still scores against the raw ``food_name``
+    and is untouched.
+
+    Args:
+        food_name: User-facing free-text food name.
+
+    Returns:
+        Union of the singularized tokens and the raw (unsingularized) words.
+    """
+    return _tokenize(food_name) | _raw_words(food_name)
 
 
 def _substring_rescue(
@@ -422,7 +454,7 @@ def lookup(
         return None
 
     conn = _get_connection()
-    candidates = _fts_candidates(conn, tokens, pool_size)
+    candidates = _fts_candidates(conn, _search_terms(food_name), pool_size)
     _substring_rescue(conn, food_name, candidates, pool_size)
     _head_match_supplement(conn, food_name, candidates, pool_size)
     if not candidates:

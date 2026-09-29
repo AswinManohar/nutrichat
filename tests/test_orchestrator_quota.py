@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.agent.coaching import CoachingResult, QueryParsed
 from backend.agent.orchestrator import _UPGRADE_MSG
 
 
@@ -35,36 +37,174 @@ async def test_coaching_under_quota_calls_agent():
             new=AsyncMock(return_value=True),
         ),
         patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new=AsyncMock(return_value=None),
+        ),
     ):
-        mock_coaching.handle = AsyncMock(return_value="You had 120g protein today.")
+        mock_coaching.handle = AsyncMock(
+            return_value=CoachingResult(
+                message="You had 120g protein today.",
+                parsed=QueryParsed(time_range="today"),
+            )
+        )
         result = await _handle_coaching("user-1", "how much protein today?")
 
     assert result["message"] == "You had 120g protein today."
 
 
+@pytest.mark.parametrize(
+    "judgment_result",
+    [
+        # judgment path
+        "confident",
+        # second opinion because unsure
+        "unsure",
+        # second opinion because unavailable
+        "unavailable",
+    ],
+)
 @pytest.mark.asyncio
-async def test_classify_intent_over_quota_defaults_to_log_meal():
-    from backend.agent.orchestrator import _classify_intent
+async def test_routing_never_spends_a_credit(judgment_result):
+    """Spec FR-005: no routing path touches usage credits."""
+    from backend.agent import orchestrator
+    from backend.agent.orchestrator import _IntentResult, _route
+    from backend.agent.system_one import RoutingJudgment
 
-    with patch(
-        "backend.agent.orchestrator.consume_llm_credit",
-        new=AsyncMock(return_value=False),
+    judgment = {
+        "confident": RoutingJudgment(
+            intent="coaching",
+            certainty=0.99,
+            raw_choice="coaching",
+            reports_food=0.0,
+            needs_guidance=0.0,
+            latency_ms=1.0,
+        ),
+        "unsure": RoutingJudgment(
+            intent="coaching",
+            certainty=0.6,
+            raw_choice="coaching",
+            reports_food=0.0,
+            needs_guidance=0.0,
+            latency_ms=1.0,
+        ),
+        "unavailable": None,
+    }[judgment_result]
+
+    async def finished():
+        return judgment, None if judgment else "not_configured"
+
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(return_value=_IntentResult(type="coaching"))
+    credit = AsyncMock(return_value=False)
+    with (
+        patch("backend.agent.orchestrator.consume_llm_credit", new=credit),
+        patch.object(orchestrator, "_intent_llm", llm),
     ):
-        intent = await _classify_intent("blah blah", "user-1")
+        decision = await _route("is rice ok?", asyncio.ensure_future(finished()))
 
-    assert intent == "log_meal"
+    credit.assert_not_called()
+    assert decision.intent == "coaching"
 
 
 @pytest.mark.asyncio
-async def test_classify_intent_keyword_match_skips_quota():
-    from backend.agent.orchestrator import _classify_intent
+async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
+    """A question is never turned into a meal card by the user's balance."""
+    from backend.agent.orchestrator import handle_message
+    from backend.agent.system_one import RoutingJudgment
 
-    mock_credit = AsyncMock(return_value=False)
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=mock_credit):
-        intent = await _classify_intent("I ate rice", "user-1")
+    graph = MagicMock()
+    graph.aget_state = AsyncMock(return_value=MagicMock(next=()))
+    graph.ainvoke = AsyncMock()
+    judgment = RoutingJudgment(
+        intent="coaching",
+        certainty=0.99,
+        raw_choice="coaching",
+        reports_food=0.0,
+        needs_guidance=0.0,
+        latency_ms=1.0,
+    )
+    with (
+        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch(
+            "backend.agent.orchestrator.judge_message",
+            new=AsyncMock(return_value=(judgment, None)),
+        ),
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("backend.agent.orchestrator.append_coaching_turns", new=AsyncMock()),
+        patch("backend.agent.orchestrator.extract_and_store_facts"),
+    ):
+        result = await handle_message("user-1", "how am I doing?", "thread-1", None)
 
-    mock_credit.assert_not_called()
-    assert intent == "log_meal"
+    assert result["message"] == _UPGRADE_MSG
+    graph.ainvoke.assert_not_called()
+
+
+def _coaching_result(text: str) -> CoachingResult:
+    return CoachingResult(message=text, parsed=QueryParsed(time_range="today"))
+
+
+@pytest.mark.asyncio
+async def test_coaching_persists_and_returns_response_id():
+    from backend.agent.orchestrator import _handle_coaching
+
+    with (
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new_callable=AsyncMock,
+            return_value="resp-123",
+        ) as save_mock,
+    ):
+        mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
+        result = await _handle_coaching(
+            "user-1", "protein today?", conversation_id="t-1"
+        )
+
+    assert result == {
+        "status": "success",
+        "message": "120g today.",
+        "paused": False,
+        "items": [],
+        "response_id": "resp-123",
+    }
+    kwargs = save_mock.await_args.kwargs
+    assert kwargs["user_id"] == "user-1"
+    assert kwargs["conversation_id"] == "t-1"
+    assert kwargs["query"] == "protein today?"
+    assert kwargs["result"].message == "120g today."
+    assert kwargs["model"]  # COACHING_MODEL value
+    assert kwargs["trace_id"] is None or len(kwargs["trace_id"]) == 32
+
+
+@pytest.mark.asyncio
+async def test_coaching_omits_response_id_when_persistence_fails():
+    from backend.agent.orchestrator import _handle_coaching
+
+    with (
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch(
+            "backend.agent.orchestrator.save_coaching_response",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
+        result = await _handle_coaching("user-1", "protein today?")
+
+    assert "response_id" not in result
+    assert result["message"] == "120g today."
 
 
 @pytest.mark.asyncio

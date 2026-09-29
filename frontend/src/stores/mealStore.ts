@@ -24,6 +24,8 @@ export interface ChatMessage {
   resolved?: 'logged' | 'discarded';
   resolvedLabel?: string;
   resolvedKcal?: number;
+  // Server id of a persisted coaching reply; enables the feedback buttons.
+  responseId?: string;
 }
 
 /** Stamp the most recent still-interactive card as resolved (collapses it). */
@@ -133,6 +135,7 @@ export const useMealStore = create<MealStoreState>((set, get) => ({
         text: data.message,
         paused: data.paused,
         items: data.items,
+        responseId: data.response_id ?? undefined,
       })
       if (!data.paused) {
         set({ conversationId: null })

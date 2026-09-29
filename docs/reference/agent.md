@@ -20,6 +20,12 @@ See [Architecture](../architecture.md) for how these modules fit together.
 :members:
 ```
 
+## Coaching response store
+
+```{automodule} backend.agent.coaching_store
+:members:
+```
+
 ## Context building
 
 ```{automodule} backend.agent.context

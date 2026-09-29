@@ -140,6 +140,35 @@ Migrations that only add optional performance objects (e.g. the `pg_trgm` index
 in `20260708_011`) don't block a code deploy; migrations that add columns the
 new code reads **must** be applied first.
 
+### Seed guidelines
+
+After `alembic upgrade head`, populate `guideline_chunk` against the same
+`DATABASE_URL`:
+
+```bash
+PYTHONPATH=src python -m backend.guidelines.ingest --dir docs/guidelines
+```
+
+Re-run it whenever files under `docs/guidelines/` change — the ingest is
+idempotent (unchanged chunks are neither re-embedded nor rewritten, chunks and
+whole sources that disappeared from disk are deleted). It needs `GOOGLE_API_KEY`
+for embeddings.
+
+Skipping this step **fails silently**: with no rows to retrieve, the coach
+answers without citations and nothing errors.
+
+### Alembic heads after the branch merge
+
+This branch adds revision `014` on top of `011`, while `feat/android-app` adds
+`012` and `013` on the same base — two heads. After the branches merge, run:
+
+```bash
+alembic merge -m "merge coaching feedback and android heads" 013 014
+```
+
+and commit the generated merge revision; `alembic upgrade head` will not work
+until then.
+
 ---
 
 ## Environment variables
@@ -154,6 +183,7 @@ Set in each host's dashboard (or via CLI). Not committed.
 | `DATABASE_URL` | Supabase Postgres (`postgresql+asyncpg://…`, session pooler) |
 | `REDIS_URL` | Railway Redis |
 | `GOOGLE_API_KEY` | Gemini (extraction, coaching, embeddings) |
+| `TYPESAFE_API_KEY` | TypeSafe Jev intent routing (`web`, `bot`). Unset = the Gemini classifier routes every message; nothing breaks. Only the message text is sent to TypeSafe |
 | `USDA_API_KEY` | FoodData Central |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` | Auth / JWKS verification |
 | `FRONTEND_ORIGIN` | Netlify origin(s) allowed by CORS (comma-separated) |

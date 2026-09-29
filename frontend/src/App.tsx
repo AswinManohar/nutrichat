@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './api/queryClient'
 import { LoginPage } from './pages/LoginPage'
+import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { ChatPage } from './pages/ChatPage'
 import { MyMealsPage } from './pages/MyMealsPage'
@@ -18,6 +19,9 @@ function App() {
         <Routes>
           {/* Public Auth Portal */}
           <Route path="/login" element={<LoginPage />} />
+          {/* Landing page for Supabase email verification links — the user is
+              not signed in yet, so this must stay outside ProtectedLayout. */}
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
           {/* Public account-deletion page (Google Play data-safety URL).
               Not wrapped in ProtectedLayout — it must render without auth

@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime, time, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 import redis.asyncio as redis
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
+from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
 from backend.config import get_tunables
 
+logger = logging.getLogger(__name__)
+
 _TUNABLES = get_tunables()
 _TODAY_KEY_TTL_S = _TUNABLES.redis.today_key_ttl_s
+_COACHING_HISTORY_TURNS = _TUNABLES.memory.coaching_history_turns
+_COACHING_HISTORY_TTL_S = _TUNABLES.memory.coaching_history_ttl_s
 _DAY_TZ = ZoneInfo(_TUNABLES.day.timezone)
 _DAY_RESET_HOUR = _TUNABLES.day.reset_hour
 
@@ -174,3 +181,76 @@ async def reset_day_key(user_id: str) -> None:
     client = get_redis()
     key = f"today:{user_id}"
     await client.delete(key)
+
+
+# ---------------------------------------------------------------------------
+# Coaching conversation history (short-term, per user)
+# ---------------------------------------------------------------------------
+
+
+class CoachingTurn(BaseModel):
+    """One message in the coaching agent's short-term conversation memory."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _coaching_history_key(user_id: str) -> str:
+    return f"coach_history:{user_id}"
+
+
+async def append_coaching_turns(user_id: str, turns: list[CoachingTurn]) -> None:
+    """Append turns to the user's coaching history, keeping only the newest.
+
+    Best-effort: a Redis outage is logged and swallowed so a failed history
+    write never fails the user's request. The list is trimmed to the last
+    ``memory.coaching_history_turns`` exchanges (two messages each) and its
+    TTL refreshed on every write.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        turns: Messages to append, in conversation order.
+    """
+    if not turns:
+        return
+    key = _coaching_history_key(user_id)
+    keep = _COACHING_HISTORY_TURNS * 2
+    try:
+        client = get_redis()
+        async with client.pipeline(transaction=True) as pipe:
+            pipe.rpush(key, *(t.model_dump_json() for t in turns))
+            pipe.ltrim(key, -keep, -1)
+            pipe.expire(key, _COACHING_HISTORY_TTL_S)
+            await pipe.execute()
+    except (RedisError, OSError) as exc:
+        logger.warning("coaching history write failed for %s: %s", user_id, exc)
+
+
+async def get_coaching_history(user_id: str) -> list[CoachingTurn]:
+    """Return the user's recent coaching history, oldest first.
+
+    Best-effort: returns an empty list when Redis is unavailable. Entries
+    that fail to parse are skipped rather than failing the whole read.
+
+    Args:
+        user_id: Supabase Auth UUID.
+
+    Returns:
+        Up to ``2 * memory.coaching_history_turns`` messages.
+    """
+    key = _coaching_history_key(user_id)
+    try:
+        raw_items = await get_redis().lrange(key, 0, -1)
+    except (RedisError, OSError) as exc:
+        logger.warning("coaching history read failed for %s: %s", user_id, exc)
+        return []
+
+    turns: list[CoachingTurn] = []
+    for raw in raw_items:
+        try:
+            turns.append(CoachingTurn.model_validate_json(raw))
+        except ValidationError:
+            logger.warning("skipping malformed coaching history entry for %s", user_id)
+    return turns

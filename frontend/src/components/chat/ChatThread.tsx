@@ -7,6 +7,7 @@ import type { ChatMessage } from '../../stores/mealStore'
 import type { LogItemInput, MealCategory } from '../../api/types'
 import { Check } from 'lucide-react'
 import { ConfirmationCard } from './ConfirmationCard'
+import { FeedbackButtons } from './feedback-buttons'
 import { MascotSprite } from '../mascot/MascotSprite'
 import { MascotGreeting } from '../mascot/MascotGreeting'
 
@@ -200,6 +201,8 @@ export function ChatThread({
                   )}
                 </div>
               </div>
+
+              {!isUser && msg.responseId && <FeedbackButtons responseId={msg.responseId} />}
 
               {hasCard && (
                 <ConfirmationCard

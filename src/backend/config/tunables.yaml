@@ -166,6 +166,24 @@ usda:
   # Alternative descriptions surfaced on the card ("say 'use X' to switch").
   max_candidates: 3
 
+retrieval:
+  # Guideline passage retrieval for the coaching agent
+  # (backend/guidelines/retrieval.py). Scores are cosine similarity
+  # (1 - cosine distance) between the query embedding and a chunk embedding.
+
+  # Passages scoring below this are dropped rather than shown to the model.
+  # Without a floor, a question the corpus does not cover still pulls in the
+  # k nearest chunks and invites an irrelevant citation. Measured on the two
+  # curated sources: "how much added sugar is ok for me?" scores 0.61-0.74,
+  # "what car should I buy?" scores 0.46-0.50, so 0.58 sits in the gap.
+  # Lower it if the coach stops citing when it should; raise it if it cites
+  # tangential passages.
+  guideline_min_score: 0.58
+
+  # Passages fetched per coaching turn before the floor is applied. Each one
+  # costs ~150 prompt tokens.
+  guideline_top_k: 5
+
 memory:
   # Cosine-distance threshold for preference-fact dedup in
   # workers/tasks.py extract_and_store_facts. A new fact whose nearest
@@ -180,6 +198,20 @@ memory:
   # system prompt. PRD §5.2 budgets ~150 tokens for this block.
   # Used in: agent/context.py
   top_k_preferences: 3
+
+  # Short-term conversation memory for the coaching agent: the last N
+  # user/assistant exchanges (across BOTH logging and coaching turns —
+  # logging turns are stored as one-line summaries) kept in Redis at
+  # `coach_history:{user_id}`. Lets follow-ups like "and yesterday?" or
+  # "what should I eat now?" resolve against what was just said/logged.
+  # Each exchange costs ~2 messages of prompt per coaching call.
+  # Used in: db/redis_client.py append_coaching_turns / get_coaching_history
+  coaching_history_turns: 6
+
+  # TTL (seconds) on the coaching history key, refreshed on every turn.
+  # A day: a follow-up the next morning shouldn't inherit last night's
+  # thread, and stale context is worse than none.
+  coaching_history_ttl_s: 43200
 
 junk:
   # Per-100g nutrient-density heuristic used by log_meal to flag junk
@@ -275,82 +307,37 @@ features:
   # extractor's gram estimate; the user opts in via "Break into ingredients".
   auto_decompose_enabled: false
 
-routing:
-  # Keyword pre-filter for the orchestrator's log_meal/coaching intent router
-  # (agent/orchestrator.py). Substring match on the lowercased message.
-  # Precedence (first match wins):
-  #   1. strong query signal  -> coaching   (unambiguous question/request phrasing)
-  #   2. log signal           -> log_meal   (explicit "I'm reporting food")
-  #   3. weak query signal    -> coaching   (bare nutrient/time nouns)
-  #   4. otherwise            -> LLM fallback
-  # Log signals beat WEAK query signals so a food report that merely NAMES a
-  # macro/ingredient ("half a glass of 3.8% fat milk", "a high protein yogurt")
-  # still logs — the bug where "fat"/"protein" hijacked such messages to coaching.
-  # Strong query signals still beat log signals so "how much protein have I had
-  # today?" (which contains "i had") stays a question.
-  log_signals:
-    # High-confidence "I'm reporting food" phrases only. Bare meal markers like
-    # "for dinner" are intentionally NOT here — they also appear in coaching
-    # requests ("suggest a meal plan for dinner") and would wrongly short-circuit
-    # to the logger. Pure logs like "chicken for dinner" fall through to the LLM.
-    - "i ate"
-    - "i had"
-    - "just had"
-    - "just ate"
-    - "logged"
-  query_signals:
-    # STRONG — question/request phrasing that does not occur in a food report.
-    - "how much"
-    - "how many"
-    - "did i"
-    - "have i"
-    - "what was"
-    - "what is"
-    - "what's"
-    - "what do i"
-    - "what did i"
-    - "what should"
-    - "should i"
-    - "show me"
-    - "suggest"
-    - "recommend"
-    - "meal plan"
-    - "plan my"
-    - "idea"
-    - "average"
-    - "trend"
-    - "healthiest"
-    - "unhealthiest"
-    - "should i eat"
-    - "what should i eat"
-    - "how am i"
-    - "how am i doing"
-    - "how am i tracking"
-    - "tracking toward"
-  weak_query_signals:
-    # WEAK — nutrient/time/adjective nouns that ALSO appear in food descriptions
-    # ("protein bar", "fat milk", "eggs today"). These route to coaching only
-    # when NO log signal is present, so an explicit "i had"/"i ate" wins.
-    - "vitamin"
-    - "mineral"
-    - "protein"
-    - "calories"
-    - "fiber"
-    - "carbs"
-    - "fat"
-    - "nutrient"
-    - "today"
-    - "this week"
-    - "yesterday"
-    - "last week"
-    - "last month"
-    - "months"
-    - "weeks"
-    - "junk"
-    - "balanced"
-    - "most"
-    - "goal"
+typesafe:
+  # TypeSafe System One (Jev): one request per fresh text message answers
+  # "log a meal or ask the coach?" plus two yes/no questions (does it also
+  # report food; does it need guidance). See agent/system_one.py and
+  # specs/001-jev-intent-routing/. Needs TYPESAFE_API_KEY; without it every
+  # fresh message is routed by the Gemini classifier instead.
+  model: "jev-latest"
 
+  # Certainty behind the chosen handler (0.5-1.0) at or above which Jev's route
+  # is acted on directly. Below it, the Gemini classifier gives a second
+  # opinion. Both misroutes are recoverable (a card the user cancels, a text
+  # reply), so a moderate bar. Probe 2026-09-21: 33 of 35 messages scored
+  # >= 0.95, "eggs?" 0.66. Tune on the eval gate, not by feel.
+  intent_min_probability: 0.75
+
+  # P(message also reports food) at or above which a coaching reply ends with
+  # log_offer_text ("I had pizza, was that bad?"). Probe: mixed messages
+  # 0.83-0.98, pure questions <= 0.03.
+  log_offer_min_probability: 0.7
+  log_offer_text: "Want me to log that? Send me what you had and I'll add it."
+
+  # Per-request wait for Jev, no retries. Past it, Gemini decides. Routing is
+  # in front of every fresh message, so fail fast. Measured p95 346 ms
+  # sequential from the dev machine, but ~800 ms at 10 concurrent requests;
+  # re-check against the container latency probe (eval/probe_jev_latency.py).
+  request_timeout_s: 0.8
+
+routing:
+  # log_meal/coaching routing moved to TypeSafe Jev (see `typesafe:` above);
+  # its keyword lists were deleted. What remains is the card-reply classifier.
+  #
   # Keyword sets for the confirmation-card reply classifier in
   # agent/tools/meals.py classify_intent (no LLM). Word-level match after
   # punctuation stripping; multi-word entries match as substrings.

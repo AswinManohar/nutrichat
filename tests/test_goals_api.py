@@ -259,3 +259,116 @@ def test_get_goals_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
     resp = client.get("/goals")
     assert resp.status_code == 401
+
+
+def _round_trip_session() -> tuple[MagicMock, dict[str, UserGoal]]:
+    store: dict[str, UserGoal] = {}
+    session = MagicMock()
+
+    async def fake_get(model, user_id):
+        return store.get(user_id)
+
+    def fake_add(goal):
+        store[goal.user_id] = goal
+
+    async def noop(*_args):
+        pass
+
+    session.get = fake_get
+    session.add = fake_add
+    session.commit = noop
+    session.refresh = noop
+    return _mock_session_factory(session), store
+
+
+def test_conditions_round_trip_through_post_put_get(client: TestClient) -> None:
+    factory, _ = _round_trip_session()
+    base = {
+        "kcal_goal": 2000,
+        "protein_goal": 150,
+        "fiber_goal": 30,
+        "dietary_prefs": {},
+    }
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        post = client.post(
+            "/goals",
+            json={**base, "conditions": ["prediabetes"]},
+            headers=_auth_headers("user-1"),
+        )
+        assert post.status_code == 201
+        assert post.json()["conditions"] == ["prediabetes"]
+
+        put = client.put(
+            "/goals",
+            json={**base, "conditions": ["diabetes", "hypertension"]},
+            headers=_auth_headers("user-1"),
+        )
+        assert put.status_code == 200
+
+        get = client.get("/goals", headers=_auth_headers("user-1"))
+        assert get.json()["conditions"] == ["diabetes", "hypertension"]
+
+
+def test_conditions_default_to_empty_list(client: TestClient) -> None:
+    factory, _ = _round_trip_session()
+    with patch("backend.api.goals.get_session", return_value=factory):
+        post = client.post(
+            "/goals",
+            json={"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30},
+            headers=_auth_headers("user-1"),
+        )
+    assert post.status_code == 201
+    assert post.json()["conditions"] == []
+
+
+def test_invalid_condition_is_rejected(client: TestClient) -> None:
+    factory, _ = _round_trip_session()
+    with patch("backend.api.goals.get_session", return_value=factory):
+        resp = client.put(
+            "/goals",
+            json={
+                "kcal_goal": 2000,
+                "protein_goal": 150,
+                "fiber_goal": 30,
+                "conditions": ["gout"],
+            },
+            headers=_auth_headers("user-1"),
+        )
+    assert resp.status_code == 422
+
+
+def test_put_without_conditions_leaves_them_unchanged(client: TestClient) -> None:
+    factory, store = _round_trip_session()
+    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        client.post(
+            "/goals",
+            json={**base, "conditions": ["diabetes"]},
+            headers=_auth_headers("user-1"),
+        )
+        put = client.put("/goals", json=base, headers=_auth_headers("user-1"))
+
+    assert put.status_code == 200
+    assert put.json()["conditions"] == ["diabetes"]
+    assert store["user-1"].conditions == ["diabetes"]
+
+
+def test_put_with_empty_conditions_clears_them(client: TestClient) -> None:
+    factory, store = _round_trip_session()
+    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        client.post(
+            "/goals",
+            json={**base, "conditions": ["diabetes"]},
+            headers=_auth_headers("user-1"),
+        )
+        put = client.put(
+            "/goals", json={**base, "conditions": []}, headers=_auth_headers("user-1")
+        )
+
+    assert put.status_code == 200
+    assert put.json()["conditions"] == []
+    assert store["user-1"].conditions == []

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import Any, Literal
 
 import logfire
 from kombu.exceptions import OperationalError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.coaching import CoachingAgent
+from backend.agent.coaching_store import save_coaching_response
 from backend.agent.graph import build_graph
-from backend.agent.llm import FLASH_LITE_MODEL, make_llm
+from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
+from backend.agent.system_one import RoutingJudgment, judge_message
 from backend.config import get_tunables
+from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import consume_llm_credit
 from backend.workers.tasks import extract_and_store_facts
 
@@ -19,16 +25,43 @@ logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
-_LOG_SIGNALS = frozenset(_TUNABLES.routing.log_signals)
-_QUERY_SIGNALS = frozenset(_TUNABLES.routing.query_signals)
-_WEAK_QUERY_SIGNALS = frozenset(_TUNABLES.routing.weak_query_signals)
 _INTENT_SYSTEM = _TUNABLES.prompts.intent_system
+
+RoutePath = Literal["judgment", "second_opinion_unsure", "second_opinion_unavailable"]
 
 
 class _IntentResult(BaseModel):
     type: Literal["log_meal", "coaching"]
 
     model_config = ConfigDict(extra="forbid")
+
+
+class RouteDecision(BaseModel):
+    """How one fresh message was routed (see specs/001-jev-intent-routing)."""
+
+    intent: Literal["log_meal", "coaching"]
+    path: RoutePath
+    judgment: RoutingJudgment | None
+    offer_to_log: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+    def routing_record(self) -> dict[str, float | str | bool] | None:
+        """Values stored in coaching_response.parsed_query["routing"].
+
+        None when Jev gave no answer, so there is nothing to compare with
+        Gemini's needs_guidance (spec Story 5, scenario 4).
+        """
+        if self.judgment is None:
+            return None
+        return {
+            "path": self.path,
+            "certainty": round(self.judgment.certainty, 4),
+            "raw_choice": self.judgment.raw_choice,
+            "reports_food": round(self.judgment.reports_food, 4),
+            "needs_guidance_jev": round(self.judgment.needs_guidance, 4),
+            "offer_to_log": self.offer_to_log,
+        }
 
 
 # Gemini flash-lite spends thinking tokens from this same budget before the
@@ -60,38 +93,8 @@ def _graph_for(checkpointer: Any) -> Any:
     return graph
 
 
-async def _classify_intent(message: str, user_id: str) -> str:
-    """Classify a fresh user message as log_meal or coaching.
-
-    Two-stage: keyword pre-filter (zero LLM cost and zero quota), LLM
-    fallback when ambiguous. When over quota, skips the LLM and defaults
-    to log_meal.
-
-    Args:
-        message: Raw user message.
-        user_id: Supabase Auth UUID — used for quota check before LLM call.
-
-    Returns:
-        "log_meal" or "coaching".
-    """
-    lowered = message.lower()
-
-    # Precedence: a strong query phrase ("how much …") is always a question;
-    # an explicit food report ("i had …") then wins over a *weak* query signal
-    # (a bare macro/time noun like "fat" or "today") that also occurs in food
-    # descriptions, so "I had … 3.8% fat milk" logs instead of misrouting to
-    # coaching.
-    if any(sig in lowered for sig in _QUERY_SIGNALS):
-        return "coaching"
-    if any(sig in lowered for sig in _LOG_SIGNALS):
-        return "log_meal"
-    if any(sig in lowered for sig in _WEAK_QUERY_SIGNALS):
-        return "coaching"
-
-    granted = await consume_llm_credit(user_id)
-    if not granted:
-        return "log_meal"
-
+async def _classify_with_gemini(message: str) -> Literal["log_meal", "coaching"]:
+    """Second opinion: the Gemini intent classifier. Never costs a usage credit."""
     with logfire.span("classify_intent_llm"):
         result = await _intent_llm.ainvoke(
             [
@@ -100,6 +103,72 @@ async def _classify_intent(message: str, user_id: str) -> str:
             ]
         )
     return result.type
+
+
+async def _route(
+    message: str,
+    judgment_task: (
+        asyncio.Task[tuple[RoutingJudgment | None, str | None]] | None
+    ) = None,
+) -> RouteDecision:
+    """Decide which handler a fresh message goes to.
+
+    Jev's judgment is the single routing path. A judgment at or above
+    ``typesafe.intent_min_probability`` is acted on directly; below it, or
+    when Jev gave no answer, the Gemini classifier decides. No path spends a
+    usage credit or looks at the user's balance; credits are spent only by
+    the handler that does the requested work.
+
+    Args:
+        message: Raw user message.
+        judgment_task: A ``judge_message`` task already started by the caller
+            (so it overlaps other I/O). None starts no judgment, and Gemini
+            decides.
+
+    Returns:
+        The route, which path decided it, and whether a coaching reply should
+        end with the offer to log.
+    """
+    cfg = _TUNABLES.typesafe
+    with logfire.span("route_message") as span:
+        if judgment_task is None:
+            judgment, failure = None, "not_requested"
+        else:
+            judgment, failure = await judgment_task
+
+        path: RoutePath
+        if judgment is None:
+            path = "second_opinion_unavailable"
+            intent = await _classify_with_gemini(message)
+        elif judgment.certainty >= cfg.intent_min_probability:
+            path = "judgment"
+            intent = judgment.intent
+        else:
+            path = "second_opinion_unsure"
+            intent = await _classify_with_gemini(message)
+
+        decision = RouteDecision(
+            intent=intent,
+            path=path,
+            judgment=judgment,
+            offer_to_log=(
+                intent == "coaching"
+                and judgment is not None
+                and judgment.reports_food >= cfg.log_offer_min_probability
+            ),
+        )
+        span.set_attribute("path", path)
+        span.set_attribute("intent", intent)
+        span.set_attribute("offer_to_log", decision.offer_to_log)
+        if failure is not None:
+            span.set_attribute("failure", failure)
+        if judgment is not None:
+            span.set_attribute("certainty", judgment.certainty)
+            span.set_attribute("raw_choice", judgment.raw_choice)
+            span.set_attribute("reports_food", judgment.reports_food)
+            span.set_attribute("needs_guidance_jev", judgment.needs_guidance)
+            span.set_attribute("judgment_ms", judgment.latency_ms)
+    return decision
 
 
 async def handle_message(
@@ -115,7 +184,9 @@ async def handle_message(
 
     A paused meal-logging graph always takes priority (never reclassify
     mid-confirmation). An attached image always means meal logging.
-    Otherwise, intent is classified and routed accordingly.
+    Otherwise the message is routed by ``_route``. The Jev judgment is
+    started before the checkpoint read so the two overlap, and it is
+    cancelled unread when the turn turns out to be a card reply.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -139,16 +210,32 @@ async def handle_message(
         graph = _graph_for(checkpointer)
         config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
 
-        current_state = await graph.aget_state(config)
+        judgment_task = (
+            asyncio.create_task(judge_message(user_input))
+            if not image_b64 and user_input.strip()
+            else None
+        )
+        try:
+            current_state = await graph.aget_state(config)
+        except BaseException:
+            await _discard(judgment_task)
+            raise
         is_paused = bool(current_state.next)
 
-        is_coaching = (
-            not is_paused
-            and not image_b64
-            and await _classify_intent(user_input, user_id) == "coaching"
-        )
+        decision: RouteDecision | None = None
+        if is_paused or image_b64:
+            await _discard(judgment_task)
+        else:
+            decision = await _route(user_input, judgment_task)
+        is_coaching = decision is not None and decision.intent == "coaching"
         if is_coaching:
-            result = await _handle_coaching(user_id, user_input)
+            result = await _handle_coaching(
+                user_id,
+                user_input,
+                conversation_id=thread_id,
+                offer_to_log=decision.offer_to_log,
+                routing=decision.routing_record(),
+            )
         else:
             result = await _handle_meal_logging(
                 graph,
@@ -164,9 +251,66 @@ async def handle_message(
         span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
         span.set_attribute("paused", result["paused"])
 
+    # Short-term coaching memory: both intents, so the coach knows what was
+    # just logged as well as what was just asked.
+    await _record_turn(user_id, user_input, image_b64, result)
     # Preference memory (PRD F6): fire-and-forget on every handled turn.
     _enqueue_fact_extraction(user_id, user_input, result["message"])
     return result
+
+
+async def _discard(task: asyncio.Task[Any] | None) -> None:
+    """Cancel a judgment the turn no longer needs and wait for it to finish."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+def _summarize_logging_result(result: dict[str, Any]) -> str:
+    """One-line assistant-side summary of a meal-logging turn for history.
+
+    A pending confirmation card is condensed to its items and totals (the
+    rendered card is long and half of it is UI chrome). Anything else — the
+    post-log reply, a cancel, an error — is already short and is kept as-is.
+    """
+    items = result.get("items") or []
+    if not (result.get("paused") and items):
+        return result["message"]
+    foods = ", ".join(f"{i['food_name']} {i['qty_g']:g}g" for i in items)
+    kcal = sum(i["kcal"] for i in items)
+    protein = sum(i["protein_g"] for i in items)
+    return (
+        f"Proposed a meal card, awaiting confirmation: {foods} "
+        f"(~{kcal:.0f} kcal, {protein:.0f}g protein)."
+    )
+
+
+async def _record_turn(
+    user_id: str,
+    user_input: str,
+    image_b64: str | None,
+    result: dict[str, Any],
+) -> None:
+    """Append this exchange to the user's coaching history.
+
+    Never raises: history is a side effect of the turn, and the reply has
+    already been produced by the time this runs.
+    """
+    if result["message"] == _UPGRADE_MSG:
+        return
+    user_text = user_input.strip() or ("[sent a meal photo]" if image_b64 else "")
+    if not user_text:
+        return
+    turns = [
+        CoachingTurn(role="user", content=user_text),
+        CoachingTurn(role="assistant", content=_summarize_logging_result(result)),
+    ]
+    try:
+        await append_coaching_turns(user_id, turns)
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("coaching history append failed for %s: %s", user_id, exc)
 
 
 def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) -> None:
@@ -400,19 +544,33 @@ _UPGRADE_MSG = (
 )
 
 
-async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
+async def _handle_coaching(
+    user_id: str,
+    user_input: str,
+    conversation_id: str | None = None,
+    offer_to_log: bool = False,
+    routing: dict[str, float | str | bool] | None = None,
+) -> dict[str, Any]:
     """Answer a nutrition question via the coaching agent.
 
     Consumes one quota credit per coaching turn (not per internal LLM call
     inside CoachingAgent). Returns an upgrade prompt when over quota.
+    Persists the reply to coaching_response so it can be rated and exported;
+    a failed write drops ``response_id`` but still returns the reply.
 
     Args:
         user_id: Supabase Auth UUID.
         user_input: User's nutrition question.
+        conversation_id: Thread id from the request, stored with the reply.
+        offer_to_log: The message also reported food, so the reply ends with
+            ``typesafe.log_offer_text``. Never added to the upgrade message.
+        routing: Jev's routing record for this turn, stored beside Gemini's
+            parse as ``parsed_query["routing"]``; None when Jev gave no answer.
 
     Returns:
-        Dict with status, message, paused=False, and items=[] — same shape
-        as meal logging so web and Telegram channels stay uniform.
+        Dict with status, message, paused=False, items=[] — same shape as
+        meal logging so web and Telegram channels stay uniform — plus
+        response_id when the reply was persisted.
     """
     granted = await consume_llm_credit(user_id)
     if not granted:
@@ -422,6 +580,40 @@ async def _handle_coaching(user_id: str, user_input: str) -> dict[str, Any]:
             "paused": False,
             "items": [],
         }
-    with logfire.span("coaching"):
-        message = await _coaching_agent.handle(user_id, user_input)
-    return {"status": "success", "message": message, "paused": False, "items": []}
+    with logfire.span("coaching") as span:
+        result = await _coaching_agent.handle(user_id, user_input)
+        if offer_to_log:
+            # Appended after citations were extracted, so [n] parsing is
+            # untouched; saved and remembered with the offer included.
+            result = result.model_copy(
+                update={
+                    "message": (
+                        f"{result.message}\n\n{_TUNABLES.typesafe.log_offer_text}"
+                    )
+                }
+            )
+        span_ctx = trace.get_current_span().get_span_context()
+        trace_id = format(span_ctx.trace_id, "032x") if span_ctx.is_valid else None
+        response_id = await save_coaching_response(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            query=user_input,
+            result=result,
+            model=COACHING_MODEL,
+            trace_id=trace_id,
+            routing=routing,
+        )
+        span.set_attribute("needs_guidance", result.parsed.needs_guidance)
+        span.set_attribute("retrieved_count", len(result.retrieved))
+        span.set_attribute("citation_count", len(result.citations))
+        span.set_attribute("response_id", response_id or "")
+
+    response: dict[str, Any] = {
+        "status": "success",
+        "message": result.message,
+        "paused": False,
+        "items": [],
+    }
+    if response_id is not None:
+        response["response_id"] = response_id
+    return response

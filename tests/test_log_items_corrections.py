@@ -391,6 +391,17 @@ def test_resolved_flag_reset_on_fresh_meal_logging_turn() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from backend.agent.orchestrator import handle_message
+    from backend.agent.system_one import RoutingJudgment
+
+    def _log_judgment() -> RoutingJudgment:
+        return RoutingJudgment(
+            intent="log_meal",
+            certainty=0.99,
+            raw_choice="log_meal",
+            reports_food=0.99,
+            needs_guidance=0.01,
+            latency_ms=1.0,
+        )
 
     async def _run() -> None:
         graph = MagicMock()
@@ -407,8 +418,8 @@ def test_resolved_flag_reset_on_fresh_meal_logging_turn() -> None:
         with (
             patch("backend.agent.orchestrator.build_graph", return_value=graph),
             patch(
-                "backend.agent.orchestrator._classify_intent",
-                AsyncMock(return_value="log_meal"),
+                "backend.agent.orchestrator.judge_message",
+                AsyncMock(return_value=(_log_judgment(), None)),
             ),
             patch(
                 "backend.agent.orchestrator.consume_llm_credit",

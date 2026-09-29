@@ -48,3 +48,13 @@ explicit period:
     time_range="today" AND include_goals=true, regardless of any other
     period language in the question (so today's remaining totals can be
     computed against the daily goals).
+
+needs_guidance: true when the user asks what they SHOULD eat, whether a
+  food, meal, or eating pattern is healthy or appropriate for them, how to
+  change their intake (cut back, add more, swap), or anything else that
+  calls for a recommendation rather than a readback of their own data —
+  including "is sugar ok for me", "should I eat more fibre", "what's a good
+  breakfast", "how do I lower my sodium", and the meal-suggestion and
+  holistic-assessment questions above. Pure data questions ("how much
+  protein today", "what did I eat yesterday", "average calories last week")
+  stay false.

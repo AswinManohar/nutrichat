@@ -1,14 +1,88 @@
-{"text": "2 eggs and toast", "expect": "log_meal", "note": "plain meal report"}
-{"text": "i had a protein shake", "expect": "log_meal", "note": "explicit log signal"}
-{"text": "protein shake", "expect": "log_meal", "note": "BARE MEAL NOUN - known failure, misrouted to coaching 5/5 in ticket 01"}
-{"text": "mutton biryani", "expect": "log_meal", "note": "bare dish name, real user phrasing"}
-{"text": "grilled chicken salad with vinaigrette", "expect": "log_meal", "note": "real user phrasing"}
-{"text": "just ate dosa with sambar", "expect": "log_meal", "note": "log signal + composite"}
-{"text": "banana smoothie", "expect": "log_meal", "note": "bare dish name"}
-{"text": "coffee with milk", "expect": "log_meal", "note": "bare, contains no log signal"}
-{"text": "how much protein do i have left", "expect": "coaching", "note": "strong query signal"}
-{"text": "am i eating enough fiber", "expect": "coaching", "note": "query"}
-{"text": "what should i eat for dinner", "expect": "coaching", "note": "advice request"}
-{"text": "how many calories have i had today", "expect": "coaching", "note": "strong query signal"}
-{"text": "is rice healthy", "expect": "coaching", "note": "general nutrition question"}
-{"text": "give me a meal plan for tomorrow", "expect": "coaching", "note": "planning request"}
+{"text": "2 eggs and toast", "expect": "log_meal", "category": "bare_food", "note": "plain meal report", "source": "legacy_eval"}
+{"text": "i had a protein shake", "expect": "log_meal", "category": "explicit_report", "note": "explicit log signal", "source": "legacy_eval"}
+{"text": "protein shake", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "BARE MEAL NOUN - known failure, misrouted to coaching 5/5 in ticket 01", "source": "legacy_eval"}
+{"text": "mutton biryani", "expect": "log_meal", "category": "bare_food", "note": "bare dish name, real user phrasing", "source": "legacy_eval"}
+{"text": "grilled chicken salad with vinaigrette", "expect": "log_meal", "category": "bare_food", "note": "real user phrasing", "source": "legacy_eval"}
+{"text": "just ate dosa with sambar", "expect": "log_meal", "category": "explicit_report", "note": "log signal + composite", "source": "legacy_eval"}
+{"text": "banana smoothie", "expect": "log_meal", "category": "bare_food", "note": "bare dish name", "source": "legacy_eval"}
+{"text": "coffee with milk", "expect": "log_meal", "category": "bare_food", "note": "bare, contains no log signal", "source": "legacy_eval"}
+{"text": "how much protein do i have left", "expect": "coaching", "category": "data_question", "note": "strong query signal", "source": "legacy_eval", "expect_offer": false}
+{"text": "am i eating enough fiber", "expect": "coaching", "category": "data_question", "note": "query", "source": "legacy_eval", "expect_offer": false}
+{"text": "what should i eat for dinner", "expect": "coaching", "category": "advice", "note": "advice request", "source": "legacy_eval", "expect_offer": false}
+{"text": "how many calories have i had today", "expect": "coaching", "category": "data_question", "note": "strong query signal", "source": "legacy_eval", "expect_offer": false}
+{"text": "is rice healthy", "expect": "coaching", "category": "food_question", "note": "general nutrition question", "source": "legacy_eval", "expect_offer": false}
+{"text": "give me a meal plan for tomorrow", "expect": "coaching", "category": "advice", "note": "planning request", "source": "legacy_eval", "expect_offer": false}
+{"text": "100g grilled chicken breast", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "peanut butter on whole wheat toast", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "banana smoothie with almonds and walnuts", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "pork belly, rasam and rice", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "chicken curry with parotta", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "scrambled eggs, butter and whole wheat bread", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "chicken biryani", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "cottage pie", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "haleem", "expect": "log_meal", "category": "bare_food", "note": "real phrasing (eval/cases meal_log source)", "source": "meal_log"}
+{"text": "i ate dosa with sambar and coconut chutney", "expect": "log_meal", "category": "explicit_report", "note": "real phrasing", "source": "meal_log"}
+{"text": "a handful of blueberries and greek yogurt", "expect": "log_meal", "category": "bare_food", "note": "real phrasing; contains a question-example substring but is not equal to it", "source": "meal_log"}
+{"text": "just had 2 idli and a samosa", "expect": "log_meal", "category": "explicit_report", "note": "report cue + foods from quantity eval labels", "source": "synthetic"}
+{"text": "had three chapati with dal for lunch", "expect": "log_meal", "category": "explicit_report", "note": "report cue + foods from quantity eval labels", "source": "synthetic"}
+{"text": "i ate a pizza slice and an orange", "expect": "log_meal", "category": "explicit_report", "note": "report cue + foods from quantity eval labels", "source": "synthetic"}
+{"text": "about to eat 2 boiled eggs", "expect": "log_meal", "category": "explicit_report", "note": "report cue + foods from quantity eval labels", "source": "synthetic"}
+{"text": "low fat yogurt", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'fat'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "high fiber cereal", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'fiber'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "whey protein with milk", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'protein'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "protein bar", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'protein'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "ideal protein bar", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'idea' strong-signal substring; keyword router misroutes this class", "source": "synthetic"}
+{"text": "fat free milk", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'fat'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "full fat greek yoghurt with honey", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'fat'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "low carb wrap with chicken", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'carbs'-adjacent; keyword router misroutes this class", "source": "synthetic"}
+{"text": "calorie-free soda", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'calorie'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "vitamin water", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'vitamin'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "most of a large pizza", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'most'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "today's special thali", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'today'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "zero sugar protein shake", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'protein'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "reduced fat cheddar sandwich", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'fat'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "high protein pancakes", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'protein'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "average size apple", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'average' strong signal; keyword router misroutes this class", "source": "synthetic"}
+{"text": "goal-size portion of pasta", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'goal'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "balanced breakfast bowl", "expect": "log_meal", "category": "bare_food_nutrient_word", "note": "bare food containing 'balanced'; keyword router misroutes this class", "source": "synthetic"}
+{"text": "is a protein bar healthy", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "how many calories are in a samosa", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "is dosa good for weight loss", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "are eggs bad for cholesterol", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "how much protein is in paneer", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "is white rice worse than brown rice", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "is coconut chutney high in fat", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "can i eat bananas at night", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "does coffee with milk break a fast", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "is biryani ok once a week", "expect": "coaching", "category": "food_question", "note": "question that names a food", "source": "synthetic", "expect_offer": false}
+{"text": "How much protein did I eat yesterday?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "Did I meet my calorie goal this week?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "What are my top 3 most frequently eaten foods?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "Show me my macro breakdown for yesterday.", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "How many calories do I have left for today?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "Have I hit my fiber goal today?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "What was my total fat intake last month?", "expect": "coaching", "category": "data_question", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "What should I cut back on to improve my health?", "expect": "coaching", "category": "advice", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "Is my diet balanced right now?", "expect": "coaching", "category": "advice", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "Am I eating too much sugar?", "expect": "coaching", "category": "advice", "note": "real coaching eval question (eval_coaching.py)", "source": "coaching_eval", "expect_offer": false}
+{"text": "what can i have for a high protein snack", "expect": "coaching", "category": "advice", "note": "advice request", "source": "synthetic", "expect_offer": false}
+{"text": "kjøttkaker med poteter og brun saus", "expect": "log_meal", "category": "non_english", "note": "Norwegian", "source": "synthetic"}
+{"text": "brunost på knekkebrød", "expect": "log_meal", "category": "non_english", "note": "Norwegian", "source": "synthetic"}
+{"text": "rajma chawal", "expect": "log_meal", "category": "non_english", "note": "Hindi dish name", "source": "synthetic"}
+{"text": "pollo con arroz y frijoles", "expect": "log_meal", "category": "non_english", "note": "Spanish", "source": "synthetic"}
+{"text": "ek plate poha aur chai", "expect": "log_meal", "category": "non_english", "note": "Hinglish", "source": "synthetic"}
+{"text": "tamagoyaki and miso soup", "expect": "log_meal", "category": "non_english", "note": "Japanese dish names", "source": "synthetic"}
+{"text": "hi", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "thanks!", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "good morning", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "ok cool", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "you're helpful", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "hello there", "expect": "coaching", "category": "smalltalk", "note": "greeting/small talk goes to the coach", "source": "synthetic", "expect_offer": false}
+{"text": "had a burger and fries for lunch, is that too much?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "just ate 4 cookies, how bad is it", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "i had biryani for dinner, will that ruin my goals?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "ate a samosa just now, how many calories was that", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "drank two beers last night, did that hurt my progress", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "had pancakes with syrup this morning, should i skip carbs later?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "eating a chocolate bar right now, is that ok?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "i had dosa and coffee for breakfast, was that balanced?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}

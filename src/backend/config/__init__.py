@@ -55,10 +55,21 @@ class UsdaConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RetrievalConfig(BaseModel):
+    """Guideline passage retrieval thresholds (see tunables.yaml)."""
+
+    guideline_min_score: float = Field(ge=0.0, le=1.0)
+    guideline_top_k: int = Field(gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class MemoryConfig(BaseModel):
     dedup_distance_threshold: float = Field(ge=0.0, le=2.0)
     new_fact_confidence: float = Field(ge=0.0, le=1.0)
     top_k_preferences: int = Field(gt=0)
+    coaching_history_turns: int = Field(gt=0)
+    coaching_history_ttl_s: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -124,13 +135,24 @@ class UpperLimitEntry(BaseModel):
 
 
 class RoutingConfig(BaseModel):
-    log_signals: list[str]
-    query_signals: list[str]
-    weak_query_signals: list[str]
+    """Keyword lists for replies to a pending meal card (tools/meals.py)."""
+
     confirm_keywords: list[str]
     reject_keywords: list[str]
     new_meal_leadins: list[str]
     new_meal_exclusions: list[str]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TypeSafeConfig(BaseModel):
+    """TypeSafe System One (Jev) judgments; see agent/system_one.py."""
+
+    model: str
+    intent_min_probability: float = Field(ge=0.5, le=1.0)
+    log_offer_min_probability: float = Field(ge=0.0, le=1.0)
+    log_offer_text: str = Field(min_length=1)
+    request_timeout_s: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -172,6 +194,7 @@ class Tunables(BaseModel):
     models: ModelsConfig
     token_limits: TokenLimitsConfig
     usda: UsdaConfig
+    retrieval: RetrievalConfig
     junk: JunkConfig
     memory: MemoryConfig
     summaries: SummariesConfig
@@ -179,6 +202,7 @@ class Tunables(BaseModel):
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
+    typesafe: TypeSafeConfig
     prompts: PromptsConfig
     features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]
@@ -239,4 +263,4 @@ def get_tunables() -> Tunables:
     return Tunables.model_validate(raw)
 
 
-__all__ = ["Tunables", "UpperLimitEntry", "get_tunables"]
+__all__ = ["RetrievalConfig", "Tunables", "UpperLimitEntry", "get_tunables"]

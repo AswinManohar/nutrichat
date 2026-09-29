@@ -44,6 +44,11 @@ class UserGoal(Base):
     protein_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     fiber_goal: Mapped[float | None] = mapped_column(Float, nullable=True)
     dietary_prefs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Declared health conditions (API-validated: diabetes, prediabetes,
+    # hypertension, ckd). Drives which guideline passages the coach may cite.
+    conditions: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
     # Typical first-meal time ("HH:MM", 24h) captured during onboarding as a
     # behavioral implementation intention. Drives future reminder scheduling.
     first_meal_time: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -527,4 +532,87 @@ class FoodCorrection(Base):
             "method IN ('suggestion', 'search')",
             name="ck_food_correction_method",
         ),
+    )
+
+
+
+class GuidelineChunk(Base):
+    """One embedded passage from a curated public dietary guideline.
+
+    Written by ``python -m backend.guidelines.ingest``. Read by
+    backend.guidelines.retrieval.retrieve() via an exact pgvector cosine scan
+    (no ANN index — see migration 014) when a coaching question needs a
+    recommendation rather than a data readback.
+    """
+
+    __tablename__ = "guideline_chunk"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_title: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    section: Mapped[str] = mapped_column(Text, nullable=False)
+    condition: Mapped[str] = mapped_column(Text, nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_guideline_chunk_condition", "condition"),)
+
+
+class CoachingResponse(Base):
+    """One persisted coaching reply with the inputs that produced it.
+
+    Written by the orchestrator after every coaching turn. Rated via
+    POST /coaching/{id}/feedback. Exported to JSONL by
+    backend.guidelines.export_feedback as the seed for a coaching eval set.
+    """
+
+    __tablename__ = "coaching_response"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    conversation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_query: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    retrieved_chunk_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(UUID(as_uuid=False)),
+        nullable=False,
+        default=list,
+        server_default=text("'{}'"),
+    )
+    # Snapshot of the passages shown to the model, taken at write time so an
+    # export still reflects what the coach actually saw after the corpus is
+    # re-ingested (chunk rows are replaced whenever a source file changes).
+    retrieved: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    citations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    response_text: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rating: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rating_comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_coaching_response_user_id", "user_id"),
+        Index("ix_coaching_response_created_at", "created_at"),
     )
