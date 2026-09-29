@@ -29,18 +29,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const { isBypassed, debugUserId } = useAuthStore.getState()
-
   const buildHeaders = (token: string | null): Record<string, string> => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
 
-    // Add authorization details
-    if (isBypassed) {
-      headers['X-Debug-User-Id'] = debugUserId
-      headers['Authorization'] = 'Bearer dev-bypass-token'
-    } else if (token) {
+    if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
 
@@ -58,12 +52,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const send = (token: string | null) =>
     fetch(`${BASE_URL}${endpoint}`, { ...options, headers: buildHeaders(token) })
 
-  let response = await send(isBypassed ? null : await getAccessToken())
+  let response = await send(await getAccessToken())
 
   // A 401 means the token we sent was rejected. Force one refresh and retry:
   // without this the query parks in an error state and the app keeps rendering
   // its shell with no data until the user manually reloads the page.
-  if (response.status === 401 && !isBypassed) {
+  if (response.status === 401) {
     const { data, error } = await supabase.auth.refreshSession()
     if (!error && data.session) {
       response = await send(data.session.access_token)
@@ -95,23 +89,23 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const apiClient = {
-  get: <T>(endpoint: string, options?: RequestInit) => 
+  get: <T>(endpoint: string, options?: RequestInit) =>
     request<T>(endpoint, { ...options, method: 'GET' }),
-    
-  post: <T>(endpoint: string, body?: unknown, options?: RequestInit) => 
-    request<T>(endpoint, { 
-      ...options, 
-      method: 'POST', 
-      body: body ? JSON.stringify(body) : undefined 
+
+  post: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
+    request<T>(endpoint, {
+      ...options,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined
     }),
-    
-  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) => 
-    request<T>(endpoint, { 
-      ...options, 
-      method: 'PUT', 
-      body: body ? JSON.stringify(body) : undefined 
+
+  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
+    request<T>(endpoint, {
+      ...options,
+      method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined
     }),
-    
-  delete: <T>(endpoint: string, options?: RequestInit) => 
+
+  delete: <T>(endpoint: string, options?: RequestInit) =>
     request<T>(endpoint, { ...options, method: 'DELETE' }),
 }

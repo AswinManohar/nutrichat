@@ -4,11 +4,12 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from backend.agent.tools.meals import _is_junk, _junk_flags
 from backend.api import meals as meals_api
+from backend.auth.supabase import get_current_user_id
 
 _USER = "00000000-0000-0000-0000-000000000001"
 
@@ -64,15 +65,20 @@ def test_junk_flags_clean_meal():
 # ---------------------------------------------------------------------------
 
 
+def _override_user(request: Request) -> str:
+    """Resolve the test user from the X-Debug-User-Id header (auth override)."""
+    return request.headers.get("X-Debug-User-Id", "user-1")
+
+
 def _make_app() -> FastAPI:
     app = FastAPI()
     app.include_router(meals_api.router)
+    app.dependency_overrides[get_current_user_id] = _override_user
     return app
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
+def client() -> TestClient:
     return TestClient(_make_app())
 
 

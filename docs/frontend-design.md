@@ -158,9 +158,9 @@ export const supabase = createClient(
 - Protected routes redirect to `/login` when `!session`
 - Token refresh is handled automatically by `@supabase/supabase-js`
 
-### Dev bypass
+### No dev bypass
 
-When `DEV_BYPASS_AUTH=true` is set on the backend, the frontend can send `X-Debug-User-Id` header instead of a Bearer token. This should be gated behind a `VITE_DEV_AUTH_BYPASS` env flag.
+The former `DEV_BYPASS_AUTH` / `X-Debug-User-Id` escape hatch was removed in the production cutover. Local development signs in with a real Supabase account; backend tests override the `get_current_user_id` dependency instead.
 
 ---
 

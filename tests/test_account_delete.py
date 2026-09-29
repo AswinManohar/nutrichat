@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import account
+from tests.auth_helpers import with_header_auth
 
 _UID = "11111111-1111-1111-1111-111111111111"
 
@@ -20,7 +21,7 @@ def _make_app() -> FastAPI:
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(_make_app())
+    return TestClient(with_header_auth(_make_app()))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
@@ -42,7 +43,6 @@ def _chat_id_row(chat_id: int) -> MagicMock:
 def test_delete_account_removes_all_rows(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
 
     session = MagicMock()
     session.commit = AsyncMock()
@@ -79,7 +79,6 @@ def test_delete_account_removes_all_rows(
 def test_delete_account_fails_closed_when_auth_delete_fails(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
 
     session = MagicMock()
     session.execute = AsyncMock()
@@ -102,7 +101,6 @@ def test_delete_account_fails_closed_when_auth_delete_fails(
 
 
 def test_delete_account_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
     client = TestClient(_make_app())
 
@@ -113,8 +111,7 @@ def test_delete_account_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_delete_account_rejects_non_uuid_user_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    client = TestClient(_make_app())
+    client = TestClient(with_header_auth(_make_app()))
 
     with patch("backend.api.account._delete_auth_user", new=AsyncMock()) as auth_del:
         resp = client.delete(
@@ -171,7 +168,6 @@ def test_delete_auth_user_configures_a_bounded_timeout(
 def test_delete_account_502_and_zero_deletes_on_auth_timeout(
     monkeypatch: pytest.MonkeyPatch, client: TestClient
 ) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
 
     session = MagicMock()
     session.execute = AsyncMock()

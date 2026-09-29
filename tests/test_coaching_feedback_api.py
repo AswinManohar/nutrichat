@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from backend.api import coaching_feedback
 from backend.db.models import CoachingResponse
 from backend.ratelimit import RateLimitResult
+from tests.auth_helpers import with_header_auth
 
 RESPONSE_ID = "3f7c1a2e-9b4d-4c8e-8f1a-2b3c4d5e6f70"
 
@@ -22,13 +23,11 @@ def _make_app() -> FastAPI:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    return TestClient(_make_app())
+    return TestClient(with_header_auth(_make_app()))
 
 
 @pytest.fixture
 def anon_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     return TestClient(_make_app())
 
 

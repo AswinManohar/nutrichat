@@ -43,7 +43,6 @@ def _make_token(
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", _TEST_SECRET)
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     return TestClient(_make_app())
 
 
@@ -85,27 +84,6 @@ def test_wrong_audience_returns_401(client: TestClient) -> None:
 def test_missing_sub_claim_returns_401(client: TestClient) -> None:
     token = _make_token(sub=None)
     resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 401
-
-
-def test_dev_bypass_uses_debug_header(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
-    client = TestClient(_make_app())
-
-    resp = client.get("/whoami", headers={"X-Debug-User-Id": "debug-user"})
-    assert resp.status_code == 200
-    assert resp.json() == {"user_id": "debug-user"}
-
-
-def test_dev_bypass_without_header_falls_back_to_401(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
-    client = TestClient(_make_app())
-
-    resp = client.get("/whoami")
     assert resp.status_code == 401
 
 
@@ -152,7 +130,6 @@ def test_es256_token_verified_via_jwks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     token, public_jwk = _make_es256_token_and_jwk()
     supabase_auth._jwks_cache[public_jwk["kid"]] = public_jwk
 
@@ -166,7 +143,6 @@ def test_es256_unknown_kid_triggers_refetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     token, public_jwk = _make_es256_token_and_jwk(kid="rotated-kid")
     # Cache is empty -> must refetch to find "rotated-kid".
 
@@ -186,7 +162,6 @@ def test_es256_kid_still_missing_after_refetch_returns_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     token, _ = _make_es256_token_and_jwk(kid="missing-kid")
 
     async def fake_fetch_jwks() -> dict[str, dict]:
@@ -201,7 +176,6 @@ def test_es256_kid_still_missing_after_refetch_returns_401(
 
 def test_malformed_token_returns_401(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", _TEST_SECRET)
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     client = TestClient(_make_app())
 
     resp = client.get("/whoami", headers={"Authorization": "Bearer not-a-valid-jwt"})

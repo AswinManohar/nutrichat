@@ -89,8 +89,8 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
     Raises:
         HTTPException: 400 if `user_id` is not a well-formed UUID (guards
             the raw LIKE patterns built below against `%`/`_` injection,
-            relevant under DEV_BYPASS_AUTH where the header is taken
-            verbatim). 502 if the Supabase Admin API call fails or times
+            defence in depth; the id normally comes from a verified
+            token). 502 if the Supabase Admin API call fails or times
             out. No data is deleted in either case.
     """
     try:

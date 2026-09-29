@@ -9,6 +9,11 @@ that uncommitted/untracked files in the working directory are included.
 > old "nutrichat" name (Railway project, Netlify site, service/telemetry names,
 > deploy URLs). That is intentional — renaming them is a separate migration.
 
+> Related runbooks: [`railway.md`](./railway.md) (backend services, env vars,
+> `scripts/deploy-railway.sh`) and [`netlify.md`](./netlify.md) (frontend). This
+> guide is the newer, authoritative overview; where the runbooks differ (e.g.
+> `TYPESAFE_API_KEY`, the removed `DEV_BYPASS_AUTH`), follow this guide.
+
 ---
 
 ## Architecture — what runs where
@@ -187,7 +192,7 @@ Set in each host's dashboard (or via CLI). Not committed.
 | `USDA_API_KEY` | FoodData Central |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` | Auth / JWKS verification |
 | `FRONTEND_ORIGIN` | Netlify origin(s) allowed by CORS (comma-separated) |
-| `DEV_BYPASS_AUTH` | `true` enables the `X-Debug-User-Id` bypass — **keep `false`/unset in prod** |
+| ~~`DEV_BYPASS_AUTH`~~ | Removed in the production cutover; the backend ignores it. Safe to delete from every service |
 | `LOGFIRE_ENABLED`, `LOGFIRE_ENVIRONMENT` | Observability |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_USE_WEBHOOK` | Bot service |
 | `CELERY_CONCURRENCY` | Worker service (default 2; host CPU is high → cap to avoid OOM) |

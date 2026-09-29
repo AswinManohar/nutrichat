@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.agent import orchestrator
 from backend.api import meals as meals_api
+from tests.auth_helpers import with_header_auth
 
 # Note: asyncio_mode = "auto" (pyproject.toml) runs async def tests without
 # needing an explicit marker; the API-boundary tests below are sync
@@ -92,8 +93,7 @@ def _make_app() -> FastAPI:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    return TestClient(_make_app())
+    return TestClient(with_header_auth(_make_app()))
 
 
 def test_pending_thread_id_namespaced_with_user_id(client: TestClient) -> None:

@@ -1,181 +1,207 @@
-# Railway deployment runbook
+# Railway deployment runbook (backend)
 
-NutriChat backend runs as **three long-running processes** from this one
-repo, plus a Railway Redis plugin. Postgres is **external** (Supabase) —
-Railway never touches the database schema.
+Mealsy's backend (formerly NutriChat; infra identifiers keep the old name) runs as **three long-running services** from this one repo,
+plus a Railway **Redis** plugin. Postgres is **external** (Supabase) — Railway
+never touches the database schema. The **frontend is on Netlify** (see
+[`netlify.md`](./netlify.md)), not Railway.
 
-| Service | Start command | Notes |
-|---|---|---|
-| `web`    | `uv run uvicorn backend.main:app --host 0.0.0.0 --port $PORT` | FastAPI, public |
-| `worker` | `uv run celery -A backend.workers.tasks worker --loglevel=info` | Celery, private |
-| `bot`    | `uv run python -m backend.telegram.bot` | aiogram polling, private |
+> **This is the live setup.** The project already exists and is deployed — most
+> teammates only need the **[Routine deploy](#routine-deploy-the-95-case)**
+> section. The [first-time setup](#first-time-setup-already-done---reference-only)
+> is reference for rebuilding from scratch.
 
-The frontend stays on **Vercel** — it is not deployed to Railway.
+| Railway resource | What it is |
+|---|---|
+| Workspace | `aswinmanohar's Projects` (Free plan) |
+| Project | `nutrichat` (`e0045c62-b2fc-4561-b27d-9b1b8ac5b3c7`) |
+| Environment | `production` |
+| Service `web` | FastAPI, **public** — `web-production-e3eea.up.railway.app` |
+| Service `worker` | Celery worker, private |
+| Service `bot` | aiogram Telegram bot (polling), private |
+| Plugin `Redis` | Railway Redis + `redis-volume`, internal only |
+
+All three app services build the **same repo** with NIXPACKS and run
+`bash start.sh`; `start.sh` dispatches on the per-service **`PROC`** variable
+(`web` / `worker` / `bot`). Config lives in `railway.json` + `nixpacks.toml` at
+the repo root.
+
+> **Free-plan limit:** the 4 resources above max out the Free plan. You cannot
+> provision a parallel environment (e.g. `test`) or a 5th service without
+> upgrading. Deploys happen via the CLI (`railway up`) from a local checkout —
+> the services are **not** GitHub-connected, so `git push` does **not** deploy.
 
 ---
 
-## 1. Install & link the Railway CLI
+## CLI prerequisites (once per machine)
 
-> Skip this section if you don't have Railway account access yet — these
-> steps are for whoever has the account.
+The Railway CLI lives at `~/.railway/bin/railway` (not always on `PATH`). Install
+if missing, then authenticate:
 
 ```bash
 curl -fsSL https://railway.com/install.sh | sh
-railway login
-cd /home/aswinmanohar/nutrichat
-railway init        # creates a new project, or:
-railway link         # link to an existing project
+~/.railway/bin/railway login           # opens a browser; new accounts sign up here too
+~/.railway/bin/railway whoami          # confirm: aswinbio@gmail.com
+```
+
+Link this repo's directory to the project + environment (once per clone):
+
+```bash
+cd /path/to/nutrichat
+~/.railway/bin/railway link \
+  --project e0045c62-b2fc-4561-b27d-9b1b8ac5b3c7 \
+  --environment production --service web
+~/.railway/bin/railway status          # confirm Project=nutrichat, Environment=production
 ```
 
 ---
 
-## 2. Add Redis
+## Routine deploy (the 95% case)
 
-In the Railway dashboard (or `railway add`), add the **Redis** plugin to the
-project. Railway provisions an internal `REDIS_URL` you'll reference from
-all three services (see env vars below) — use the **internal** connection
-string (`redis://default:<password>@redis.railway.internal:6379`), not the
-public proxy, to avoid egress costs/latency.
-
----
-
-## 3. Create the three services
-
-From the repo root, create three separate services, all pointing at the
-same GitHub repo / branch:
+Deploys upload your **local working tree** (respecting `.gitignore`, so `.env`
+and `.mcp.json` are never uploaded) and build it on Railway. Always deploy from
+a clean checkout of the branch you intend to ship — production runs the
+`production` branch.
 
 ```bash
-railway add --service web
-railway add --service worker
-railway add --service bot
+cd /path/to/nutrichat
+git switch production && git pull         # ship exactly what's on the production branch
+git status --short                        # MUST be clean — railway up sends the working tree
+
+RW=~/.railway/bin/railway
+export RAILWAY_CALLER="manual-deploy"      # shows up in deploy metadata/telemetry
+
+# Deploy each app service (same code, different PROC). --detach returns at QUEUED.
+$RW up --service web    --detach -m "describe what changed"
+$RW up --service worker --detach -m "describe what changed"
+$RW up --service bot    --detach -m "describe what changed"
 ```
 
-For each service:
+**Only redeploy the services a change touches.** A frontend-only or API-only
+change usually needs just `web`; redeploy `worker`/`bot` when shared backend code
+or dependencies change, to keep all three on one commit.
 
-1. Connect it to this repo (Settings -> Source -> GitHub repo).
-2. Build: leave as **NIXPACKS** — `nixpacks.toml` + `railway.json` at the
-   repo root configure Python 3.13 + `uv sync --frozen`.
-3. Set the **Custom Start Command** (Settings -> Deploy):
-   - `web`: leave as default — `railway.json` already sets
-     `uv run uvicorn backend.main:app --host 0.0.0.0 --port $PORT`.
-   - `worker`: `uv run celery -A backend.workers.tasks worker --loglevel=info`
-   - `bot`: `uv run python -m backend.telegram.bot`
-4. Only `web` needs a public domain (Settings -> Networking -> Generate
-   Domain). `worker` and `bot` should remain private (no public networking).
-5. Do **not** add a release/deploy-time `alembic upgrade head` step on any
-   service — the Supabase schema is managed manually via migrations applied
-   through the Supabase MCP/SQL editor, independent of app deploys.
+Watch a build / confirm it succeeded (don't trust the QUEUED return):
+
+```bash
+$RW deployment list --service web --environment production --json | head
+#   look for "status": "SUCCESS"   (BUILDING -> DEPLOYING -> SUCCESS)
+$RW logs --service web --environment production    # live logs if a build fails
+```
+
+> **Rollback:** `railway deployment list --service <svc>` shows prior deployment
+> IDs; redeploy a known-good one from the dashboard (Deployments → ⋯ → Redeploy),
+> or `railway redeploy --service <svc>` to re-run the latest. `railway down
+> --service <svc>` removes the active deployment — **don't** run it on `web`
+> unless you intend to take production offline.
+
+### Schema migrations are NOT part of deploy
+There is no release/`alembic upgrade` step. The Supabase schema is applied
+**manually** (Supabase MCP / SQL editor) before/independent of an app deploy.
+Deploying never migrates the database.
 
 ---
 
-## 4. Environment variables (shared across web / worker / bot)
+## Environment variables
 
-Set these as **shared variables** at the project level so all three services
-inherit them (Railway: Project Settings -> Shared Variables), then
-reference with `${{shared.VAR_NAME}}` in each service if needed.
+Set per service in the Railway dashboard (Service → Variables) or via
+`railway variables --service <svc> --set KEY=value`. **Never** paste real secrets
+into this file, commits, or chat. `web` needs the full set; `worker`/`bot` need
+everything except the CORS/Supabase-auth bits (noted below).
 
 ```bash
-# --- Database (Supabase) -----------------------------------------------
-# CRITICAL: use the Supabase SESSION POOLER connection string, NOT the
-# direct db.<ref>.supabase.co host and NOT the transaction pooler (port 6543).
-#
-#   - Direct host (db.<ref>.supabase.co) is IPv6-only — Railway egress may
-#     not reach it.
-#   - Transaction pooler (port 6543) breaks asyncpg/psycopg prepared
-#     statements used by SQLAlchemy + LangGraph's AsyncPostgresSaver.
-#   - Session pooler (port 5432, aws-0-<region>.pooler.supabase.com) is
+# --- Database (Supabase) — CRITICAL: use the SESSION POOLER string ----------
+#   * NOT the direct db.<ref>.supabase.co host (IPv6-only; Railway can't reach).
+#   * NOT the transaction pooler (port 6543; breaks asyncpg/psycopg prepared
+#     statements used by SQLAlchemy + LangGraph AsyncPostgresSaver).
+#   * Session pooler (port 5432, aws-0-<region>.pooler.supabase.com) is
 #     IPv4-reachable and supports prepared statements.
-#
-# Get it from: Supabase Dashboard -> Connect -> Session pooler. Keep the
-# `+asyncpg` driver suffix and URL-encode the password (e.g. `@` -> `%40`).
-DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<url-encoded-password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#   Supabase Dashboard -> Connect -> Session pooler. Keep `+asyncpg` and
+#   URL-encode the password (e.g. `!` -> `%21`, `@` -> `%40`).
+DATABASE_URL=postgresql+asyncpg://postgres.<ref>:<url-encoded-pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
 
-# --- Redis (Railway plugin, internal URL) -------------------------------
+# --- Redis (Railway plugin, INTERNAL url — avoids egress cost/latency) -------
 REDIS_URL=redis://default:<password>@redis.railway.internal:6379
 
-# --- LLM providers --------------------------------------------------------
-GOOGLE_API_KEY=
-ANTHROPIC_API_KEY=
-TYPESAFE_API_KEY=        # Jev intent routing (web + bot); optional
-
-# --- USDA FoodData Central ------------------------------------------------
+GOOGLE_API_KEY=            # web, worker, bot
+ANTHROPIC_API_KEY=         # fallback / eval
+TYPESAFE_API_KEY=          # web, bot — Jev intent routing; optional (unset = Gemini routes everything)
 USDA_API_KEY=
 
-# --- Supabase Auth ---------------------------------------------------------
-SUPABASE_URL=https://<project-ref>.supabase.co
+# --- Supabase Auth (web needs these; bot needs JWT secret for /link) ---------
+SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_JWT_SECRET=
 SUPABASE_ANON_KEY=
 
-# --- Observability (Logfire) ------------------------------------------------
+# --- Observability -----------------------------------------------------------
 LOGFIRE_TOKEN=
 LOGFIRE_ENVIRONMENT=production
-# Alternative: disable Logfire entirely instead of setting a token
-# LOGFIRE_ENABLED=false
 
-# --- Auth bypass — MUST be false in production ------------------------------
-DEV_BYPASS_AUTH=false
+# --- CORS: allow the Netlify frontend (web only) -----------------------------
+# Comma-separated for multiple origins (prod + Netlify deploy previews).
+FRONTEND_ORIGIN=https://<your-site>.netlify.app
 
-# --- Telegram bot (polling mode — no public URL needed) ---------------------
+# --- Telegram bot (polling mode — no public URL needed) ----------------------
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
 TELEGRAM_USE_WEBHOOK=false
 
-# --- CORS: allow the Vercel frontend ----------------------------------------
-# Comma-separated if you have multiple Vercel URLs (prod + preview).
-FRONTEND_ORIGIN=https://<your-frontend>.vercel.app
+# --- PROC: set ONCE per service, do not change -------------------------------
+#   web service -> PROC=web   worker service -> PROC=worker   bot service -> PROC=bot
 ```
 
-Notes:
-
-- `web` is the only service that strictly needs `FRONTEND_ORIGIN` (CORS),
-  `SUPABASE_*`, and a public domain — but setting all vars as shared keeps
-  things simple and lets any service import `backend.main` (e.g. for
-  one-off scripts) without missing env vars.
-- `worker` and `bot` both need `DATABASE_URL`, `REDIS_URL`,
-  `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`, `USDA_API_KEY`, `LOGFIRE_*`. `bot`
-  additionally needs `TELEGRAM_*` and `SUPABASE_JWT_SECRET` (for `/link`
-  flows via the API, if applicable).
+> **`DEV_BYPASS_AUTH` is gone.** As of the production cutover the backend no
+> longer reads it — auth is always enforced via Supabase JWT. You can delete the
+> variable from every service; leaving it set has no effect.
 
 ---
 
-## 5. Vercel frontend env vars
+## First-time setup (already done — reference only)
 
-In the Vercel project (unchanged deployment target):
+To rebuild the project from scratch:
 
-```bash
-VITE_API_URL=https://<web-service>.up.railway.app
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=
-```
+1. `railway login` then `railway init` (creates the `nutrichat` project).
+2. `railway add --database redis` — provisions the Redis plugin.
+3. Create three services and set each one's `PROC`:
+   ```bash
+   railway add --service web    --variables "PROC=web"
+   railway add --service worker --variables "PROC=worker"
+   railway add --service bot    --variables "PROC=bot"
+   ```
+   Build stays **NIXPACKS** (configured by `nixpacks.toml` + `railway.json`);
+   start command is `bash start.sh` for all three (from `railway.json`).
+4. Set the env vars above on each service (project-level shared variables also
+   work — reference with `${{shared.VAR}}`).
+5. `web` only: Settings → Networking → **Generate Domain** (public). Keep
+   `worker` and `bot` private.
+6. Deploy each service with `railway up --service <svc>` (see Routine deploy).
 
-Redeploy the frontend after setting these so the build picks them up.
+> **Upgrading for a real `test` environment:** the Free plan can't host a second
+> environment. On a paid plan, duplicate `production` → `test`, then either
+> deploy to it with `railway up` (after `railway link --environment test`) or
+> connect the services to GitHub (`railway add --repo AswinManohar/nutrichat
+> --branch production`) so pushes auto-deploy. Validate there before production.
 
 ---
 
-## 6. Post-deploy verification
+## Post-deploy verification
 
 ```bash
-# 1. Web service is up
-curl https://<web-service>.up.railway.app/health
-# expect: {"status":"ok"}
+# 1. web is up
+curl https://web-production-e3eea.up.railway.app/health      # -> {"status":"ok"}
 
-# 2. Mint an integration token for a real user (run locally against prod DB,
-#    or via a Railway shell: `railway run --service web -- python -m backend.scripts.mint_token ...`)
-python -m backend.scripts.mint_token --user-id <uuid> --name "life-os"
+# 2. auth is enforced (no dev bypass) — protected route without a token
+curl -o /dev/null -w "%{http_code}\n" \
+  https://web-production-e3eea.up.railway.app/goals           # -> 401
 
-# 3. Exercise the integration API with the minted token
-curl -H "Authorization: Bearer nck_<token>" \
-  https://<web-service>.up.railway.app/v1/integrations/health
+# 3. worker / bot are RUNNING
+~/.railway/bin/railway deployment list --service worker --environment production --json | head
+~/.railway/bin/railway deployment list --service bot    --environment production --json | head
 
-curl -H "Authorization: Bearer nck_<token>" \
-  "https://<web-service>.up.railway.app/v1/integrations/meals?limit=5"
-
-# 4. Telegram bot — confirm the bot process is polling
-#    Open Telegram, message your bot:
-#      /start   -> should greet you
-#      /link    -> should return a link code to pair with your NutriChat account
+# 4. Telegram bot is polling — message it: /start (greets), /link (returns a code)
 ```
 
-If `/health` or the integration endpoints fail, check the `web` service
-logs for `DATABASE_URL` connection errors first — this is almost always the
-session-pooler vs. direct-host issue described above.
+If `/health` fails, check `web` logs for `DATABASE_URL` errors first — it's
+almost always the session-pooler vs. direct-host issue described above.
+```bash
+~/.railway/bin/railway logs --service web --environment production
+```

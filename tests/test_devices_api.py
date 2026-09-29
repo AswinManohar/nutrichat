@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import devices
+from tests.auth_helpers import with_header_auth
 
 
 def _make_app() -> FastAPI:
@@ -17,8 +18,7 @@ def _make_app() -> FastAPI:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    return TestClient(_make_app())
+    return TestClient(with_header_auth(_make_app()))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
@@ -75,7 +75,6 @@ def test_register_rejects_unknown_platform(client: TestClient) -> None:
 
 
 def test_register_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
     client = TestClient(_make_app())
 

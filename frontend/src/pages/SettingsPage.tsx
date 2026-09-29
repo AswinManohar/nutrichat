@@ -17,7 +17,7 @@ import { Sparkles, Save, ShieldAlert, LogOut, Heart, Target, Send, Zap, Trash2 }
 import { useMascotStore } from '../stores/mascotStore'
 
 export const SettingsPage: React.FC = () => {
-  const { user, signOut, isBypassed, disableBypass } = useAuthStore()
+  const { user, signOut } = useAuthStore()
   const { data: goals, isLoading: goalsLoading } = useGoals()
   const updateGoalsMutation = useUpdateGoals()
 
@@ -435,28 +435,9 @@ export const SettingsPage: React.FC = () => {
               <span className="text-ink font-mono text-[10px]">{user?.id}</span>
             </div>
             
-            {isBypassed ? (
-              <div className="bg-warn/10 border border-warn/30 p-3.5 rounded-xl flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-ink-soft font-semibold">
-                  <ShieldAlert className="w-4 h-4" />
-                  Offline Developer Mode is Active
-                </div>
-                <p className="text-[11px] text-muted leading-normal">
-                  All requests bypass live session authorization checks. Useful for offline code edits.
-                </p>
-                <button
-                  type="button"
-                  onClick={disableBypass}
-                  className="text-ink-soft hover:text-ink font-semibold underline text-left w-fit self-start"
-                >
-                  Turn off Developer Mode and sign in to Mealsy
-                </button>
-              </div>
-            ) : (
-              <div className="text-muted leading-normal">
+            <div className="text-muted leading-normal">
                 Signed in securely with your Mealsy account.
               </div>
-            )}
 
             <Button
               type="button"

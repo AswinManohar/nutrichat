@@ -16,7 +16,7 @@ flowchart TB
     end
 
     subgraph FastAPI["FastAPI backend (src/backend)"]
-        AUTH["auth/supabase.py\nJWT validation\n(DEV_BYPASS_AUTH escape hatch)"]
+        AUTH["auth/supabase.py\nJWT validation (always enforced)"]
         MEALS_API["api/meals.py\nPOST /meals/log"]
         GOALS_API["api/goals.py\nGET/POST/PUT /goals"]
         TGLINK_API["api/telegram_link.py\nlink-code · link status"]

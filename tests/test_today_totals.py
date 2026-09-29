@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import meals as meals_api
 from backend.db.redis_client import TodayTotals, get_today_totals, increment_today
+from tests.auth_helpers import with_header_auth
 
 _USER = "00000000-0000-0000-0000-000000000001"
 
@@ -93,8 +94,7 @@ def _make_app() -> FastAPI:
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    return TestClient(_make_app())
+    return TestClient(with_header_auth(_make_app()))
 
 
 def test_by_type_counts_multiple_meals_of_same_type(client: TestClient) -> None:

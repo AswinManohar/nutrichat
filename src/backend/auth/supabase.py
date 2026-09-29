@@ -6,10 +6,8 @@ import httpx
 from fastapi import HTTPException, Request
 from jose import JWTError, jwt
 
-_DEV_BYPASS_ENV = "DEV_BYPASS_AUTH"
 _JWT_SECRET_ENV = "SUPABASE_JWT_SECRET"
 _SUPABASE_URL_ENV = "SUPABASE_URL"
-_DEBUG_USER_HEADER = "X-Debug-User-Id"
 _JWKS_PATH = "/auth/v1/.well-known/jwks.json"
 _AUDIENCE = "authenticated"
 _ASYMMETRIC_ALGORITHMS = ("ES256", "RS256")
@@ -107,11 +105,6 @@ async def get_current_user_id(request: Request) -> str:
         AuthError: If the header is missing/malformed or the token is
             invalid, expired, or has the wrong audience.
     """
-    if os.environ.get(_DEV_BYPASS_ENV, "").lower() == "true":
-        debug_user_id = request.headers.get(_DEBUG_USER_HEADER)
-        if debug_user_id:
-            return debug_user_id
-
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise AuthError("Missing or malformed Authorization header")

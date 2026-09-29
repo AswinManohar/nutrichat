@@ -40,7 +40,7 @@ Open `.env` and fill in the required API keys:
 - `USDA_API_KEY`: USDA FoodData Central lookups.
 - `DATABASE_URL`: Connection string (PostgreSQL).
 - `REDIS_URL`: Connection string (Redis).
-- `DEV_BYPASS_AUTH=true`: Bypasses Supabase Auth in local dev (authenticates with developer header).
+- `SUPABASE_URL` / `SUPABASE_ANON_KEY`: Auth is always enforced (there is no dev bypass). Sign in with a real Supabase account, or use a dev Supabase project.
 
 #### 2. Start Database & Cache (Docker)
 Ensure your Docker daemon is running, then spin up the local services:

@@ -6,8 +6,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from fastapi import Request
+
 from backend.api import goals
+from backend.auth.supabase import get_current_user_id
 from backend.db.models import UserGoal
+
+
+def _override_user(request: Request) -> str:
+    """Resolve the test user from the X-Debug-User-Id header (auth override)."""
+    return request.headers.get("X-Debug-User-Id", "user-1")
 
 
 def _make_app() -> FastAPI:
@@ -17,9 +25,10 @@ def _make_app() -> FastAPI:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("DEV_BYPASS_AUTH", "true")
-    return TestClient(_make_app())
+def client() -> TestClient:
+    app = _make_app()
+    app.dependency_overrides[get_current_user_id] = _override_user
+    return TestClient(app)
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
@@ -253,7 +262,6 @@ def test_goals_isolated_between_users(client: TestClient) -> None:
 
 
 def test_get_goals_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DEV_BYPASS_AUTH", raising=False)
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
     client = TestClient(_make_app())
 

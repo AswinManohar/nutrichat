@@ -12,8 +12,6 @@ vi.mock('../stores/authStore', () => ({
   useAuthStore: {
     getState: () => ({
       token: 'stale-token',
-      isBypassed: false,
-      debugUserId: '',
       signOut,
     }),
   },
