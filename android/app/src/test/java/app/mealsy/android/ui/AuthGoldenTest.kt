@@ -33,6 +33,9 @@ class AuthGoldenTest : AppScreenshotTestBase() {
     @Test
     fun login_dark() = captureMealsy("Login", true) { renderLogin(LoginUiState.Idle) }
 
+    @Test
+    fun login_light_fontScale200() = captureMealsy("Login", false, 2.0f) { renderLogin(LoginUiState.Idle) }
+
     @Composable
     private fun renderUpdateRequired() {
         UpdateRequiredContent(onUpdate = {}, modifier = Modifier.fillMaxSize())

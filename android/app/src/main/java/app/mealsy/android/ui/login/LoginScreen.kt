@@ -1,7 +1,7 @@
 package app.mealsy.android.ui.login
 
-import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +41,7 @@ import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.ui.common.findActivity
 
 /**
  * Hilt/state entry point for the login screen. Collects
@@ -50,6 +53,7 @@ import app.mealsy.android.design.theme.MealsyType
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val googleSignInAvailable by viewModel.googleSignInAvailable.collectAsStateWithLifecycle()
+    val googleBusy by viewModel.googleBusy.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var email by remember { mutableStateOf("") }
 
@@ -59,8 +63,9 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
         onEmailChange = { email = it },
         onSubmitEmail = { viewModel.submitEmail(email) },
         googleSignInAvailable = googleSignInAvailable,
+        googleBusy = googleBusy,
         onSignInWithGoogle = {
-            (context as? Activity)?.let { viewModel.signInWithGoogle(it) }
+            context.findActivity()?.let { viewModel.signInWithGoogle(it) }
         },
         onBackToEmail = viewModel::backToEmail,
         onResendMagicLink = viewModel::resendMagicLink,
@@ -80,6 +85,7 @@ fun LoginContent(
     onSubmitEmail: () -> Unit,
     onSignInWithGoogle: () -> Unit,
     googleSignInAvailable: Boolean = true,
+    googleBusy: Boolean = false,
     onBackToEmail: () -> Unit = {},
     onResendMagicLink: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -99,6 +105,7 @@ fun LoginContent(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .padding(top = statusBarTop + 24.dp, start = 24.dp, end = 24.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -156,6 +163,31 @@ fun LoginContent(
                 }
 
                 else -> {
+                    val error = (uiState as? LoginUiState.Error)?.kind
+
+                    // Google is the primary way in (#32). Hidden, rather than
+                    // shown-then-erroring, when Supabase reports the provider
+                    // is off — see GoogleAuthAvailabilityGateway. Then email
+                    // becomes the primary button.
+                    if (googleSignInAvailable) {
+                        MealsyButton(
+                            text = stringResource(R.string.login_continue_with_google),
+                            onClick = onSignInWithGoogle,
+                            enabled = !googleBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (error != null && error.isGoogleError()) {
+                            LoginErrorText(error)
+                        }
+                        Text(
+                            text = stringResource(R.string.login_or_use_email),
+                            style = MealsyType.label,
+                            color = colors.muted,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 20.dp, bottom = 12.dp),
+                        )
+                    }
+
                     val emailFieldDescription = stringResource(R.string.login_email_field_description)
                     PillInput(
                         value = email,
@@ -173,49 +205,47 @@ fun LoginContent(
                         keyboardActions = KeyboardActions(onDone = { onSubmitEmail() }),
                     )
 
-                    if (uiState is LoginUiState.Error) {
-                        Text(
-                            text =
-                                stringResource(
-                                    when (uiState.kind) {
-                                        LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
-                                        LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
-                                        LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
-                                        LoginErrorKind.LinkExpired -> R.string.login_error_link_expired
-                                        LoginErrorKind.RateLimited -> R.string.login_error_rate_limited
-                                    },
-                                ),
-                            style = MealsyType.body,
-                            color = colors.muted,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                    if (error != null && (!googleSignInAvailable || !error.isGoogleError())) {
+                        LoginErrorText(error)
                     }
 
                     MealsyButton(
                         text = stringResource(R.string.login_send_magic_link),
                         onClick = onSubmitEmail,
+                        style = if (googleSignInAvailable) MealsyButtonStyle.Secondary else MealsyButtonStyle.Primary,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .padding(top = 16.dp),
                     )
-
-                    // #32: hidden rather than shown-then-erroring when
-                    // Supabase reports the Google provider isn't enabled for
-                    // this project — see GoogleAuthAvailabilityGateway.
-                    if (googleSignInAvailable) {
-                        MealsyButton(
-                            text = stringResource(R.string.login_continue_with_google),
-                            onClick = onSignInWithGoogle,
-                            style = MealsyButtonStyle.Secondary,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 10.dp),
-                        )
-                    }
                 }
             }
         }
     }
 }
+
+/** The muted one-line error under whichever control caused [kind]. */
+@Composable
+private fun LoginErrorText(kind: LoginErrorKind) {
+    Text(
+        text = stringResource(kind.messageRes()),
+        style = MealsyType.body,
+        color = MealsyTheme.colors.muted,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}
+
+/** String resource for [LoginErrorKind]; shared with the onboarding account step. */
+@StringRes
+internal fun LoginErrorKind.messageRes(): Int =
+    when (this) {
+        LoginErrorKind.InvalidEmail -> R.string.login_error_invalid_email
+        LoginErrorKind.MagicLinkFailed -> R.string.login_error_magic_link_failed
+        LoginErrorKind.GoogleSignInFailed -> R.string.login_error_google_sign_in_failed
+        LoginErrorKind.GoogleNoAccount -> R.string.login_error_google_no_account
+        LoginErrorKind.GoogleNotConfigured -> R.string.login_error_google_not_configured
+        LoginErrorKind.GoogleUnavailable -> R.string.login_error_google_unavailable
+        LoginErrorKind.Offline -> R.string.error_offline
+        LoginErrorKind.LinkExpired -> R.string.login_error_link_expired
+        LoginErrorKind.RateLimited -> R.string.login_error_rate_limited
+    }

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import app.mealsy.data.auth.AuthCallbackErrorKind
 import app.mealsy.data.auth.AuthCallbackErrors
 import app.mealsy.data.auth.GoogleAuthAvailabilityGateway
+import app.mealsy.data.auth.GoogleSignInError
+import app.mealsy.data.auth.GoogleSignInException
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,8 +39,20 @@ sealed interface LoginErrorKind {
     /** [SessionManager.signInWithMagicLink] threw, for a reason not covered below. */
     data object MagicLinkFailed : LoginErrorKind
 
-    /** [SessionManager.signInWithGoogle] threw. */
+    /** [SessionManager.signInWithGoogle] threw, for a reason not covered below. */
     data object GoogleSignInFailed : LoginErrorKind
+
+    /** No Google account is signed in on this device (Credential Manager found none). */
+    data object GoogleNoAccount : LoginErrorKind
+
+    /** This build has no `GOOGLE_WEB_CLIENT_ID`. */
+    data object GoogleNotConfigured : LoginErrorKind
+
+    /** Supabase says the Google provider is not enabled. */
+    data object GoogleUnavailable : LoginErrorKind
+
+    /** The device could not reach Supabase during Google sign-in. */
+    data object Offline : LoginErrorKind
 
     /**
      * The `mealsy://auth-callback` link was opened a second time, or after
@@ -92,6 +106,25 @@ internal fun mapMagicLinkException(exc: Exception): LoginErrorKind =
         else -> LoginErrorKind.MagicLinkFailed
     }
 
+/** Maps a Google sign-in failure to a [LoginErrorKind]; null for a user cancel, which is silent. */
+internal fun GoogleSignInException.toLoginErrorKind(): LoginErrorKind? =
+    when (error) {
+        GoogleSignInError.Cancelled -> null
+        GoogleSignInError.NoAccount -> LoginErrorKind.GoogleNoAccount
+        GoogleSignInError.NotConfigured -> LoginErrorKind.GoogleNotConfigured
+        GoogleSignInError.ProviderDisabled -> LoginErrorKind.GoogleUnavailable
+        GoogleSignInError.Network -> LoginErrorKind.Offline
+        GoogleSignInError.Failed -> LoginErrorKind.GoogleSignInFailed
+    }
+
+/** True for the kinds that come from the Google button, so the screen can show them beside it. */
+internal fun LoginErrorKind.isGoogleError(): Boolean =
+    this == LoginErrorKind.GoogleSignInFailed ||
+        this == LoginErrorKind.GoogleNoAccount ||
+        this == LoginErrorKind.GoogleNotConfigured ||
+        this == LoginErrorKind.GoogleUnavailable ||
+        this == LoginErrorKind.Offline
+
 /** Maps a parsed [AuthCallbackErrorKind] (from a deep link, #34) to a [LoginErrorKind]. */
 internal fun mapCallbackErrorKind(kind: AuthCallbackErrorKind): LoginErrorKind =
     when (kind) {
@@ -121,6 +154,11 @@ class LoginViewModel
         // is off.
         private val _googleSignInAvailable = MutableStateFlow(true)
         val googleSignInAvailable: StateFlow<Boolean> = _googleSignInAvailable.asStateFlow()
+
+        private val _googleBusy = MutableStateFlow(false)
+
+        /** True while a Google sign-in is in flight, so the button can't be double-tapped. */
+        val googleBusy: StateFlow<Boolean> = _googleBusy.asStateFlow()
 
         private var cooldownJob: Job? = null
 
@@ -234,15 +272,22 @@ class LoginViewModel
             }
         }
 
-        /** Starts the Google OAuth sign-in flow via [SessionManager]. */
+        /** Starts native Google sign-in (Credential Manager) via [SessionManager]. */
         fun signInWithGoogle(activity: Activity) {
+            if (_googleBusy.value) return
+            _googleBusy.value = true
             viewModelScope.launch {
                 try {
                     sessionManager.signInWithGoogle(activity)
                 } catch (exc: CancellationException) {
                     throw exc
+                } catch (exc: GoogleSignInException) {
+                    // A user cancel maps to null: stay silent, leave any prior state alone.
+                    exc.toLoginErrorKind()?.let { _uiState.value = LoginUiState.Error(it) }
                 } catch (exc: Exception) {
                     _uiState.value = LoginUiState.Error(LoginErrorKind.GoogleSignInFailed)
+                } finally {
+                    _googleBusy.value = false
                 }
             }
         }

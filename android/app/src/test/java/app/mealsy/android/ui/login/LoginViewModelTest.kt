@@ -8,6 +8,8 @@ import app.mealsy.data.auth.AuthCallbackErrorKind
 import app.mealsy.data.auth.AuthCallbackErrors
 import app.mealsy.data.auth.AuthGateway
 import app.mealsy.data.auth.GoogleAuthAvailabilityGateway
+import app.mealsy.data.auth.GoogleSignInError
+import app.mealsy.data.auth.GoogleSignInException
 import app.mealsy.data.auth.ProfileMetadata
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
@@ -43,7 +45,14 @@ private class FakeAuthGateway : AuthGateway {
         magicLinkCalls.add(email)
     }
 
-    override suspend fun signInWithGoogle(activity: Activity) = Unit
+    var googleFailure: Exception? = null
+    var googleCalls = 0
+
+    override suspend fun signInWithGoogle(activity: Activity) {
+        googleCalls++
+        googleFailure?.let { throw it }
+        sessionState.value = SessionState.SignedIn("user-1")
+    }
 
     override suspend fun refreshCurrentSession(): String? = null
 
@@ -101,6 +110,48 @@ class LoginViewModelTest {
                     awaitItem(),
                 )
                 assertEquals(listOf("user@example.com"), fakeAuthGateway.magicLinkCalls)
+            }
+        }
+
+    @Test
+    fun `Google sign-in success calls the gateway and shows no error`() =
+        runTest {
+            viewModel.signInWithGoogle(Activity())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(1, fakeAuthGateway.googleCalls)
+            assertEquals(LoginUiState.Idle, viewModel.uiState.value)
+            assertFalse(viewModel.googleBusy.value)
+        }
+
+    @Test
+    fun `Google cancel is silent`() =
+        runTest {
+            fakeAuthGateway.googleFailure = GoogleSignInException(GoogleSignInError.Cancelled)
+            viewModel.signInWithGoogle(Activity())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(LoginUiState.Idle, viewModel.uiState.value)
+            assertFalse(viewModel.googleBusy.value)
+        }
+
+    @Test
+    fun `Google failures map to friendly error kinds`() =
+        runTest {
+            val cases =
+                mapOf(
+                    GoogleSignInError.NoAccount to LoginErrorKind.GoogleNoAccount,
+                    GoogleSignInError.NotConfigured to LoginErrorKind.GoogleNotConfigured,
+                    GoogleSignInError.ProviderDisabled to LoginErrorKind.GoogleUnavailable,
+                    GoogleSignInError.Network to LoginErrorKind.Offline,
+                    GoogleSignInError.Failed to LoginErrorKind.GoogleSignInFailed,
+                )
+            for ((error, kind) in cases) {
+                fakeAuthGateway.googleFailure = GoogleSignInException(error)
+                viewModel.signInWithGoogle(Activity())
+                dispatcher.scheduler.advanceUntilIdle()
+
+                assertEquals(LoginUiState.Error(kind), viewModel.uiState.value)
             }
         }
 
