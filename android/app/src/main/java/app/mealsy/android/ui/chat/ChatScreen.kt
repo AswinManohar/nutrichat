@@ -1,8 +1,14 @@
 package app.mealsy.android.ui.chat
 
-import android.content.Intent
-import android.speech.RecognizerIntent
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -34,15 +40,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.android.R
@@ -69,7 +77,6 @@ import app.mealsy.android.design.components.ChatBubbleAuthor
 import app.mealsy.android.design.components.FilterChipPill
 import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.MarkdownText
-import app.mealsy.android.design.components.PillInput
 import app.mealsy.android.design.components.TagChip
 import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.design.components.TypingIndicator
@@ -81,7 +88,11 @@ import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyTween
 import app.mealsy.android.design.theme.motionDurationMs
 import app.mealsy.domain.PastelTone
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -156,26 +167,47 @@ fun ChatScreen(
     // first meal, before they had any reason to want notifications.
     val context = LocalContext.current
 
-    // Speech recognition is optional hardware/software — hide the mic
-    // entirely when no recognizer is registered, rather than showing a
-    // button that always fails.
-    val recognizerAvailable =
+    // Speech recognition is optional: when no recognizer is registered the
+    // idle mic stays in the layout, disabled ("Voice input unavailable").
+    val recognizerAvailable = remember { SpeechRecognizer.isRecognitionAvailable(context) }
+    var attachment by remember { mutableStateOf<Bitmap?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    val didntCatch = stringResource(R.string.chat_didnt_catch_that)
+    val scope = rememberCoroutineScope()
+    val recorder =
         remember {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            context.packageManager.queryIntentActivities(intent, 0).isNotEmpty()
-        }
-    val speechLauncher =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.StartActivityForResult(),
-        ) { result ->
-            if (result.resultCode == android.app.Activity.RESULT_OK) {
-                val text =
-                    result.data
-                        ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                        ?.firstOrNull()
-                if (!text.isNullOrBlank()) {
-                    input = if (input.isEmpty()) text else "$input $text"
+            SpeechRecorder(context) { text, sent ->
+                when {
+                    text == null -> notice = didntCatch
+                    sent -> viewModel.send(text)
+                    // The recognizer ended on its own (silence): keep the words
+                    // in the field for the user to review rather than auto-send.
+                    else -> input = if (input.isEmpty()) text else "$input $text"
                 }
+            }
+        }
+    DisposableEffect(recorder) { onDispose { recorder.release() } }
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(2_500)
+            notice = null
+        }
+    }
+    var elapsedMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(recorder.recording) {
+        while (recorder.recording) {
+            elapsedMs = System.currentTimeMillis() - recorder.startedAtMs
+            delay(200)
+        }
+    }
+    val micPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) recorder.start()
+        }
+    val photoPicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) {
+                scope.launch { attachment = decodeAttachment(context, uri) ?: attachment }
             }
         }
 
@@ -183,7 +215,7 @@ fun ChatScreen(
         CameraSheet(
             onUsePhoto = { bitmap ->
                 showCameraSheet = false
-                viewModel.sendPhoto(bitmap)
+                attachment = bitmap
             },
             onDismiss = { showCameraSheet = false },
         )
@@ -274,21 +306,40 @@ fun ChatScreen(
                 onInputChange = { input = it },
                 enabled = !sending && !offline,
                 focusRequester = inputFocusRequester,
-                recognizerAvailable = recognizerAvailable,
-                onMicClick = {
-                    val intent =
-                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(
-                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                            )
-                        }
-                    speechLauncher.launch(intent)
+                attachment = attachment,
+                voice =
+                    VoiceUiState(
+                        recording = recorder.recording,
+                        available = recognizerAvailable,
+                        elapsedMs = elapsedMs,
+                        levels = recorder.levels,
+                    ),
+                notice = notice,
+                onAttachClick = {
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
                 onCameraClick = { showCameraSheet = true },
+                onRemoveAttachment = { attachment = null },
+                onMicClick = {
+                    notice = null
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        recorder.start()
+                    } else {
+                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                onDiscardRecording = recorder::discard,
+                onFinishRecording = recorder::finish,
                 onSend = {
                     val text = input.trim()
-                    if (text.isNotEmpty()) {
+                    val photo = attachment
+                    if (photo != null) {
+                        viewModel.sendPhoto(photo, text)
+                        attachment = null
+                        input = ""
+                    } else if (text.isNotEmpty()) {
                         viewModel.send(text)
                         input = ""
                     }
@@ -805,58 +856,27 @@ private fun FeedbackGlyph(
     }
 }
 
-/**
- * The composer: mic (hidden when unavailable), camera, text field, send.
- */
-@Composable
-private fun ChatInputBar(
-    input: String,
-    onInputChange: (String) -> Unit,
-    enabled: Boolean,
-    focusRequester: FocusRequester,
-    recognizerAvailable: Boolean,
-    onMicClick: () -> Unit,
-    onCameraClick: () -> Unit,
-    onSend: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MealsyTheme.colors
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onCameraClick, enabled = enabled) {
-            Icon(
-                imageVector = MealsyIcons.Camera,
-                contentDescription = stringResource(R.string.chat_camera_description),
-                tint = colors.ink,
-            )
-        }
-        if (recognizerAvailable) {
-            IconButton(onClick = onMicClick, enabled = enabled) {
-                Icon(
-                    imageVector = MealsyIcons.Mic,
-                    contentDescription = stringResource(R.string.chat_mic_description),
-                    tint = colors.ink,
-                )
-            }
-        }
-        PillInput(
-            value = input,
-            onValueChange = onInputChange,
-            modifier = Modifier.weight(1f).focusRequester(focusRequester),
-            placeholder = stringResource(R.string.chat_input_placeholder),
-            enabled = enabled,
-            trailing = {
-                IconButton(onClick = onSend, enabled = enabled && input.isNotBlank()) {
-                    Icon(
-                        imageVector = MealsyIcons.Send,
-                        contentDescription = stringResource(R.string.chat_send_description),
-                        tint = colors.ink,
-                    )
+/** Decodes a photo-picker [uri] to a downsampled software bitmap off the main thread; null on failure. */
+private suspend fun decodeAttachment(
+    context: Context,
+    uri: Uri,
+): Bitmap? =
+    withContext(Dispatchers.IO) {
+        try {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val longest = maxOf(info.size.width, info.size.height)
+                if (longest > MAX_ATTACHMENT_PX) {
+                    val scale = MAX_ATTACHMENT_PX.toFloat() / longest
+                    decoder.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
                 }
-            },
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSend() }),
-        )
+            }
+        } catch (exc: IOException) {
+            null
+        } catch (exc: SecurityException) {
+            null
+        }
     }
-}
+
+private const val MAX_ATTACHMENT_PX = 1600

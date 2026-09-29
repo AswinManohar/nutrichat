@@ -137,7 +137,10 @@ class ChatViewModel
 
         fun send(text: String): Job = session.send(text)
 
-        fun sendPhoto(bitmap: Bitmap): Job = session.sendPhoto(bitmap)
+        fun sendPhoto(
+            bitmap: Bitmap,
+            text: String = "",
+        ): Job = session.sendPhoto(bitmap, text)
 
         fun editQty(
             index: Int,

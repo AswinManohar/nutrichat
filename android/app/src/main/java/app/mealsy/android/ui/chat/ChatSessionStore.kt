@@ -310,11 +310,17 @@ class ChatSessionStore
         /**
          * Sends a captured meal photo as a new turn: encodes [bitmap] via
          * [app.mealsy.data.image.ImageEncoder], appends a photo bubble, then
-         * handles the result exactly like [send]. Returns the underlying [Job]
+         * handles the result exactly like [send]. Any [text] typed alongside the
+         * photo is shown as a follow-up user bubble and sent with the image in
+         * the same turn. Returns the underlying [Job]
          * purely so tests can [Job.join] it.
          */
-        fun sendPhoto(bitmap: android.graphics.Bitmap): Job {
+        fun sendPhoto(
+            bitmap: android.graphics.Bitmap,
+            text: String = "",
+        ): Job {
             _messages.value = _messages.value + ChatMsg.Photo(newId(), clock.millis(), bitmap)
+            if (text.isNotBlank()) appendUser(text)
             _sending.value = true
             return sessionScope.launch {
                 try {
@@ -324,7 +330,7 @@ class ChatSessionStore
                         withContext(Dispatchers.Default) {
                             app.mealsy.data.image.ImageEncoder.encode(bitmap)
                         }
-                    handleTurnResult(repository.sendTurn("", imageB64 = imageB64))
+                    handleTurnResult(repository.sendTurn(text, imageB64 = imageB64))
                     _offline.value = false
                 } catch (exc: CancellationException) {
                     throw exc
