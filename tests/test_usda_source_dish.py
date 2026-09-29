@@ -54,3 +54,33 @@ async def test_source_dish_propagated_onto_results() -> None:
     results = out["usda_results"]
     assert results[0]["source_dish"] == "chicken biryani"
     assert results[1]["source_dish"] is None
+
+
+async def test_input_phrase_always_set_even_when_substring_of_match() -> None:
+    """#56: "toast" is inside "Bread, egg, toasted" but must still be sent."""
+    state = {
+        "entities": [
+            {
+                "food_name": "toast",
+                "qty_g": 30,
+                "unit": "g",
+                "confidence": 1.0,
+                "is_composite": False,
+                "source_dish": None,
+            },
+            {
+                "food_name": "apple",
+                "qty_g": 150,
+                "unit": "g",
+                "confidence": 1.0,
+                "is_composite": False,
+                "source_dish": None,
+            },
+        ]
+    }
+    fake = AsyncMock(return_value=[_result("Bread, egg, toasted"), _result("Apple")])
+    with patch("backend.agent.graph.usda_lookup_batch", fake):
+        out = await usda_batch_node(state)
+
+    assert out["usda_results"][0]["input_phrase"] == "toast"
+    assert out["usda_results"][1]["input_phrase"] == "apple"

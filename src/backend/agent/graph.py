@@ -239,10 +239,10 @@ async def usda_batch_node(state: AgentState) -> dict:
     for entity, result in zip(entities, results):
         result.source_dish = entity.source_dish
         result.is_composite = entity.is_composite
-        # Spec 003 research R9: only set input_phrase when the user's words
-        # aren't already recoverable from the matched food_name.
-        if entity.food_name.strip().lower() not in result.food_name.lower():
-            result.input_phrase = entity.food_name
+        # Spec 003: always carry the user's extracted words. A substring test
+        # against the matched name is wrong ("toast" is inside "Bread, egg,
+        # toasted"), which made the picker pre-fill the FDC name (#56).
+        result.input_phrase = entity.food_name
     return {"usda_results": [r.model_dump() for r in results]}
 
 
