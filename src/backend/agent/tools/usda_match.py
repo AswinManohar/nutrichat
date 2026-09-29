@@ -91,6 +91,17 @@ _SYNONYM_EXCEPTIONS: dict[str, frozenset[str]] = {
 }
 
 
+# A generic berry phrase ("mixed berries", "assorted fresh berries", bare
+# "berry") names the FDC generic entry "Berries, NFS". Left as-is, "mixed
+# berries" retrieves "Snack, Mixed Berry Bar" (2400 kcal per 100 g in the
+# issue #5 report) because the bar's "Mixed Berry" phrase covers every query
+# word, and bare "berry" retrieves a berry beverage. Whole-query match only:
+# "mixed berry yogurt" must keep its own head noun.
+_GENERIC_BERRY_QUERY = re.compile(
+    r"\s*(?:(?:mixed|assorted|fresh|summer)\s+)*berr(?:y|ies)\s*", re.IGNORECASE
+)
+
+
 def _normalize_preparation(food_name: str) -> str:
     """Rewrite preparation nouns that are not FDC head nouns to their FDC form.
 
@@ -108,6 +119,8 @@ def _normalize_preparation(food_name: str) -> str:
         ``food_name`` with any matching bare preparation nouns replaced by
         their FDC head-noun phrase, unchanged if none apply.
     """
+    if _GENERIC_BERRY_QUERY.fullmatch(food_name):
+        return "berries"
     lowered = food_name.lower()
     for word, replacement in _PREPARATION_SYNONYMS.items():
         if not re.search(rf"\b{re.escape(word)}\b", lowered):

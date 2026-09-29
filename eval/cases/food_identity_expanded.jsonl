@@ -176,3 +176,8 @@
 {"query": "broth", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["broth", "bouillon"], "category": "ambiguous"}
 {"query": "2 eggs and toast", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread,"], "category": "preparation"}
 {"query": "blueberries", "acceptable_fdc_ids": [171711, 2263889, 2346411, 2709275], "acceptable_name_substrings": ["blueberries, raw"], "category": "regression_51"}
+{"query": "mixed berries", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["berries, nfs"], "category": "generic_berry"}
+{"query": "mixed berry", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["berries, nfs"], "category": "generic_berry"}
+{"query": "berry", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["berries, nfs"], "category": "generic_berry"}
+{"query": "bowl of oatmeal", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["oatmeal", "oats,"], "category": "quantity_phrase"}
+{"query": "whole wheat toast", "acceptable_fdc_ids": [], "acceptable_name_substrings": ["bread, whole wheat", "bread, whole-wheat"], "category": "preparation_noun"}

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from backend.agent.tools import usda_local
-from backend.agent.tools.usda_match import _confidence
+from backend.agent.tools.usda_match import _confidence, _normalize_preparation
 from backend.scripts.build_usda_db import create_schema, insert_food_row
 
 _ROWS: list[tuple[int, str]] = [
@@ -55,12 +55,12 @@ _SAMPLE_NUTRIENTS = {
 }
 
 
-def _build_db(path: Path) -> None:
+def _build_db(path: Path, rows: list[tuple[int, str]] | None = None) -> None:
     """Create a small fixture SQLite database with FTS populated."""
     conn = sqlite3.connect(str(path))
     try:
         create_schema(conn)
-        for fdc_id, description in _ROWS:
+        for fdc_id, description in _ROWS if rows is None else rows:
             insert_food_row(
                 conn,
                 fdc_id,
@@ -248,15 +248,11 @@ def test_french_toast_is_not_rewritten_to_bread(fixture_db: Path) -> None:
 
 
 def test_normalize_preparation_rewrites_bare_toast() -> None:
-    from backend.agent.tools.usda_match import _normalize_preparation
-
     assert _normalize_preparation("toast") == "bread, toasted"
     assert _normalize_preparation("2 eggs and toast") == "2 eggs and bread, toasted"
 
 
 def test_normalize_preparation_leaves_compound_dishes_alone() -> None:
-    from backend.agent.tools.usda_match import _normalize_preparation
-
     assert _normalize_preparation("french toast") == "french toast"
     assert _normalize_preparation("melba toast") == "melba toast"
     assert _normalize_preparation("cinnamon toast") == "cinnamon toast"
@@ -264,8 +260,6 @@ def test_normalize_preparation_leaves_compound_dishes_alone() -> None:
 
 
 def test_normalize_preparation_does_not_touch_substrings() -> None:
-    from backend.agent.tools.usda_match import _normalize_preparation
-
     # "toasted" contains "toast" but is a different word -- must not match.
     assert _normalize_preparation("toasted almonds") == "toasted almonds"
 
@@ -403,3 +397,87 @@ def test_regression_51_chicken_breast_in_top5_search(real_db: None) -> None:
     hits = usda_local.search_foods("chicken breast", limit=5)
     names = [h.name.lower() for h in hits]
     assert any("roll" not in n and "chicken" in n and "breast" in n for n in names)
+
+
+# ---------------------------------------------------------------------------
+# Issue #5: "oatmeal with berries" must resolve to oatmeal plus berries, never
+# bread or a snack bar. Extraction splits the meal into one entity per food;
+# these are the entity names it produces, resolved against the real database.
+# ---------------------------------------------------------------------------
+
+_BAD_FRAGMENTS = ("bread", "snack", " bar", "beverage", "juice", "syrup")
+
+
+@pytest.mark.parametrize(
+    "entity", ["oatmeal", "oats", "rolled oats", "bowl of oatmeal"]
+)
+def test_regression_5_oatmeal_entity_is_oats_not_bread(
+    real_db: None, entity: str
+) -> None:
+    match = usda_local.lookup(entity)
+    assert match is not None
+    name = match.description.lower()
+    assert "oat" in name
+    assert not any(bad in name for bad in _BAD_FRAGMENTS), match.description
+    assert match.macros_per_100g["kcal"] < 500  # not the 2400 kcal snack bar
+
+
+@pytest.mark.parametrize(
+    ("entity", "expected"),
+    [
+        ("berries", "berries"),
+        ("mixed berries", "berries"),
+        ("mixed berry", "berries"),
+        ("assorted berries", "berries"),
+        ("berry", "berries"),
+        ("blueberries", "blueberries"),
+        ("strawberries", "strawberries"),
+        ("raspberries", "raspberries"),
+        ("blackberries", "blackberries"),
+    ],
+)
+def test_regression_5_berry_entity_is_berries_not_snack_bar(
+    real_db: None, entity: str, expected: str
+) -> None:
+    match = usda_local.lookup(entity)
+    assert match is not None
+    name = match.description.lower()
+    assert name.startswith(expected), match.description
+    assert not any(bad in name for bad in _BAD_FRAGMENTS), match.description
+    assert match.macros_per_100g["kcal"] < 100
+
+
+def test_regression_5_whole_wheat_toast_is_toasted_bread(real_db: None) -> None:
+    match = usda_local.lookup("whole wheat toast")
+    assert match is not None
+    assert match.description.lower().startswith("bread, whole")
+    assert "toasted" in match.description.lower()
+    assert "pita" not in match.description.lower()
+
+
+def test_regression_5_oatmeal_with_berries_resolves_to_both(real_db: None) -> None:
+    """Meal 'oatmeal with berries' -> two entities -> oats + berries."""
+    oats = usda_local.lookup("oatmeal")
+    berries = usda_local.lookup("mixed berries")
+    assert oats is not None and berries is not None
+    assert oats.description.lower().startswith("oat")
+    assert berries.description.lower().startswith("berries")
+
+
+@pytest.mark.parametrize("query", ["mixed berries", "mixed berry", "berry"])
+def test_generic_berry_query_ignores_mixed_berry_bar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, query: str
+) -> None:
+    db_path = tmp_path / "berries.sqlite3"
+    _build_db(db_path, [(2001, "Snack, Mixed Berry Bar"), (2002, "Berries, NFS")])
+    monkeypatch.setenv("USDA_DB_PATH", str(db_path))
+    usda_local._local = usda_local.threading.local()
+    match = usda_local.lookup(query)
+    assert match is not None
+    assert match.description == "Berries, NFS"
+
+
+def test_normalize_generic_berry_only_rewrites_whole_query() -> None:
+    assert _normalize_preparation("Mixed Berries") == "berries"
+    assert _normalize_preparation("mixed berry yogurt") == "mixed berry yogurt"
+    assert _normalize_preparation("blueberries") == "blueberries"
