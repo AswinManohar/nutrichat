@@ -267,6 +267,42 @@ class ChatScreenGoldenTest : AppScreenshotTestBase() {
             renderRow(cardMsg(compositeDishCard(), CardState.Active))
         }
 
+    // --- Composite single item with the Break action (#57) ------------------------
+
+    private fun compositeSingleItemCard() =
+        ConfirmationCard(
+            message = "",
+            mealType = "lunch",
+            portion = 1.0,
+            items =
+                listOf(
+                    CardItem(
+                        foodName = "Mutton biryani",
+                        qtyG = 350.0,
+                        targetQtyG = 350.0,
+                        kcal = 560.0,
+                        proteinG = 28.0,
+                        carbsG = 70.0,
+                        fatG = 18.0,
+                        fiberG = 3.0,
+                        fdcId = 3L,
+                        isComposite = true,
+                    ),
+                ),
+        )
+
+    @Test
+    fun chatCompositeSingleItem_light() =
+        captureMealsy("Chat_compositeSingleItem", false) {
+            renderRow(cardMsg(compositeSingleItemCard(), CardState.Active))
+        }
+
+    @Test
+    fun chatCompositeSingleItem_dark() =
+        captureMealsy("Chat_compositeSingleItem", true) {
+            renderRow(cardMsg(compositeSingleItemCard(), CardState.Active))
+        }
+
     // --- Collapsed older cards: Logged / Not logged / Discarded -------------------
 
     @Test

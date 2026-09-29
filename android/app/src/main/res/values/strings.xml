@@ -43,6 +43,8 @@
     <string name="confirm_card_not_right_food">Not the right food?</string>
     <string name="confirm_card_estimated">estimated</string>
     <string name="confirm_card_check_match">check match</string>
+    <string name="confirm_card_break_action">Break into ingredients</string>
+    <string name="confirm_card_break_into_ingredients_named">Break %1$s into ingredients</string>
     <string name="confirm_card_remove_action">Remove %1$s</string>
     <string name="confirm_card_swap_action">Choose a different food for %1$s</string>
     <string name="confirm_card_undo">Undo</string>

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
@@ -580,15 +583,11 @@ private fun ItemRows(
     val groups = groupByDish(card.items)
     val visibleGroups = groups.filter { it.dish == null || it.indices.isNotEmpty() }
 
-    // Mirrors the web's showBreak/showCombine gating exactly (see
-    // ConfirmationCard.tsx): fewer than two dish groups AND (there's exactly
-    // one dish, or some visible item is itself flagged composite) shows
-    // "Break into ingredients"; any item at all carrying a sourceDish shows
-    // "Log as single item".
-    val dishGroups = groups.filter { it.dish != null }
-    val soleDish = if (dishGroups.size == 1) dishGroups.first().dish else null
-    val anyComposite = card.items.any { it.isComposite }
-    val showBreak = dishGroups.size < 2 && (soleDish != null || anyComposite)
+    // "Log as single item" lives on dish-group headers (any item carrying a
+    // sourceDish). "Break into ingredients" is offered per single composite item
+    // (isComposite && sourceDish == null, see ItemRow) — a group header is
+    // already broken down, so it no longer carries it (#57). The backend
+    // decompose action breaks down EVERY composite item on the card at once.
     val showCombine = card.items.any { it.sourceDish != null }
 
     Column {
@@ -596,7 +595,7 @@ private fun ItemRows(
             if (group.dish != null) {
                 CompositeDishHeader(
                     dishName = FoodNameHumanizer.humanize(group.dish),
-                    onBreakIntoIngredients = if (showBreak) callbacks::onDecompose else null,
+                    onBreakIntoIngredients = null,
                     onLogAsSingleItem = if (showCombine) callbacks::onCombine else null,
                     modifier = Modifier.padding(top = if (groupIdx == 0) 0.dp else 8.dp),
                 )
@@ -731,6 +730,46 @@ private fun ItemRow(
                     ),
             )
         }
+        if (item.isComposite && item.sourceDish == null) {
+            BreakIntoIngredientsAction(
+                dishName = FoodNameHumanizer.humanize(item.foodName),
+                enabled = !disabled,
+                onClick = callbacks::onDecompose,
+            )
+        }
+    }
+}
+
+/**
+ * Text action that breaks a single composite dish into ingredient rows.
+ *
+ * Meets the 48dp touch target and exposes a Button role with a label that
+ * names the dish for TalkBack. Note the backend decompose breaks down every
+ * composite item on the card, not just this one.
+ */
+@Composable
+private fun BreakIntoIngredientsAction(
+    dishName: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MealsyTheme.colors
+    val label = stringResource(R.string.confirm_card_break_action)
+    val description = stringResource(R.string.confirm_card_break_into_ingredients_named, dishName)
+    Box(
+        modifier =
+            Modifier
+                .padding(start = 42.dp)
+                .heightIn(min = 48.dp)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = description },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = label,
+            style = MealsyType.label.copy(fontSize = 13.sp, textDecoration = TextDecoration.Underline),
+            color = colors.ink,
+        )
     }
 }
 
