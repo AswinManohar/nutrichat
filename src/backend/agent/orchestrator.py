@@ -16,6 +16,7 @@ from backend.agent.coaching_store import save_coaching_response
 from backend.agent.graph import build_graph
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
 from backend.agent.system_one import RoutingJudgment, judge_message
+from backend.agent.tools.usda import NULLABLE_MACROS
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import consume_llm_credit
@@ -343,16 +344,21 @@ def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]
     """
     items = []
     for r in usda_results:
+        # Released clients parse protein/carbs/fat/fiber as required numbers, so
+        # an unknown (None) goes out as 0.0 *and* is named in
+        # `unknown_nutrients` (the source of truth for "not reported by FDC").
+        # sugar_g / sat_fat_g are optional on every client and stay null.
+        unknown = [m for m in NULLABLE_MACROS if r.get(m) is None and m in r]
         items.append(
             {
                 "food_name": r["food_name"],
                 "qty_g": r["qty_g"],
                 "confidence": r["match_confidence"],
                 "kcal": r["kcal"],
-                "protein_g": r["protein_g"],
-                "carbs_g": r["carbs_g"],
-                "fat_g": r["fat_g"],
-                "fiber_g": r["fiber_g"],
+                "protein_g": r["protein_g"] if r["protein_g"] is not None else 0.0,
+                "carbs_g": r["carbs_g"] if r["carbs_g"] is not None else 0.0,
+                "fat_g": r["fat_g"] if r["fat_g"] is not None else 0.0,
+                "fiber_g": r["fiber_g"] if r["fiber_g"] is not None else 0.0,
                 "fdc_id": r["fdc_id"],
                 "candidates": r.get("candidates", []),
                 "candidate_details": r.get("candidate_details", []),
@@ -364,8 +370,9 @@ def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]
                 # already derivable from food_name (picker prefill).
                 "input_phrase": r.get("input_phrase"),
                 # Full breakdown so "Save to My Meals" preserves micros.
-                "sugar_g": r.get("sugar_g", 0.0),
-                "sat_fat_g": r.get("sat_fat_g", 0.0),
+                "sugar_g": r.get("sugar_g"),
+                "sat_fat_g": r.get("sat_fat_g"),
+                "unknown_nutrients": unknown,
                 "nutrients": r.get("nutrients", {}),
             }
         )

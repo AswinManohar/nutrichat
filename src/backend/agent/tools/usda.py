@@ -5,9 +5,16 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Iterable
 
 import aiohttp
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+)
 from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy import text
@@ -33,6 +40,43 @@ USDA_SEARCH_URL = _TUNABLES.usda.search_url
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
+
+# Promoted macros FDC may not report for a food. ``None`` on a USDAResult means
+# "unknown", never zero: totals skip it and UIs show it as unknown. ``kcal`` is
+# excluded -- it always resolves to a float (Atwater fallback chain).
+NULLABLE_MACROS = (
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+    "sugar_g",
+    "sat_fat_g",
+)
+# Of those, the ones released clients (Android ItemDto, web types) still parse
+# as a required number, so JSON output coalesces them to 0.0 and names them in
+# ``unknown_nutrients`` instead. sugar_g / sat_fat_g are not required by any
+# client and go out as JSON null.
+_LEGACY_REQUIRED_MACROS = ("protein_g", "carbs_g", "fat_g", "fiber_g")
+
+
+def scale_macro(per_100g: float | None, scale: float, ndigits: int = 2) -> float | None:
+    """Scale a per-100 g macro to a quantity, keeping unknown as unknown.
+
+    Args:
+        per_100g: Value per 100 g, or None when FDC reports none.
+        scale: qty_g / 100.
+        ndigits: Rounding precision.
+
+    Returns:
+        The scaled value, or None if ``per_100g`` is None.
+    """
+    return None if per_100g is None else round(per_100g * scale, ndigits)
+
+
+def sum_known(values: Iterable[float | None]) -> float:
+    """Sum the known values, skipping unknowns (None)."""
+    return sum(v for v in values if v is not None)
 
 
 class NutrientValue(BaseModel):
@@ -69,14 +113,15 @@ class USDAResult(BaseModel):
     # the live-FDC path (only usda_local.lookup's pool populates it, T034).
     candidate_details: list[CandidateDetail] = []
 
-    # Promoted macros scaled to qty_g
+    # Promoted macros scaled to qty_g. None = FDC reports no value (unknown,
+    # not zero); see NULLABLE_MACROS.
     kcal: float
-    protein_g: float
-    carbs_g: float
-    fat_g: float
-    fiber_g: float
-    sugar_g: float
-    sat_fat_g: float
+    protein_g: float | None = None
+    carbs_g: float | None = None
+    fat_g: float | None = None
+    fiber_g: float | None = None
+    sugar_g: float | None = None
+    sat_fat_g: float | None = None
 
     # Full nutrient breakdown scaled to qty_g (~50 nutrients)
     nutrients: dict[str, NutrientValue]
@@ -99,6 +144,20 @@ class USDAResult(BaseModel):
     # even when matched to "Bread, egg, toasted"). Seeds the picker's initial
     # query and food_correction.original_phrase.
     input_phrase: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def unknown_nutrients(self) -> list[str]:
+        """Names of promoted macros FDC has no value for (unknown, not zero)."""
+        return [m for m in NULLABLE_MACROS if getattr(self, m) is None]
+
+    @field_serializer(*_LEGACY_REQUIRED_MACROS, when_used="json")
+    def _legacy_number(self, value: float | None) -> float:
+        """Emit 0.0 on the wire for macros released clients require as a number.
+
+        The unknown state is not lost: it is listed in ``unknown_nutrients``.
+        """
+        return 0.0 if value is None else value
 
 
 class NutritionEstimate(BaseModel):
@@ -284,7 +343,7 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
 
     scale = entity.qty_g / 100.0
     macros = {
-        field: round(raw.get(fdc_name, (0.0, "g"))[0] * scale, 2)
+        field: (round(raw[fdc_name][0] * scale, 2) if fdc_name in raw else None)
         for fdc_name, field in _MACRO_MAP.items()
     }
     macros["kcal"] = round(_energy_kcal(raw) * scale, 2)
@@ -309,16 +368,8 @@ def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
     """Build a USDAResult from a bundled-SQLite LocalMatch (per 100g)."""
     scale = entity.qty_g / 100.0
     macros = {
-        field: round(match.macros_per_100g[field] * scale, 2)
-        for field in (
-            "kcal",
-            "protein_g",
-            "carbs_g",
-            "fat_g",
-            "fiber_g",
-            "sugar_g",
-            "sat_fat_g",
-        )
+        field: scale_macro(match.macros_per_100g[field], scale)
+        for field in ("kcal", *NULLABLE_MACROS)
     }
     nutrients = {
         name: NutrientValue(amount=round(v["amount"] * scale, 3), unit=v["unit"])
@@ -348,7 +399,7 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
         return float(v.get("amount", 0.0)) if isinstance(v, dict) else float(v)
 
     macros = {
-        field: round(_val(fdc_name) * scale, 2)
+        field: round(_val(fdc_name) * scale, 2) if fdc_name in raw else None
         for fdc_name, field in _MACRO_MAP.items()
     }
     macros["kcal"] = round(

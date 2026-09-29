@@ -160,3 +160,42 @@ describe('failed confirm keeps the card actionable (#55)', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+describe('unknown fiber (#54)', () => {
+  it('shows an em dash instead of 0g when fiber is unknown for every item', () => {
+    useMealStore.getState().resetChat()
+    useMealStore.setState({
+      messages: [
+        {
+          id: 'u1',
+          sender: 'agent',
+          text: 'found',
+          timestamp: new Date().toISOString(),
+          paused: true,
+          items: [{ ...item, fiber_g: 0, unknown_nutrients: ['fiber_g'] }],
+        },
+      ],
+    })
+    function Thread() {
+      const { messages } = useMealStore()
+      return (
+        <QueryClientProvider client={queryClient}>
+          <ChatThread
+            messages={messages}
+            onAction={vi.fn()}
+            onConfirmLog={vi.fn()}
+            onCancel={vi.fn()}
+            onDismissCard={vi.fn()}
+            onDecompose={vi.fn()}
+            onCombine={vi.fn()}
+            isLoading={false}
+          />
+        </QueryClientProvider>
+      )
+    }
+    render(<Thread />)
+    const label = screen.getByText('FIBER')
+    expect(label.nextElementSibling?.textContent).toBe('—')
+    cleanup()
+  })
+})

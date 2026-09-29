@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text as sa_text
 
 from backend.agent.llm import make_llm
+from backend.agent.tools.usda import sum_known
 from backend.config import get_tunables
 from backend.db.redis_client import increment_today
 from backend.db.session import get_session
@@ -231,6 +232,11 @@ _NEW_MEAL_LEADINS = tuple(_TUNABLES.routing.new_meal_leadins)
 _NEW_MEAL_EXCLUSIONS = frozenset(_TUNABLES.routing.new_meal_exclusions)
 
 
+def _grams(value: float | None) -> str:
+    """Format a gram value for a card line; unknown (None) shows as "?g"."""
+    return "?g" if value is None else f"{value:.0f}g"
+
+
 def format_confirmation_card(usda_results: list) -> str:
     """Format a human-readable confirmation card from USDA results.
 
@@ -257,11 +263,11 @@ def format_confirmation_card(usda_results: list) -> str:
         if r.estimated:
             lines.append(
                 f"  ≈ {r.food_name} ({r.qty_g:.0f}g) — estimated (not in USDA) — "
-                f"{r.kcal:.0f} kcal · {r.protein_g:.0f}g protein · "
-                f"{r.fiber_g:.0f}g fiber"
+                f"{r.kcal:.0f} kcal · {_grams(r.protein_g)} protein · "
+                f"{_grams(r.fiber_g)} fiber"
             )
             for key in totals:
-                totals[key] += getattr(r, key)
+                totals[key] += getattr(r, key) or 0.0  # unknown adds nothing
             continue
 
         flag = (
@@ -282,11 +288,11 @@ def format_confirmation_card(usda_results: list) -> str:
             )
         lines.append(
             f"  • {r.food_name} ({r.qty_g:.0f}g){flag} — "
-            f"{r.kcal:.0f} kcal · {r.protein_g:.0f}g protein · "
-            f"{r.fiber_g:.0f}g fiber{cand}"
+            f"{r.kcal:.0f} kcal · {_grams(r.protein_g)} protein · "
+            f"{_grams(r.fiber_g)} fiber{cand}"
         )
         for key in totals:
-            totals[key] += getattr(r, key)
+            totals[key] += getattr(r, key) or 0.0  # unknown adds nothing
 
     body = "\n".join(lines)
     summary = (
@@ -357,9 +363,18 @@ def _is_junk(result) -> bool:
         return False
     per100 = 100.0 / result.qty_g
     junk = _TUNABLES.junk
-    sugar_dense = result.sugar_g * per100 >= junk.sugar_density_g
-    fiber_poor = result.fiber_g * per100 < junk.fiber_floor_g
-    sat_fat_dense = result.sat_fat_g * per100 >= junk.sat_fat_density_g
+    # An unknown value (None) never counts as evidence: it can neither make a
+    # food sugar/sat-fat dense nor "fiber poor".
+    sugar_dense = (
+        result.sugar_g is not None and result.sugar_g * per100 >= junk.sugar_density_g
+    )
+    fiber_poor = (
+        result.fiber_g is not None and result.fiber_g * per100 < junk.fiber_floor_g
+    )
+    sat_fat_dense = (
+        result.sat_fat_g is not None
+        and result.sat_fat_g * per100 >= junk.sat_fat_density_g
+    )
     return (sugar_dense and fiber_poor) or sat_fat_dense
 
 
@@ -556,10 +571,10 @@ async def log_meal(
             resolved_corrections.append(c)
     totals = {
         "kcal": round(sum(r.kcal for r in resolved), 1),
-        "protein_g": round(sum(r.protein_g for r in resolved), 1),
-        "carbs_g": round(sum(r.carbs_g for r in resolved), 1),
-        "fat_g": round(sum(r.fat_g for r in resolved), 1),
-        "fiber_g": round(sum(r.fiber_g for r in resolved), 1),
+        "protein_g": round(sum_known(r.protein_g for r in resolved), 1),
+        "carbs_g": round(sum_known(r.carbs_g for r in resolved), 1),
+        "fat_g": round(sum_known(r.fat_g for r in resolved), 1),
+        "fiber_g": round(sum_known(r.fiber_g for r in resolved), 1),
     }
     junk_items = _junk_flags(resolved)["junk_items"]
 

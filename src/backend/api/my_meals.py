@@ -118,6 +118,24 @@ class LogMyMealRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _scaled_macro(stored: dict, macro: str, scale: float) -> float | None:
+    """Scale one stored macro, preserving "unknown" (None) instead of zeroing it.
+
+    A macro is unknown when it is null in the stored ingredient, or named in the
+    ingredient's `unknown_nutrients` (how the API flags a value FDC lacks while
+    still sending legacy clients a numeric 0.0). Ingredients saved before that
+    field existed simply carry whatever number they stored.
+
+    kcal is always a number.
+    """
+    if macro != "kcal":
+        if macro in (stored.get("unknown_nutrients") or ()):
+            return None
+        if macro in stored and stored[macro] is None:
+            return None
+    return round((stored.get(macro) or 0.0) * scale, 2)
+
+
 def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDAResult:
     """Rebuild a USDAResult from a stored ingredient, scaled server-side.
 
@@ -154,7 +172,7 @@ def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDARes
         nutrients=nutrients,
         source=stored.get("source", "USDA"),
         estimated=stored.get("estimated", False),
-        **{m: round(stored.get(m, 0.0) * scale, 2) for m in _SCALED_MACROS},
+        **{m: _scaled_macro(stored, m, scale) for m in _SCALED_MACROS},
     )
 
 

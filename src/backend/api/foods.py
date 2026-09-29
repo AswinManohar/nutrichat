@@ -18,7 +18,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent.tools import usda_local
-from backend.agent.tools.usda import NutrientValue, USDAResult
+from backend.agent.tools.usda import (
+    NULLABLE_MACROS,
+    NutrientValue,
+    USDAResult,
+    scale_macro,
+)
 from backend.auth.supabase import get_current_user_id
 from backend.ratelimit import user_rate_limiter
 
@@ -157,16 +162,8 @@ async def get_food(
 
     scale = qty_g / 100.0
     macros = {
-        field: round(food.macros_per_100g[field] * scale, 2)
-        for field in (
-            "kcal",
-            "protein_g",
-            "carbs_g",
-            "fat_g",
-            "fiber_g",
-            "sugar_g",
-            "sat_fat_g",
-        )
+        field: scale_macro(food.macros_per_100g[field], scale)
+        for field in ("kcal", *NULLABLE_MACROS)
     }
     nutrients = {
         name: NutrientValue(amount=round(v["amount"] * scale, 3), unit=v["unit"])

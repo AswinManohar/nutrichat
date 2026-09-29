@@ -18,8 +18,14 @@ export interface MealItem {
   source_dish?: string | null;
   /** True for a prepared/multi-ingredient dish that can be broken into ingredients */
   is_composite?: boolean;
-  sugar_g?: number;
-  sat_fat_g?: number;
+  /** null = FDC reports no value (unknown, not zero) */
+  sugar_g?: number | null;
+  sat_fat_g?: number | null;
+  /**
+   * Promoted macros FDC has no value for. Their numeric field is sent as 0 for
+   * older clients; treat them as unknown, not zero.
+   */
+  unknown_nutrients?: string[];
   /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */
   nutrients?: Record<string, { amount: number; unit: string }>;
 }

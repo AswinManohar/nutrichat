@@ -79,6 +79,15 @@ async def find_saved_meal(user_id: str, text: str) -> UserMeal | None:
     return _best_saved_match(text, meals)
 
 
+def _stored_macro(ing: dict, macro: str) -> float | None:
+    """Read one saved macro; unknown (null / listed unknown) stays None."""
+    if macro != "kcal" and (
+        macro in (ing.get("unknown_nutrients") or ()) or ing.get(macro, 0.0) is None
+    ):
+        return None
+    return float(ing.get(macro, 0.0))
+
+
 def saved_meal_to_results(meal: UserMeal) -> tuple[list[dict], list[dict]]:
     """Rebuild (usda_results, entities) graph state from a saved meal.
 
@@ -96,7 +105,7 @@ def saved_meal_to_results(meal: UserMeal) -> tuple[list[dict], list[dict]]:
                 "qty_g": float(ing["qty_g"]),
                 "match_confidence": float(ing.get("match_confidence", 1.0)),
                 "candidates": ing.get("candidates", []),
-                **{m: float(ing.get(m, 0.0)) for m in _MACROS},
+                **{m: _stored_macro(ing, m) for m in _MACROS},
                 "nutrients": ing.get("nutrients", {}),
                 "source": ing.get("source", "USDA"),
                 "estimated": bool(ing.get("estimated", False)),

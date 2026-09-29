@@ -23,6 +23,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sqlite3
 import sys
 import zlib
@@ -44,7 +45,12 @@ _TARGET_DATA_TYPES: dict[str, int] = {
 }
 _EXPECTED_TOTAL = sum(_TARGET_DATA_TYPES.values())  # 13694
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
+
+# Promoted macro columns that may be NULL (= FDC reports no value). ``kcal`` is
+# excluded: it is resolved through the Atwater fallback chain and stays 0.0 only
+# when FDC truly has no energy figure at all (verify() gates coverage on it).
+_NULLABLE_MACROS = ("protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "sat_fat_g")
 
 _LOG_EVERY_ROWS = 2_000_000
 
@@ -71,7 +77,7 @@ _SPOT_CHECK_QUERIES: tuple[str, ...] = (
 )
 
 _SCHEMA_SQL = """
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 CREATE TABLE food (
     fdc_id           INTEGER PRIMARY KEY,
@@ -79,9 +85,10 @@ CREATE TABLE food (
     data_type        TEXT NOT NULL,
     food_category_id INTEGER,
     publication_date TEXT,
-    kcal REAL NOT NULL, protein_g REAL NOT NULL, carbs_g REAL NOT NULL,
-    fat_g REAL NOT NULL, fiber_g REAL NOT NULL, sugar_g REAL NOT NULL,
-    sat_fat_g REAL NOT NULL,
+    kcal REAL NOT NULL,
+    -- NULL = FDC has no value for this nutrient (unknown, NOT zero).
+    protein_g REAL, carbs_g REAL, fat_g REAL, fiber_g REAL, sugar_g REAL,
+    sat_fat_g REAL,
     nutrients_z    BLOB NOT NULL,
     nutrient_count INTEGER NOT NULL
 );
@@ -90,6 +97,18 @@ CREATE VIRTUAL TABLE food_fts USING fts5(
     description, content='food', content_rowid='fdc_id',
     tokenize="unicode61 remove_diacritics 2"
 );
+
+-- Household serving weights (FDC food_portion): "1 cup" -> 244 g etc.
+CREATE TABLE food_portion (
+    fdc_id      INTEGER NOT NULL,
+    seq_num     INTEGER,
+    amount      REAL NOT NULL,
+    unit        TEXT NOT NULL,
+    description TEXT NOT NULL,
+    modifier    TEXT NOT NULL,
+    gram_weight REAL NOT NULL
+);
+CREATE INDEX food_portion_fdc_id ON food_portion (fdc_id);
 
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
@@ -132,7 +151,7 @@ def resolve_nutrients(
     return result
 
 
-def promote_macros(nutrients: dict[str, dict]) -> dict[str, float]:
+def promote_macros(nutrients: dict[str, dict]) -> dict[str, float | None]:
     """Promote the 7 headline macro columns out of a resolved nutrient map.
 
     Args:
@@ -141,7 +160,8 @@ def promote_macros(nutrients: dict[str, dict]) -> dict[str, float]:
 
     Returns:
         Dict with keys kcal, protein_g, carbs_g, fat_g, fiber_g, sugar_g,
-        sat_fat_g. Missing nutrients default to 0.0. ``kcal`` is resolved via
+        sat_fat_g. A nutrient FDC does not report is ``None`` (unknown), never
+        0.0. ``kcal`` is always a float, resolved via
         ``_energy_kcal``'s Atwater fallback chain rather than the plain
         "Energy" entry alone.
     """
@@ -150,7 +170,7 @@ def promote_macros(nutrients: dict[str, dict]) -> dict[str, float]:
         for key in _ENERGY_KEYS
         if key in nutrients
     }
-    macros = {column: 0.0 for column in _MACRO_MAP.values()}
+    macros: dict[str, float | None] = {column: None for column in _MACRO_MAP.values()}
     for name, column in _MACRO_MAP.items():
         if column == "kcal":
             continue
@@ -176,7 +196,7 @@ def insert_food_row(
     data_type: str,
     food_category_id: int | None,
     publication_date: str | None,
-    macros: dict[str, float],
+    macros: dict[str, float | None],
     nutrients: dict[str, dict],
 ) -> None:
     """Insert one row into ``food`` (FTS index is populated separately).
@@ -321,6 +341,62 @@ def _load_target_foods(
     return foods
 
 
+def _load_portions(
+    zf: ZipFile, prefix: str, target_ids: set[int]
+) -> list[tuple[int, int | None, float, str, str, str, float]]:
+    """Load food_portion.csv (household gram weights) for the target foods.
+
+    Args:
+        zf: Open ZipFile.
+        prefix: Top-level directory prefix inside the archive.
+        target_ids: fdc_ids of the foods being imported.
+
+    Returns:
+        Rows of (fdc_id, seq_num, amount, unit, description, modifier,
+        gram_weight). Rows with a non-positive or unparseable gram weight are
+        dropped. ``unit`` is the measure_unit name, or "" when FDC marks it
+        "undetermined".
+    """
+    units: dict[str, str] = {}
+    reader = _csv_reader(zf, f"{prefix}/measure_unit.csv")
+    header = next(reader)
+    idx = {col: i for i, col in enumerate(header)}
+    for row in reader:
+        name = row[idx["name"]]
+        units[row[idx["id"]]] = "" if name == "undetermined" else name
+
+    reader = _csv_reader(zf, f"{prefix}/food_portion.csv")
+    header = next(reader)
+    idx = {col: i for i, col in enumerate(header)}
+    portions: list[tuple[int, int | None, float, str, str, str, float]] = []
+    for row in reader:
+        if not row or not row[idx["fdc_id"]].isdigit():
+            continue  # blank/malformed line in the FDC export
+        fdc_id = int(row[idx["fdc_id"]])
+        if fdc_id not in target_ids:
+            continue
+        try:
+            grams = float(row[idx["gram_weight"]])
+            amount = float(row[idx["amount"]] or 1.0)
+        except ValueError:
+            continue
+        if grams <= 0 or amount <= 0:
+            continue
+        seq_raw = row[idx["seq_num"]]
+        portions.append(
+            (
+                fdc_id,
+                int(float(seq_raw)) if seq_raw else None,
+                amount,
+                units.get(row[idx["measure_unit_id"]], ""),
+                row[idx["portion_description"]].strip(),
+                row[idx["modifier"]].strip(),
+                grams,
+            )
+        )
+    return portions
+
+
 def _sha256_file(path: Path) -> str:
     """Compute the SHA-256 hex digest of a file, streaming in chunks.
 
@@ -349,18 +425,94 @@ def _release_name_from_zip(zip_path: Path) -> str:
     return zip_path.stem
 
 
+class BuildValidationError(Exception):
+    """Raised when a freshly built database fails validation."""
+
+
+def validate_built_db(db_path: Path, expected_portions: int | None = None) -> None:
+    """Check a freshly built database before it may replace the live one.
+
+    Runs SQLite's integrity check, the per-data_type row counts, FTS/food row
+    parity, and (when given) the food_portion row count.
+
+    Args:
+        db_path: Path to the candidate database.
+        expected_portions: Expected number of food_portion rows, or None to
+            skip that check.
+
+    Raises:
+        BuildValidationError: If any check fails.
+    """
+    conn = sqlite3.connect(str(db_path))
+    try:
+        result = conn.execute("PRAGMA integrity_check").fetchall()
+        if result != [("ok",)]:
+            raise BuildValidationError(f"integrity_check failed: {result[:3]!r}")
+        for data_type, expected in _TARGET_DATA_TYPES.items():
+            (actual,) = conn.execute(
+                "SELECT COUNT(*) FROM food WHERE data_type = ?", (data_type,)
+            ).fetchone()
+            if actual != expected:
+                raise BuildValidationError(
+                    f"{data_type}: {actual} rows, expected {expected}"
+                )
+        (n_food,) = conn.execute("SELECT COUNT(*) FROM food").fetchone()
+        (n_fts,) = conn.execute("SELECT COUNT(*) FROM food_fts_docsize").fetchone()
+        if n_food != n_fts:
+            raise BuildValidationError(f"FTS rows {n_fts} != food rows {n_food}")
+        (n_portions,) = conn.execute("SELECT COUNT(*) FROM food_portion").fetchone()
+        if expected_portions is not None and n_portions != expected_portions:
+            raise BuildValidationError(
+                f"food_portion: {n_portions} rows, expected {expected_portions}"
+            )
+        if expected_portions and n_portions == 0:
+            raise BuildValidationError("food_portion is empty")
+    except sqlite3.Error as exc:
+        raise BuildValidationError(f"sqlite error during validation: {exc}") from exc
+    finally:
+        conn.close()
+
+
 def build(zip_path: Path, out_path: Path) -> None:
-    """Build the SQLite database from the FDC CSV zip release.
+    """Build the SQLite database from the FDC CSV zip release, atomically.
+
+    The database is built into a sibling temp file, validated, and only then
+    moved over ``out_path`` with ``os.replace`` (atomic on POSIX). Any failure
+    -- unreadable archive, changed release shape, failed validation -- removes
+    the temp file and leaves an existing ``out_path`` exactly as it was.
 
     Args:
         zip_path: Path to the FoodData_Central_csv_*.zip archive.
-        out_path: Path to write the resulting sqlite3 database. Any existing
-            file at this path is overwritten.
+        out_path: Path of the database to create or replace.
+
+    Raises:
+        BuildValidationError: If the built database fails validation.
+        ValueError: If the archive does not have the expected shape.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    if out_path.exists():
-        out_path.unlink()
+    tmp_path = out_path.with_name(out_path.name + ".building")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    try:
+        expected_portions = _build_into(zip_path, tmp_path)
+        validate_built_db(tmp_path, expected_portions)
+        os.replace(tmp_path, out_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    print(f"Built {out_path}", file=sys.stderr)
 
+
+def _build_into(zip_path: Path, out_path: Path) -> int:
+    """Write a fresh database to ``out_path`` (which must not exist).
+
+    Args:
+        zip_path: Path to the FoodData_Central_csv_*.zip archive.
+        out_path: Path of the new database file.
+
+    Returns:
+        The number of food_portion rows written.
+    """
     print(f"Hashing {zip_path} ...", file=sys.stderr)
     source_sha256 = _sha256_file(zip_path)
 
@@ -374,6 +526,10 @@ def build(zip_path: Path, out_path: Path) -> None:
         print("Loading food.csv (target data_types only) ...", file=sys.stderr)
         foods = _load_target_foods(zf, prefix)
         print(f"  kept {len(foods)} foods", file=sys.stderr)
+
+        print("Loading food_portion.csv ...", file=sys.stderr)
+        portions = _load_portions(zf, prefix, set(foods.keys()))
+        print(f"  kept {len(portions)} portions", file=sys.stderr)
 
         print("Streaming food_nutrient.csv ...", file=sys.stderr)
         target_ids = set(foods.keys())
@@ -423,6 +579,11 @@ def build(zip_path: Path, out_path: Path) -> None:
             )
             type_counts[data_type] += 1
 
+        conn.executemany(
+            "INSERT INTO food_portion (fdc_id, seq_num, amount, unit, "
+            "description, modifier, gram_weight) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            portions,
+        )
         conn.execute(
             "INSERT INTO food_fts(rowid, description) "
             "SELECT fdc_id, description FROM food"
@@ -436,6 +597,7 @@ def build(zip_path: Path, out_path: Path) -> None:
             "build_utc": datetime.now(UTC).isoformat(),
             "food_count": str(len(foods)),
             "nutrient_row_count": str(nutrient_row_count),
+            "portion_count": str(len(portions)),
         }
         for data_type, count in type_counts.items():
             meta_rows[f"count_{data_type}"] = str(count)
@@ -450,8 +612,7 @@ def build(zip_path: Path, out_path: Path) -> None:
         conn.commit()
     finally:
         conn.close()
-
-    print(f"Built {out_path}", file=sys.stderr)
+    return len(portions)
 
 
 def _spot_check(conn: sqlite3.Connection, query: str, limit: int = 5) -> list[str]:
@@ -519,6 +680,21 @@ def verify(db_path: Path) -> bool:
         print("  sample zero-kcal foods:", file=sys.stderr)
         for row in zero_kcal:
             print(f"    - {row['description']}", file=sys.stderr)
+
+        print("== Unknown (NULL) macro coverage ==", file=sys.stderr)
+        for column in _NULLABLE_MACROS:
+            (n_null,) = conn.execute(
+                f"SELECT COUNT(*) FROM food WHERE {column} IS NULL"
+            ).fetchone()
+            print(f"  {column}: {n_null} foods unknown", file=sys.stderr)
+        (n_portions,) = conn.execute("SELECT COUNT(*) FROM food_portion").fetchone()
+        (n_with,) = conn.execute(
+            "SELECT COUNT(DISTINCT fdc_id) FROM food_portion"
+        ).fetchone()
+        print(f"  food_portion: {n_portions} rows / {n_with} foods", file=sys.stderr)
+        if n_portions == 0:
+            print("  FAIL: no household portions", file=sys.stderr)
+            ok = False
 
         print("== Required nutrients present ==", file=sys.stderr)
         for name, expected_unit in _VERIFY_NUTRIENTS.items():

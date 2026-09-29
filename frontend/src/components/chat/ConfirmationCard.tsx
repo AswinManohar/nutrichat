@@ -166,6 +166,18 @@ export function ConfirmationCard({
   const total = (key: keyof (typeof scaled)[0]) =>
     visibleIndices.reduce((acc, i) => acc + scaled[i][key], 0)
 
+  // Fiber (and other macros) FDC doesn't report are unknown, not 0. The total
+  // sums only the known items and is marked "+" when some are unknown, or shown
+  // as "—" when none are known.
+  const unknownIn = (key: string) =>
+    visibleIndices.filter((i) => items[i].unknown_nutrients?.includes(key)).length
+  const macroLabel = (key: keyof (typeof scaled)[0]) => {
+    const unknown = unknownIn(key)
+    if (unknown === 0) return `${total(key).toFixed(0)}g`
+    if (unknown === visibleIndices.length) return '—'
+    return `${total(key).toFixed(0)}g+`
+  }
+
   // Only food swaps still need the LLM (they resolve a different food). Removals
   // and quantity/portion edits are applied locally and logged directly.
   const swapCorrections: string[] = []
@@ -477,7 +489,7 @@ export function ConfirmationCard({
           { label: 'PROTEIN', value: `${total('protein_g').toFixed(0)}g` },
           { label: 'CARBS', value: `${total('carbs_g').toFixed(0)}g` },
           { label: 'FAT', value: `${total('fat_g').toFixed(0)}g` },
-          { label: 'FIBER', value: `${total('fiber_g').toFixed(0)}g` },
+          { label: 'FIBER', value: macroLabel('fiber_g') },
         ].map((t) => (
           <div key={t.label} className="flex flex-col items-center py-3 gap-0.5">
             <span className="label-caps text-[9px]">{t.label}</span>

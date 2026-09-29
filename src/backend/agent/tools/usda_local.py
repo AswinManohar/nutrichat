@@ -72,7 +72,9 @@ class LocalMatch:
             name, data_type, kcal_per_100g, protein_g_per_100g. Empty when
             ``lookup`` is not the source (data-model.md CandidateDetail).
         macros_per_100g: Headline macros (kcal, protein_g, carbs_g, fat_g,
-            fiber_g, sugar_g, sat_fat_g), per 100 g, unscaled.
+            fiber_g, sugar_g, sat_fat_g), per 100 g, unscaled. Every entry
+            except kcal is ``None`` when FDC reports no value (unknown, not
+            zero).
         nutrients_per_100g: Full nutrient map, name -> {"amount", "unit"},
             per 100 g, unscaled.
     """
@@ -82,7 +84,7 @@ class LocalMatch:
     match_confidence: float
     candidates: list[str] = field(default_factory=list)
     candidate_details: list[dict] = field(default_factory=list)
-    macros_per_100g: dict[str, float] = field(default_factory=dict)
+    macros_per_100g: dict[str, float | None] = field(default_factory=dict)
     nutrients_per_100g: dict[str, dict] = field(default_factory=dict)
 
 
@@ -359,8 +361,12 @@ def _rank_key(
     )
 
 
-def _load_row(conn: sqlite3.Connection, fdc_id: int) -> tuple[dict[str, float], dict]:
+def _load_row(
+    conn: sqlite3.Connection, fdc_id: int
+) -> tuple[dict[str, float | None], dict]:
     """Load macros and decompressed nutrients for one food, per 100 g.
+
+    NULL columns come back as ``None`` (FDC has no value), never 0.0.
 
     Args:
         conn: Open read-only connection.
@@ -423,7 +429,9 @@ def _load_candidate_summary(conn: sqlite3.Connection, fdc_id: int) -> dict:
         "fdc_id": fdc_id,
         "data_type": _DATA_TYPE_MAP.get(raw_data_type, raw_data_type),
         "kcal_per_100g": kcal,
-        "protein_g_per_100g": protein_g,
+        # Picker hint only, and clients require a number here; FDC reports
+        # protein for essentially every food, so an unknown reads as 0.
+        "protein_g_per_100g": protein_g or 0.0,
     }
 
 
@@ -520,7 +528,7 @@ class LocalFood:
     fdc_id: int
     name: str
     data_type: str
-    macros_per_100g: dict[str, float]
+    macros_per_100g: dict[str, float | None]
     nutrients_per_100g: dict[str, dict]
 
     @property
@@ -529,8 +537,8 @@ class LocalFood:
         return self.macros_per_100g["kcal"]
 
     @property
-    def protein_g_per_100g(self) -> float:
-        """Protein per 100 g, from ``macros_per_100g``."""
+    def protein_g_per_100g(self) -> float | None:
+        """Protein per 100 g, from ``macros_per_100g`` (None if unknown)."""
         return self.macros_per_100g["protein_g"]
 
 
@@ -596,7 +604,7 @@ def search_foods(query: str, limit: int = 10) -> list[LocalFoodHit]:
                 name=description,
                 data_type=data_type,
                 kcal_per_100g=macros["kcal"],
-                protein_g_per_100g=macros["protein_g"],
+                protein_g_per_100g=macros["protein_g"] or 0.0,
             )
         )
     return hits
@@ -633,6 +641,78 @@ def get_food(fdc_id: int) -> LocalFood | None:
         macros_per_100g=macros,
         nutrients_per_100g=nutrients,
     )
+
+
+@dataclass(frozen=True)
+class Portion:
+    """One household serving size for a food (FDC ``food_portion``).
+
+    Attributes:
+        label: Human-readable measure, e.g. "1 cup, chopped" or "1 slice".
+        amount: How many of the measure ``gram_weight`` covers (usually 1).
+        unit: FDC measure unit ("cup", "tablespoon", ...) or "" if undetermined.
+        gram_weight: Grams for ``amount`` of the measure.
+    """
+
+    label: str
+    amount: float
+    unit: str
+    gram_weight: float
+
+    @property
+    def grams_per_unit(self) -> float:
+        """Grams for exactly one of the measure."""
+        return self.gram_weight / self.amount
+
+
+def _portion_label(amount: float, unit: str, description: str, modifier: str) -> str:
+    """Build a display label from the pieces FDC splits a portion into."""
+    if description:
+        base = description
+    else:
+        base = " ".join(part for part in (unit, modifier) if part)
+    if description and description[0].isdigit():
+        return description  # FDC already wrote the quantity ("1 large roll")
+    qty = f"{amount:g}"
+    return f"{qty} {base}".strip() if base else qty
+
+
+def portions_for(fdc_id: int) -> list[Portion]:
+    """Household portion weights (cup, slice, piece, ...) for one food.
+
+    Sync (SQLite); wrap in ``asyncio.to_thread`` on the event loop. A database
+    built before schema v2 has no ``food_portion`` table; that yields an empty
+    list rather than an error.
+
+    Args:
+        fdc_id: USDA FoodData Central id.
+
+    Returns:
+        Portions in FDC sequence order; empty if the food has none.
+
+    Raises:
+        FoodDbUnavailable: If the local database cannot be read.
+    """
+    _require_available()
+    conn = _get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT amount, unit, description, modifier, gram_weight "
+            "FROM food_portion WHERE fdc_id = ? "
+            "ORDER BY COALESCE(seq_num, 999), rowid",
+            (fdc_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [
+        Portion(
+            label=_portion_label(amount, unit, description, modifier),
+            amount=amount,
+            unit=unit,
+            gram_weight=grams,
+        )
+        for amount, unit, description, modifier, grams in rows
+    ]
 
 
 def _row_data_type(conn: sqlite3.Connection, fdc_id: int) -> str:

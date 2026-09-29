@@ -56,8 +56,8 @@ def test_atwater_fallback_when_no_plain_energy() -> None:
     assert macros["kcal"] == 639.0
 
 
-def test_macro_map_promotion_missing_defaults_to_zero() -> None:
-    """Promoted macros map correctly; a missing nutrient defaults to 0.0."""
+def test_macro_map_promotion_missing_is_none() -> None:
+    """Promoted macros map correctly; a missing nutrient is None, not 0.0."""
     rows = [
         (1008, 597.0),
         (1003, 25.0),
@@ -72,7 +72,7 @@ def test_macro_map_promotion_missing_defaults_to_zero() -> None:
     assert macros == {
         "kcal": 597.0,
         "protein_g": 25.0,
-        "carbs_g": 0.0,
+        "carbs_g": None,
         "fat_g": 50.0,
         "fiber_g": 6.0,
         "sugar_g": 10.0,
