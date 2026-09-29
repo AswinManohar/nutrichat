@@ -5,6 +5,7 @@ import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.SessionStatus
 import io.github.jan.supabase.gotrue.SignOutScope
 import io.github.jan.supabase.gotrue.providers.Google
+import io.github.jan.supabase.gotrue.providers.builtin.IDToken
 import io.github.jan.supabase.gotrue.providers.builtin.OTP
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,15 +23,16 @@ import javax.inject.Inject
  * [AuthGateway] backed by the real supabase-kt `Auth` plugin.
  *
  * Magic-link sign-in uses the built-in `OTP` provider with no password,
- * which Supabase treats as a magic link. Google sign-in uses supabase-kt's
- * generic OAuth flow (opens the system browser via a Custom Tab and relies
- * on the `mealsy://auth-callback` deep link to hand control back to the
- * app) rather than the native Credential Manager / ID-token flow, so no
- * extra Google Play Services dependency is needed for this task.
+ * which Supabase treats as a magic link. Google sign-in is native (#32):
+ * [GoogleSignIn] gets an ID token from Credential Manager and exchanges it
+ * via [supabaseIdTokenSignIn]; no browser round-trip.
  */
 class SupabaseAuthGateway
     @Inject
-    constructor(private val auth: Auth) : AuthGateway {
+    constructor(
+        private val auth: Auth,
+        private val googleSignIn: GoogleSignIn,
+    ) : AuthGateway {
         // supabase-kt's own StateFlow<SessionStatus> isn't backed by a scope we
         // control, so mapping it down to our SessionState needs one of our own.
         // SupervisorJob so a mapping failure on one emission can't kill the
@@ -47,7 +49,7 @@ class SupabaseAuthGateway
         }
 
         override suspend fun signInWithGoogle(activity: Activity) {
-            auth.signInWith(Google)
+            googleSignIn.signIn(activity)
         }
 
         override suspend fun refreshCurrentSession(): String? {
@@ -101,4 +103,14 @@ class SupabaseAuthGateway
                 // showing Loading forever.
                 is SessionStatus.NetworkError -> SessionState.SignedOut
             }
+    }
+
+/** [IdTokenSignIn] that exchanges a Google ID token for a Supabase session. */
+fun supabaseIdTokenSignIn(auth: Auth): IdTokenSignIn =
+    IdTokenSignIn { idToken, rawNonce ->
+        auth.signInWith(IDToken) {
+            this.idToken = idToken
+            provider = Google
+            nonce = rawNonce
+        }
     }

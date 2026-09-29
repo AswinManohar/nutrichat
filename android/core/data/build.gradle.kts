@@ -53,6 +53,16 @@ android {
             "SUPABASE_ANON_KEY",
             "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
         )
+
+        // #32: the *Web* OAuth client ID (Google Cloud Console) that Credential
+        // Manager requests ID tokens for and that Supabase's Google provider is
+        // configured with. Read from local.properties, never committed. Blank by
+        // default: GoogleSignIn reports "isn't configured" instead of crashing.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"",
+        )
     }
 
     buildTypes {
@@ -77,6 +87,14 @@ android {
                 "String",
                 "SUPABASE_ANON_KEY",
                 "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"",
+            )
+            // Same as debug: a release without GOOGLE_WEB_CLIENT_ID resolves to
+            // "" (never a leaked default) and Google sign-in reports
+            // "isn't configured" rather than attempting a doomed request.
+            buildConfigField(
+                "String",
+                "GOOGLE_WEB_CLIENT_ID",
+                "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"",
             )
         }
     }
@@ -133,6 +151,10 @@ dependencies {
     // OkHttp is already a dependency here (Retrofit's client) so reuse it
     // rather than pulling in a second HTTP stack (e.g. ktor-client-android).
     implementation(libs.ktor.client.okhttp)
+
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
 
     implementation(libs.kotlinx.coroutines.android)
 
