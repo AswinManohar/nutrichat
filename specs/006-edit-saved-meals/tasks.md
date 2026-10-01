@@ -310,7 +310,7 @@ Android give the same numbers.
 **Independent Test**: Quickstart scenario 5, done on web and on Android with
 the same edits. The two saved meals must match.
 
-- [ ] T028 [US2] Apply the portion when saving in `src/backend/api/my_meals.py`:
+- [X] T028 [US2] Apply the portion when saving in `src/backend/api/my_meals.py`:
   - Add `portion: float = Field(default=1.0, gt=0)` to `SaveMealRequest`.
   - In `save_meal`, store `_build_ingredients(req.ingredients, req.portion)`
     and compute the totals from the built dicts.
@@ -528,7 +528,7 @@ at 90% or more.
   - **Logging**: wrap the call in `logfire.span("resolve_ingredient", ...)`
     recording `mode`, `n_foods`, `amount_stated`, `source`, `estimated` and
     `latency_ms`. Never log the user's text beyond its length.
-- [ ] T050 [US4] Add `POST /my-meals/resolve-ingredient` to
+- [X] T050 [US4] Add `POST /my-meals/resolve-ingredient` to
   `src/backend/api/my_meals.py` (contract section "NEW: POST
   /my-meals/resolve-ingredient").
   - **Rate limit**: register it **before** the `/{meal_id}` routes, with
@@ -565,7 +565,7 @@ at 90% or more.
     - the lookup returning `estimated=True` passes through.
   - **Route cases** (TestClient): 402, 422 rephrase, 422 when `replacing` is
     missing on a swap, and 503 bodies match the contract.
-- [ ] T052 [US4] Run `pytest tests/test_replace_ingredient.py
+- [X] T052 [US4] Run `pytest tests/test_replace_ingredient.py
   tests/test_my_meals_api.py -q`, then `black` and `ruff`. Fix any failures.
 
 ### Eval gate for User Story 4 (SC-007)

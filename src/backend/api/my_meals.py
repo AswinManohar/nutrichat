@@ -2,20 +2,36 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from backend.agent.tools.decompose import normalize_meal_name
 from backend.agent.tools.meals import MEAL_CATEGORIES, MealLogResult, log_meal
+from backend.agent.tools.replace_ingredient import (
+    QuotaExhausted,
+    RephraseRequired,
+    ReplacingIngredient,
+    ResolveUnavailable,
+    resolve_ingredient,
+)
 from backend.agent.tools.saved_meals import find_saved_meal  # re-exported for callers
 from backend.agent.tools.usda import USDAResult
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog, UserMeal
 from backend.db.redis_client import current_day_bounds
 from backend.db.session import get_session
+from backend.quota import UPGRADE_MSG
+from backend.ratelimit import user_rate_limiter
 
 __all__ = ["router", "find_saved_meal"]
 
@@ -58,6 +74,7 @@ class IngredientIn(BaseModel):
 class SaveMealRequest(BaseModel):
     name: str = Field(min_length=1)
     ingredients: list[IngredientIn] = Field(min_length=1)
+    portion: float = Field(default=1.0, gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +95,33 @@ class UpdateMealRequest(BaseModel):
         if value.tzinfo is None:
             raise ValueError("expected_updated_at must include a timezone")
         return value
+
+
+class ResolveIngredientRequest(BaseModel):
+    """Free-text ingredient edit for the saved-meal editor."""
+
+    mode: Literal["swap", "add"]
+    text: str = Field(min_length=1, max_length=200)
+    meal_name: str = Field(min_length=1, max_length=120)
+    replacing: ReplacingIngredient | None = None
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @model_validator(mode="after")
+    def _check_replacing(self) -> Self:
+        """`replacing` is required for swap and must be absent for add."""
+        if self.mode == "swap" and self.replacing is None:
+            raise ValueError("replacing is required when mode is swap")
+        if self.mode == "add" and self.replacing is not None:
+            raise ValueError("replacing must be absent when mode is add")
+        return self
+
+
+class ResolveIngredientResponse(BaseModel):
+    item: USDAResult
+    unit: str
+    amount_stated: bool
+    kept_previous_qty: bool
 
 
 class MyMealSummary(BaseModel):
@@ -266,6 +310,49 @@ async def list_meals(
         ]
 
 
+@router.post(
+    "/resolve-ingredient",
+    dependencies=[
+        Depends(user_rate_limiter("resolve_ingredient", limit=20, window_s=60))
+    ],
+)
+async def resolve_ingredient_route(
+    req: ResolveIngredientRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> ResolveIngredientResponse:
+    """Turn free text into one card item for the editor (costs 1 credit).
+
+    Stateless: never changes a saved meal; the editor saves through PUT.
+    """
+    try:
+        resolved = await resolve_ingredient(
+            user_id, req.mode, req.text, req.meal_name, req.replacing
+        )
+    except QuotaExhausted:
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "quota_exhausted", "message": UPGRADE_MSG},
+        ) from None
+    except RephraseRequired:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "rephrase",
+                "message": "Describe one food, e.g. 'brown rice' or '1 tbsp ghee'.",
+            },
+        ) from None
+    except ResolveUnavailable:
+        raise HTTPException(
+            status_code=503, detail={"code": "resolve_unavailable"}
+        ) from None
+    return ResolveIngredientResponse(
+        item=resolved.item,
+        unit=resolved.unit,
+        amount_stated=resolved.amount_stated,
+        kept_previous_qty=resolved.kept_previous_qty,
+    )
+
+
 @router.get("/{meal_id}")
 async def get_meal(
     meal_id: str, user_id: str = Depends(get_current_user_id)
@@ -335,8 +422,7 @@ async def save_meal(
     normalized = normalize_meal_name(req.name)
     if not normalized:
         raise HTTPException(status_code=422, detail="Meal name is empty")
-    # Stored verbatim (T028 switches this to _build_ingredients).
-    ingredients = [i.model_dump(exclude={"target_qty_g"}) for i in req.ingredients]
+    ingredients = _build_ingredients(req.ingredients, req.portion)
     totals = _totals(ingredients)
 
     async with get_session()() as session:
