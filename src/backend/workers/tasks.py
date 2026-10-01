@@ -33,7 +33,6 @@ from backend.db.models import (
     UserGoal,
     UserMemory,
 )
-from backend.db.redis_client import reset_day_key
 from backend.db.session import dispose_engine, get_session
 from backend.observability import configure_observability
 
@@ -51,12 +50,6 @@ celery_app.conf.timezone = _TUNABLES.day.timezone
 celery_app.conf.enable_utc = False
 
 celery_app.conf.beat_schedule = {
-    # Today's totals are derived from meal_log and roll over on their own at
-    # the reset hour; this cron only clears the legacy Redis cache key.
-    "reset-day-keys": {
-        "task": "backend.workers.tasks.reset_day_keys",
-        "schedule": crontab(hour=1, minute=0),
-    },
     "aggregate-daily-summary": {
         "task": "backend.workers.tasks.aggregate_daily_summary",
         "schedule": crontab(hour=1, minute=15),
@@ -533,27 +526,6 @@ def send_daily_summary_telegram(target_date: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# reset_day_keys
-# ---------------------------------------------------------------------------
-
-
-async def _reset_day_keys() -> None:
-    session_factory = get_session()
-    async with session_factory() as session:
-        result = await session.execute(select(UserGoal.user_id))
-        user_ids = result.scalars().all()
-
-    for user_id in user_ids:
-        await reset_day_key(user_id)
-
-
-@celery_app.task(name="backend.workers.tasks.reset_day_keys")
-def reset_day_keys() -> None:
-    """Clear every user's Redis daily-totals key at midnight."""
-    _run(_reset_day_keys())
-
-
-# ---------------------------------------------------------------------------
 # send_push_fcm / send_daily_summary_push
 # ---------------------------------------------------------------------------
 
@@ -614,7 +586,6 @@ __all__ = [
     "build_weekly_summary",
     "build_nutrient_checkup",
     "send_daily_summary_telegram",
-    "reset_day_keys",
     "send_push_fcm",
     "send_daily_summary_push",
 ]

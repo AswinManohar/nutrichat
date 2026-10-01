@@ -11,7 +11,6 @@ from backend.workers.tasks import (
     build_weekly_summary,
     embed_meal_summary,
     extract_and_store_facts,
-    reset_day_keys,
 )
 
 
@@ -182,27 +181,6 @@ def test_build_weekly_summary_computes_weak_spots_and_missed_meals():
     assert "protein" in params["weak_spots"]
     assert "fiber" in params["weak_spots"]
     assert set(params["missed_meals"]) == {"breakfast", "dinner"}
-
-
-def test_reset_day_keys_resets_all_users():
-    scalars_result = MagicMock()
-    scalars_result.scalars.return_value.all.return_value = ["user-1", "user-2"]
-
-    session = MagicMock()
-    session.execute = AsyncMock(return_value=scalars_result)
-    factory = _mock_session_factory(session)
-
-    with (
-        patch("backend.workers.tasks.get_session", return_value=factory),
-        patch(
-            "backend.workers.tasks.reset_day_key", new_callable=AsyncMock
-        ) as reset_mock,
-    ):
-        reset_day_keys()
-
-    assert reset_mock.await_count == 2
-    reset_mock.assert_any_await("user-1")
-    reset_mock.assert_any_await("user-2")
 
 
 def test_build_nutrient_checkup_upserts_active_users():

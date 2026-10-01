@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import meals as meals_api
-from backend.db.redis_client import TodayTotals, get_today_totals, increment_today
+from backend.db.redis_client import TodayTotals, get_today_totals
 from tests.auth_helpers import with_header_auth
 
 _USER = "00000000-0000-0000-0000-000000000001"
@@ -50,35 +50,6 @@ async def test_get_today_totals_includes_carbs_and_fat():
         fiber_g=20.0,
         n_meals=3,
     )
-
-
-# ---------------------------------------------------------------------------
-# increment_today() — Redis hash write
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_increment_today_writes_carbs_and_fat_fields():
-    pipe = MagicMock()
-    pipe.hincrbyfloat = MagicMock()
-    pipe.hincrby = MagicMock()
-    pipe.expire = MagicMock()
-    pipe.execute = AsyncMock(return_value=[100.0, 10.0, 20.0, 5.0, 2.0, 1])
-    pipe.__aenter__ = AsyncMock(return_value=pipe)
-    pipe.__aexit__ = AsyncMock(return_value=False)
-
-    client = MagicMock()
-    client.pipeline = MagicMock(return_value=pipe)
-
-    with patch("backend.db.redis_client.get_redis", return_value=client):
-        totals = await increment_today(
-            _USER, kcal=100.0, protein_g=10.0, fiber_g=2.0, carbs_g=20.0, fat_g=5.0
-        )
-
-    pipe.hincrbyfloat.assert_any_call("today:" + _USER, "carbs_g", 20.0)
-    pipe.hincrbyfloat.assert_any_call("today:" + _USER, "fat_g", 5.0)
-    assert totals.carbs_g == pytest.approx(20.0)
-    assert totals.fat_g == pytest.approx(5.0)
 
 
 # ---------------------------------------------------------------------------

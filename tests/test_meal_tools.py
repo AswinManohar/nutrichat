@@ -168,7 +168,6 @@ async def test_log_meal_returns_result():
         patch(
             "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
         ) as mock_insert,
-        patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock),
         patch("backend.agent.tools.meals.embed_meal_summary"),
     ):
         mock_insert.return_value = "test-meal-uuid"
@@ -204,7 +203,6 @@ async def test_log_meal_excludes_misses():
         patch(
             "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
         ) as mock_insert,
-        patch("backend.agent.tools.meals.increment_today", new_callable=AsyncMock),
         patch("backend.agent.tools.meals.embed_meal_summary"),
     ):
         mock_insert.return_value = "uuid-2"

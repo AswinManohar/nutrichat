@@ -120,7 +120,7 @@ flaky (random 404s) so the local DB is primary.
 ### 4.4 Coaching (`agent/coaching.py`, Pydantic AI)
 
 `parse_query` (Gemini Flash, thinking off, structured `QueryParsed`) →
-`fetch_data` (Redis `today:{user}` for today/macro-only questions, else Postgres via
+`fetch_data` (Postgres: `get_today_totals` for today/macro-only questions, else
 `tools/history.py`) → `generate_response` (Gemini Flash, thinking **on**). Prompts
 in `config/prompts/coaching_*.md`.
 
@@ -170,7 +170,6 @@ Day boundary: `Europe/Oslo`, resets at 01:00 (`current_day_bounds()`).
 
 | Key | Purpose | TTL |
 |---|---|---|
-| `today:{user_id}` | hash kcal/protein_g/fiber_g/n_meals — write-through cache; Postgres is authoritative | 24 h |
 | `ratelimit:{scope}:{identity}` | fixed-window counters | window |
 | `tgthread:{chat_id}` / `tgedit:{chat_id}` | Telegram thread + edit state | 24 h / 30 min |
 | `tglink:code:*` | account-link codes | short |
@@ -183,7 +182,6 @@ Timezone `Europe/Oslo`, `enable_utc=False`. Each task runs its async body with
 
 | Beat | Task |
 |---|---|
-| 01:00 daily | `reset_day_keys` — clear `today:*` |
 | 01:15 | `aggregate_daily_summary` |
 | 01:30 | `build_nutrient_checkup` |
 | 07:00 | `send_daily_summary_telegram` |
@@ -245,7 +243,7 @@ Frontend: `VITE_API_URL VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_APP_URL`.
 
 1. **Interrupt-before-write.** The graph pauses after `present`; the user's confirmation resumes it. Nothing hits `meal_log` unconfirmed.
 2. **Local USDA first.** Bundled SQLite FTS5 replaces the unreliable FDC API; cache + LLM estimate are the tail.
-3. **Postgres is truth, Redis is a hint.** `today:*` is write-through and can be dropped; totals are recomputed from `meal_log`.
+3. **Postgres is truth, Redis is a hint.** Today's totals are always computed from `meal_log` (`get_today_totals`); Redis holds no copy of them.
 4. **One image, three roles.** `PROC` switch keeps deploys simple; Telegram in prod rides the web process.
 5. **Keyword prefilter before LLM intent.** Cheap, deterministic routing for obvious cases; the LLM only breaks ties.
 6. **Two agent frameworks on purpose.** LangGraph for the stateful, interruptible logging flow; Pydantic AI for coaching, which keeps its own short Redis conversation memory instead of sharing the LangGraph checkpoint (pedagogical comparison).

@@ -17,7 +17,6 @@ from sqlalchemy import text as sa_text
 from backend.agent.llm import make_llm
 from backend.agent.tools.usda import sum_known
 from backend.config import get_tunables
-from backend.db.redis_client import increment_today
 from backend.db.session import get_session
 from backend.workers.tasks import embed_meal_summary
 
@@ -588,14 +587,6 @@ async def log_meal(
             label,
             client_request_id,
             resolved_corrections,
-        )
-        await increment_today(
-            user_id,
-            kcal=totals["kcal"],
-            protein_g=totals["protein_g"],
-            fiber_g=totals["fiber_g"],
-            carbs_g=totals["carbs_g"],
-            fat_g=totals["fat_g"],
         )
         # Best-effort embedding for history search; a broker outage (e.g. Redis
         # down) must never fail the meal log the user just confirmed.

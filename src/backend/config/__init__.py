@@ -90,12 +90,6 @@ class SummariesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class RedisConfig(BaseModel):
-    today_key_ttl_s: int = Field(gt=0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class DayConfig(BaseModel):
     """Defines the rolling 'nutrition day' boundary for daily totals."""
 
@@ -198,7 +192,6 @@ class Tunables(BaseModel):
     junk: JunkConfig
     memory: MemoryConfig
     summaries: SummariesConfig
-    redis: RedisConfig
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig

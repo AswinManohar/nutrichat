@@ -238,14 +238,6 @@ summaries:
   # per week is reported as missed/weak in weekly_summary.
   missed_meal_min_days: 4
 
-redis:
-  # TTL (seconds) on the per-user `today:{user_id}` hash. Refreshed on
-  # every meal log. Today's totals are now derived authoritatively from
-  # meal_log (see day.* below); this hash is a write-through cache that the
-  # 01:00 reset_day_keys cron also clears.
-  # Used in: db/redis_client.py increment_today
-  today_key_ttl_s: 86400
-
 day:
   # The rolling "nutrition day" for daily totals. Today's progress resets at
   # reset_hour, local time in `timezone`; meals logged between midnight and

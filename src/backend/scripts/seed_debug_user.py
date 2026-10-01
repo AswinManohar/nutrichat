@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from backend.db.session import get_session, dispose_engine
-from backend.db.redis_client import reset_day_key
 from backend.db.models import UserGoal
 
 TARGET_USER_ID = "00000000-0000-0000-0000-000000000000"
@@ -312,13 +311,6 @@ async def main():
             
         print("Daily summaries successfully updated.")
         
-    # 5. Reset Redis cache key for target user
-    print("Resetting Redis cache key...")
-    try:
-        await reset_day_key(TARGET_USER_ID)
-        print("Redis cache key successfully reset.")
-    except Exception as e:
-        print(f"Note: Redis reset failed (maybe Redis is not running): {e}")
         
     await dispose_engine()
 

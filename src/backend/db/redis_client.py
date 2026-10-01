@@ -16,7 +16,6 @@ from backend.core import nutrition_day as _nd
 logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
-_TODAY_KEY_TTL_S = _TUNABLES.redis.today_key_ttl_s
 _COACHING_HISTORY_TURNS = _TUNABLES.memory.coaching_history_turns
 _COACHING_HISTORY_TTL_S = _TUNABLES.memory.coaching_history_ttl_s
 
@@ -101,49 +100,6 @@ async def get_today_totals(user_id: str) -> TodayTotals:
         fiber_g=float(fiber_g),
         n_meals=int(n_meals),
     )
-
-
-async def increment_today(
-    user_id: str,
-    kcal: float,
-    protein_g: float,
-    fiber_g: float,
-    carbs_g: float = 0.0,
-    fat_g: float = 0.0,
-) -> TodayTotals:
-    """
-    Pipelines increment transactions preventing double-submits.
-    Automatically refreshes the 24h key TTL safely tracking macros.
-    """
-    client = get_redis()
-    key = f"today:{user_id}"
-
-    async with client.pipeline(transaction=True) as pipe:
-        pipe.hincrbyfloat(key, "kcal", kcal)
-        pipe.hincrbyfloat(key, "protein_g", protein_g)
-        pipe.hincrbyfloat(key, "carbs_g", carbs_g)
-        pipe.hincrbyfloat(key, "fat_g", fat_g)
-        pipe.hincrbyfloat(key, "fiber_g", fiber_g)
-        pipe.hincrby(key, "n_meals", 1)
-        pipe.expire(key, _TODAY_KEY_TTL_S)  # Safety-net TTL; midnight cron also deletes
-        results = await pipe.execute()
-
-    # Map the returning mapped pipe responses securely:
-    return TodayTotals(
-        kcal=float(results[0]),
-        protein_g=float(results[1]),
-        carbs_g=float(results[2]),
-        fat_g=float(results[3]),
-        fiber_g=float(results[4]),
-        n_meals=int(results[5]),
-    )
-
-
-async def reset_day_key(user_id: str) -> None:
-    """Unlink function utilized typically by Celery cron cleanup at midnight."""
-    client = get_redis()
-    key = f"today:{user_id}"
-    await client.delete(key)
 
 
 # ---------------------------------------------------------------------------
