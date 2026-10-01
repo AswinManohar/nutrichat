@@ -19,12 +19,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.agent.tools import usda_local
 from backend.api import foods
-from backend.auth.supabase import get_current_user_id
 from backend.scripts.build_usda_db import create_schema, insert_food_row
 
 _ROWS: list[tuple[int, str]] = [
@@ -82,17 +80,9 @@ def fixture_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     usda_local._local = usda_local.threading.local()
 
 
-def _make_app(*, authed: bool = True) -> FastAPI:
-    app = FastAPI()
-    app.include_router(foods.router)
-    if authed:
-        app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    return app
-
-
 @pytest.fixture
-def client(fixture_db: Path) -> TestClient:
-    return TestClient(_make_app())
+def client(fixture_db: Path, app_factory) -> TestClient:
+    return TestClient(app_factory(foods.router))
 
 
 # --------------------------------------------------------------------------
@@ -100,8 +90,8 @@ def client(fixture_db: Path) -> TestClient:
 # --------------------------------------------------------------------------
 
 
-def test_search_requires_auth(fixture_db: Path) -> None:
-    client = TestClient(_make_app(authed=False))
+def test_search_requires_auth(fixture_db: Path, app_factory) -> None:
+    client = TestClient(app_factory(foods.router, user_id=None))
     resp = client.get("/foods/search", params={"q": "toast"})
     assert resp.status_code == 401
 
@@ -175,11 +165,11 @@ def test_search_no_match_returns_empty_results(client: TestClient) -> None:
 
 
 def test_search_503_when_db_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, app_factory
 ) -> None:
     monkeypatch.setenv("USDA_DB_PATH", "/nonexistent/path/usda.sqlite3")
     usda_local._local = usda_local.threading.local()
-    client = TestClient(_make_app())
+    client = TestClient(app_factory(foods.router))
     resp = client.get("/foods/search", params={"q": "toast"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "food_search_unavailable"
@@ -224,10 +214,12 @@ def test_get_food_unknown_fdc_id_is_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_get_food_503_when_db_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_food_503_when_db_unavailable(
+    monkeypatch: pytest.MonkeyPatch, app_factory
+) -> None:
     monkeypatch.setenv("USDA_DB_PATH", "/nonexistent/path/usda.sqlite3")
     usda_local._local = usda_local.threading.local()
-    client = TestClient(_make_app())
+    client = TestClient(app_factory(foods.router))
     resp = client.get("/foods/1018", params={"qty_g": 100})
     assert resp.status_code == 503
     usda_local._local = usda_local.threading.local()

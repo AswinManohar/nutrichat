@@ -6,12 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.agent import orchestrator
 from backend.api import meals as meals_api
-from tests.auth_helpers import with_header_auth
 
 # Note: asyncio_mode = "auto" (pyproject.toml) runs async def tests without
 # needing an explicit marker; the API-boundary tests below are sync
@@ -84,16 +82,11 @@ async def test_paused_returns_card():
 # ---------------------------------------------------------------------------
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(meals_api.router)
-    app.state.checkpointer = object()
-    return app
-
-
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    return TestClient(with_header_auth(_make_app()))
+def client(monkeypatch: pytest.MonkeyPatch, app_factory) -> TestClient:
+    app = app_factory(meals_api.router, header_auth=True)
+    app.state.checkpointer = object()
+    return TestClient(app)
 
 
 def test_pending_thread_id_namespaced_with_user_id(client: TestClient) -> None:

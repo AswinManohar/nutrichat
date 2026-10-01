@@ -17,14 +17,12 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
 from backend.agent.graph import build_graph
 from backend.agent.tools.meals import MealLogResult
 from backend.api import meals
-from backend.auth.supabase import get_current_user_id
 
 _USER = "user-1"
 _CONVO = "convo-1"
@@ -92,22 +90,16 @@ async def _seed_pending_card(checkpointer, user_id: str, thread_id: str) -> None
     )
 
 
-def _make_app(checkpointer) -> FastAPI:
-    app = FastAPI()
-    app.include_router(meals.router)
-    app.dependency_overrides[get_current_user_id] = lambda: _USER
-    app.state.checkpointer = checkpointer
-    return app
-
-
 @pytest.fixture
 def checkpointer() -> InMemorySaver:
     return InMemorySaver()
 
 
 @pytest.fixture
-def client(checkpointer: InMemorySaver) -> TestClient:
-    return TestClient(_make_app(checkpointer))
+def client(checkpointer: InMemorySaver, app_factory) -> TestClient:
+    app = app_factory(meals.router, user_id=_USER)
+    app.state.checkpointer = checkpointer
+    return TestClient(app)
 
 
 def test_pending_card_resolved_after_log_items(

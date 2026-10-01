@@ -11,13 +11,6 @@ from sqlalchemy.exc import IntegrityError
 
 from backend.agent.tools.meals import MealLogResult
 from backend.api import meals
-from backend.auth.supabase import get_current_user_id
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(meals.router)
-    return app
 
 
 def _item(
@@ -63,14 +56,13 @@ def _result() -> MealLogResult:
     )
 
 
-def _app_with_auth() -> tuple[FastAPI, AsyncMock]:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
+def _app_with_auth(app_factory) -> tuple[FastAPI, AsyncMock]:
+    app = app_factory(meals.router)
     return app, AsyncMock(return_value=_result())
 
 
-def test_requires_auth() -> None:
-    client = TestClient(_make_app())
+def test_requires_auth(app_factory) -> None:
+    client = TestClient(app_factory(meals.router, user_id=None))
     resp = client.post(
         "/meals/log-items",
         json={"meal_type": "lunch", "items": [_item("rice", 150, 150, 200)]},
@@ -78,8 +70,8 @@ def test_requires_auth() -> None:
     assert resp.status_code == 401
 
 
-def test_logs_with_gram_and_portion_scaling() -> None:
-    app, logged = _app_with_auth()
+def test_logs_with_gram_and_portion_scaling(app_factory) -> None:
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     # rice base 150 → target 300 (2x) × portion 1.5 = 3x scale.
     with patch("backend.api.meals.persist_meal", logged):
@@ -99,8 +91,8 @@ def test_logs_with_gram_and_portion_scaling() -> None:
     assert logged.call_args.args[2] == "dinner"
 
 
-def test_label_prefers_source_dish() -> None:
-    app, logged = _app_with_auth()
+def test_label_prefers_source_dish(app_factory) -> None:
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     with patch("backend.api.meals.persist_meal", logged):
         resp = client.post(
@@ -117,9 +109,9 @@ def test_label_prefers_source_dish() -> None:
     assert logged.call_args.kwargs["label"] == "biryani"
 
 
-def test_only_sent_items_logged() -> None:
+def test_only_sent_items_logged(app_factory) -> None:
     # The frontend drops removed items; the endpoint logs exactly what it gets.
-    app, logged = _app_with_auth()
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     with patch("backend.api.meals.persist_meal", logged):
         resp = client.post(
@@ -131,8 +123,8 @@ def test_only_sent_items_logged() -> None:
     assert [r.food_name for r in results] == ["chicken"]
 
 
-def test_bad_meal_type_422() -> None:
-    app, logged = _app_with_auth()
+def test_bad_meal_type_422(app_factory) -> None:
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     with patch("backend.api.meals.persist_meal", logged):
         resp = client.post(
@@ -143,15 +135,15 @@ def test_bad_meal_type_422() -> None:
     logged.assert_not_called()
 
 
-def test_empty_items_422() -> None:
-    app, _ = _app_with_auth()
+def test_empty_items_422(app_factory) -> None:
+    app, _ = _app_with_auth(app_factory)
     client = TestClient(app)
     resp = client.post("/meals/log-items", json={"meal_type": "lunch", "items": []})
     assert resp.status_code == 422
 
 
-def test_zero_target_qty_422() -> None:
-    app, _ = _app_with_auth()
+def test_zero_target_qty_422(app_factory) -> None:
+    app, _ = _app_with_auth(app_factory)
     client = TestClient(app)
     resp = client.post(
         "/meals/log-items",
@@ -184,8 +176,8 @@ def _existing_row() -> SimpleNamespace:
     )
 
 
-def test_log_items_dedupes_on_client_request_id() -> None:
-    app, logged = _app_with_auth()
+def test_log_items_dedupes_on_client_request_id(app_factory) -> None:
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     body = {
         "meal_type": "lunch",
@@ -224,7 +216,7 @@ def test_log_items_dedupes_on_client_request_id() -> None:
     logged.assert_called_once()
 
 
-def test_log_items_race_duplicate_falls_back_to_existing_row() -> None:
+def test_log_items_race_duplicate_falls_back_to_existing_row(app_factory) -> None:
     """Exercises the race-path IntegrityError branch in log_items.
 
     Simulates two concurrent replays both passing the pre-select (both see
@@ -232,7 +224,7 @@ def test_log_items_race_duplicate_falls_back_to_existing_row() -> None:
     unique-index race and must fall back to re-selecting the winner instead
     of surfacing a 500.
     """
-    app, _ = _app_with_auth()
+    app, _ = _app_with_auth(app_factory)
     client = TestClient(app)
     body = {
         "meal_type": "lunch",
@@ -263,9 +255,9 @@ def test_log_items_race_duplicate_falls_back_to_existing_row() -> None:
     assert find_mock.call_count == 2
 
 
-def test_log_items_without_client_request_id_still_logs() -> None:
+def test_log_items_without_client_request_id_still_logs(app_factory) -> None:
     """No idempotency key -> behaves exactly like before (no dedup lookup)."""
-    app, logged = _app_with_auth()
+    app, logged = _app_with_auth(app_factory)
     client = TestClient(app)
     with (
         patch("backend.api.meals.persist_meal", logged),
