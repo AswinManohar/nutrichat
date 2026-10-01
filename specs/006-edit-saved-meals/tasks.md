@@ -256,7 +256,7 @@ recall it in chat by the new name. Both must show the edited version.
   - Call `myMealsRefreshSignal.notifyChanged()` on `Saved`.
   - Add cases to
     `android/core/data/src/test/kotlin/app/mealsy/data/repo/MyMealsRepositoryTest.kt`.
-- [ ] T023 [P] [US1] Create
+- [X] T023 [P] [US1] Create
   `android/core/domain/src/main/kotlin/app/mealsy/domain/EditMealState.kt`,
   a pure data class modeled on `CustomizeSheetState`.
   - Fields: `mealId`, `baseUpdatedAt`, `name`, `rows: List<EditRow(item,
