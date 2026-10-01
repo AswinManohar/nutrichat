@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from backend.agent.tools.decompose import normalize_meal_name
 from backend.agent.tools.meals import MEAL_CATEGORIES, MealLogResult, log_meal
@@ -59,6 +60,24 @@ class SaveMealRequest(BaseModel):
     ingredients: list[IngredientIn] = Field(min_length=1)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class UpdateMealRequest(BaseModel):
+    """Replace a saved meal's name and ingredients (optimistic concurrency)."""
+
+    name: str = Field(min_length=1, max_length=120)
+    expected_updated_at: datetime
+    ingredients: list[IngredientIn] = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("expected_updated_at")
+    @classmethod
+    def _require_tz(cls, value: datetime) -> datetime:
+        """Reject naive datetimes: they cannot be compared to timestamptz."""
+        if value.tzinfo is None:
+            raise ValueError("expected_updated_at must include a timezone")
+        return value
 
 
 class MyMealSummary(BaseModel):
@@ -223,17 +242,28 @@ async def list_meals(
 
         today_start, today_end = current_day_bounds()
         label_result = await session.execute(
-            select(MealLog.label).where(
+            select(
+                MealLog.label,
+                MealLog.flags["saved_meal_id"].astext.label("saved_meal_id"),
+            ).where(
                 MealLog.user_id == user_id,
                 MealLog.logged_at >= today_start,
                 MealLog.logged_at < today_end,
                 MealLog.deleted_at.is_(None),
-                MealLog.label.isnot(None),
             )
         )
-        logged_labels: set[str] = {row.label for row in label_result.all()}
+        log_rows = label_result.all()
+        logged_labels: set[str] = {r.label for r in log_rows if r.label is not None}
+        logged_ids: set[str] = {
+            r.saved_meal_id for r in log_rows if r.saved_meal_id is not None
+        }
 
-        return [_summary(m, logged_today=m.name in logged_labels) for m in rows]
+        # Match by the saved_meal_id flag (survives renames) or, for legacy
+        # logs without the flag, by label.
+        return [
+            _summary(m, logged_today=m.id in logged_ids or m.name in logged_labels)
+            for m in rows
+        ]
 
 
 @router.get("/{meal_id}")
@@ -289,7 +319,13 @@ async def log_my_meal(
         raise HTTPException(status_code=422, detail="No ingredients to log")
 
     results = [_scaled_result(s, qty, req.portion) for s, qty in kept]
-    return await log_meal(user_id, results, req.meal_type, label=meal_name)
+    return await log_meal(
+        user_id,
+        results,
+        req.meal_type,
+        label=meal_name,
+        extra_flags={"saved_meal_id": meal_id},
+    )
 
 
 @router.post("", status_code=201)
@@ -328,6 +364,78 @@ async def save_meal(
         base = _summary(meal)
         return MyMealDetail(
             **base.model_dump(),
+            ingredients=meal.ingredients,
+            updated_at=meal.updated_at,
+        )
+
+
+@router.put("/{meal_id}")
+async def update_meal(
+    meal_id: str,
+    req: UpdateMealRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> MyMealDetail:
+    """Replace a saved meal's name and ingredients.
+
+    Totals are recomputed server-side from the scaled ingredients. A stale
+    `expected_updated_at` yields 409 `meal_changed` with the current meal;
+    a clash with another live meal's name yields 409 `name_taken`. Never
+    touches `meal_log`, so past logs keep their original values.
+    """
+    normalized = normalize_meal_name(req.name)
+    if not normalized:
+        raise HTTPException(status_code=422, detail="Meal name is empty")
+
+    async with get_session()() as session:
+        found = await session.execute(
+            select(UserMeal).where(UserMeal.id == meal_id).with_for_update()
+        )
+        meal = found.scalars().first()
+        if meal is None or meal.user_id != user_id or meal.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="Meal not found")
+
+        if meal.updated_at != req.expected_updated_at:
+            current = MyMealDetail(
+                **_summary(meal).model_dump(),
+                ingredients=meal.ingredients,
+                updated_at=meal.updated_at,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "meal_changed",
+                    "current": current.model_dump(mode="json"),
+                },
+            )
+
+        clash = await session.execute(
+            select(UserMeal.id).where(
+                UserMeal.user_id == user_id,
+                UserMeal.name_normalized == normalized,
+                UserMeal.deleted_at.is_(None),
+                UserMeal.id != meal_id,
+            )
+        )
+        if clash.scalars().first() is not None:
+            raise HTTPException(status_code=409, detail="name_taken")
+
+        ingredients = _build_ingredients(req.ingredients, 1.0)
+        meal.name = req.name.strip()
+        meal.name_normalized = normalized
+        meal.ingredients = ingredients
+        for field, value in _totals(ingredients).items():
+            setattr(meal, field, value)
+        # Explicit so the optimistic-concurrency token always moves.
+        meal.updated_at = datetime.now(UTC)
+
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status_code=409, detail="name_taken") from None
+        await session.refresh(meal)
+        return MyMealDetail(
+            **_summary(meal).model_dump(),
             ingredients=meal.ingredients,
             updated_at=meal.updated_at,
         )

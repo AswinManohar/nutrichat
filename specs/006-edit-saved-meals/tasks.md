@@ -148,13 +148,13 @@ recall it in chat by the new name. Both must show the edited version.
   to `persist_meal` and `log_meal` in `src/backend/agent/tools/meals.py`.
   Merge it into the dict from `_junk_flags(...)` before the `INSERT` (line
   ~478). Document the argument. Existing callers don't change.
-- [ ] T012 [US1] Stamp saved-meal logs in `src/backend/api/my_meals.py`:
+- [X] T012 [US1] Stamp saved-meal logs in `src/backend/api/my_meals.py`:
   - In `log_my_meal`, call `log_meal(..., label=meal_name,
     extra_flags={"saved_meal_id": meal_id})`.
   - In `list_meals`, also select `MealLog.flags["saved_meal_id"].astext`
     for today's live logs. Mark a meal `logged_today` when its id is in that
     set **or** `meal.name` is in the label set (research R6).
-- [ ] T013 [US1] Implement `PUT /my-meals/{meal_id}` in
+- [X] T013 [US1] Implement `PUT /my-meals/{meal_id}` in
   `src/backend/api/my_meals.py` (contract: "NEW: PUT /my-meals/{id}").
   - **Request**: a new `UpdateMealRequest` with `name: str = Field(min_length=1,
     max_length=120)`, `expected_updated_at: datetime`, `ingredients:
@@ -177,7 +177,7 @@ recall it in chat by the new name. Both must show the edited version.
     and raise `409 "name_taken"`.
   - **Response**: return `MyMealDetail` with the new `updated_at`.
   - Never touch `meal_log` (FR-009).
-- [ ] T014 [US1] Run `pytest tests/test_my_meals_api.py
+- [X] T014 [US1] Run `pytest tests/test_my_meals_api.py
   tests/test_my_meals_match.py tests/test_my_meals_log.py -q`, then `black
   src/backend` and `ruff check src/backend --fix`. Fix any failures.
 
