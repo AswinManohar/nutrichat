@@ -103,6 +103,12 @@ interface MealsyApi {
         @Body body: SaveMealRequest,
     ): SavedMealDto
 
+    @PUT("my-meals/{id}")
+    suspend fun updateMyMeal(
+        @Path("id") id: String,
+        @Body body: UpdateMealRequest,
+    ): MyMealDetailDto
+
     @POST("my-meals/{id}/log")
     suspend fun logMyMeal(
         @Path("id") id: String,

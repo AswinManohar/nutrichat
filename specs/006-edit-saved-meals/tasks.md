@@ -238,7 +238,7 @@ recall it in chat by the new name. Both must show the edited version.
 
 ### Android for User Story 1
 
-- [ ] T021 [P] [US1] Add the update call to the Android data layer.
+- [X] T021 [P] [US1] Add the update call to the Android data layer.
   - In `android/core/data/src/main/kotlin/app/mealsy/data/api/Dtos.kt`, add
     `UpdateMealRequest(name, expectedUpdatedAt @SerialName("expected_updated_at"),
     ingredients: List<ItemDto>)`, plus `targetQtyG` serialization on `ItemDto`

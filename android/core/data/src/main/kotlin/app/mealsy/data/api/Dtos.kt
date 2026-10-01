@@ -643,6 +643,43 @@ data class SaveMealRequest(
     val ingredients: List<ItemDto>,
 )
 
+/**
+ * Body for `PUT /my-meals/{id}` (spec 006). [expectedUpdatedAt] is the
+ * `updated_at` the editor loaded; a mismatch yields a 409 `meal_changed`.
+ * Each ingredient is an [ItemDto] whose `target_qty_g` carries the edited
+ * weight (see [toUpdateIngredientDto]); the server rescales and recomputes
+ * totals.
+ */
+@Serializable
+data class UpdateMealRequest(
+    val name: String,
+    @SerialName("expected_updated_at") val expectedUpdatedAt: String,
+    val ingredients: List<ItemDto>,
+)
+
+/**
+ * Maps a kept editor row into the [ItemDto] `PUT /my-meals/{id}` expects:
+ * macros and [CardItem.qtyG] stay at the stored base, and the edited weight
+ * goes out as `target_qty_g` (the server scales). Unlike
+ * [toSavedIngredientDto], this does not pre-scale.
+ */
+fun CardItem.toUpdateIngredientDto(): ItemDto =
+    ItemDto(
+        foodName = foodName,
+        qtyG = qtyG,
+        targetQtyG = targetQtyG,
+        kcal = kcal,
+        proteinG = proteinG,
+        carbsG = carbsG,
+        fatG = fatG,
+        fiberG = fiberG,
+        fdcId = fdcId,
+        estimated = estimated,
+        extras = extras,
+        candidates = candidates,
+        source = source,
+    )
+
 /** One kept ingredient (by stored index) with its edited gram weight, for a customized quick-log. */
 @Serializable
 data class IngredientOverrideDto(

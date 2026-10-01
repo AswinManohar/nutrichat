@@ -1,7 +1,11 @@
 package app.mealsy.data.api
 
 import app.mealsy.domain.CardItem
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -35,5 +39,27 @@ class ItemDtoTest {
         assertEquals(true, dto.estimated)
         assertEquals(listOf("Chicken breast, roasted", "Chicken breast, grilled"), dto.candidates)
         assertEquals(12345L, dto.fdcId)
+    }
+
+    @Test
+    fun `UpdateMealRequest emits expected_updated_at and target_qty_g, save dto omits it`() {
+        val json = Json { explicitNulls = false }
+        val item =
+            CardItem(
+                foodName = "Rice", qtyG = 200.0, targetQtyG = 150.0, kcal = 260.0, proteinG = 5.0,
+                carbsG = 56.0, fatG = 0.6, fiberG = 0.0, fdcId = 1L,
+            )
+        val body =
+            json.encodeToJsonElement(
+                UpdateMealRequest.serializer(),
+                UpdateMealRequest("Biryani", "2026-10-01T09:12:44.123456+00:00", listOf(item.toUpdateIngredientDto())),
+            ).jsonObject
+        assertEquals("2026-10-01T09:12:44.123456+00:00", body["expected_updated_at"]!!.jsonPrimitive.content)
+        val ing = body["ingredients"]!!.jsonArray[0].jsonObject
+        assertEquals(150.0, ing["target_qty_g"]!!.jsonPrimitive.content.toDouble(), 1e-9)
+        assertEquals(200.0, ing["qty_g"]!!.jsonPrimitive.content.toDouble(), 1e-9)
+
+        val saved = json.encodeToJsonElement(ItemDto.serializer(), item.toSavedIngredientDto(1.0)).jsonObject
+        assertEquals(false, saved.containsKey("target_qty_g"))
     }
 }
