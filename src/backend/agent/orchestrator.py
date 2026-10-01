@@ -19,7 +19,7 @@ from backend.agent.system_one import RoutingJudgment, judge_message
 from backend.agent.tools.usda import NULLABLE_MACROS
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
-from backend.quota import consume_llm_credit
+from backend.quota import UPGRADE_MSG, consume_llm_credit
 from backend.workers.tasks import extract_and_store_facts
 
 logger = logging.getLogger(__name__)
@@ -299,7 +299,7 @@ async def _record_turn(
     Never raises: history is a side effect of the turn, and the reply has
     already been produced by the time this runs.
     """
-    if result["message"] == _UPGRADE_MSG:
+    if result["message"] == UPGRADE_MSG:
         return
     user_text = user_input.strip() or ("[sent a meal photo]" if image_b64 else "")
     if not user_text:
@@ -493,7 +493,7 @@ async def _handle_meal_logging(
             if not granted:
                 return {
                     "status": "success",
-                    "message": _UPGRADE_MSG,
+                    "message": UPGRADE_MSG,
                     "paused": False,
                     "items": [],
                 }
@@ -546,11 +546,6 @@ async def _handle_meal_logging(
         return response
 
 
-_UPGRADE_MSG = (
-    "You've used all your free AI requests. " "Visit mealsy.app/upgrade to continue."
-)
-
-
 async def _handle_coaching(
     user_id: str,
     user_input: str,
@@ -583,7 +578,7 @@ async def _handle_coaching(
     if not granted:
         return {
             "status": "success",
-            "message": _UPGRADE_MSG,
+            "message": UPGRADE_MSG,
             "paused": False,
             "items": [],
         }

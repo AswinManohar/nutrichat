@@ -8,6 +8,10 @@ from backend.db.session import get_session
 FREE_QUOTA: int = 50
 PAID_QUOTA: int = 150
 
+UPGRADE_MSG = (
+    "You've used all your free AI requests. Visit mealsy.app/upgrade to continue."
+)
+
 _UPSERT_SQL = text("""
     INSERT INTO user_goal (user_id, llm_requests_used, llm_quota)
     VALUES (:user_id, 1, :free_quota)

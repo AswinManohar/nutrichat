@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agent.coaching import CoachingResult, QueryParsed
-from backend.agent.orchestrator import _UPGRADE_MSG
+from backend.quota import UPGRADE_MSG
 
 
 async def test_coaching_over_quota_returns_upgrade_message():
@@ -21,7 +21,7 @@ async def test_coaching_over_quota_returns_upgrade_message():
         result = await _handle_coaching("user-1", "how much protein today?")
 
     assert result["status"] == "success"
-    assert result["message"] == _UPGRADE_MSG
+    assert result["message"] == UPGRADE_MSG
     assert result["paused"] is False
     assert result["items"] == []
 
@@ -135,7 +135,7 @@ async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
     ):
         result = await handle_message("user-1", "how am I doing?", "thread-1", None)
 
-    assert result["message"] == _UPGRADE_MSG
+    assert result["message"] == UPGRADE_MSG
     graph.ainvoke.assert_not_called()
 
 
@@ -222,7 +222,7 @@ async def test_meal_logging_over_quota_returns_upgrade_message():
 
     mock_graph.ainvoke.assert_not_called()
     assert result["status"] == "success"
-    assert result["message"] == _UPGRADE_MSG
+    assert result["message"] == UPGRADE_MSG
     assert result["paused"] is False
 
 
