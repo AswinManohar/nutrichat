@@ -360,7 +360,7 @@ change. Change only the portion: no offer.
 
 ### Backend for User Story 3
 
-- [ ] T033 [US3] Add `saved_meal_id: str | None` to `AgentState` in
+- [X] T033 [US3] Add `saved_meal_id: str | None` to `AgentState` in
   `src/backend/agent/graph.py`.
   - `saved_lookup_node` sets it to `meal.id` on a hit and to `None` on a
     miss. Also return `saved_meal_name` and `saved_meal_updated_at` (ISO

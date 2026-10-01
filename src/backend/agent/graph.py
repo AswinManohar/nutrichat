@@ -39,6 +39,13 @@ class AgentState(TypedDict):
     # from_saved is set when the card was prefilled from a saved meal.
     action: str | None
     from_saved: bool
+    # Set by saved_lookup_node on a hit (cleared on a miss) so the response can
+    # tell clients the card came from a saved meal and log_node can stamp
+    # flags.saved_meal_id. Read with state.get(): threads checkpointed before
+    # this field existed won't have it.
+    saved_meal_id: str | None
+    saved_meal_name: str | None
+    saved_meal_updated_at: str | None
     meal_id: str | None
     # Cache for the "Break into ingredients" decomposition — populated on first
     # LLM call; subsequent presses read from here and skip the LLM.
@@ -110,12 +117,18 @@ async def saved_lookup_node(state: AgentState) -> dict:
     if meal is None:
         return {
             "from_saved": False,
+            "saved_meal_id": None,
+            "saved_meal_name": None,
+            "saved_meal_updated_at": None,
             "decomposed_entities": [],
             "pre_decompose_entities": [],
         }
     usda_results, entities = saved_meal_to_results(meal)
     return {
         "from_saved": True,
+        "saved_meal_id": meal.id,
+        "saved_meal_name": meal.name,
+        "saved_meal_updated_at": meal.updated_at.isoformat(),
         "usda_results": usda_results,
         "entities": entities,
         "decomposed_entities": [],
@@ -191,9 +204,7 @@ async def combine_node(state: AgentState) -> dict:
     Entities without provenance are kept as-is. Falls through to
     usda_batch → present.
     """
-    originals = {
-        e["food_name"]: e for e in state.get("pre_decompose_entities") or []
-    }
+    originals = {e["food_name"]: e for e in state.get("pre_decompose_entities") or []}
     totals: dict[str, float] = {}
     for raw in state["entities"]:
         dish = raw.get("source_dish")
@@ -354,8 +365,18 @@ async def log_node(state: AgentState) -> dict:
 
     results = [USDAResult(**r) for r in state["usda_results"]]
     meal_type = normalize_meal_type(state.get("meal_type"))
-    label = _meal_label(state["entities"])
-    result = await log_meal(state["user_id"], results, meal_type, label=label)
+    saved_meal_id = state.get("saved_meal_id")
+    if saved_meal_id:
+        # Logged from a saved meal: label by its (current) name and stamp the
+        # flag so "logged today" survives renames (research R6).
+        label = state.get("saved_meal_name") or _meal_label(state["entities"])
+        extra_flags: dict[str, str] | None = {"saved_meal_id": saved_meal_id}
+    else:
+        label = _meal_label(state["entities"])
+        extra_flags = None
+    result = await log_meal(
+        state["user_id"], results, meal_type, label=label, extra_flags=extra_flags
+    )
     return {"meal_id": result.meal_id, "messages": [AIMessage(content=result.message)]}
 
 
