@@ -75,3 +75,18 @@ def test_empty_and_filler_only_input_returns_none() -> None:
 def test_case_and_punctuation_insensitive() -> None:
     meals = [_meal("chicken biryani")]
     assert _best_saved_match("  Chicken  Biryani! ", meals) is meals[0]
+
+
+def test_renamed_meal_recalled_by_new_name_not_old() -> None:
+    # FR-007: matching reads name_normalized, so a rename moves the trigger.
+    meal = _meal("chicken biryani")
+    assert _best_saved_match("chicken biryani", [meal]) is meal
+
+    meal.name_normalized = "biryani"
+    assert _best_saved_match("had biryani for lunch", [meal]) is meal
+    # A superset phrase still contains the new name, so it keeps matching.
+    assert _best_saved_match("chicken biryani", [meal]) is meal
+
+    meal.name_normalized = "dinner bowl"
+    assert _best_saved_match("chicken biryani", [meal]) is None
+    assert _best_saved_match("my dinner bowl", [meal]) is meal

@@ -131,7 +131,7 @@ recall it in chat by the new name. Both must show the edited version.
     `expected_updated_at` differs.
   - 422 for an empty or whitespace name, a name that is empty after
     normalizing (e.g. `"!!!"`), `ingredients: []`, or `qty_g <= 0`.
-- [ ] T009 [P] [US1] Add a rename/recall test in
+- [X] T009 [P] [US1] Add a rename/recall test in
   `tests/test_my_meals_match.py`: after `name_normalized` changes from
   "chicken biryani" to "biryani", `_best_saved_match("had biryani for lunch",
   meals)` hits, and `_best_saved_match("chicken biryani", meals)` with only
