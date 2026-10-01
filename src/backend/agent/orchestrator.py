@@ -379,6 +379,26 @@ def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]
     return items
 
 
+def _saved_meal_payload(values: dict[str, Any]) -> dict[str, str] | None:
+    """Build the `saved_meal` response field from graph state values.
+
+    Uses `.get()` so threads checkpointed before the field existed read as
+    "not from a saved meal".
+
+    Returns:
+        `{"id", "name", "updated_at"}` when the card came from a saved meal,
+        else None.
+    """
+    saved_id = values.get("saved_meal_id")
+    if not saved_id:
+        return None
+    return {
+        "id": saved_id,
+        "name": values.get("saved_meal_name") or "",
+        "updated_at": values.get("saved_meal_updated_at") or "",
+    }
+
+
 async def get_pending_card(
     user_id: str,
     thread_id: str,
@@ -411,6 +431,7 @@ async def get_pending_card(
         "paused": True,
         "message": ai_texts[-1] if ai_texts else "",
         "items": _serialize_items(state.values.get("usda_results", [])),
+        "saved_meal": _saved_meal_payload(state.values),
     }
 
 
@@ -507,6 +528,9 @@ async def _handle_meal_logging(
                     "meal_type": None,
                     "action": None,
                     "from_saved": False,
+                    "saved_meal_id": None,
+                    "saved_meal_name": None,
+                    "saved_meal_updated_at": None,
                     "meal_id": None,
                     "decomposed_entities": [],
                     "pre_decompose_entities": [],
@@ -541,7 +565,9 @@ async def _handle_meal_logging(
             "paused": still_paused,
             "items": items,
         }
-        if not still_paused:
+        if still_paused:
+            response["saved_meal"] = _saved_meal_payload(result)
+        else:
             response["meal_id"] = result.get("meal_id")
         return response
 

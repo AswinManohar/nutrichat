@@ -367,7 +367,7 @@ change. Change only the portion: no offer.
     string) in state for the response.
   - In `log_node`, when `state.get("saved_meal_id")` is set, use the saved
     meal's name as the label and pass `extra_flags={"saved_meal_id": ...}`.
-- [ ] T034 [US3] Initialize `"saved_meal_id": None` (and the name and
+- [X] T034 [US3] Initialize `"saved_meal_id": None` (and the name and
   updated_at fields) in the graph input dict in
   `src/backend/agent/orchestrator.py` (line ~509).
   - Add `"saved_meal": {"id", "name", "updated_at"} | None` to the paused
