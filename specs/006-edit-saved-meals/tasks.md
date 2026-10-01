@@ -496,7 +496,7 @@ at 90% or more.
 - [X] T048 [US4] Add `replace_ingredient_system: str` to `PromptsConfig` in
   `src/backend/config/__init__.py`. The loader then requires the `.md` file
   at import. Check with `python -c "import backend.config"`.
-- [ ] T049 [US4] Create `src/backend/agent/tools/replace_ingredient.py`.
+- [X] T049 [US4] Create `src/backend/agent/tools/replace_ingredient.py`.
   - **Schemas**:
     - `ReplacementFood(food_name: str, qty_g: float = Field(gt=0), unit: str,
       amount_stated: bool)` with `extra="forbid"`;
