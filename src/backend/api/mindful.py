@@ -12,6 +12,7 @@ from backend.agent.tools.mindful import (
     get_daily_intake,
 )
 from backend.auth.supabase import get_current_user_id
+from backend.core.nutrition_day import nutrition_today
 from backend.db.models import UserGoal
 from backend.db.session import get_session
 
@@ -34,7 +35,7 @@ async def get_today(user_id: str = Depends(get_current_user_id)) -> MindfulToday
     Goal-mode users may call this too; the frontend only routes mindful users
     to the mindful dashboard view.
     """
-    today = date.today()
+    today = nutrition_today()
     async with get_session()() as session:
         goal = await session.get(UserGoal, user_id)
         tracking_mode = (goal.tracking_mode or "goals") if goal is not None else "goals"

@@ -30,6 +30,7 @@ from backend.agent.tools.history import (
     get_micronutrients_for_range,
 )
 from backend.config import get_tunables
+from backend.core.nutrition_day import nutrition_today
 from backend.db.models import UserGoal
 from backend.db.redis_client import (
     CoachingTurn,
@@ -271,7 +272,7 @@ async def parse_query(
         Parsed query with time_range, optional date bounds, nutrients, and
         include_goals.
     """
-    today = date.today()
+    today = nutrition_today()
     blocks = [f"Today's date is {today.isoformat()}."]
     if history:
         blocks.append(
@@ -286,7 +287,7 @@ async def parse_query(
 
 def _resolve_date_range(parsed: QueryParsed) -> tuple[date, date]:
     """Map a parsed time_range to a concrete inclusive date range."""
-    today = date.today()
+    today = nutrition_today()
     if parsed.time_range == "today":
         return today, today
     if parsed.time_range == "yesterday":
@@ -360,7 +361,7 @@ async def fetch_data(user_id: str, parsed: QueryParsed) -> dict:
             try:
                 totals = await get_today_totals(user_id)
                 data["today_totals"] = totals.model_dump()
-                today = date.today()
+                today = nutrition_today()
                 data["period"] = _build_period(today, today, "today")
             except (RedisError, OSError):
                 # Redis unavailable — fall back to Postgres (coaching spec §6).

@@ -22,6 +22,11 @@ from backend.agent.tools.meals import (
 from backend.agent.tools.meals import log_meal as persist_meal
 from backend.api.my_meals import _scaled_result
 from backend.auth.supabase import get_current_user_id
+from backend.core.nutrition_day import (
+    NUTRITION_DATE_SQL,
+    nutrition_today,
+    sql_day_params,
+)
 from backend.db.models import MealLog
 from backend.db.redis_client import (
     current_day_bounds,
@@ -461,12 +466,12 @@ async def get_trends(
     personal scale and always includes today's partial day. Days with no
     meals are omitted — the frontend fills gaps as empty cells.
     """
-    date_from = date.today() - timedelta(days=days - 1)
+    date_from = nutrition_today() - timedelta(days=days - 1)
     session_factory = get_session()
     async with session_factory() as session:
         result = await session.execute(
             sa_text(
-                "SELECT logged_at::date AS day, "
+                "SELECT " + NUTRITION_DATE_SQL + " AS day, "
                 "COALESCE(SUM(kcal), 0) AS kcal, "
                 "COALESCE(SUM(protein_g), 0) AS protein_g, "
                 "COALESCE(SUM(carbs_g), 0) AS carbs_g, "
@@ -474,11 +479,11 @@ async def get_trends(
                 "COUNT(*) AS n_meals, "
                 "COUNT(*) FILTER (WHERE (flags->>'has_junk')::boolean) AS junk_meals "
                 "FROM meal_log "
-                "WHERE user_id = :user_id AND logged_at::date >= :date_from "
+                "WHERE user_id = :user_id AND " + NUTRITION_DATE_SQL + " >= :date_from "
                 "AND deleted_at IS NULL "
                 "GROUP BY day ORDER BY day"
             ),
-            {"user_id": user_id, "date_from": date_from},
+            {"user_id": user_id, "date_from": date_from, **sql_day_params()},
         )
         return [
             DayTrend(

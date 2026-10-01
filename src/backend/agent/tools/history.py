@@ -6,6 +6,11 @@ from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
 from backend.config import get_tunables
+from backend.core.nutrition_day import (
+    NUTRITION_DATE_SQL,
+    nutrition_today,
+    sql_day_params,
+)
 from backend.db.models import MealLog
 from backend.db.session import get_session
 
@@ -52,9 +57,14 @@ async def get_macros_for_range(
                 "COUNT(*) AS n_meals "
                 "FROM meal_log "
                 "WHERE user_id = :user_id "
-                "AND logged_at::date BETWEEN :date_from AND :date_to"
+                "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to"
             ),
-            {"user_id": user_id, "date_from": date_from, "date_to": date_to},
+            {
+                "user_id": user_id,
+                "date_from": date_from,
+                "date_to": date_to,
+                **sql_day_params(),
+            },
         )
         row = result.one()
 
@@ -99,7 +109,7 @@ async def get_micronutrients_for_range(
                     "FROM meal_log, "
                     "jsonb_array_elements(entities) AS item "
                     "WHERE user_id = :user_id "
-                    "AND logged_at::date BETWEEN :date_from AND :date_to "
+                    "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
                     "AND item->'nutrients' ? :nutrient"
                 ),
                 {
@@ -107,6 +117,7 @@ async def get_micronutrients_for_range(
                     "date_from": date_from,
                     "date_to": date_to,
                     "nutrient": nutrient,
+                    **sql_day_params(),
                 },
             )
             row = result.one()
@@ -165,8 +176,12 @@ async def get_nutrient_checkup_aggregates(
     prev_macros = await get_macros_for_range(user_id, prev_from, prev_to)
 
     usda_names = [m.usda_name for m in _CHECKUP_MICRONUTRIENTS.values()]
-    cur_micro = await get_micronutrients_for_range(user_id, cur_from, end_date, usda_names)
-    prev_micro = await get_micronutrients_for_range(user_id, prev_from, prev_to, usda_names)
+    cur_micro = await get_micronutrients_for_range(
+        user_id, cur_from, end_date, usda_names
+    )
+    prev_micro = await get_micronutrients_for_range(
+        user_id, prev_from, prev_to, usda_names
+    )
 
     result: dict[str, dict[str, float | str | None]] = {}
 
@@ -325,7 +340,12 @@ async def get_food_breakdown_for_range(
             highest_calorie_foods: list of {food_name, kcal}, top 5
                 individual items by per-item kcal.
     """
-    params = {"user_id": user_id, "date_from": date_from, "date_to": date_to}
+    params = {
+        "user_id": user_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        **sql_day_params(),
+    }
 
     async with get_session()() as session:
         freq_result = await session.execute(
@@ -337,7 +357,7 @@ async def get_food_breakdown_for_range(
                 "FROM meal_log, "
                 "jsonb_array_elements(entities) AS item "
                 "WHERE user_id = :user_id "
-                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
                 "AND deleted_at IS NULL "
                 "GROUP BY item->>'food_name' "
                 "ORDER BY count DESC "
@@ -362,7 +382,7 @@ async def get_food_breakdown_for_range(
                 "FROM meal_log, "
                 "jsonb_array_elements_text(flags->'junk_items') AS junk_item "
                 "WHERE user_id = :user_id "
-                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
                 "AND deleted_at IS NULL "
                 "AND (flags->>'has_junk')::boolean IS TRUE "
                 "GROUP BY junk_item "
@@ -382,7 +402,7 @@ async def get_food_breakdown_for_range(
                 "FROM meal_log, "
                 "jsonb_array_elements(entities) AS item "
                 "WHERE user_id = :user_id "
-                "AND logged_at::date BETWEEN :date_from AND :date_to "
+                "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
                 "AND deleted_at IS NULL "
                 "AND item->>'kcal' IS NOT NULL "
                 "ORDER BY kcal DESC "
@@ -483,13 +503,13 @@ async def get_category_breakdown(user_id: str, days: int) -> list[dict]:
         days_logged, avg_kcal, avg_protein_g, avg_carbs_g, avg_fat_g,
         avg_fiber_g, total_kcal, share_kcal_pct.
     """
-    date_from = date.today() - timedelta(days=days - 1)
+    date_from = nutrition_today() - timedelta(days=days - 1)
     async with get_session()() as session:
         result = await session.execute(
             sa_text(
                 "SELECT meal_type, "
                 "COUNT(*) AS n_meals, "
-                "COUNT(DISTINCT logged_at::date) AS days_logged, "
+                "COUNT(DISTINCT " + NUTRITION_DATE_SQL + ") AS days_logged, "
                 "COALESCE(AVG(kcal), 0) AS avg_kcal, "
                 "COALESCE(AVG(protein_g), 0) AS avg_protein_g, "
                 "COALESCE(AVG(carbs_g), 0) AS avg_carbs_g, "
@@ -497,11 +517,11 @@ async def get_category_breakdown(user_id: str, days: int) -> list[dict]:
                 "COALESCE(AVG(fiber_g), 0) AS avg_fiber_g, "
                 "COALESCE(SUM(kcal), 0) AS total_kcal "
                 "FROM meal_log "
-                "WHERE user_id = :user_id AND logged_at::date >= :date_from "
+                "WHERE user_id = :user_id AND " + NUTRITION_DATE_SQL + " >= :date_from "
                 "AND deleted_at IS NULL "
                 "GROUP BY meal_type ORDER BY total_kcal DESC"
             ),
-            {"user_id": user_id, "date_from": date_from},
+            {"user_id": user_id, "date_from": date_from, **sql_day_params()},
         )
         rows = result.all()
 

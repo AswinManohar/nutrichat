@@ -14,6 +14,7 @@ from backend.agent.tools.history import (
     get_nutrient_checkup_aggregates,
     summarize_nutrient_checkup,
 )
+from backend.core.nutrition_day import NUTRITION_DATE_SQL, sql_day_params
 from backend.db.models import MealLog
 
 
@@ -208,8 +209,10 @@ async def test_get_food_breakdown_for_range_returns_expected_shape():
     # All three queries are parameterized and date-range filtered.
     for call in session.execute.call_args_list:
         stmt = str(call[0][0])
-        assert "logged_at::date BETWEEN :date_from AND :date_to" in stmt
+        assert f"{NUTRITION_DATE_SQL} BETWEEN :date_from AND :date_to" in stmt
         assert "deleted_at IS NULL" in stmt
+        assert call[0][1]["day_tz"] == sql_day_params()["day_tz"]
+        assert call[0][1]["day_reset_h"] == sql_day_params()["day_reset_h"]
 
 
 @pytest.mark.asyncio

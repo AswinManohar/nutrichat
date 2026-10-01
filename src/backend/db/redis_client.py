@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 import redis.asyncio as redis
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -12,6 +11,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import func, select
 
 from backend.config import get_tunables
+from backend.core import nutrition_day as _nd
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,6 @@ _TUNABLES = get_tunables()
 _TODAY_KEY_TTL_S = _TUNABLES.redis.today_key_ttl_s
 _COACHING_HISTORY_TURNS = _TUNABLES.memory.coaching_history_turns
 _COACHING_HISTORY_TTL_S = _TUNABLES.memory.coaching_history_ttl_s
-_DAY_TZ = ZoneInfo(_TUNABLES.day.timezone)
-_DAY_RESET_HOUR = _TUNABLES.day.reset_hour
 
 # Global connection pool
 _redis_pool: redis.Redis | None = None
@@ -51,52 +49,17 @@ class TodayTotals(BaseModel):
 def current_day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
     """Return the [start, end) UTC bounds of the current nutrition day.
 
-    A nutrition day runs from ``reset_hour`` to ``reset_hour`` in the
-    configured local timezone (see ``day.*`` in tunables.yaml). Anything
-    logged before ``reset_hour`` belongs to the previous day, so today's
-    totals appear to reset at exactly ``reset_hour`` local time.
-
-    Args:
-        now: Instant to evaluate. Defaults to the current time. A naive
-            datetime is assumed to be UTC.
-
-    Returns:
-        ``(start_utc, end_utc)`` covering the active nutrition day.
+    Thin wrapper over ``backend.core.nutrition_day.current_day_bounds``.
     """
-    if now is None:
-        now = datetime.now(_DAY_TZ)
-    elif now.tzinfo is None:
-        now = now.replace(tzinfo=ZoneInfo("UTC"))
-    now_local = now.astimezone(_DAY_TZ)
-
-    # Shift back by reset_hour so the date() lands on the day that owns `now`.
-    day_date = (now_local - timedelta(hours=_DAY_RESET_HOUR)).date()
-    start_local = datetime.combine(day_date, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
-    end_local = start_local + timedelta(days=1)
-    utc = ZoneInfo("UTC")
-    return start_local.astimezone(utc), end_local.astimezone(utc)
+    return _nd.current_day_bounds(now)
 
 
 def day_bounds_for_date(day: date) -> tuple[datetime, datetime]:
     """Return the nutrition-day [start, end) UTC window for a calendar date.
 
-    ``current_day_bounds`` only derives "today" from the current instant.
-    To express an arbitrary past date under the same reset-hour/timezone
-    rule, we hand it a synthetic `now` set to exactly `reset_hour` on the
-    target local date: since `current_day_bounds` computes
-    ``day_date = (now_local - reset_hour).date()``, that construction makes
-    `day_date` land exactly on `day` regardless of the configured reset
-    hour (0-23).
-
-    Args:
-        day: The calendar date (in the configured nutrition-day timezone)
-            whose window is requested.
-
-    Returns:
-        ``(start_utc, end_utc)`` covering that nutrition day.
+    Thin wrapper over ``backend.core.nutrition_day.day_bounds``.
     """
-    synthetic_now = datetime.combine(day, time(hour=_DAY_RESET_HOUR), tzinfo=_DAY_TZ)
-    return current_day_bounds(now=synthetic_now)
+    return _nd.day_bounds(day)
 
 
 async def get_today_totals(user_id: str) -> TodayTotals:

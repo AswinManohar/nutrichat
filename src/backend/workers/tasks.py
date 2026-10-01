@@ -21,6 +21,11 @@ from backend.agent.tools.history import (
     summarize_nutrient_checkup,
 )
 from backend.config import get_tunables
+from backend.core.nutrition_day import (
+    NUTRITION_DATE_SQL,
+    nutrition_today,
+    sql_day_params,
+)
 from backend.db.models import (
     DeviceToken,
     MealLog,
@@ -238,10 +243,12 @@ async def _aggregate_daily_summary(target_date: date) -> None:
                 "COALESCE(SUM(protein_g), 0) AS protein_g, "
                 "COALESCE(SUM(fiber_g), 0) AS fiber_g "
                 "FROM meal_log "
-                "WHERE logged_at::date = :target_date AND deleted_at IS NULL "
+                "WHERE "
+                + NUTRITION_DATE_SQL
+                + " = :target_date AND deleted_at IS NULL "
                 "GROUP BY user_id"
             ),
-            {"target_date": target_date},
+            {"target_date": target_date, **sql_day_params()},
         )
         rows = result.all()
 
@@ -289,7 +296,7 @@ def aggregate_daily_summary(target_date: str | None = None) -> None:
     resolved = (
         date.fromisoformat(target_date)
         if target_date
-        else date.today() - timedelta(days=1)
+        else nutrition_today() - timedelta(days=1)
     )
     _run(_aggregate_daily_summary(resolved))
 
@@ -320,13 +327,15 @@ async def _build_weekly_summary(week_start: date) -> None:
 
         meal_type_result = await session.execute(
             sa_text(
-                "SELECT user_id, meal_type, COUNT(DISTINCT logged_at::date) AS n_days "
+                "SELECT user_id, meal_type, COUNT(DISTINCT "
+                + NUTRITION_DATE_SQL
+                + ") AS n_days "
                 "FROM meal_log "
-                "WHERE logged_at::date BETWEEN :week_start AND :week_end "
+                "WHERE " + NUTRITION_DATE_SQL + " BETWEEN :week_start AND :week_end "
                 "AND deleted_at IS NULL "
                 "GROUP BY user_id, meal_type"
             ),
-            {"week_start": week_start, "week_end": week_end},
+            {"week_start": week_start, "week_end": week_end, **sql_day_params()},
         )
         meal_days: dict[str, dict[str, int]] = {}
         for row in meal_type_result.all():
@@ -389,7 +398,7 @@ def build_weekly_summary(week_start: str | None = None) -> None:
     if week_start:
         resolved = date.fromisoformat(week_start)
     else:
-        today = date.today()
+        today = nutrition_today()
         resolved = today - timedelta(days=today.weekday())
     _run(_build_weekly_summary(resolved))
 
@@ -407,10 +416,16 @@ async def _build_nutrient_checkup(target_date: date) -> None:
         result = await session.execute(
             sa_text(
                 "SELECT DISTINCT user_id FROM meal_log "
-                "WHERE logged_at::date BETWEEN :window_start AND :target_date "
+                "WHERE "
+                + NUTRITION_DATE_SQL
+                + " BETWEEN :window_start AND :target_date "
                 "AND deleted_at IS NULL"
             ),
-            {"window_start": window_start, "target_date": target_date},
+            {
+                "window_start": window_start,
+                "target_date": target_date,
+                **sql_day_params(),
+            },
         )
         user_ids = [row.user_id for row in result.all()]
 
@@ -452,7 +467,7 @@ def build_nutrient_checkup(target_date: str | None = None) -> None:
     resolved = (
         date.fromisoformat(target_date)
         if target_date
-        else date.today() - timedelta(days=1)
+        else nutrition_today() - timedelta(days=1)
     )
     _run(_build_nutrient_checkup(resolved))
 
@@ -512,7 +527,7 @@ def send_daily_summary_telegram(target_date: str | None = None) -> None:
     resolved = (
         date.fromisoformat(target_date)
         if target_date
-        else date.today() - timedelta(days=1)
+        else nutrition_today() - timedelta(days=1)
     )
     _run(_send_daily_summary_telegram(resolved))
 

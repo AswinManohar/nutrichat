@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from datetime import date
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +13,7 @@ from backend.agent.tools.mindful import (
     get_daily_intake,
 )
 from backend.config import get_tunables
+from backend.core.nutrition_day import nutrition_today
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
 from backend.db.redis_client import TodayTotals, get_today_totals
 from backend.db.session import get_session
@@ -151,7 +151,7 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
     # Mindful-mode users have no goals to reference; surface UL safety
     # breaches to the coaching agent instead.
     if goals is not None and goals.tracking_mode == "mindful":
-        intake = await get_daily_intake(user_id, date.today())
+        intake = await get_daily_intake(user_id, nutrition_today())
         goals.active_alerts = evaluate_safety(intake)
 
     preferences: list[str] = []
