@@ -427,7 +427,7 @@ change. Change only the portion: no offer.
   a successful customized log, compare against the stored detail with
   `hasRecipeChanges`. If it changed, render `UpdateSavedMealOffer` (FR-011,
   acceptance 4).
-- [ ] T043 [P] [US3] Add
+- [X] T043 [P] [US3] Add
   `frontend/src/components/my-meals/update-saved-meal-offer.test.tsx` with
   these cases:
   - the offer shows after a gram change;
