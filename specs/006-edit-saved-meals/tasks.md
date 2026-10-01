@@ -144,7 +144,7 @@ recall it in chat by the new name. Both must show the edited version.
 
 ### Backend for User Story 1
 
-- [ ] T011 [US1] Add an `extra_flags: dict[str, str] | None = None` keyword
+- [X] T011 [US1] Add an `extra_flags: dict[str, str] | None = None` keyword
   to `persist_meal` and `log_meal` in `src/backend/agent/tools/meals.py`.
   Merge it into the dict from `_junk_flags(...)` before the `INSERT` (line
   ~478). Document the argument. Existing callers don't change.

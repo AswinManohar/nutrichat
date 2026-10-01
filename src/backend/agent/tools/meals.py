@@ -452,10 +452,13 @@ async def _insert_meal_log(
     label: str | None = None,
     client_request_id: str | None = None,
     corrections: list[dict] | None = None,
+    extra_flags: dict[str, str] | None = None,
 ) -> str:
     """Insert a meal_log row (and any food_correction rows) in one transaction.
 
     Args:
+        extra_flags: Optional extra keys merged into `meal_log.flags` after the
+            junk flags (e.g. `{"saved_meal_id": "<uuid>"}`).
         corrections: Optional list of correction dicts (spec 003, FR-012),
             aligned index-for-index with `usda_results` (already filtered
             the same way, i.e. one entry — possibly None — per resolved
@@ -474,7 +477,7 @@ async def _insert_meal_log(
     """
     meal_id = str(uuid.uuid4())
     entities = [r.model_dump() for r in usda_results]
-    flags = _junk_flags(usda_results)
+    flags = {**_junk_flags(usda_results), **(extra_flags or {})}
     async with get_session()() as session:
         await session.execute(
             sa_text(
@@ -536,6 +539,7 @@ async def log_meal(
     label: str | None = None,
     client_request_id: str | None = None,
     corrections: list[dict | None] | None = None,
+    extra_flags: dict[str, str] | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 
@@ -552,6 +556,8 @@ async def log_meal(
             None or a correction dict for `usda_results[i]`. Entries whose
             item is excluded from `resolved` (fdc_id == -1 and not
             estimated) are dropped along with that item.
+        extra_flags: Optional extra keys merged into `meal_log.flags` (e.g.
+            `{"saved_meal_id": "<uuid>"}` when logging a saved meal).
 
     Returns:
         MealLogResult with meal_id, totals, and confirmation message.
@@ -587,6 +593,7 @@ async def log_meal(
             label,
             client_request_id,
             resolved_corrections,
+            extra_flags,
         )
         # Best-effort embedding for history search; a broker outage (e.g. Redis
         # down) must never fail the meal log the user just confirmed.
