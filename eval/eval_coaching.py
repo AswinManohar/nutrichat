@@ -62,7 +62,8 @@ async def main():
         
         await asyncio.sleep(1)
         
-    with open("coaching_eval_results.json", "w") as f:
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coaching_eval_results.json")
+    with open(out, "w") as f:
         json.dump(results, f, indent=2)
 
 if __name__ == "__main__":

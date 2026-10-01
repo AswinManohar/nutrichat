@@ -2,7 +2,7 @@
 
 **Version:** 1.0 — June 2026  
 **Status:** Draft  
-**Derived from:** [PRD v2.0](file:///home/aswinmanohar/nutrichat/context/nutrichat-prd-final.md) · [Architecture](file:///home/aswinmanohar/nutrichat/docs/architecture.md) · [Meal Logging Spec](file:///home/aswinmanohar/nutrichat/docs/superpowers/specs/2026-04-05-meal-logging-agent-design.md) · [Coaching Spec](file:///home/aswinmanohar/nutrichat/docs/superpowers/specs/2026-04-05-coaching-agent-foundation-design.md)  
+**Derived from:** [PRD v2.0](context/nutrichat-prd-final.md) · [Architecture](architecture.md) · [Meal Logging Spec](archive/superpowers/specs/2026-04-05-meal-logging-agent-design.md) · [Coaching Spec](archive/superpowers/specs/2026-04-05-coaching-agent-foundation-design.md)  
 **Backend status:** M0–M5 complete; API layer, agent pipeline, coaching agent all operational  
 
 ---

@@ -143,7 +143,7 @@ Live smoke check against the seeded user (needs `GOOGLE_API_KEY`, `DATABASE_URL`
 `REDIS_URL`):
 
 ```bash
-python eval_coaching.py
+python eval/eval_coaching.py
 # or a one-off:
 python -c "import asyncio; from dotenv import load_dotenv; load_dotenv(); \
 from backend.agent.coaching import CoachingAgent; \
