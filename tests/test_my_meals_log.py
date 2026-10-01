@@ -2,27 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.agent.tools.meals import MealLogResult
 from backend.api import my_meals
-from backend.auth.supabase import get_current_user_id
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(my_meals.router)
-    return app
-
-
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
 
 
 def _stored(name: str, qty: float, kcal: float, na: float = 0.0) -> dict:
@@ -72,27 +61,36 @@ def _result() -> MealLogResult:
     )
 
 
-def _client_and_logmeal(meal):
-    """Build an app with auth + mocked session/log_meal → (app, factory, logged)."""
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    session = MagicMock()
-    session.get = AsyncMock(return_value=meal)
-    factory = _mock_session_factory(session)
-    logged = AsyncMock(return_value=_result())
-    return app, factory, logged
+@pytest.fixture
+def build_logmeal(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]]:
+    """Return a builder: meal -> (app, factory, logged) with auth + mocks."""
+
+    def build(meal: object) -> tuple[FastAPI, MagicMock, AsyncMock]:
+        app = app_factory(my_meals.router)
+        session = MagicMock()
+        session.get = AsyncMock(return_value=meal)
+        factory = mock_session_factory(session)
+        logged = AsyncMock(return_value=_result())
+        return app, factory, logged
+
+    return build
 
 
-def test_requires_auth() -> None:
-    client = TestClient(_make_app())
+def test_requires_auth(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router, user_id=None))
     assert (
         client.post("/my-meals/meal-1/log", json={"meal_type": "lunch"}).status_code
         == 401
     )
 
 
-def test_quick_log_uses_stored_quantities() -> None:
-    app, factory, logged = _client_and_logmeal(_meal())
+def test_quick_log_uses_stored_quantities(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -107,8 +105,10 @@ def test_quick_log_uses_stored_quantities() -> None:
     assert logged.call_args.kwargs["label"] == "Chicken Biryani"
 
 
-def test_portion_and_gram_override_scales_macros_and_nutrients() -> None:
-    app, factory, logged = _client_and_logmeal(_meal())
+def test_portion_and_gram_override_scales_macros_and_nutrients(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
     client = TestClient(app)
     # rice stored qty 150 → override 300 (2x) × portion 1.5 = scale 3x.
     with (
@@ -132,8 +132,10 @@ def test_portion_and_gram_override_scales_macros_and_nutrients() -> None:
     assert r.nutrients["Sodium, Na"].amount == 30.0  # 10 × 3
 
 
-def test_removed_ingredient_excluded() -> None:
-    app, factory, logged = _client_and_logmeal(_meal())
+def test_removed_ingredient_excluded(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -148,8 +150,10 @@ def test_removed_ingredient_excluded() -> None:
     assert [r.food_name for r in results] == ["chicken"]
 
 
-def test_other_users_meal_404() -> None:
-    app, factory, logged = _client_and_logmeal(_meal(user_id="someone-else"))
+def test_other_users_meal_404(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal(user_id="someone-else"))
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -160,8 +164,10 @@ def test_other_users_meal_404() -> None:
     logged.assert_not_called()
 
 
-def test_deleted_meal_404() -> None:
-    app, factory, logged = _client_and_logmeal(_meal(deleted=True))
+def test_deleted_meal_404(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal(deleted=True))
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -171,8 +177,10 @@ def test_deleted_meal_404() -> None:
     assert resp.status_code == 404
 
 
-def test_missing_meal_404() -> None:
-    app, factory, logged = _client_and_logmeal(None)
+def test_missing_meal_404(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(None)
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -182,8 +190,10 @@ def test_missing_meal_404() -> None:
     assert resp.status_code == 404
 
 
-def test_bad_meal_type_422() -> None:
-    app, factory, logged = _client_and_logmeal(_meal())
+def test_bad_meal_type_422(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),
@@ -195,20 +205,16 @@ def test_bad_meal_type_422() -> None:
     assert resp.status_code == 422
 
 
-def test_portion_zero_422() -> None:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+def test_portion_zero_422(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router))
     resp = client.post(
         "/my-meals/meal-1/log", json={"meal_type": "lunch", "portion": 0}
     )
     assert resp.status_code == 422
 
 
-def test_qty_zero_422() -> None:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+def test_qty_zero_422(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router))
     resp = client.post(
         "/my-meals/meal-1/log",
         json={"meal_type": "lunch", "ingredients": [{"index": 0, "qty_g": 0}]},
@@ -216,8 +222,10 @@ def test_qty_zero_422() -> None:
     assert resp.status_code == 422
 
 
-def test_all_removed_422() -> None:
-    app, factory, logged = _client_and_logmeal(_meal())
+def test_all_removed_422(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
     client = TestClient(app)
     with (
         patch("backend.api.my_meals.get_session", return_value=factory),

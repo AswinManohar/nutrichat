@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,21 +16,9 @@ _USER_A = "00000000-0000-0000-0000-00000000000a"
 _USER_B = "00000000-0000-0000-0000-00000000000b"
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(integrations.router)
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(_make_app())
-
-
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(integrations.router, user_id=None))
 
 
 def _meal_row(
@@ -92,7 +81,10 @@ def test_invalid_cursor_raises_400(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_meals_cursor_idempotency(client: TestClient) -> None:
+def test_meals_cursor_idempotency(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """Re-polling with the same cursor returns the same next page."""
     app = client.app
     app.dependency_overrides[integrations.get_integration_user] = _auth()
@@ -102,7 +94,7 @@ def test_meals_cursor_idempotency(client: TestClient) -> None:
     result = MagicMock()
     result.all = MagicMock(return_value=rows)
     session.execute = AsyncMock(return_value=result)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.integrations.get_session", return_value=factory):
         resp1 = client.get("/v1/integrations/meals", params={"limit": 1})
@@ -114,7 +106,10 @@ def test_meals_cursor_idempotency(client: TestClient) -> None:
     assert resp1.json()["next_cursor"] is not None
 
 
-def test_meals_surfaces_tombstone_for_soft_deleted(client: TestClient) -> None:
+def test_meals_surfaces_tombstone_for_soft_deleted(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     app = client.app
     app.dependency_overrides[integrations.get_integration_user] = _auth()
 
@@ -123,7 +118,7 @@ def test_meals_surfaces_tombstone_for_soft_deleted(client: TestClient) -> None:
     result = MagicMock()
     result.all = MagicMock(return_value=rows)
     session.execute = AsyncMock(return_value=result)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.integrations.get_session", return_value=factory):
         resp = client.get("/v1/integrations/meals")
@@ -136,7 +131,10 @@ def test_meals_surfaces_tombstone_for_soft_deleted(client: TestClient) -> None:
     assert item["entities"] is None
 
 
-def test_meals_edit_resurfaces_with_new_values(client: TestClient) -> None:
+def test_meals_edit_resurfaces_with_new_values(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """An edited (updated_at-bumped) meal reappears with its new values."""
     app = client.app
     app.dependency_overrides[integrations.get_integration_user] = _auth()
@@ -147,7 +145,7 @@ def test_meals_edit_resurfaces_with_new_values(client: TestClient) -> None:
     result = MagicMock()
     result.all = MagicMock(return_value=[edited])
     session.execute = AsyncMock(return_value=result)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.integrations.get_session", return_value=factory):
         resp = client.get(
@@ -161,7 +159,10 @@ def test_meals_edit_resurfaces_with_new_values(client: TestClient) -> None:
     assert item["kcal"] == 999.0
 
 
-def test_meals_per_user_isolation(client: TestClient) -> None:
+def test_meals_per_user_isolation(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """The user_id from the token is what scopes the query — verify it's used."""
     app = client.app
     app.dependency_overrides[integrations.get_integration_user] = _auth(_USER_B)
@@ -170,7 +171,7 @@ def test_meals_per_user_isolation(client: TestClient) -> None:
     result = MagicMock()
     result.all = MagicMock(return_value=[])
     session.execute = AsyncMock(return_value=result)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.integrations.get_session", return_value=factory):
         resp = client.get("/v1/integrations/meals")
@@ -191,7 +192,9 @@ def test_missing_token_returns_401(client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_get_integration_user_rejects_missing_scope() -> None:
+def test_get_integration_user_rejects_missing_scope(
+    mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     from backend.auth import integration as auth_integration
 
     async def _run() -> None:
@@ -204,7 +207,7 @@ def test_get_integration_user_rejects_missing_scope() -> None:
         result.first = MagicMock(return_value=row)
         session.execute = AsyncMock(return_value=result)
         session.commit = AsyncMock()
-        factory = _mock_session_factory(session)
+        factory = mock_session_factory(session)
 
         with patch("backend.auth.integration.get_session", return_value=factory):
             with pytest.raises(AuthError):
@@ -215,7 +218,9 @@ def test_get_integration_user_rejects_missing_scope() -> None:
     asyncio.run(_run())
 
 
-def test_get_integration_user_rejects_revoked_token() -> None:
+def test_get_integration_user_rejects_revoked_token(
+    mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     from backend.auth import integration as auth_integration
 
     async def _run() -> None:
@@ -226,7 +231,7 @@ def test_get_integration_user_rejects_revoked_token() -> None:
         result = MagicMock()
         result.first = MagicMock(return_value=None)
         session.execute = AsyncMock(return_value=result)
-        factory = _mock_session_factory(session)
+        factory = mock_session_factory(session)
 
         with patch("backend.auth.integration.get_session", return_value=factory):
             with pytest.raises(AuthError):

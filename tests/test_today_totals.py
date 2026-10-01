@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from backend.api import meals as meals_api
 from backend.db.redis_client import TodayTotals, get_today_totals
-from tests.auth_helpers import with_header_auth
 
 _USER = "00000000-0000-0000-0000-000000000001"
 
@@ -56,15 +56,11 @@ async def test_get_today_totals_includes_carbs_and_fat():
 # ---------------------------------------------------------------------------
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(meals_api.router)
-    return app
-
-
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    return TestClient(with_header_auth(_make_app()))
+def client(
+    monkeypatch: pytest.MonkeyPatch, app_factory: Callable[..., FastAPI]
+) -> TestClient:
+    return TestClient(app_factory(meals_api.router, header_auth=True))
 
 
 def test_by_type_counts_multiple_meals_of_same_type(client: TestClient) -> None:

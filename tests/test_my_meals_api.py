@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -9,19 +10,6 @@ from fastapi.testclient import TestClient
 
 from backend.api import my_meals
 from backend.api.my_meals import IngredientIn, _totals, find_saved_meal
-from backend.auth.supabase import get_current_user_id
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(my_meals.router)
-    return app
-
-
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
 
 
 def _exec_returning(first):
@@ -59,19 +47,20 @@ def test_totals_summed_server_side() -> None:
     assert t["fat_g"] == 6 and t["fiber_g"] == 0
 
 
-def test_list_requires_auth() -> None:
-    client = TestClient(_make_app())
+def test_list_requires_auth(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router, user_id=None))
     assert client.get("/my-meals").status_code == 401
 
 
-def test_save_meal_rejects_duplicate_name() -> None:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+def test_save_meal_rejects_duplicate_name(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    client = TestClient(app_factory(my_meals.router))
 
     session = MagicMock()
     session.execute = AsyncMock(return_value=_exec_returning(MagicMock()))  # dup found
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.my_meals.get_session", return_value=factory):
         resp = client.post(
@@ -84,10 +73,8 @@ def test_save_meal_rejects_duplicate_name() -> None:
     assert resp.status_code == 409
 
 
-def test_save_meal_empty_name_422() -> None:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+def test_save_meal_empty_name_422(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router))
     # Punctuation-only name normalizes to empty.
     resp = client.post(
         "/my-meals",
@@ -96,11 +83,13 @@ def test_save_meal_empty_name_422() -> None:
     assert resp.status_code == 422
 
 
-async def test_find_saved_meal_normalizes_and_matches() -> None:
+async def test_find_saved_meal_normalizes_and_matches(
+    mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     meal = MagicMock(name_normalized="chicken biryani")
     session = MagicMock()
     session.execute = AsyncMock(return_value=_exec_returning_all([meal]))
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.agent.tools.saved_meals.get_session", return_value=factory):
         found = await find_saved_meal("user-1", "  Chicken  Biryani! ")
@@ -115,11 +104,12 @@ async def test_find_saved_meal_empty_text_returns_none() -> None:
     get_sess.assert_not_called()
 
 
-def test_list_meals_logged_today_true() -> None:
+def test_list_meals_logged_today_true(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """A saved meal whose name matches a today label gets logged_today=True."""
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+    client = TestClient(app_factory(my_meals.router))
 
     meal = MagicMock()
     meal.id = "meal-1"
@@ -144,7 +134,7 @@ def test_list_meals_logged_today_true() -> None:
             _exec_returning_rows([label_row]),
         ]
     )
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.my_meals.get_session", return_value=factory):
         resp = client.get("/my-meals")
@@ -155,11 +145,12 @@ def test_list_meals_logged_today_true() -> None:
     assert data[0]["logged_today"] is True
 
 
-def test_list_meals_logged_today_false() -> None:
+def test_list_meals_logged_today_false(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """A saved meal with no matching today label gets logged_today=False."""
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+    client = TestClient(app_factory(my_meals.router))
 
     meal = MagicMock()
     meal.id = "meal-2"
@@ -183,7 +174,7 @@ def test_list_meals_logged_today_false() -> None:
             _exec_returning_rows([label_row]),
         ]
     )
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.my_meals.get_session", return_value=factory):
         resp = client.get("/my-meals")
@@ -193,11 +184,12 @@ def test_list_meals_logged_today_false() -> None:
     assert data[0]["logged_today"] is False
 
 
-def test_list_meals_no_logs_today() -> None:
+def test_list_meals_no_logs_today(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
     """When no meals are logged today, all saved meals get logged_today=False."""
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+    client = TestClient(app_factory(my_meals.router))
 
     meal = MagicMock()
     meal.id = "meal-3"
@@ -218,7 +210,7 @@ def test_list_meals_no_logs_today() -> None:
             _exec_returning_rows([]),  # no labels today
         ]
     )
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.my_meals.get_session", return_value=factory):
         resp = client.get("/my-meals")
