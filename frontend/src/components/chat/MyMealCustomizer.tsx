@@ -4,6 +4,7 @@ import { useMyMeal, useLogMyMeal } from '../../api/hooks'
 import type { MealCategory, MealItem } from '../../api/types'
 import { MealTypePicker } from './MealTypePicker'
 import { defaultMealCategory } from './meal-categories'
+import { scaleItem, totals } from '@/lib/meal-math'
 
 const PORTION_STEPS = [0.5, 1, 1.5, 2]
 
@@ -11,8 +12,6 @@ interface MyMealCustomizerProps {
   mealId: string
   onLogged: () => void
 }
-
-type MacroKey = 'kcal' | 'protein_g' | 'fiber_g'
 
 /** Inline editor for logging a customized portion of a saved meal. */
 export function MyMealCustomizer({ mealId, onLogged }: MyMealCustomizerProps) {
@@ -42,9 +41,7 @@ export function MyMealCustomizer({ mealId, onLogged }: MyMealCustomizerProps) {
 
   const items: MealItem[] = data.ingredients
   const visible = items.map((_, i) => i).filter((i) => !removed.has(i))
-  const scaleOf = (i: number) => (qtys[i] * portion) / items[i].qty_g
-  const total = (key: MacroKey) =>
-    visible.reduce((acc, i) => acc + items[i][key] * scaleOf(i), 0)
+  const sum = totals(visible.map((i) => scaleItem(items[i], qtys[i] * portion)))
 
   const setQty = (i: number, v: number) => {
     if (v <= 0 || Number.isNaN(v)) return
@@ -127,9 +124,9 @@ export function MyMealCustomizer({ mealId, onLogged }: MyMealCustomizerProps) {
       {/* Live totals */}
       <div className="grid grid-cols-3 text-center bg-container rounded-xl py-2">
         {[
-          { label: 'kcal', value: Math.round(total('kcal')).toString() },
-          { label: 'protein', value: `${total('protein_g').toFixed(0)}g` },
-          { label: 'fiber', value: `${total('fiber_g').toFixed(0)}g` },
+          { label: 'kcal', value: Math.round(sum.kcal).toString() },
+          { label: 'protein', value: `${sum.protein_g.toFixed(0)}g` },
+          { label: 'fiber', value: `${sum.fiber_g.toFixed(0)}g` },
         ].map((t) => (
           <div key={t.label}>
             <span className="label-caps block text-[9px]">{t.label}</span>

@@ -183,7 +183,7 @@ recall it in chat by the new name. Both must show the edited version.
 
 ### Web for User Story 1
 
-- [ ] T015 [P] [US1] Create `frontend/src/lib/meal-math.ts` by extracting the
+- [X] T015 [P] [US1] Create `frontend/src/lib/meal-math.ts` by extracting the
   scaling and totals math from
   `frontend/src/components/chat/MyMealCustomizer.tsx`:
   - export `scaleItem(item, qtyG)`, which scales macros proportionally and
