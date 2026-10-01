@@ -171,6 +171,7 @@ class PromptsConfig(BaseModel):
     fact_extraction_system: str
     nutrition_estimate_system: str
     decompose_system: str
+    replace_ingredient_system: str
     log_reply_system: str
 
     model_config = ConfigDict(extra="forbid")

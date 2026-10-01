@@ -493,7 +493,7 @@ at 90% or more.
   - Include about 6 short examples, covering swap with a name, swap with a
     relative phrase, swap with an amount, add with an amount, add with no
     amount, and two foods.
-- [ ] T048 [US4] Add `replace_ingredient_system: str` to `PromptsConfig` in
+- [X] T048 [US4] Add `replace_ingredient_system: str` to `PromptsConfig` in
   `src/backend/config/__init__.py`. The loader then requires the `.md` file
   at import. Check with `python -c "import backend.config"`.
 - [ ] T049 [US4] Create `src/backend/agent/tools/replace_ingredient.py`.
