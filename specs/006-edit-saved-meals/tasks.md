@@ -475,7 +475,7 @@ at 90% or more.
 
 ### Backend for User Story 4
 
-- [ ] T047 [P] [US4] Create the prompt file
+- [X] T047 [P] [US4] Create the prompt file
   `src/backend/config/prompts/replace_ingredient_system.md` (research R8).
   - **Input**: the model gets `mode` (swap/add), `meal`, `replacing` (swap
     only) and `user_text`.
