@@ -192,7 +192,7 @@ recall it in chat by the new name. Both must show the edited version.
     with null counted as 0.
   - Refactor `MyMealCustomizer.tsx` to use it, with no behavior change.
   - Add `frontend/src/lib/meal-math.test.ts`.
-- [ ] T016 [P] [US1] Add `useUpdateMeal` in `frontend/src/api/hooks.ts`:
+- [X] T016 [P] [US1] Add `useUpdateMeal` in `frontend/src/api/hooks.ts`:
   - a `useMutation<MyMealDetail, ApiError, {id: string; body:
     UpdateMealRequest}>` that calls `apiClient.put('/my-meals/${id}', body)`;
   - on success, invalidate `['my-meals']` and `['my-meals', id]`.

@@ -55,6 +55,13 @@ export interface SaveMealRequest {
   ingredients: MealItem[];
 }
 
+export interface UpdateMealRequest {
+  name: string;
+  /** The detail's updated_at, for optimistic concurrency */
+  expected_updated_at: string;
+  ingredients: MealItem[];
+}
+
 export interface IngredientOverride {
   index: number;
   qty_g: number;

@@ -12,6 +12,7 @@ import type {
   MyMealSummary,
   SaveMealRequest,
   TodayTotals,
+  UpdateMealRequest,
   GoalData,
   NutrientCheckupResponse,
   PendingNudgeResponse,
@@ -34,6 +35,17 @@ export const useSaveMeal = () => {
   return useMutation<MyMealDetail, ApiError, SaveMealRequest>({
     mutationFn: (req) => apiClient.post<MyMealDetail>('/my-meals', req),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-meals'] }),
+  })
+}
+
+export const useUpdateMeal = () => {
+  const queryClient = useQueryClient()
+  return useMutation<MyMealDetail, ApiError, { id: string; body: UpdateMealRequest }>({
+    mutationFn: ({ id, body }) => apiClient.put<MyMealDetail>(`/my-meals/${id}`, body),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['my-meals'] })
+      queryClient.invalidateQueries({ queryKey: ['my-meals', id] })
+    },
   })
 }
 
