@@ -225,7 +225,7 @@ recall it in chat by the new name. Both must show the edited version.
   Add an "Edit" button (lucide `Pencil`) on each `MealRow`, next to Customize.
   It opens `MyMealEditor` inline for that meal. Only one editor or customizer
   is open at a time.
-- [ ] T020 [P] [US1] Add
+- [X] T020 [P] [US1] Add
   `frontend/src/components/my-meals/my-meal-editor.test.tsx` (Vitest + RTL,
   mock hooks). Cover:
   - editing grams updates the totals;
