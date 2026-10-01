@@ -1,0 +1,56 @@
+{"id": "swap-full-01", "mode": "swap", "meal": "Chicken biryani", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "brown rice", "expect_name_any": ["brown rice"], "expect_qty_g": 150}
+{"id": "swap-full-02", "mode": "swap", "meal": "Chicken sandwich", "replacing": {"food_name": "bread white", "qty_g": 56, "unit": "slice"}, "text": "whole wheat bread", "expect_name_any": ["whole wheat", "whole-wheat", "wheat bread"], "expect_qty_g": 56}
+{"id": "swap-full-03", "mode": "swap", "meal": "Dal and rice", "replacing": {"food_name": "vegetable oil", "qty_g": 14, "unit": "tbsp"}, "text": "ghee", "expect_name_any": ["ghee", "butter oil"], "expect_qty_g": 14}
+{"id": "swap-full-04", "mode": "swap", "meal": "Breakfast bowl", "replacing": {"food_name": "milk whole", "qty_g": 244, "unit": "cup"}, "text": "almond milk", "expect_name_any": ["almond milk", "almond"], "expect_qty_g": 244}
+{"id": "swap-full-05", "mode": "swap", "meal": "Pasta dinner", "replacing": {"food_name": "pasta cooked", "qty_g": 140, "unit": "cup"}, "text": "whole wheat pasta", "expect_name_any": ["whole wheat", "whole-wheat", "wheat pasta", "pasta"], "expect_qty_g": 140}
+{"id": "swap-full-06", "mode": "swap", "meal": "Veg curry meal", "replacing": {"food_name": "tofu", "qty_g": 100, "unit": "serving"}, "text": "paneer", "expect_name_any": ["paneer", "cottage cheese", "cheese"], "expect_qty_g": 100}
+{"id": "swap-full-07", "mode": "swap", "meal": "Oatmeal", "replacing": {"food_name": "sour cream", "qty_g": 170, "unit": "serving"}, "text": "greek yogurt", "expect_name_any": ["greek yogurt", "greek", "yogurt", "yoghurt"], "expect_qty_g": 170}
+{"id": "swap-full-08", "mode": "swap", "meal": "Idli breakfast", "replacing": {"food_name": "idli", "qty_g": 80, "unit": "serving"}, "text": "oats idli", "expect_name_any": ["oat", "idli"], "expect_qty_g": 80}
+{"id": "swap-full-09", "mode": "swap", "meal": "Salad", "replacing": {"food_name": "butter", "qty_g": 14, "unit": "tbsp"}, "text": "olive oil", "expect_name_any": ["olive oil", "olive"], "expect_qty_g": 14}
+{"id": "swap-full-10", "mode": "swap", "meal": "Burger", "replacing": {"food_name": "beef patty", "qty_g": 113, "unit": "patty"}, "text": "turkey patty", "expect_name_any": ["turkey"], "expect_qty_g": 113}
+{"id": "swap-full-11", "mode": "swap", "meal": "Toast and eggs", "replacing": {"food_name": "butter", "qty_g": 50, "unit": "serving"}, "text": "avocado", "expect_name_any": ["avocado"], "expect_qty_g": 50}
+{"id": "swap-full-12", "mode": "swap", "meal": "Rice bowl", "replacing": {"food_name": "rice white cooked", "qty_g": 185, "unit": "cup"}, "text": "quinoa", "expect_name_any": ["quinoa"], "expect_qty_g": 185}
+{"id": "swap-rel-01", "mode": "swap", "meal": "Chicken biryani", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "brown", "expect_name_any": ["brown rice", "brown"], "expect_qty_g": 150}
+{"id": "swap-rel-02", "mode": "swap", "meal": "Sandwich", "replacing": {"food_name": "bread white", "qty_g": 56, "unit": "slice"}, "text": "whole wheat version", "expect_name_any": ["whole wheat", "whole-wheat", "wheat"], "expect_qty_g": 56}
+{"id": "swap-rel-03", "mode": "swap", "meal": "Cereal", "replacing": {"food_name": "milk whole", "qty_g": 244, "unit": "cup"}, "text": "skim", "expect_name_any": ["skim", "nonfat", "fat free", "fat-free"], "expect_qty_g": 244}
+{"id": "swap-rel-04", "mode": "swap", "meal": "Pasta", "replacing": {"food_name": "pasta cooked", "qty_g": 140, "unit": "cup"}, "text": "whole grain", "expect_name_any": ["whole grain", "whole wheat", "whole-grain", "wheat"], "expect_qty_g": 140}
+{"id": "swap-rel-05", "mode": "swap", "meal": "Roti and sabzi", "replacing": {"food_name": "roti", "qty_g": 40, "unit": "piece"}, "text": "multigrain", "expect_name_any": ["multigrain", "multi-grain", "whole wheat", "wheat", "roti"], "expect_qty_g": 40}
+{"id": "swap-rel-06", "mode": "swap", "meal": "Coffee", "replacing": {"food_name": "milk whole", "qty_g": 122, "unit": "half cup"}, "text": "oat milk instead", "expect_name_any": ["oat milk", "oat"], "expect_qty_g": 122}
+{"id": "swap-rel-07", "mode": "swap", "meal": "Salad", "replacing": {"food_name": "ranch dressing", "qty_g": 30, "unit": "serving"}, "text": "low fat version", "expect_name_any": ["low fat", "lowfat", "reduced fat", "light", "nonfat"], "expect_qty_g": 30}
+{"id": "swap-rel-08", "mode": "swap", "meal": "Dal fry", "replacing": {"food_name": "butter salted", "qty_g": 14, "unit": "tbsp"}, "text": "unsalted", "expect_name_any": ["unsalted", "butter"], "expect_qty_g": 14}
+{"id": "swap-rel-09", "mode": "swap", "meal": "Breakfast", "replacing": {"food_name": "yogurt fruit flavored", "qty_g": 170, "unit": "serving"}, "text": "plain", "expect_name_any": ["plain", "yogurt", "yoghurt"], "expect_qty_g": 170}
+{"id": "swap-rel-10", "mode": "swap", "meal": "Sandwich", "replacing": {"food_name": "bread white", "qty_g": 56, "unit": "slice"}, "text": "wheat", "expect_name_any": ["wheat", "whole wheat"], "expect_qty_g": 56}
+{"id": "swap-amt-01", "mode": "swap", "meal": "Chicken biryani", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "1 cup brown rice", "expect_name_any": ["brown rice"], "expect_qty_g": 195}
+{"id": "swap-amt-02", "mode": "swap", "meal": "Dal meal", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "2 rotis", "expect_name_any": ["roti", "chapati", "chapatti", "flatbread", "wheat"], "expect_qty_g": 80}
+{"id": "swap-amt-03", "mode": "swap", "meal": "Breakfast", "replacing": {"food_name": "milk whole", "qty_g": 122, "unit": "half cup"}, "text": "1 cup almond milk", "expect_name_any": ["almond milk", "almond"], "expect_qty_g": 240}
+{"id": "swap-amt-04", "mode": "swap", "meal": "Salad", "replacing": {"food_name": "ranch dressing", "qty_g": 30, "unit": "serving"}, "text": "1 tbsp olive oil", "expect_name_any": ["olive oil", "olive"], "expect_qty_g": 14}
+{"id": "swap-amt-05", "mode": "swap", "meal": "Toast", "replacing": {"food_name": "bread white", "qty_g": 28, "unit": "slice"}, "text": "2 slices whole wheat bread", "expect_name_any": ["whole wheat", "whole-wheat", "wheat bread"], "expect_qty_g": 56}
+{"id": "swap-amt-06", "mode": "swap", "meal": "Pasta", "replacing": {"food_name": "pasta cooked", "qty_g": 140, "unit": "cup"}, "text": "200 g whole wheat pasta", "expect_name_any": ["whole wheat", "whole-wheat", "pasta"], "expect_qty_g": 200}
+{"id": "swap-amt-07", "mode": "swap", "meal": "Sambar meal", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "3 idlis", "expect_name_any": ["idli"], "expect_qty_g": 120}
+{"id": "swap-amt-08", "mode": "swap", "meal": "Oatmeal", "replacing": {"food_name": "banana", "qty_g": 118, "unit": "medium"}, "text": "half a cup of blueberries", "expect_name_any": ["blueberr"], "expect_qty_g": 74}
+{"id": "add-amt-01", "mode": "add", "meal": "Dal and rice", "text": "1 tbsp ghee", "expect_name_any": ["ghee", "butter oil"], "expect_qty_g": 13}
+{"id": "add-amt-02", "mode": "add", "meal": "Oatmeal", "text": "1 tbsp honey", "expect_name_any": ["honey"], "expect_qty_g": 21}
+{"id": "add-amt-03", "mode": "add", "meal": "Chicken salad", "text": "2 tbsp olive oil", "expect_name_any": ["olive oil", "olive"], "expect_qty_g": 27}
+{"id": "add-amt-04", "mode": "add", "meal": "Smoothie", "text": "1 cup spinach", "expect_name_any": ["spinach"], "expect_qty_g": 30}
+{"id": "add-amt-05", "mode": "add", "meal": "Toast", "text": "1 tbsp peanut butter", "expect_name_any": ["peanut butter", "peanut"], "expect_qty_g": 16}
+{"id": "add-amt-06", "mode": "add", "meal": "Curry meal", "text": "1 roti", "expect_name_any": ["roti", "chapati", "chapatti", "flatbread", "wheat"], "expect_qty_g": 40}
+{"id": "add-amt-07", "mode": "add", "meal": "Breakfast", "text": "2 boiled eggs", "expect_name_any": ["egg"], "expect_qty_g": 100}
+{"id": "add-amt-08", "mode": "add", "meal": "Dinner", "text": "100 g paneer", "expect_name_any": ["paneer", "cottage cheese", "cheese"], "expect_qty_g": 100}
+{"id": "add-amt-09", "mode": "add", "meal": "Coffee", "text": "1 tsp sugar", "expect_name_any": ["sugar"], "expect_qty_g": 4}
+{"id": "add-amt-10", "mode": "add", "meal": "Rice meal", "text": "1 cup cooked lentils dal", "expect_name_any": ["dal", "lentil"], "expect_qty_g": 198}
+{"id": "add-typ-01", "mode": "add", "meal": "Oatmeal", "text": "a banana", "expect_name_any": ["banana"], "expect_qty_g": 118}
+{"id": "add-typ-02", "mode": "add", "meal": "Dal and rice", "text": "ghee", "expect_name_any": ["ghee", "butter oil"], "expect_qty_g": 13}
+{"id": "add-typ-03", "mode": "add", "meal": "Breakfast", "text": "an egg", "expect_name_any": ["egg"], "expect_qty_g": 50}
+{"id": "add-typ-04", "mode": "add", "meal": "Dinner", "text": "a slice of cheese", "expect_name_any": ["cheese"], "expect_qty_g": 20}
+{"id": "add-typ-05", "mode": "add", "meal": "Snack", "text": "an apple", "expect_name_any": ["apple"], "expect_qty_g": 182}
+{"id": "est-01", "mode": "add", "meal": "Lunch", "text": "1 piece gulab jamun", "expect_name_any": ["gulab jamun"], "expect_qty_g": 40}
+{"id": "est-02", "mode": "add", "meal": "Dinner", "text": "1 serving shahi paneer", "expect_name_any": ["shahi paneer", "paneer"], "expect_qty_g": 150}
+{"id": "est-03", "mode": "swap", "meal": "Breakfast", "replacing": {"food_name": "idli", "qty_g": 80, "unit": "serving"}, "text": "medu vada", "expect_name_any": ["medu vada", "vada"], "expect_qty_g": 80}
+{"id": "est-04", "mode": "add", "meal": "Snack", "text": "1 scoop Optimum Nutrition gold standard whey", "expect_name_any": ["whey", "protein"], "expect_qty_g": 31}
+{"id": "est-05", "mode": "add", "meal": "Lunch", "text": "1 bowl bisi bele bath", "expect_name_any": ["bisi bele bath", "bisi bele", "bath"], "expect_qty_g": 250}
+{"id": "rej-01", "mode": "swap", "meal": "Chicken biryani", "replacing": {"food_name": "rice white cooked", "qty_g": 150, "unit": "cup"}, "text": "rice and dal", "expect_name_any": [], "expect_qty_g": 150, "expect_reject": true}
+{"id": "rej-02", "mode": "add", "meal": "Breakfast", "text": "asdf", "expect_name_any": [], "expect_qty_g": 0, "expect_reject": true}
+{"id": "rej-03", "mode": "add", "meal": "Lunch", "text": "1 roti and 1 cup dal", "expect_name_any": [], "expect_qty_g": 0, "expect_reject": true}
+{"id": "rej-04", "mode": "swap", "meal": "Pasta", "replacing": {"food_name": "pasta cooked", "qty_g": 140, "unit": "cup"}, "text": "what time is it", "expect_name_any": [], "expect_qty_g": 140, "expect_reject": true}
+{"id": "rej-05", "mode": "add", "meal": "Dinner", "text": "eggs, toast and bacon", "expect_name_any": [], "expect_qty_g": 0, "expect_reject": true}
+{"id": "rej-06", "mode": "swap", "meal": "Salad", "replacing": {"food_name": "ranch dressing", "qty_g": 30, "unit": "serving"}, "text": "hello there!", "expect_name_any": [], "expect_qty_g": 30, "expect_reject": true}

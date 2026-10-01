@@ -570,7 +570,7 @@ at 90% or more.
 
 ### Eval gate for User Story 4 (SC-007)
 
-- [ ] T053 [P] [US4] Create `eval/cases/ingredient_replace.jsonl` with at least
+- [X] T053 [P] [US4] Create `eval/cases/ingredient_replace.jsonl` with at least
   40 cases in the research R10 mix (≥10 swap with a full name, ≥8 swap with a
   relative phrase, ≥6 swap with an amount, ≥8 add with an amount, ≥4 add with
   no amount, ≥4 not in USDA, ≥4 reject).
