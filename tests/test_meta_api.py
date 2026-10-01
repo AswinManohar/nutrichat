@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -7,15 +9,9 @@ from fastapi.testclient import TestClient
 from backend.api import meta
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(meta.router)
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(_make_app())
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(meta.router, user_id=None))
 
 
 def test_meta_app_defaults(client: TestClient) -> None:

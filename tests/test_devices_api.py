@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,35 +8,24 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import devices
-from tests.auth_helpers import with_header_auth
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(devices.router)
-    return app
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    return TestClient(with_header_auth(_make_app()))
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(devices.router, header_auth=True))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
     return {"X-Debug-User-Id": user_id}
 
 
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
-
-
-def test_register_upserts_on_token(client: TestClient) -> None:
+def test_register_upserts_on_token(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     session = MagicMock()
     session.execute = AsyncMock()
     session.commit = AsyncMock()
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     body = {"token": "fcm-abc", "platform": "fcm"}
     with patch("backend.api.devices.get_session", return_value=factory):
@@ -48,11 +38,13 @@ def test_register_upserts_on_token(client: TestClient) -> None:
     assert session.execute.await_count == 2
 
 
-def test_delete_token(client: TestClient) -> None:
+def test_delete_token(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     session = MagicMock()
     session.execute = AsyncMock()
     session.commit = AsyncMock()
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.devices.get_session", return_value=factory):
         client.post(
@@ -74,9 +66,11 @@ def test_register_rejects_unknown_platform(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
-def test_register_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_register_requires_auth(
+    monkeypatch: pytest.MonkeyPatch, app_factory: Callable[..., FastAPI]
+) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
-    client = TestClient(_make_app())
+    client = TestClient(app_factory(devices.router, user_id=None))
 
     resp = client.post("/devices/register", json={"token": "t", "platform": "fcm"})
     assert resp.status_code == 401

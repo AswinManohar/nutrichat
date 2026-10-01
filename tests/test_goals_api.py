@@ -1,50 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi import Request
-
 from backend.api import goals
-from backend.auth.supabase import get_current_user_id
 from backend.db.models import UserGoal
 
 
-def _override_user(request: Request) -> str:
-    """Resolve the test user from the X-Debug-User-Id header (auth override)."""
-    return request.headers.get("X-Debug-User-Id", "user-1")
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(goals.router)
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = _override_user
-    return TestClient(app)
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(goals.router, header_auth=True))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
     return {"X-Debug-User-Id": user_id}
 
 
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
-
-
-def test_get_goals_404_before_onboarding(client: TestClient) -> None:
+def test_get_goals_404_before_onboarding(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     session = MagicMock()
     session.get = AsyncMock(return_value=None)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         resp = client.get("/goals", headers=_auth_headers("user-1"))
@@ -52,7 +33,9 @@ def test_get_goals_404_before_onboarding(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_post_then_get_goals_round_trips(client: TestClient) -> None:
+def test_post_then_get_goals_round_trips(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     store: dict[str, UserGoal] = {}
 
     session = MagicMock()
@@ -73,7 +56,7 @@ def test_post_then_get_goals_round_trips(client: TestClient) -> None:
     session.add = fake_add
     session.commit = fake_commit
     session.refresh = fake_refresh
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         post_resp = client.post(
@@ -96,7 +79,9 @@ def test_post_then_get_goals_round_trips(client: TestClient) -> None:
         assert body["fiber_goal"] == 30
 
 
-def test_post_goals_conflict_if_already_onboarded(client: TestClient) -> None:
+def test_post_goals_conflict_if_already_onboarded(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     existing = UserGoal(
         user_id="user-1",
         kcal_goal=2000,
@@ -107,7 +92,7 @@ def test_post_goals_conflict_if_already_onboarded(client: TestClient) -> None:
     )
     session = MagicMock()
     session.get = AsyncMock(return_value=existing)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         resp = client.post(
@@ -124,7 +109,9 @@ def test_post_goals_conflict_if_already_onboarded(client: TestClient) -> None:
     assert resp.status_code == 409
 
 
-def test_put_goals_updates_existing(client: TestClient) -> None:
+def test_put_goals_updates_existing(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     existing = UserGoal(
         user_id="user-1",
         kcal_goal=2000,
@@ -138,7 +125,7 @@ def test_put_goals_updates_existing(client: TestClient) -> None:
     session.get = AsyncMock(return_value=existing)
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         resp = client.put(
@@ -160,7 +147,9 @@ def test_put_goals_updates_existing(client: TestClient) -> None:
     assert body["dietary_prefs"] == {"vegan": True}
 
 
-def test_put_goals_mindful_preserves_targets(client: TestClient) -> None:
+def test_put_goals_mindful_preserves_targets(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     """Switching to mindful mode without targets must not null them out,
     and switching back to goals mode must restore the preserved values.
     """
@@ -178,7 +167,7 @@ def test_put_goals_mindful_preserves_targets(client: TestClient) -> None:
     session.get = AsyncMock(return_value=existing)
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         mindful_resp = client.put(
@@ -213,10 +202,12 @@ def test_put_goals_mindful_preserves_targets(client: TestClient) -> None:
     assert goals_body["fiber_goal"] == 31
 
 
-def test_put_goals_404_before_onboarding(client: TestClient) -> None:
+def test_put_goals_404_before_onboarding(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     session = MagicMock()
     session.get = AsyncMock(return_value=None)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         resp = client.put(
@@ -233,7 +224,9 @@ def test_put_goals_404_before_onboarding(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_goals_isolated_between_users(client: TestClient) -> None:
+def test_goals_isolated_between_users(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
     store: dict[str, UserGoal] = {
         "user-1": UserGoal(
             user_id="user-1",
@@ -251,7 +244,7 @@ def test_goals_isolated_between_users(client: TestClient) -> None:
         return store.get(user_id)
 
     session.get = fake_get
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with patch("backend.api.goals.get_session", return_value=factory):
         resp_1 = client.get("/goals", headers=_auth_headers("user-1"))
@@ -261,15 +254,19 @@ def test_goals_isolated_between_users(client: TestClient) -> None:
     assert resp_2.status_code == 404
 
 
-def test_get_goals_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_goals_requires_auth(
+    monkeypatch: pytest.MonkeyPatch, app_factory: Callable[..., FastAPI]
+) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
-    client = TestClient(_make_app())
+    client = TestClient(app_factory(goals.router, user_id=None))
 
     resp = client.get("/goals")
     assert resp.status_code == 401
 
 
-def _round_trip_session() -> tuple[MagicMock, dict[str, UserGoal]]:
+def _round_trip_session(
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> tuple[MagicMock, dict[str, UserGoal]]:
     store: dict[str, UserGoal] = {}
     session = MagicMock()
 
@@ -286,11 +283,13 @@ def _round_trip_session() -> tuple[MagicMock, dict[str, UserGoal]]:
     session.add = fake_add
     session.commit = noop
     session.refresh = noop
-    return _mock_session_factory(session), store
+    return mock_session_factory(session), store
 
 
-def test_conditions_round_trip_through_post_put_get(client: TestClient) -> None:
-    factory, _ = _round_trip_session()
+def test_conditions_round_trip_through_post_put_get(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
+    factory, _ = _round_trip_session(mock_session_factory)
     base = {
         "kcal_goal": 2000,
         "protein_goal": 150,
@@ -318,8 +317,10 @@ def test_conditions_round_trip_through_post_put_get(client: TestClient) -> None:
         assert get.json()["conditions"] == ["diabetes", "hypertension"]
 
 
-def test_conditions_default_to_empty_list(client: TestClient) -> None:
-    factory, _ = _round_trip_session()
+def test_conditions_default_to_empty_list(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
+    factory, _ = _round_trip_session(mock_session_factory)
     with patch("backend.api.goals.get_session", return_value=factory):
         post = client.post(
             "/goals",
@@ -330,8 +331,10 @@ def test_conditions_default_to_empty_list(client: TestClient) -> None:
     assert post.json()["conditions"] == []
 
 
-def test_invalid_condition_is_rejected(client: TestClient) -> None:
-    factory, _ = _round_trip_session()
+def test_invalid_condition_is_rejected(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
+    factory, _ = _round_trip_session(mock_session_factory)
     with patch("backend.api.goals.get_session", return_value=factory):
         resp = client.put(
             "/goals",
@@ -346,8 +349,10 @@ def test_invalid_condition_is_rejected(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
-def test_put_without_conditions_leaves_them_unchanged(client: TestClient) -> None:
-    factory, store = _round_trip_session()
+def test_put_without_conditions_leaves_them_unchanged(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
+    factory, store = _round_trip_session(mock_session_factory)
     base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
 
     with patch("backend.api.goals.get_session", return_value=factory):
@@ -363,8 +368,10 @@ def test_put_without_conditions_leaves_them_unchanged(client: TestClient) -> Non
     assert store["user-1"].conditions == ["diabetes"]
 
 
-def test_put_with_empty_conditions_clears_them(client: TestClient) -> None:
-    factory, store = _round_trip_session()
+def test_put_with_empty_conditions_clears_them(
+    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+) -> None:
+    factory, store = _round_trip_session(mock_session_factory)
     base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
 
     with patch("backend.api.goals.get_session", return_value=factory):

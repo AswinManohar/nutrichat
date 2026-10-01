@@ -2,19 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import quota as quota_router_module
-from backend.auth.supabase import get_current_user_id
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(quota_router_module.router)
-    return app
 
 
 def _mock_goal(used: int, limit: int):
@@ -24,27 +16,14 @@ def _mock_goal(used: int, limit: int):
     return goal
 
 
-def _mock_session(goal):
-    session = MagicMock()
-    session.get = AsyncMock(return_value=goal)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    # get_session() → factory, factory() → session (async ctx mgr)
-    factory = MagicMock(return_value=session)
-    return MagicMock(return_value=factory)
-
-
-def test_quota_requires_auth():
-    client = TestClient(_make_app())
+def test_quota_requires_auth(app_factory):
+    client = TestClient(app_factory(quota_router_module.router, user_id=None))
     assert client.get("/quota").status_code == 401
 
 
-def test_quota_free_user_under_limit(monkeypatch):
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(
-        quota_router_module, "get_session", _mock_session(_mock_goal(34, 50))
-    )
+def test_quota_free_user_under_limit(app_factory, make_session, patch_get_session):
+    app = app_factory(quota_router_module.router, user_id="user-1")
+    patch_get_session(quota_router_module, make_session(get_result=_mock_goal(34, 50)))
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
@@ -57,12 +36,9 @@ def test_quota_free_user_under_limit(monkeypatch):
     }
 
 
-def test_quota_paid_user(monkeypatch):
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(
-        quota_router_module, "get_session", _mock_session(_mock_goal(80, 150))
-    )
+def test_quota_paid_user(app_factory, make_session, patch_get_session):
+    app = app_factory(quota_router_module.router, user_id="user-1")
+    patch_get_session(quota_router_module, make_session(get_result=_mock_goal(80, 150)))
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
@@ -72,12 +48,9 @@ def test_quota_paid_user(monkeypatch):
     assert body["exhausted"] is False
 
 
-def test_quota_exhausted_user(monkeypatch):
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    monkeypatch.setattr(
-        quota_router_module, "get_session", _mock_session(_mock_goal(50, 50))
-    )
+def test_quota_exhausted_user(app_factory, make_session, patch_get_session):
+    app = app_factory(quota_router_module.router, user_id="user-1")
+    patch_get_session(quota_router_module, make_session(get_result=_mock_goal(50, 50)))
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
@@ -86,10 +59,11 @@ def test_quota_exhausted_user(monkeypatch):
     assert body["remaining"] == 0
 
 
-def test_quota_no_goal_row_returns_free_defaults(monkeypatch):
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "new-user"
-    monkeypatch.setattr(quota_router_module, "get_session", _mock_session(None))
+def test_quota_no_goal_row_returns_free_defaults(
+    app_factory, make_session, patch_get_session
+):
+    app = app_factory(quota_router_module.router, user_id="new-user")
+    patch_get_session(quota_router_module, make_session(get_result=None))
 
     resp = TestClient(app).get("/quota")
     assert resp.status_code == 200
