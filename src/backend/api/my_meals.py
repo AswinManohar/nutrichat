@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -44,11 +44,12 @@ class IngredientIn(BaseModel):
 
     food_name: str
     qty_g: float = Field(gt=0)
-    kcal: float = 0.0
-    protein_g: float = 0.0
-    carbs_g: float = 0.0
-    fat_g: float = 0.0
-    fiber_g: float = 0.0
+    target_qty_g: float | None = Field(default=None, gt=0)
+    kcal: float | None = 0.0
+    protein_g: float | None = 0.0
+    carbs_g: float | None = 0.0
+    fat_g: float | None = 0.0
+    fiber_g: float | None = 0.0
 
     model_config = ConfigDict(extra="allow")
 
@@ -76,11 +77,21 @@ class MyMealSummary(BaseModel):
 
 class MyMealDetail(MyMealSummary):
     ingredients: list[dict]
+    updated_at: datetime
 
 
-def _totals(ingredients: list[IngredientIn]) -> dict[str, float]:
-    """Sum macro totals server-side — never trust client-supplied totals."""
-    return {f: round(sum(getattr(i, f) for i in ingredients), 2) for f in _MACRO_FIELDS}
+def _totals(ingredients: list[dict]) -> dict[str, float]:
+    """Sum macro totals server-side; never trust client-supplied totals.
+
+    Args:
+        ingredients: Built ingredient dicts. An unknown (None) macro counts as 0.
+
+    Returns:
+        Rounded totals keyed by macro field name.
+    """
+    return {
+        f: round(sum((d.get(f) or 0.0) for d in ingredients), 2) for f in _MACRO_FIELDS
+    }
 
 
 def _summary(meal: UserMeal, logged_today: bool = False) -> MyMealSummary:
@@ -176,6 +187,28 @@ def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDARes
     )
 
 
+def _build_ingredients(items: list[IngredientIn], portion: float) -> list[dict]:
+    """Scale card ingredients server-side into storable dicts.
+
+    Each item is scaled to `(target_qty_g or qty_g) * portion`. Unknown macros
+    stay None; extra card fields pass through. Only explicitly scaled fields
+    override the client values.
+
+    Args:
+        items: Ingredients as sent by the client.
+        portion: Global portion multiplier (> 0).
+
+    Returns:
+        One dict per ingredient, ready to store in `user_meal.ingredients`.
+    """
+    built: list[dict] = []
+    for item in items:
+        raw = item.model_dump(exclude={"target_qty_g"})
+        scaled = _scaled_result(raw, item.target_qty_g or item.qty_g, portion)
+        built.append({**raw, **scaled.model_dump(exclude_unset=True)})
+    return built
+
+
 @router.get("")
 async def list_meals(
     user_id: str = Depends(get_current_user_id),
@@ -212,7 +245,11 @@ async def get_meal(
         if meal is None or meal.user_id != user_id or meal.deleted_at is not None:
             raise HTTPException(status_code=404, detail="Meal not found")
         base = _summary(meal)
-        return MyMealDetail(**base.model_dump(), ingredients=meal.ingredients)
+        return MyMealDetail(
+            **base.model_dump(),
+            ingredients=meal.ingredients,
+            updated_at=meal.updated_at,
+        )
 
 
 @router.post("/{meal_id}/log")
@@ -262,8 +299,9 @@ async def save_meal(
     normalized = normalize_meal_name(req.name)
     if not normalized:
         raise HTTPException(status_code=422, detail="Meal name is empty")
-    totals = _totals(req.ingredients)
-    ingredients = [i.model_dump() for i in req.ingredients]
+    # Stored verbatim (T028 switches this to _build_ingredients).
+    ingredients = [i.model_dump(exclude={"target_qty_g"}) for i in req.ingredients]
+    totals = _totals(ingredients)
 
     async with get_session()() as session:
         existing = await session.execute(
@@ -274,9 +312,7 @@ async def save_meal(
             )
         )
         if existing.scalars().first() is not None:
-            raise HTTPException(
-                status_code=409, detail="A meal with that name already exists"
-            )
+            raise HTTPException(status_code=409, detail="name_taken")
 
         meal = UserMeal(
             id=str(uuid.uuid4()),
@@ -290,15 +326,17 @@ async def save_meal(
         await session.commit()
         await session.refresh(meal)
         base = _summary(meal)
-        return MyMealDetail(**base.model_dump(), ingredients=meal.ingredients)
+        return MyMealDetail(
+            **base.model_dump(),
+            ingredients=meal.ingredients,
+            updated_at=meal.updated_at,
+        )
 
 
 @router.delete("/{meal_id}", status_code=204)
 async def delete_meal(
     meal_id: str, user_id: str = Depends(get_current_user_id)
 ) -> None:
-    from datetime import datetime
-
     async with get_session()() as session:
         meal = await session.get(UserMeal, meal_id)
         if meal is None or meal.user_id != user_id or meal.deleted_at is not None:
