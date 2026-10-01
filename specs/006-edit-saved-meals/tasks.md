@@ -44,7 +44,7 @@ tests, and SC-007 requires an LLM eval gate.
     ~586). Keep a module alias `_UPGRADE_MSG = UPGRADE_MSG` only if a test
     imports the old name; check with `grep -rn _UPGRADE_MSG tests/`.
   - Run `pytest tests -q -k "quota or orchestrator"`.
-- [ ] T002 [P] Give web API errors a structured detail:
+- [X] T002 [P] Give web API errors a structured detail:
   - In `frontend/src/api/client.ts`, extend `ApiError` with a readonly
     `detail: unknown` (constructor `(message, status, detail?)`).
   - Where non-OK responses are handled, parse the JSON body. Pass `body.detail`

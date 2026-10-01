@@ -21,11 +21,24 @@ async function getAccessToken(): Promise<string | null> {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Raw `detail` from the JSON error body: a string code or an object. */
+  readonly detail: unknown;
+  constructor(message: string, status: number, detail?: unknown) {
     super(message)
     this.status = status
+    this.detail = detail
     this.name = 'ApiError'
   }
+}
+
+/** True when an ApiError detail is the string `code` or an object with that `code`. */
+export function isErrorCode(detail: unknown, code: string): boolean {
+  if (detail === code) return true
+  return (
+    typeof detail === 'object' &&
+    detail !== null &&
+    (detail as { code?: unknown }).code === code
+  )
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -71,14 +84,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     let errorDetail = 'API Request failed'
+    let detail: unknown
     try {
       const errJson = await response.json()
-      errorDetail = errJson.detail || errJson.message || errorDetail
+      detail = errJson.detail
+      errorDetail =
+        (typeof errJson.detail === 'string' && errJson.detail) || errJson.message || errorDetail
     } catch {
       // fallback to status text
       errorDetail = response.statusText || errorDetail
     }
-    throw new ApiError(errorDetail, response.status)
+    throw new ApiError(errorDetail, response.status, detail)
   }
 
   if (response.status === 204) {

@@ -17,7 +17,7 @@ vi.mock('../stores/authStore', () => ({
   },
 }))
 
-const { apiClient, ApiError } = await import('./client')
+const { apiClient, ApiError, isErrorCode } = await import('./client')
 
 /** Build a fetch Response stand-in with the given status and JSON body. */
 function reply(status: number, body: unknown = {}) {
@@ -78,5 +78,43 @@ describe('apiClient auth handling', () => {
 
     await expect(apiClient.get('/goals')).rejects.toBeInstanceOf(ApiError)
     expect(signOut).toHaveBeenCalledOnce()
+  })
+})
+
+describe('ApiError detail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSession.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null })
+  })
+
+  it('keeps a string detail as message and detail', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(409, { detail: 'name_taken' })))
+
+    const err = await apiClient.post('/my-meals', {}).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as InstanceType<typeof ApiError>).message).toBe('name_taken')
+    expect((err as InstanceType<typeof ApiError>).detail).toBe('name_taken')
+    expect(isErrorCode((err as InstanceType<typeof ApiError>).detail, 'name_taken')).toBe(true)
+  })
+
+  it('exposes an object detail and matches its code', async () => {
+    const detail = { code: 'meal_changed', current: { id: 'm1' } }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(409, { detail })))
+
+    const err = (await apiClient.put('/my-meals/m1', {}).catch((e: unknown) => e)) as InstanceType<
+      typeof ApiError
+    >
+
+    expect(err.status).toBe(409)
+    expect(err.detail).toEqual(detail)
+    expect(isErrorCode(err.detail, 'meal_changed')).toBe(true)
+    expect(isErrorCode(err.detail, 'name_taken')).toBe(false)
+  })
+
+  it('isErrorCode is false for missing or unrelated detail', () => {
+    expect(isErrorCode(undefined, 'x')).toBe(false)
+    expect(isErrorCode(null, 'x')).toBe(false)
+    expect(isErrorCode({ message: 'x' }, 'x')).toBe(false)
   })
 })
