@@ -83,7 +83,6 @@ def _gemini(intent: str) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_route_confident_judgment_is_acted_on_without_gemini():
     # "protein" in the message: the deleted keyword lists sent this to coaching.
     llm = _gemini("coaching")
@@ -96,7 +95,6 @@ async def test_route_confident_judgment_is_acted_on_without_gemini():
     llm.ainvoke.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_route_confident_coaching_judgment():
     llm = _gemini("log_meal")
     with patch.object(orchestrator, "_intent_llm", llm):
@@ -108,7 +106,6 @@ async def test_route_confident_coaching_judgment():
     llm.ainvoke.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_route_unavailable_judgment_asks_gemini():
     llm = _gemini("coaching")
     with patch.object(orchestrator, "_intent_llm", llm):
@@ -122,7 +119,6 @@ async def test_route_unavailable_judgment_asks_gemini():
     assert decision.routing_record() is None
 
 
-@pytest.mark.asyncio
 async def test_route_without_a_judgment_task_asks_gemini():
     llm = _gemini("log_meal")
     with patch.object(orchestrator, "_intent_llm", llm):
@@ -132,7 +128,6 @@ async def test_route_without_a_judgment_task_asks_gemini():
     assert decision.intent == "log_meal"
 
 
-@pytest.mark.asyncio
 async def test_route_offer_to_log_only_for_coaching_that_reports_food():
     llm = _gemini("coaching")
     with patch.object(orchestrator, "_intent_llm", llm):
@@ -152,7 +147,6 @@ async def test_route_offer_to_log_only_for_coaching_that_reports_food():
     assert meal.offer_to_log is False
 
 
-@pytest.mark.asyncio
 async def test_route_record_has_the_six_documented_keys():
     decision = await _route(
         "I had pizza, was that bad?",
@@ -184,7 +178,6 @@ def _mock_graph(*, is_paused: bool, still_paused: bool = False, usda_results=Non
     return graph
 
 
-@pytest.mark.asyncio
 async def test_handle_message_paused_graph_always_resumes_meal_logging():
     graph = _mock_graph(is_paused=True)
 
@@ -208,7 +201,6 @@ async def test_handle_message_paused_graph_always_resumes_meal_logging():
     assert result["paused"] is False
 
 
-@pytest.mark.asyncio
 async def test_handle_message_image_always_meal_logging():
     graph = _mock_graph(is_paused=False)
 
@@ -235,7 +227,6 @@ async def test_handle_message_image_always_meal_logging():
     assert result["status"] == "success"
 
 
-@pytest.mark.asyncio
 async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
     graph = _mock_graph(is_paused=False)
 
@@ -269,7 +260,6 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
     }
 
 
-@pytest.mark.asyncio
 async def test_handle_message_fresh_log_meal_intent_runs_graph():
     graph = _mock_graph(is_paused=False)
 
@@ -291,7 +281,6 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
     assert result["status"] == "success"
 
 
-@pytest.mark.asyncio
 async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
     graph = _mock_graph(is_paused=False)
 
@@ -337,7 +326,6 @@ _TOAST_ITEM = {
 }
 
 
-@pytest.mark.asyncio
 async def test_coaching_turn_is_recorded_verbatim(_mock_history_store):
     graph = _mock_graph(is_paused=False)
 
@@ -368,7 +356,6 @@ async def test_coaching_turn_is_recorded_verbatim(_mock_history_store):
     )
 
 
-@pytest.mark.asyncio
 async def test_paused_logging_turn_is_recorded_as_card_summary(_mock_history_store):
     graph = _mock_graph(
         is_paused=False, still_paused=True, usda_results=[_EGG_ITEM, _TOAST_ITEM]
@@ -396,7 +383,6 @@ async def test_paused_logging_turn_is_recorded_as_card_summary(_mock_history_sto
     assert "awaiting confirmation" in summary
 
 
-@pytest.mark.asyncio
 async def test_completed_logging_turn_is_recorded_with_reply(_mock_history_store):
     graph = _mock_graph(is_paused=True, still_paused=False)
     graph.ainvoke.return_value = {
@@ -419,7 +405,6 @@ async def test_completed_logging_turn_is_recorded_with_reply(_mock_history_store
     ]
 
 
-@pytest.mark.asyncio
 async def test_image_turn_without_text_is_recorded_as_photo(_mock_history_store):
     graph = _mock_graph(is_paused=False, still_paused=True, usda_results=[_EGG_ITEM])
 
@@ -436,7 +421,6 @@ async def test_image_turn_without_text_is_recorded_as_photo(_mock_history_store)
     assert turns[0] == CoachingTurn(role="user", content="[sent a meal photo]")
 
 
-@pytest.mark.asyncio
 async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store):
     _mock_history_store.side_effect = RuntimeError("boom")
     graph = _mock_graph(is_paused=False)
@@ -466,7 +450,6 @@ async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_mixed_message_reply_ends_with_offer_to_log():
     graph = _mock_graph(is_paused=False)
     with (
@@ -496,7 +479,6 @@ async def test_mixed_message_reply_ends_with_offer_to_log():
     graph.ainvoke.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_pure_question_reply_has_no_offer():
     graph = _mock_graph(is_paused=False)
     with (
@@ -523,7 +505,6 @@ async def test_pure_question_reply_has_no_offer():
     assert result["message"] == "Pizza is fine in moderation."
 
 
-@pytest.mark.asyncio
 async def test_coaching_turn_passes_routing_record_to_store():
     graph = _mock_graph(is_paused=False)
     with (
@@ -563,7 +544,6 @@ async def test_coaching_turn_passes_routing_record_to_store():
     }
 
 
-@pytest.mark.asyncio
 async def test_unavailable_judgment_stores_no_routing_record():
     graph = _mock_graph(is_paused=False)
     with (
@@ -601,7 +581,6 @@ async def test_unavailable_judgment_stores_no_routing_record():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_pending_card_cancels_the_in_flight_judgment():
     graph = _mock_graph(is_paused=True)
     finished = asyncio.Event()
@@ -625,7 +604,6 @@ async def test_pending_card_cancels_the_in_flight_judgment():
     assert result["status"] == "success"
 
 
-@pytest.mark.asyncio
 async def test_blank_text_starts_no_judgment():
     graph = _mock_graph(is_paused=False)
     with (
@@ -644,7 +622,6 @@ async def test_blank_text_starts_no_judgment():
     judge_mock.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_judgment_overlaps_the_checkpoint_read():
     graph = _mock_graph(is_paused=False)
 

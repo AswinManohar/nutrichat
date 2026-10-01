@@ -126,7 +126,6 @@ def test_build_query_filters() -> None:
     assert "LEFT OUTER JOIN user_goal" in sql_all
 
 
-@pytest.mark.asyncio
 async def test_export_feedback_reads_rows_without_touching_guideline_chunk() -> None:
     rows_result = MagicMock()
     rows_result.all.return_value = [(_response(), ["diabetes"])]

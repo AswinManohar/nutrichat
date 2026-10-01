@@ -34,7 +34,6 @@ def pool_kwargs():
         yield captured
 
 
-@pytest.mark.asyncio
 async def test_pool_size_defaults_to_eight(pool_kwargs, monkeypatch):
     """With no env override, the pool defaults to max_size=8, timeout=5.0."""
     monkeypatch.delenv("CHECKPOINTER_POOL_SIZE", raising=False)
@@ -44,7 +43,6 @@ async def test_pool_size_defaults_to_eight(pool_kwargs, monkeypatch):
     assert pool_kwargs["timeout"] == 5.0
 
 
-@pytest.mark.asyncio
 async def test_pool_size_from_env(pool_kwargs, monkeypatch):
     """CHECKPOINTER_POOL_SIZE overrides the default max_size."""
     monkeypatch.setenv("CHECKPOINTER_POOL_SIZE", "3")

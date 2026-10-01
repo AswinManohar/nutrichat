@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-import pytest
 
 from backend.agent.tools.mindful import (
     NutrientAmount,
@@ -14,7 +13,6 @@ from backend.agent.tools.mindful import (
 )
 
 
-@pytest.mark.asyncio
 async def test_get_daily_intake_merges_macros_and_micros():
     macros = {
         "kcal": 1840.0,

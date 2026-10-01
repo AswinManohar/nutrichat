@@ -67,7 +67,6 @@ def _mock_http_response(data: dict) -> AsyncMock:
     return mock_resp
 
 
-@pytest.mark.asyncio
 async def test_cache_miss_hits_fdc():
     entity = FoodEntity(food_name="scrambled egg", qty_g=100.0, unit="g")
 
@@ -90,7 +89,6 @@ async def test_cache_miss_hits_fdc():
     assert results[0].kcal == pytest.approx(149.0)  # 100g → scale=1.0
 
 
-@pytest.mark.asyncio
 async def test_scales_nutrients_to_qty_g():
     entity = FoodEntity(food_name="scrambled egg", qty_g=61.0, unit="piece")
 
@@ -112,7 +110,6 @@ async def test_scales_nutrients_to_qty_g():
     assert results[0].protein_g == pytest.approx(9.99 * 61 / 100, rel=0.01)
 
 
-@pytest.mark.asyncio
 async def test_usda_miss_falls_back_to_estimate_when_llm_succeeds():
     """A true USDA miss (no foods returned) now falls back to an LLM
     estimate (Plan A) rather than being returned as a bare miss."""
@@ -158,7 +155,6 @@ async def test_usda_miss_falls_back_to_estimate_when_llm_succeeds():
     assert results[0].source == "LLM_ESTIMATE"
 
 
-@pytest.mark.asyncio
 async def test_usda_miss_returns_bare_miss_when_llm_also_fails():
     """If the LLM estimate call itself fails, fall back to a bare miss
     (fdc_id=-1, estimated=False) so the item is excluded from logging."""
@@ -192,7 +188,6 @@ async def test_usda_miss_returns_bare_miss_when_llm_also_fails():
     assert results[0].estimated is False
 
 
-@pytest.mark.asyncio
 async def test_cache_hit_skips_fdc():
     entity = FoodEntity(food_name="scrambled egg", qty_g=61.0, unit="piece")
     cached = {
@@ -219,7 +214,6 @@ async def test_cache_hit_skips_fdc():
     assert results[0].match_confidence == 0.95
 
 
-@pytest.mark.asyncio
 async def test_batch_parallel_multiple_entities():
     entities = [
         FoodEntity(food_name="scrambled egg", qty_g=61.0, unit="piece"),
@@ -354,7 +348,6 @@ _FAKE_ESTIMATE = NutritionEstimate(
 )
 
 
-@pytest.mark.asyncio
 async def test_low_confidence_match_falls_back_to_llm_estimate():
     entity = FoodEntity(food_name="chicken biryani", qty_g=300.0, unit="bowl")
 
@@ -396,7 +389,6 @@ async def test_low_confidence_match_falls_back_to_llm_estimate():
     assert r.kcal == pytest.approx(450.0, rel=0.05)
 
 
-@pytest.mark.asyncio
 async def test_no_match_falls_back_to_llm_estimate():
     entity = FoodEntity(food_name="xyzzy_nonexistent_food", qty_g=100.0, unit="g")
 
@@ -431,7 +423,6 @@ async def test_no_match_falls_back_to_llm_estimate():
     assert results[0].source == "LLM_ESTIMATE"
 
 
-@pytest.mark.asyncio
 async def test_estimate_uses_cache_when_present():
     cached = {
         "fdc_id": -123,
@@ -467,7 +458,6 @@ async def test_estimate_uses_cache_when_present():
     assert result.kcal == pytest.approx(450.0)
 
 
-@pytest.mark.asyncio
 async def test_high_confidence_match_is_not_overridden():
     entity = FoodEntity(food_name="scrambled egg", qty_g=61.0, unit="piece")
 
@@ -519,7 +509,6 @@ _LOCAL_MATCH = LocalMatch(
 )
 
 
-@pytest.mark.asyncio
 async def test_local_path_scales_macros_and_skips_cache_lookup():
     entity = FoodEntity(food_name="grilled chicken breast", qty_g=250.0, unit="g")
 
@@ -582,7 +571,6 @@ _LOCAL_MATCH_WITH_DETAILS = LocalMatch(
 )
 
 
-@pytest.mark.asyncio
 async def test_local_path_populates_candidate_details_in_order():
     """T032: candidate_details survive USDAResult, same order/names as
     candidates, for the local FTS path (T034)."""
@@ -605,7 +593,6 @@ async def test_local_path_populates_candidate_details_in_order():
     assert r.candidate_details[1].fdc_id == 556
 
 
-@pytest.mark.asyncio
 async def test_fdc_api_path_leaves_candidate_details_empty():
     """T032: the live-FDC path never populates candidate_details."""
     entity = FoodEntity(food_name="scrambled egg", qty_g=100.0, unit="g")
@@ -627,7 +614,6 @@ async def test_fdc_api_path_leaves_candidate_details_empty():
     assert results[0].candidate_details == []
 
 
-@pytest.mark.asyncio
 async def test_local_path_low_confidence_falls_back_to_llm_estimate():
     entity = FoodEntity(food_name="chicken biryani", qty_g=300.0, unit="bowl")
 

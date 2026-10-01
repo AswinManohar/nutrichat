@@ -39,7 +39,6 @@ def _session_factory(session: MagicMock) -> MagicMock:
     return MagicMock(return_value=session)
 
 
-@pytest.mark.asyncio
 async def test_save_writes_row_and_returns_its_id() -> None:
     session = MagicMock()
     session.add = MagicMock()
@@ -91,7 +90,6 @@ async def test_save_writes_row_and_returns_its_id() -> None:
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_save_returns_none_and_logs_when_commit_fails(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -119,7 +117,6 @@ async def test_save_returns_none_and_logs_when_commit_fails(
     assert "coaching_response write failed" in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_save_stores_routing_record_beside_gemini_parse() -> None:
     session = MagicMock()
     session.add = MagicMock()
@@ -152,7 +149,6 @@ async def test_save_stores_routing_record_beside_gemini_parse() -> None:
     assert parsed["needs_guidance"] is True  # Gemini's own decision, untouched
 
 
-@pytest.mark.asyncio
 async def test_save_without_routing_has_no_routing_key() -> None:
     session = MagicMock()
     session.add = MagicMock()

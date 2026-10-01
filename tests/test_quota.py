@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from backend.quota import FREE_QUOTA, PAID_QUOTA, consume_llm_credit
 
@@ -20,7 +19,6 @@ def _make_session(row=None):
     return MagicMock(return_value=session)
 
 
-@pytest.mark.asyncio
 async def test_consume_credit_granted_when_under_quota():
     factory = _make_session(row=(1,))
     with patch("backend.quota.get_session", return_value=factory):
@@ -28,7 +26,6 @@ async def test_consume_credit_granted_when_under_quota():
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_consume_credit_denied_when_over_quota():
     factory = _make_session(row=None)
     with patch("backend.quota.get_session", return_value=factory):
@@ -36,7 +33,6 @@ async def test_consume_credit_denied_when_over_quota():
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_consume_credit_new_user_upsert_grants_credit():
     factory = _make_session(row=(1,))
     with patch("backend.quota.get_session", return_value=factory):

@@ -24,7 +24,6 @@ def _mock_session_factory(session: MagicMock) -> MagicMock:
     return MagicMock(return_value=session)
 
 
-@pytest.mark.asyncio
 async def test_get_category_breakdown_computes_share():
     rows = [
         MagicMock(
@@ -67,7 +66,6 @@ async def test_get_category_breakdown_computes_share():
     assert out[0]["days_logged"] == 8
 
 
-@pytest.mark.asyncio
 async def test_get_category_breakdown_empty_no_div_zero():
     session = MagicMock()
     exec_result = MagicMock()
@@ -81,7 +79,6 @@ async def test_get_category_breakdown_empty_no_div_zero():
     assert out == []
 
 
-@pytest.mark.asyncio
 async def test_get_macros_for_range_sums_columns():
     row = MagicMock(
         kcal=1240.0, protein_g=85.0, carbs_g=120.0, fat_g=40.0, fiber_g=22.0, n_meals=3
@@ -107,7 +104,6 @@ async def test_get_macros_for_range_sums_columns():
     }
 
 
-@pytest.mark.asyncio
 async def test_get_macros_for_range_empty_returns_zeros():
     row = MagicMock(kcal=0, protein_g=0, carbs_g=0, fat_g=0, fiber_g=0, n_meals=0)
     session = MagicMock()
@@ -125,7 +121,6 @@ async def test_get_macros_for_range_empty_returns_zeros():
     assert totals["n_meals"] == 0
 
 
-@pytest.mark.asyncio
 async def test_get_micronutrients_for_range_returns_amount_and_unit():
     row = MagicMock(total=2.1, unit="mcg")
     session = MagicMock()
@@ -142,7 +137,6 @@ async def test_get_micronutrients_for_range_returns_amount_and_unit():
     assert result == {"Vitamin B-12": {"amount": 2.1, "unit": "mcg"}}
 
 
-@pytest.mark.asyncio
 async def test_get_micronutrients_for_range_omits_missing_nutrients():
     row = MagicMock(total=None, unit=None)
     session = MagicMock()
@@ -159,8 +153,6 @@ async def test_get_micronutrients_for_range_omits_missing_nutrients():
     assert result == {}
 
 
-@pytest.mark.asyncio
-@pytest.mark.asyncio
 async def test_get_food_breakdown_for_range_returns_expected_shape():
     freq_rows = [
         MagicMock(food_name="Chicken breast, grilled", count=9, total_kcal=2250.0),
@@ -215,7 +207,6 @@ async def test_get_food_breakdown_for_range_returns_expected_shape():
         assert call[0][1]["day_reset_h"] == sql_day_params()["day_reset_h"]
 
 
-@pytest.mark.asyncio
 async def test_get_history_falls_back_to_recency_without_embedding():
     meal = MealLog(
         meal_id="m1",
@@ -245,7 +236,6 @@ async def test_get_history_falls_back_to_recency_without_embedding():
     assert "ORDER BY meal_log.logged_at DESC" in str(stmt)
 
 
-@pytest.mark.asyncio
 async def test_get_history_uses_ann_with_embedding():
     session = MagicMock()
     exec_result = MagicMock()
@@ -260,7 +250,6 @@ async def test_get_history_uses_ann_with_embedding():
     assert "<=>" in str(stmt)
 
 
-@pytest.mark.asyncio
 async def test_get_history_applies_meal_type_and_date_filters():
     session = MagicMock()
     exec_result = MagicMock()
@@ -297,7 +286,6 @@ def _macros(protein_g: float, fiber_g: float) -> dict[str, float]:
     }
 
 
-@pytest.mark.asyncio
 async def test_nutrient_checkup_computes_averages_and_trend():
     # Current week: 700g protein / 7 = 100/day. Prior week: 350g / 7 = 50/day
     # -> +100% trend, direction "up".
@@ -344,7 +332,6 @@ async def test_nutrient_checkup_computes_averages_and_trend():
     assert result["Sugar"]["rda_pct"] == pytest.approx(200.0)
 
 
-@pytest.mark.asyncio
 async def test_nutrient_checkup_handles_missing_data():
     cur_macros = _macros(protein_g=0.0, fiber_g=0.0)
     prev_macros = _macros(protein_g=0.0, fiber_g=0.0)
@@ -377,7 +364,6 @@ async def test_nutrient_checkup_handles_missing_data():
     assert result["Protein"]["rda_pct"] == pytest.approx(0.0)
 
 
-@pytest.mark.asyncio
 async def test_nutrient_checkup_no_prior_baseline_is_up_not_division_error():
     cur_macros = _macros(protein_g=70.0, fiber_g=0.0)
     prev_macros = _macros(protein_g=0.0, fiber_g=0.0)

@@ -126,7 +126,6 @@ def _mock_session_factory(scalar_return=None):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_help_lists_all_commands(fake_redis):
     message = _mock_message(text="/help", chat_id=123)
 
@@ -143,7 +142,6 @@ async def test_help_lists_all_commands(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_progress_unlinked_user(fake_redis):
     message = _mock_message(text="/progress", chat_id=998)
 
@@ -153,7 +151,6 @@ async def test_progress_unlinked_user(fake_redis):
     assert "isn't linked" in message.answer.call_args[0][0]
 
 
-@pytest.mark.asyncio
 async def test_progress_no_goals(fake_redis):
     await fake_redis.set("tguser:601", "user-1")
     message = _mock_message(text="/progress", chat_id=601)
@@ -166,7 +163,6 @@ async def test_progress_no_goals(fake_redis):
     assert "haven't set up nutrition goals" in message.answer.call_args[0][0]
 
 
-@pytest.mark.asyncio
 async def test_progress_shows_summary(fake_redis):
     await fake_redis.set("tguser:602", "user-1")
     message = _mock_message(text="/progress", chat_id=602)
@@ -192,7 +188,6 @@ async def test_progress_shows_summary(fake_redis):
     assert "Meals logged: 2" in text
 
 
-@pytest.mark.asyncio
 async def test_progress_no_meals_logged(fake_redis):
     await fake_redis.set("tguser:603", "user-1")
     message = _mock_message(text="/progress", chat_id=603)
@@ -217,7 +212,6 @@ async def test_progress_no_meals_logged(fake_redis):
     assert "0%" in text
 
 
-@pytest.mark.asyncio
 async def test_link_success(fake_redis):
     await fake_redis.set("tglink:code:123456", "user-abc")
     message = _mock_message(text="/link 123456", chat_id=555)
@@ -237,7 +231,6 @@ async def test_link_success(fake_redis):
     assert await fake_redis.get("tguser:555") == "user-abc"
 
 
-@pytest.mark.asyncio
 async def test_link_expired_or_invalid_code(fake_redis):
     message = _mock_message(text="/link 999999", chat_id=555)
     command = MagicMock(args="999999")
@@ -253,7 +246,6 @@ async def test_link_expired_or_invalid_code(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_unlinked_user_gets_link_instructions(fake_redis):
     message = _mock_message(text="2 eggs and toast", chat_id=999)
 
@@ -270,7 +262,6 @@ async def test_unlinked_user_gets_link_instructions(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_thread_rotates_after_non_paused_reply(fake_redis):
     chat_id = 222
     await fake_redis.set("tguser:222", "user-1")
@@ -297,7 +288,6 @@ async def test_thread_rotates_after_non_paused_reply(fake_redis):
     message.answer.assert_awaited_once_with("Logged!")
 
 
-@pytest.mark.asyncio
 async def test_thread_not_rotated_when_paused(fake_redis):
     chat_id = 223
     await fake_redis.set("tguser:223", "user-1")
@@ -345,7 +335,6 @@ async def test_thread_not_rotated_when_paused(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_confirm_callback_resumes_with_yes(fake_redis):
     chat_id = 333
     await fake_redis.set("tguser:333", "user-1")
@@ -368,7 +357,6 @@ async def test_confirm_callback_resumes_with_yes(fake_redis):
     assert mock_handle.call_args.kwargs["user_id"] == "user-1"
 
 
-@pytest.mark.asyncio
 async def test_cancel_callback_resumes_with_cancel(fake_redis):
     chat_id = 334
     await fake_redis.set("tguser:334", "user-1")
@@ -400,7 +388,6 @@ async def test_cancel_callback_resumes_with_cancel(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_photo_routes_image_b64(fake_redis):
     chat_id = 444
     await fake_redis.set("tguser:444", "user-1")
@@ -435,7 +422,6 @@ async def test_photo_routes_image_b64(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_two_chats_resolve_to_different_users(fake_redis):
     await fake_redis.set("tguser:1", "user-a")
     await fake_redis.set("tguser:2", "user-b")
@@ -444,7 +430,6 @@ async def test_two_chats_resolve_to_different_users(fake_redis):
     assert await tg_auth.resolve_user_id(2) == "user-b"
 
 
-@pytest.mark.asyncio
 async def test_thread_ids_independent_per_chat(fake_redis):
     thread_a = await tg_session.get_thread_id(10)
     thread_b = await tg_session.get_thread_id(20)
@@ -459,7 +444,6 @@ async def test_thread_ids_independent_per_chat(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_unlink_clears_user_cache(fake_redis):
     await fake_redis.set("tguser:777", "user-z")
 
@@ -475,7 +459,6 @@ async def test_unlink_clears_user_cache(fake_redis):
     assert await fake_redis.get("tguser:777") is None
 
 
-@pytest.mark.asyncio
 async def test_unlink_404_when_no_row(fake_redis):
     factory, session = _mock_session_factory(scalar_return=None)
     with (
@@ -494,7 +477,6 @@ async def test_unlink_404_when_no_row(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_relink_chat_to_different_user_rebinds(fake_redis):
     await fake_redis.set("tglink:code:654321", "user-new")
     message = _mock_message(text="/link 654321", chat_id=888)
@@ -518,7 +500,6 @@ async def test_relink_chat_to_different_user_rebinds(fake_redis):
     assert await fake_redis.get("tguser:888") == "user-new"
 
 
-@pytest.mark.asyncio
 async def test_relink_same_pair_is_idempotent(fake_redis):
     await fake_redis.set("tglink:code:111222", "user-same")
     message = _mock_message(text="/link 111222", chat_id=889)
@@ -540,7 +521,6 @@ async def test_relink_same_pair_is_idempotent(fake_redis):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_paused_card_stores_edit_state_and_keyboard(fake_redis):
     chat_id = 700
     await fake_redis.set("tguser:700", "user-1")
@@ -577,7 +557,6 @@ async def test_paused_card_stores_edit_state_and_keyboard(fake_redis):
     assert keyboard.inline_keyboard[1][0].callback_data == "sw:0"
 
 
-@pytest.mark.asyncio
 async def test_qty_plus_updates_state_and_rerenders(fake_redis):
     chat_id = 701
     edit = {"items": _PAUSED_ITEMS, "qty": {}, "swaps": {}}
@@ -597,7 +576,6 @@ async def test_qty_plus_updates_state_and_rerenders(fake_redis):
     callback.answer.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_qty_minus_respects_minimum(fake_redis):
     chat_id = 702
     edit = {"items": _PAUSED_ITEMS, "qty": {"0": 5.0}, "swaps": {}}
@@ -610,7 +588,6 @@ async def test_qty_minus_respects_minimum(fake_redis):
     assert new_edit["qty"]["0"] == 5.0  # floored at _MIN_QTY_G
 
 
-@pytest.mark.asyncio
 async def test_swap_open_shows_candidates(fake_redis):
     chat_id = 703
     edit = {"items": _PAUSED_ITEMS, "qty": {}, "swaps": {}}
@@ -627,7 +604,6 @@ async def test_swap_open_shows_candidates(fake_redis):
     assert "pk:0:2" in callback_datas
 
 
-@pytest.mark.asyncio
 async def test_swap_pick_records_swap_and_returns_to_card(fake_redis):
     chat_id = 704
     edit = {"items": _PAUSED_ITEMS, "qty": {}, "swaps": {}}
@@ -643,7 +619,6 @@ async def test_swap_pick_records_swap_and_returns_to_card(fake_redis):
     assert "scrambled egg" in rendered
 
 
-@pytest.mark.asyncio
 async def test_confirm_composes_qty_and_swap_corrections(fake_redis):
     chat_id = 705
     await fake_redis.set("tguser:705", "user-1")
@@ -673,7 +648,6 @@ async def test_confirm_composes_qty_and_swap_corrections(fake_redis):
     assert await tg_session.get_edit_state(chat_id) is None
 
 
-@pytest.mark.asyncio
 async def test_confirm_with_no_edits_sends_yes(fake_redis):
     chat_id = 706
     await fake_redis.set("tguser:706", "user-1")
@@ -692,7 +666,6 @@ async def test_confirm_with_no_edits_sends_yes(fake_redis):
     assert mock_handle.call_args.kwargs["user_input"] == "yes"
 
 
-@pytest.mark.asyncio
 async def test_cancel_clears_edit_state(fake_redis):
     chat_id = 707
     await fake_redis.set("tguser:707", "user-1")

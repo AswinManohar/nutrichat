@@ -114,7 +114,6 @@ def test_resolve_date_range_custom_with_dates_uses_explicit_bounds():
     assert date_to == date(2026, 1, 15)
 
 
-@pytest.mark.asyncio
 async def test_parse_query_today_macro():
     test_model = TestModel(
         custom_output_args={
@@ -130,7 +129,6 @@ async def test_parse_query_today_macro():
     assert parsed.nutrients == ["kcal"]
 
 
-@pytest.mark.asyncio
 async def test_parse_query_micronutrient():
     test_model = TestModel(
         custom_output_args={
@@ -146,7 +144,6 @@ async def test_parse_query_micronutrient():
     assert parsed.nutrients == ["Vitamin B12, total"]
 
 
-@pytest.mark.asyncio
 async def test_fetch_data_today_macro_uses_redis():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=True)
     goal = UserGoal(
@@ -177,7 +174,6 @@ async def test_fetch_data_today_macro_uses_redis():
     assert data["goals"]["dietary_prefs"] == {}
 
 
-@pytest.mark.asyncio
 async def test_fetch_data_micronutrient_queries_jsonb():
     parsed = QueryParsed(
         time_range="today", nutrients=["Vitamin B12, total"], include_goals=False
@@ -196,7 +192,6 @@ async def test_fetch_data_micronutrient_queries_jsonb():
     assert "today_totals" not in data
 
 
-@pytest.mark.asyncio
 async def test_fetch_data_redis_failure_falls_back_to_postgres():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=False)
 
@@ -225,7 +220,6 @@ async def test_fetch_data_redis_failure_falls_back_to_postgres():
     assert data["macros"]["kcal"] == 1240.0
 
 
-@pytest.mark.asyncio
 async def test_fetch_data_include_foods_attaches_breakdown():
     parsed = QueryParsed(
         time_range="last_30_days",
@@ -266,7 +260,6 @@ async def test_fetch_data_include_foods_attaches_breakdown():
     assert data["foods"] == breakdown
 
 
-@pytest.mark.asyncio
 async def test_handle_food_only_question_skips_no_data_exit():
     parsed = QueryParsed(
         time_range="last_30_days",
@@ -319,7 +312,6 @@ async def test_handle_food_only_question_skips_no_data_exit():
     assert response.message == "Your most frequent food is the cheeseburger."
 
 
-@pytest.mark.asyncio
 async def test_handle_no_data_delegates_to_generate_response():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=False)
 
@@ -346,7 +338,6 @@ async def test_handle_no_data_delegates_to_generate_response():
     assert response.message == "Nothing logged for today yet."
 
 
-@pytest.mark.asyncio
 async def test_handle_missing_micronutrient_returns_graceful_message():
     parsed = QueryParsed(
         time_range="today", nutrients=["Vitamin B12, total"], include_goals=False
@@ -373,7 +364,6 @@ async def test_handle_missing_micronutrient_returns_graceful_message():
     gen_mock.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_handle_with_data_calls_generate_response():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=False)
 
@@ -400,7 +390,6 @@ async def test_handle_with_data_calls_generate_response():
     assert response.message == "You've had 1,240 kcal today."
 
 
-@pytest.mark.asyncio
 async def test_handle_meal_plan_feeds_today_totals_and_goals():
     """A "what can I eat to hit my goals" query must ground generate_response
     in BOTH today's totals and the daily goals (incl. dietary_prefs) so the

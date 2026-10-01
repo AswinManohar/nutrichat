@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 
 def _mock_session_factory(session: MagicMock) -> MagicMock:
@@ -12,7 +11,6 @@ def _mock_session_factory(session: MagicMock) -> MagicMock:
     return MagicMock(return_value=session)
 
 
-@pytest.mark.asyncio
 async def test_build_nutrient_checkup_persists_summary_fields():
     from backend.workers.tasks import _build_nutrient_checkup
 
@@ -64,7 +62,6 @@ async def test_build_nutrient_checkup_persists_summary_fields():
     assert params["summary_text"] == summary_text
 
 
-@pytest.mark.asyncio
 async def test_send_daily_summary_telegram_sends_and_marks_sent():
     from backend.workers.tasks import _send_daily_summary_telegram
 

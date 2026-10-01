@@ -11,7 +11,6 @@ from backend.agent.coaching import CoachingResult, QueryParsed
 from backend.agent.orchestrator import _UPGRADE_MSG
 
 
-@pytest.mark.asyncio
 async def test_coaching_over_quota_returns_upgrade_message():
     from backend.agent.orchestrator import _handle_coaching
 
@@ -27,7 +26,6 @@ async def test_coaching_over_quota_returns_upgrade_message():
     assert result["items"] == []
 
 
-@pytest.mark.asyncio
 async def test_coaching_under_quota_calls_agent():
     from backend.agent.orchestrator import _handle_coaching
 
@@ -64,7 +62,6 @@ async def test_coaching_under_quota_calls_agent():
         "unavailable",
     ],
 )
-@pytest.mark.asyncio
 async def test_routing_never_spends_a_credit(judgment_result):
     """Spec FR-005: no routing path touches usage credits."""
     from backend.agent import orchestrator
@@ -107,7 +104,6 @@ async def test_routing_never_spends_a_credit(judgment_result):
     assert decision.intent == "coaching"
 
 
-@pytest.mark.asyncio
 async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
     """A question is never turned into a meal card by the user's balance."""
     from backend.agent.orchestrator import handle_message
@@ -147,7 +143,6 @@ def _coaching_result(text: str) -> CoachingResult:
     return CoachingResult(message=text, parsed=QueryParsed(time_range="today"))
 
 
-@pytest.mark.asyncio
 async def test_coaching_persists_and_returns_response_id():
     from backend.agent.orchestrator import _handle_coaching
 
@@ -184,7 +179,6 @@ async def test_coaching_persists_and_returns_response_id():
     assert kwargs["trace_id"] is None or len(kwargs["trace_id"]) == 32
 
 
-@pytest.mark.asyncio
 async def test_coaching_omits_response_id_when_persistence_fails():
     from backend.agent.orchestrator import _handle_coaching
 
@@ -207,7 +201,6 @@ async def test_coaching_omits_response_id_when_persistence_fails():
     assert result["message"] == "120g today."
 
 
-@pytest.mark.asyncio
 async def test_meal_logging_over_quota_returns_upgrade_message():
     from backend.agent.orchestrator import _handle_meal_logging
 
@@ -233,7 +226,6 @@ async def test_meal_logging_over_quota_returns_upgrade_message():
     assert result["paused"] is False
 
 
-@pytest.mark.asyncio
 async def test_meal_logging_paused_resume_skips_quota():
     from backend.agent.orchestrator import _handle_meal_logging
 

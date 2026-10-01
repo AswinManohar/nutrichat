@@ -160,7 +160,6 @@ def test_format_card_miss_shows_error():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_log_meal_returns_result():
     results = [_make_result(kcal=182.0)]
 
@@ -180,7 +179,6 @@ async def test_log_meal_returns_result():
     assert result.n_items == 1
 
 
-@pytest.mark.asyncio
 async def test_log_meal_excludes_misses():
     miss = USDAResult(
         fdc_id=-1,

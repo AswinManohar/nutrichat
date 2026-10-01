@@ -113,7 +113,6 @@ def test_trends_uses_nutrition_today_and_day_params() -> None:
     assert params["day_reset_h"] == _RESET
 
 
-@pytest.mark.asyncio
 async def test_nightly_aggregate_passes_day_params() -> None:
     from backend.workers import tasks
 

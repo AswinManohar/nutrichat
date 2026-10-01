@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -97,7 +96,6 @@ def test_save_meal_empty_name_422() -> None:
     assert resp.status_code == 422
 
 
-@pytest.mark.asyncio
 async def test_find_saved_meal_normalizes_and_matches() -> None:
     meal = MagicMock(name_normalized="chicken biryani")
     session = MagicMock()
@@ -109,7 +107,6 @@ async def test_find_saved_meal_normalizes_and_matches() -> None:
     assert found is meal
 
 
-@pytest.mark.asyncio
 async def test_find_saved_meal_empty_text_returns_none() -> None:
     # Punctuation-only normalizes to empty → no DB call, returns None.
     with patch("backend.api.my_meals.get_session") as get_sess:

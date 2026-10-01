@@ -61,7 +61,6 @@ def _api_error(cls: type) -> Exception:
     return cls(500, {}, httpx2.Headers(), message="boom")
 
 
-@pytest.mark.asyncio
 async def test_confident_log_meal():
     client = _client(
         return_value=_response({"log_meal": 0.97, "coaching": 0.02, "other": 0.01})
@@ -75,7 +74,6 @@ async def test_confident_log_meal():
     assert judgment.raw_choice == "log_meal"
 
 
-@pytest.mark.asyncio
 async def test_coaching_and_other_share_a_handler():
     # Split between coaching and other is not routing uncertainty.
     client = _client(
@@ -92,7 +90,6 @@ async def test_coaching_and_other_share_a_handler():
     assert judgment.needs_guidance == pytest.approx(0.8)
 
 
-@pytest.mark.asyncio
 async def test_request_sends_only_the_message_and_the_three_questions():
     client = _client(
         return_value=_response({"log_meal": 0.9, "coaching": 0.05, "other": 0.05})
@@ -105,7 +102,6 @@ async def test_request_sends_only_the_message_and_the_three_questions():
     assert set(questions) == {"intent", "reports_food", "needs_guidance"}
 
 
-@pytest.mark.asyncio
 async def test_unconfigured_returns_none_without_network(monkeypatch):
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     monkeypatch.setattr(system_one, "_client", None)
@@ -124,7 +120,6 @@ async def test_unconfigured_returns_none_without_network(monkeypatch):
     ],
     ids=lambda e: type(e).__name__,
 )
-@pytest.mark.asyncio
 async def test_service_errors_become_unavailable(error, caplog):
     client = _client(side_effect=error)
     with (
@@ -138,7 +133,6 @@ async def test_service_errors_become_unavailable(error, caplog):
     assert "my secret meal text" not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_missing_answer_is_malformed():
     response = _response({"log_meal": 0.9, "coaching": 0.05, "other": 0.05})
     del response.nouls["reports_food"]
@@ -147,7 +141,6 @@ async def test_missing_answer_is_malformed():
         assert await judge_message("2 eggs") == (None, "malformed_response")
 
 
-@pytest.mark.asyncio
 async def test_unknown_choice_is_malformed():
     client = _client(
         return_value=_response({"log_meal": 0.1, "coaching": 0.1, "maybe": 0.8})
@@ -156,7 +149,6 @@ async def test_unknown_choice_is_malformed():
         assert await judge_message("2 eggs") == (None, "malformed_response")
 
 
-@pytest.mark.asyncio
 async def test_cancellation_propagates():
     client = _client(side_effect=asyncio.CancelledError())
     with patch.object(system_one, "_get_client", return_value=client):
@@ -201,7 +193,6 @@ def test_eval_cases_are_held_out_of_question_examples():
     assert leaked == []
 
 
-@pytest.mark.asyncio
 async def test_warm_up_never_raises_and_sends_no_user_text(caplog):
     client = _client(side_effect=TypeSafeAPITimeoutError(0.8))
     with (

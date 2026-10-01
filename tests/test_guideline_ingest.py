@@ -38,7 +38,6 @@ def _session(existing_hashes: list[str]) -> MagicMock:
     return session
 
 
-@pytest.mark.asyncio
 async def test_first_run_embeds_and_inserts_every_chunk() -> None:
     chunks = [_chunk("A", "alpha"), _chunk("B", "beta")]
     session = _session([])
@@ -54,7 +53,6 @@ async def test_first_run_embeds_and_inserts_every_chunk() -> None:
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_second_run_with_no_changes_makes_no_writes_or_embed_calls() -> None:
     chunks = [_chunk("A", "alpha"), _chunk("B", "beta")]
     session = _session([c.content_hash for c in chunks])
@@ -70,7 +68,6 @@ async def test_second_run_with_no_changes_makes_no_writes_or_embed_calls() -> No
     session.commit.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_removed_chunk_is_deleted() -> None:
     kept = _chunk("A", "alpha")
     gone = _chunk("B", "beta")
@@ -85,7 +82,6 @@ async def test_removed_chunk_is_deleted() -> None:
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_dry_run_reports_but_does_not_write() -> None:
     session = _session([])
     embed = AsyncMock()
@@ -107,7 +103,6 @@ def _sources_session(stored_source_ids: list[str]) -> MagicMock:
     return session
 
 
-@pytest.mark.asyncio
 async def test_source_whose_file_is_gone_is_deleted() -> None:
     session = _sources_session(["demo", "retired"])
 
@@ -119,7 +114,6 @@ async def test_source_whose_file_is_gone_is_deleted() -> None:
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_no_deletion_when_every_stored_source_still_has_a_file() -> None:
     session = _sources_session(["demo"])
 
@@ -130,7 +124,6 @@ async def test_no_deletion_when_every_stored_source_still_has_a_file() -> None:
     session.commit.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_dry_run_counts_missing_sources_without_deleting() -> None:
     session = _sources_session(["demo", "retired"])
 
@@ -141,7 +134,6 @@ async def test_dry_run_counts_missing_sources_without_deleting() -> None:
     session.commit.assert_not_awaited()
 
 
-@pytest.mark.asyncio
 async def test_missing_directory_exits_2_without_opening_a_session(
     tmp_path: Path,
 ) -> None:
@@ -153,7 +145,6 @@ async def test_missing_directory_exits_2_without_opening_a_session(
     get_session.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_empty_directory_skips_the_orphan_sweep(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

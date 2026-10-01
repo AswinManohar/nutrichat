@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from backend.agent.context import (
     ContextBundle,
@@ -38,7 +37,6 @@ def _mock_session(*, goal=None, weekly=None, memories=None):
     return session_factory
 
 
-@pytest.mark.asyncio
 async def test_build_context_no_goals_no_history():
     session_factory = _mock_session()
 
@@ -58,7 +56,6 @@ async def test_build_context_no_goals_no_history():
     assert ctx.preferences == []
 
 
-@pytest.mark.asyncio
 async def test_build_context_populates_goals_and_weekly():
     goal = UserGoal(
         user_id="user-1",
@@ -104,7 +101,6 @@ async def test_build_context_populates_goals_and_weekly():
     )
 
 
-@pytest.mark.asyncio
 async def test_build_context_fetches_preferences_when_message_given():
     memories = [
         UserMemory(
@@ -136,7 +132,6 @@ async def test_build_context_fetches_preferences_when_message_given():
     assert ctx.preferences == ["prefers oat milk"]
 
 
-@pytest.mark.asyncio
 async def test_build_context_skips_preferences_without_message():
     session_factory = _mock_session()
 

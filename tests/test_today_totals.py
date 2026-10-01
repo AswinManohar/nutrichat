@@ -29,7 +29,6 @@ def test_today_totals_defaults_include_carbs_and_fat():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_get_today_totals_includes_carbs_and_fat():
     result = MagicMock()
     result.one.return_value = (1500.0, 80.0, 150.0, 50.0, 20.0, 3)

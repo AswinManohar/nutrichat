@@ -148,7 +148,6 @@ async def test_generate_response_without_passages_has_no_block() -> None:
     assert "## Guideline passages" not in msgs[0].instructions
 
 
-@pytest.mark.asyncio
 async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None:
     parsed = QueryParsed(time_range="today", include_goals=True, needs_guidance=True)
     goal = UserGoal(
@@ -197,7 +196,6 @@ async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None
     assert [c.n for c in result.citations] == [1]
 
 
-@pytest.mark.asyncio
 async def test_handle_skips_retrieval_when_needs_guidance_false() -> None:
     parsed = QueryParsed(time_range="today", nutrients=["kcal"])
     with (
@@ -227,7 +225,6 @@ async def test_handle_skips_retrieval_when_needs_guidance_false() -> None:
     assert result.retrieved == [] and result.citations == []
 
 
-@pytest.mark.asyncio
 async def test_handle_no_micronutrient_data_returns_result_not_str() -> None:
     parsed = QueryParsed(time_range="today", nutrients=["Vitamin B-12"])
     with (
@@ -248,7 +245,6 @@ async def test_handle_no_micronutrient_data_returns_result_not_str() -> None:
     assert result.message == "I don't have data on Vitamin B-12 for that period."
 
 
-@pytest.mark.asyncio
 async def test_handle_answers_from_passages_when_nutrient_has_no_logged_data() -> None:
     """A guidance question naming a nutrient must not hit the "no data" reply.
 

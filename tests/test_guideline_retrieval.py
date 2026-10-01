@@ -33,7 +33,6 @@ def _session_returning(rows: list[tuple[GuidelineChunk, float]]) -> MagicMock:
     return MagicMock(return_value=session)
 
 
-@pytest.mark.asyncio
 async def test_retrieve_maps_rows_to_retrieved_chunks() -> None:
     chunk = GuidelineChunk(
         id="11111111-1111-1111-1111-111111111111",
@@ -85,7 +84,6 @@ def _chunk(section: str) -> GuidelineChunk:
     )
 
 
-@pytest.mark.asyncio
 async def test_retrieve_drops_rows_below_the_relevance_floor() -> None:
     floor = get_tunables().retrieval.guideline_min_score
     above = _chunk("above the floor")
@@ -108,7 +106,6 @@ async def test_retrieve_drops_rows_below_the_relevance_floor() -> None:
     assert [c.section for c in chunks] == ["above the floor"]
 
 
-@pytest.mark.asyncio
 async def test_retrieve_defaults_k_to_the_configured_top_k() -> None:
     factory = _session_returning([])
     with (
@@ -125,7 +122,6 @@ async def test_retrieve_defaults_k_to_the_configured_top_k() -> None:
     assert stmt._limit == get_tunables().retrieval.guideline_top_k
 
 
-@pytest.mark.asyncio
 async def test_retrieve_returns_empty_and_warns_when_embedding_fails(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -144,7 +140,6 @@ async def test_retrieve_returns_empty_and_warns_when_embedding_fails(
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
 async def test_condition_filter_against_live_postgres() -> None:
     """Requires DATABASE_URL with migration 014 applied."""
     from tests.conftest import DATABASE_URL_PRESET
