@@ -374,7 +374,7 @@ change. Change only the portion: no offer.
     response (line ~538) and to `get_pending_card`'s return (line ~409),
     reading from the graph state.
   - Add the field only when the card is paused.
-- [ ] T035 [US3] Add `saved_meal_id: str | None = None` to `LogItemsRequest`
+- [X] T035 [US3] Add `saved_meal_id: str | None = None` to `LogItemsRequest`
   in `src/backend/api/meals.py`. In `log_items`, when it is set, load the
   `UserMeal`. If it belongs to the caller and isn't deleted, use
   `label=meal.name` and `extra_flags={"saved_meal_id": meal.id}`. Otherwise

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.orchestrator import get_pending_card, handle_message, resolve_pending
@@ -27,7 +27,7 @@ from backend.core.nutrition_day import (
     nutrition_today,
     sql_day_params,
 )
-from backend.db.models import MealLog
+from backend.db.models import MealLog, UserMeal
 from backend.db.redis_client import (
     current_day_bounds,
     day_bounds_for_date,
@@ -216,8 +216,34 @@ class LogItemsRequest(BaseModel):
     items: list[LogItemIn] = Field(min_length=1)
     client_request_id: str | None = Field(default=None, max_length=64)
     conversation_id: str | None = Field(default=None)
+    saved_meal_id: str | None = Field(default=None, max_length=64)
 
     model_config = ConfigDict(extra="forbid")
+
+
+async def _owned_saved_meal(user_id: str, saved_meal_id: str) -> UserMeal | None:
+    """Return the caller's live saved meal, or None for unknown/foreign/deleted.
+
+    Args:
+        user_id: The authenticated user's ID.
+        saved_meal_id: Client-supplied saved meal id (untrusted).
+
+    Returns:
+        The `UserMeal`, or None when it isn't the caller's or was deleted.
+    """
+    try:
+        async with get_session()() as session:
+            result = await session.execute(
+                select(UserMeal).where(
+                    UserMeal.id == saved_meal_id,
+                    UserMeal.user_id == user_id,
+                    UserMeal.deleted_at.is_(None),
+                )
+            )
+            return result.scalar_one_or_none()
+    except (DBAPIError, ValueError):
+        # Malformed (non-UUID) id: treat like unknown, per contract.
+        return None
 
 
 async def _find_by_client_request_id(
@@ -325,6 +351,12 @@ async def log_items(
     ]
     results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
+    extra_flags: dict[str, str] | None = None
+    if req.saved_meal_id:
+        saved = await _owned_saved_meal(user_id, req.saved_meal_id)
+        if saved is not None:
+            label = saved.name
+            extra_flags = {"saved_meal_id": saved.id}
     try:
         result = await persist_meal(
             user_id,
@@ -333,6 +365,7 @@ async def log_items(
             label=label,
             client_request_id=req.client_request_id,
             corrections=corrections,
+            extra_flags=extra_flags,
         )
         await _resolve_pending_if_any(request, user_id, req.conversation_id)
         return result
