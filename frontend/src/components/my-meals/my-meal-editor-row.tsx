@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 
 import type { MealItem } from '@/api/types'
+import { isValidGrams } from '@/lib/meal-math'
 
 interface MyMealEditorRowProps {
   item: MealItem
@@ -10,12 +11,6 @@ interface MyMealEditorRowProps {
   onRemove: () => void
   /** True when this is the last kept row (a meal needs at least one ingredient) */
   isLastKept: boolean
-}
-
-/** True when the text is a positive finite number of grams. */
-export function isValidGrams(value: string): boolean {
-  const n = Number(value)
-  return value.trim() !== '' && Number.isFinite(n) && n > 0
 }
 
 /** One editable ingredient row: name, estimate badge, gram input, remove. */

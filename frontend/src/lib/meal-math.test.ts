@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MealItem } from '@/api/types'
 
-import { scaleItem, totals } from './meal-math'
+import { isValidGrams, scaleItem, totals } from './meal-math'
 
 const base = {
   food_name: 'Rice',
@@ -56,5 +56,15 @@ describe('totals', () => {
       fat_g: 0,
       fiber_g: 0,
     })
+  })
+})
+
+describe('isValidGrams', () => {
+  it('accepts positive finite numbers only', () => {
+    expect(isValidGrams('150')).toBe(true)
+    expect(isValidGrams('0.5')).toBe(true)
+    for (const bad of ['', '  ', '0', '-3', 'abc', 'Infinity']) {
+      expect(isValidGrams(bad)).toBe(false)
+    }
   })
 })

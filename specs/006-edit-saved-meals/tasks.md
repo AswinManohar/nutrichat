@@ -206,7 +206,7 @@ recall it in chat by the new name. Both must show the edited version.
   (`type="number"`, `min=1`, with an inline error for ≤ 0 or non-numeric) and
   a remove button. The remove button is disabled when it is the last kept row.
   Props interface sits above the component.
-- [ ] T018 [US1] Create `frontend/src/components/my-meals/my-meal-editor.tsx`.
+- [X] T018 [US1] Create `frontend/src/components/my-meals/my-meal-editor.tsx`.
   - **Load**: get the meal with `useMyMeal(id)`.
   - **State**: local `{name, baseUpdatedAt, rows: {item, qtyG, removed}[]}`,
     with live totals via `meal-math.totals` (FR-003).

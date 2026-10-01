@@ -43,3 +43,9 @@ export function totals(rows: readonly MacroRow[]): MacroTotals {
   }
   return sum
 }
+
+/** True when the text is a positive finite number of grams. */
+export function isValidGrams(value: string): boolean {
+  const n = Number(value)
+  return value.trim() !== '' && Number.isFinite(n) && n > 0
+}
