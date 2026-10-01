@@ -316,7 +316,7 @@ the same edits. The two saved meals must match.
     and compute the totals from the built dicts.
   - Clients that send neither `target_qty_g` nor `portion` must get exactly
     the same stored values as before.
-- [ ] T029 [P] [US2] Add save tests in `tests/test_my_meals_api.py`:
+- [X] T029 [P] [US2] Add save tests in `tests/test_my_meals_api.py`:
   - a `POST` with `target_qty_g=150` (base `qty_g=200`) and `portion=1.5`
     stores `qty_g=225` with macros × 1.125;
   - a `POST` with neither field stores values unchanged (Android

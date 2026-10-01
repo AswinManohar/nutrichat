@@ -144,6 +144,106 @@ def test_save_meal_rejects_duplicate_name(
     assert resp.json() == {"detail": "name_taken"}
 
 
+def _post_save(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    body: dict,
+) -> tuple[object, list]:
+    """POST /my-meals against a mocked session; return (response, added rows)."""
+    client = TestClient(app_factory(my_meals.router))
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=_exec_returning(None))  # no duplicate
+    session.commit = AsyncMock()
+    added: list = []
+    session.add = MagicMock(side_effect=added.append)
+
+    async def _refresh(meal: object) -> None:
+        meal.updated_at = datetime(2026, 10, 1, tzinfo=UTC)  # type: ignore[attr-defined]
+
+    session.refresh = AsyncMock(side_effect=_refresh)
+    factory = mock_session_factory(session)
+    with patch("backend.api.my_meals.get_session", return_value=factory):
+        resp = client.post("/my-meals", json=body)
+    return resp, added
+
+
+def test_save_meal_applies_target_and_portion(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    resp, added = _post_save(
+        app_factory,
+        mock_session_factory,
+        {
+            "name": "Rice bowl",
+            "portion": 1.5,
+            "ingredients": [
+                {
+                    "food_name": "rice",
+                    "qty_g": 200,
+                    "target_qty_g": 150,
+                    "kcal": 200,
+                    "protein_g": 8,
+                    "carbs_g": 40,
+                    "fat_g": 4,
+                    "fiber_g": 2,
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    (ing,) = added[0].ingredients  # scale = 150 * 1.5 / 200 = 1.125
+    assert ing["qty_g"] == 225
+    assert ing["kcal"] == 225.0 and ing["protein_g"] == 9.0
+    assert ing["carbs_g"] == 45.0 and ing["fat_g"] == 4.5
+    assert added[0].kcal == 225.0 and added[0].fiber_g == 2.25
+    assert resp.json()["ingredients"][0]["qty_g"] == 225
+
+
+def test_save_meal_without_target_or_portion_is_unchanged(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    resp, added = _post_save(
+        app_factory,
+        mock_session_factory,
+        {
+            "name": "Legacy save",
+            "ingredients": [
+                {"food_name": "rice", "qty_g": 150, "kcal": 200, "protein_g": 4},
+                {"food_name": "egg", "qty_g": 50, "kcal": 70, "fat_g": 5},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    rice, egg = added[0].ingredients
+    assert rice["qty_g"] == 150 and rice["kcal"] == 200 and rice["protein_g"] == 4
+    assert egg["qty_g"] == 50 and egg["kcal"] == 70 and egg["fat_g"] == 5
+    assert added[0].kcal == 270 and added[0].protein_g == 4 and added[0].fat_g == 5
+
+
+def test_save_meal_unknown_fiber_stays_none(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    resp, added = _post_save(
+        app_factory,
+        mock_session_factory,
+        {
+            "name": "Mystery",
+            "portion": 2,
+            "ingredients": [
+                {"food_name": "bar", "qty_g": 40, "kcal": 150, "fiber_g": None}
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    (ing,) = added[0].ingredients
+    assert ing["fiber_g"] is None
+    assert ing["kcal"] == 300
+    assert added[0].fiber_g == 0
+
+
 def test_get_meal_includes_updated_at(
     app_factory: Callable[..., FastAPI],
     mock_session_factory: Callable[[MagicMock], MagicMock],
