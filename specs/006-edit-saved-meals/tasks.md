@@ -550,7 +550,7 @@ at 90% or more.
     - `ResolveUnavailable` → `503 {"detail": {"code":
       "resolve_unavailable"}}`.
   - **Response**: `{item, unit, amount_stated, kept_previous_qty}`.
-- [ ] T051 [P] [US4] Create `tests/test_replace_ingredient.py`, patching
+- [X] T051 [P] [US4] Create `tests/test_replace_ingredient.py`, patching
   `_replace_llm.ainvoke` and `usda_lookup_batch` and injecting
   `consume_credit`.
   - **Service cases**:
