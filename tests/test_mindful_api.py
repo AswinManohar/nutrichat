@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -9,36 +10,23 @@ from fastapi.testclient import TestClient
 
 from backend.agent.tools.mindful import NutrientAmount, SafetyAlert
 from backend.api import mindful
-from backend.auth.supabase import get_current_user_id
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(mindful.router)
-    return app
-
-
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
-
-
-def test_mindful_today_requires_auth() -> None:
-    client = TestClient(_make_app())
+def test_mindful_today_requires_auth(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(mindful.router, user_id=None))
     resp = client.get("/mindful/today")
     assert resp.status_code == 401
 
 
-def test_mindful_today_returns_intake_and_alerts() -> None:
-    app = _make_app()
-    app.dependency_overrides[get_current_user_id] = lambda: "user-1"
-    client = TestClient(app)
+def test_mindful_today_returns_intake_and_alerts(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    client = TestClient(app_factory(mindful.router))
 
     goal = MagicMock(tracking_mode="mindful")
-    session = MagicMock()
-    session.get = AsyncMock(return_value=goal)
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(make_session(get_result=goal))
 
     nutrients = [
         NutrientAmount(name="Energy", amount=1840.0, unit="kcal"),

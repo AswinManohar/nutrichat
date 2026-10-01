@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,41 +8,39 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi import Request
-
 from backend.api import nutrient_checkup
-from backend.auth.supabase import get_current_user_id
 from backend.db.models import NutrientCheckup
 
 
-def _override_user(request: Request) -> str:
-    """Resolve the test user from the X-Debug-User-Id header (auth override)."""
-    return request.headers.get("X-Debug-User-Id", "user-1")
-
-
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(nutrient_checkup.router)
-    app.dependency_overrides[get_current_user_id] = _override_user
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(_make_app())
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(nutrient_checkup.router, header_auth=True))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
     return {"X-Debug-User-Id": user_id}
 
 
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
+@pytest.fixture
+def checkup_session(
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> Callable[[NutrientCheckup | None], tuple[MagicMock, MagicMock]]:
+    """Build (session, factory) whose execute().scalar_one_or_none() is row."""
+
+    def build(row: NutrientCheckup | None) -> tuple[MagicMock, MagicMock]:
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none.return_value = row
+        session = make_session()
+        session.execute = AsyncMock(return_value=exec_result)
+        return session, mock_session_factory(session)
+
+    return build
 
 
-def test_get_nutrient_checkup_returns_latest_row(client: TestClient) -> None:
+def test_get_nutrient_checkup_returns_latest_row(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
     row = NutrientCheckup(
         id="ck-1",
         user_id="user-1",
@@ -74,11 +73,7 @@ def test_get_nutrient_checkup_returns_latest_row(client: TestClient) -> None:
         generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+    _, factory = checkup_session(row)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get("/nutrient-checkup", headers=_auth_headers("user-1"))
@@ -96,7 +91,7 @@ def test_get_nutrient_checkup_returns_latest_row(client: TestClient) -> None:
 
 
 def test_get_nutrient_checkup_tolerates_legacy_row_without_rda_pct(
-    client: TestClient,
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
 ) -> None:
     # Regression: rows persisted before rda_pct existed omit the key entirely;
     # the endpoint must still return 200 with rda_pct=null, not 500.
@@ -117,11 +112,7 @@ def test_get_nutrient_checkup_tolerates_legacy_row_without_rda_pct(
         summary_text=None,
         generated_at=datetime(2026, 6, 10, 1, 30, tzinfo=UTC),
     )
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+    _, factory = checkup_session(row)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get("/nutrient-checkup", headers=_auth_headers("user-1"))
@@ -130,12 +121,10 @@ def test_get_nutrient_checkup_tolerates_legacy_row_without_rda_pct(
     assert resp.json()["nutrients"][0]["rda_pct"] is None
 
 
-def test_get_nutrient_checkup_404_when_none_yet(client: TestClient) -> None:
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = None
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+def test_get_nutrient_checkup_404_when_none_yet(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
+    _, factory = checkup_session(None)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get("/nutrient-checkup", headers=_auth_headers("user-1"))
@@ -143,7 +132,9 @@ def test_get_nutrient_checkup_404_when_none_yet(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_pending_nudge_returns_summary_when_unseen(client: TestClient) -> None:
+def test_pending_nudge_returns_summary_when_unseen(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
     row = NutrientCheckup(
         id="ck-1",
         user_id="user-1",
@@ -155,11 +146,7 @@ def test_pending_nudge_returns_summary_when_unseen(client: TestClient) -> None:
         generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+    _, factory = checkup_session(row)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get(
@@ -170,7 +157,9 @@ def test_pending_nudge_returns_summary_when_unseen(client: TestClient) -> None:
     assert resp.json() == {"summary_text": row.summary_text}
 
 
-def test_pending_nudge_returns_none_when_already_seen(client: TestClient) -> None:
+def test_pending_nudge_returns_none_when_already_seen(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
     row = NutrientCheckup(
         id="ck-1",
         user_id="user-1",
@@ -182,11 +171,7 @@ def test_pending_nudge_returns_none_when_already_seen(client: TestClient) -> Non
         generated_at=datetime(2026, 6, 15, 1, 30, tzinfo=UTC),
     )
 
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+    _, factory = checkup_session(row)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get(
@@ -197,12 +182,10 @@ def test_pending_nudge_returns_none_when_already_seen(client: TestClient) -> Non
     assert resp.json() == {"summary_text": None}
 
 
-def test_pending_nudge_returns_none_when_no_row(client: TestClient) -> None:
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalar_one_or_none.return_value = None
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+def test_pending_nudge_returns_none_when_no_row(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
+    _, factory = checkup_session(None)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.get(
@@ -213,12 +196,10 @@ def test_pending_nudge_returns_none_when_no_row(client: TestClient) -> None:
     assert resp.json() == {"summary_text": None}
 
 
-def test_pending_nudge_ack_marks_seen(client: TestClient) -> None:
-    session = MagicMock()
-    exec_result = MagicMock()
-    session.execute = AsyncMock(return_value=exec_result)
-    session.commit = AsyncMock()
-    factory = _mock_session_factory(session)
+def test_pending_nudge_ack_marks_seen(
+    client: TestClient, checkup_session: Callable[..., tuple[MagicMock, MagicMock]]
+) -> None:
+    session, factory = checkup_session(None)
 
     with patch("backend.api.nutrient_checkup.get_session", return_value=factory):
         resp = client.post(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,25 +11,18 @@ from fastapi.testclient import TestClient
 from backend.api import coaching_feedback
 from backend.db.models import CoachingResponse
 from backend.ratelimit import RateLimitResult
-from tests.auth_helpers import with_header_auth
 
 RESPONSE_ID = "3f7c1a2e-9b4d-4c8e-8f1a-2b3c4d5e6f70"
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(coaching_feedback.router)
-    return app
+@pytest.fixture
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(coaching_feedback.router, header_auth=True))
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    return TestClient(with_header_auth(_make_app()))
-
-
-@pytest.fixture
-def anon_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    return TestClient(_make_app())
+def anon_client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(coaching_feedback.router, user_id=None))
 
 
 @pytest.fixture(autouse=True)
@@ -59,13 +53,15 @@ def _row(user_id: str) -> CoachingResponse:
     )
 
 
-def _session_with(row: CoachingResponse | None) -> MagicMock:
-    session = MagicMock()
-    session.get = AsyncMock(return_value=row)
-    session.commit = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
+@pytest.fixture
+def session_with(
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> Callable[[CoachingResponse | None], MagicMock]:
+    def build(row: CoachingResponse | None) -> MagicMock:
+        return mock_session_factory(make_session(get_result=row))
+
+    return build
 
 
 def test_unauthenticated_returns_401(anon_client: TestClient) -> None:
@@ -73,9 +69,11 @@ def test_unauthenticated_returns_401(anon_client: TestClient) -> None:
     assert resp.status_code == 401
 
 
-def test_unknown_id_returns_404(client: TestClient) -> None:
+def test_unknown_id_returns_404(
+    client: TestClient, session_with: Callable[..., MagicMock]
+) -> None:
     with patch(
-        "backend.api.coaching_feedback.get_session", return_value=_session_with(None)
+        "backend.api.coaching_feedback.get_session", return_value=session_with(None)
     ):
         resp = client.post(
             f"/coaching/{RESPONSE_ID}/feedback",
@@ -85,10 +83,12 @@ def test_unknown_id_returns_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_foreign_id_returns_404(client: TestClient) -> None:
+def test_foreign_id_returns_404(
+    client: TestClient, session_with: Callable[..., MagicMock]
+) -> None:
     with patch(
         "backend.api.coaching_feedback.get_session",
-        return_value=_session_with(_row("someone-else")),
+        return_value=session_with(_row("someone-else")),
     ):
         resp = client.post(
             f"/coaching/{RESPONSE_ID}/feedback",
@@ -98,10 +98,12 @@ def test_foreign_id_returns_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_rating_overwrites_prior_rating_and_sets_rated_at(client: TestClient) -> None:
+def test_rating_overwrites_prior_rating_and_sets_rated_at(
+    client: TestClient, session_with: Callable[..., MagicMock]
+) -> None:
     row = _row("user-1")
     row.rating = "up"
-    factory = _session_with(row)
+    factory = session_with(row)
 
     with patch("backend.api.coaching_feedback.get_session", return_value=factory):
         resp = client.post(
@@ -118,9 +120,11 @@ def test_rating_overwrites_prior_rating_and_sets_rated_at(client: TestClient) ->
     factory.return_value.commit.assert_awaited_once()
 
 
-def test_comment_of_500_chars_is_accepted(client: TestClient) -> None:
+def test_comment_of_500_chars_is_accepted(
+    client: TestClient, session_with: Callable[..., MagicMock]
+) -> None:
     row = _row("user-1")
-    factory = _session_with(row)
+    factory = session_with(row)
 
     with patch("backend.api.coaching_feedback.get_session", return_value=factory):
         resp = client.post(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,21 +11,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import meals as meals_api
-from backend.auth.supabase import get_current_user_id
 
 _USER = "00000000-0000-0000-0000-000000000001"
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(meals_api.router)
-    app.dependency_overrides[get_current_user_id] = lambda: _USER
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(_make_app())
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(meals_api.router, user_id=_USER))
 
 
 def _mock_row(
@@ -53,28 +46,38 @@ def _mock_row(
     return row
 
 
-def _session_returning_scalars(rows: list) -> MagicMock:
+@pytest.fixture
+def session_returning_scalars(
+    make_session: Callable[..., MagicMock],
+) -> Callable[[list], MagicMock]:
     """Build a session mock whose execute().scalars().all() returns rows."""
-    result = MagicMock()
-    scalars = MagicMock()
-    scalars.all.return_value = rows
-    result.scalars.return_value = scalars
-    session = MagicMock()
-    session.execute = AsyncMock(return_value=result)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return session
+
+    def build(rows: list) -> MagicMock:
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all.return_value = rows
+        result.scalars.return_value = scalars
+        session = make_session()
+        session.execute = AsyncMock(return_value=result)
+        return session
+
+    return build
 
 
-def _session_returning_scalar_one(row) -> MagicMock:
+@pytest.fixture
+def session_returning_scalar_one(
+    make_session: Callable[..., MagicMock],
+) -> Callable[[object], MagicMock]:
     """Build a session mock whose execute().scalar_one_or_none() returns row."""
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = row
-    session = MagicMock()
-    session.execute = AsyncMock(return_value=result)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return session
+
+    def build(row: object) -> MagicMock:
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = row
+        session = make_session()
+        session.execute = AsyncMock(return_value=result)
+        return session
+
+    return build
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +85,14 @@ def _session_returning_scalar_one(row) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-def test_list_returns_summaries(client: TestClient, monkeypatch) -> None:
+def test_list_returns_summaries(
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalars: Callable[[list], MagicMock],
+) -> None:
     rows = [_mock_row(entities=[{"food_name": "eggs"}, {"food_name": "toast"}])]
-    session = _session_returning_scalars(rows)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalars(rows)
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log")
 
@@ -100,13 +105,14 @@ def test_list_returns_summaries(client: TestClient, monkeypatch) -> None:
 
 
 def test_list_with_explicit_date_uses_day_bounds_for_date(
-    client: TestClient, monkeypatch
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalars: Callable[[list], MagicMock],
 ) -> None:
     rows = [_mock_row()]
-    session = _session_returning_scalars(rows)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalars(rows)
+    patch_get_session(meals_api, session)
 
     captured = {}
     real_bounds = meals_api.day_bounds_for_date
@@ -123,11 +129,13 @@ def test_list_with_explicit_date_uses_day_bounds_for_date(
     assert captured["day"].isoformat() == "2026-09-10"
 
 
-def test_list_filters_by_meal_type(client: TestClient, monkeypatch) -> None:
-    session = _session_returning_scalars([_mock_row(meal_type="lunch")])
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+def test_list_filters_by_meal_type(
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalars: Callable[[list], MagicMock],
+) -> None:
+    session = session_returning_scalars([_mock_row(meal_type="lunch")])
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log", params={"meal_type": "lunch"})
 
@@ -146,17 +154,17 @@ def test_list_invalid_date_422(client: TestClient) -> None:
 
 
 def test_list_query_excludes_soft_deleted_and_other_users(
-    client: TestClient, monkeypatch
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalars: Callable[[list], MagicMock],
 ) -> None:
     """The query itself must filter by user_id and deleted_at is NULL.
 
     Since the DB call is mocked, we assert on the WHERE clause built by
     inspecting the select() passed to session.execute.
     """
-    session = _session_returning_scalars([])
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalars([])
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log")
     assert resp.status_code == 200
@@ -173,13 +181,15 @@ def test_list_query_excludes_soft_deleted_and_other_users(
 # ---------------------------------------------------------------------------
 
 
-def test_detail_returns_items_verbatim(client: TestClient, monkeypatch) -> None:
+def test_detail_returns_items_verbatim(
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalar_one: Callable[[object], MagicMock],
+) -> None:
     items = [{"food_name": "eggs", "qty_g": 100, "fdc_id": 123}]
     row = _mock_row(entities=items)
-    session = _session_returning_scalar_one(row)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalar_one(row)
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log/meal-1")
 
@@ -190,13 +200,13 @@ def test_detail_returns_items_verbatim(client: TestClient, monkeypatch) -> None:
 
 
 def test_detail_handles_entities_stored_as_json_string(
-    client: TestClient, monkeypatch
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalar_one: Callable[[object], MagicMock],
 ) -> None:
     row = _mock_row(entities='[{"food_name": "rice"}]')
-    session = _session_returning_scalar_one(row)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalar_one(row)
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log/meal-1")
 
@@ -204,11 +214,13 @@ def test_detail_handles_entities_stored_as_json_string(
     assert resp.json()["items"] == [{"food_name": "rice"}]
 
 
-def test_detail_404_when_missing(client: TestClient, monkeypatch) -> None:
-    session = _session_returning_scalar_one(None)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+def test_detail_404_when_missing(
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalar_one: Callable[[object], MagicMock],
+) -> None:
+    session = session_returning_scalar_one(None)
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log/does-not-exist")
 
@@ -217,15 +229,15 @@ def test_detail_404_when_missing(client: TestClient, monkeypatch) -> None:
 
 
 def test_detail_404_for_foreign_owned_or_deleted_is_identical(
-    client: TestClient, monkeypatch
+    client: TestClient,
+    patch_get_session: Callable[..., MagicMock],
+    session_returning_scalar_one: Callable[[object], MagicMock],
 ) -> None:
     """The query filters user_id + deleted_at IS NULL, so a foreign-owned or
     soft-deleted row is indistinguishable from a missing one: the mocked DB
     layer returns None in both cases, and the handler must still 404."""
-    session = _session_returning_scalar_one(None)
-    monkeypatch.setattr(
-        meals_api, "get_session", lambda: MagicMock(return_value=session)
-    )
+    session = session_returning_scalar_one(None)
+    patch_get_session(meals_api, session)
 
     resp = client.get("/meals/log/someone-elses-meal")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -8,30 +9,17 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import account
-from tests.auth_helpers import with_header_auth
 
 _UID = "11111111-1111-1111-1111-111111111111"
 
 
-def _make_app() -> FastAPI:
-    app = FastAPI()
-    app.include_router(account.router)
-    return app
-
-
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(with_header_auth(_make_app()))
+def client(app_factory: Callable[..., FastAPI]) -> TestClient:
+    return TestClient(app_factory(account.router, header_auth=True))
 
 
 def _auth_headers(user_id: str) -> dict[str, str]:
     return {"X-Debug-User-Id": user_id}
-
-
-def _mock_session_factory(session: MagicMock) -> MagicMock:
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=session)
 
 
 def _chat_id_row(chat_id: int) -> MagicMock:
@@ -41,17 +29,17 @@ def _chat_id_row(chat_id: int) -> MagicMock:
 
 
 def test_delete_account_removes_all_rows(
-    monkeypatch: pytest.MonkeyPatch, client: TestClient
+    client: TestClient,
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
 ) -> None:
-
-    session = MagicMock()
-    session.commit = AsyncMock()
+    session = make_session()
 
     chat_rows = MagicMock()
     chat_rows.scalars.return_value.all.return_value = [12345]
     session.execute = AsyncMock(return_value=chat_rows)
 
-    factory = _mock_session_factory(session)
+    factory = mock_session_factory(session)
 
     with (
         patch("backend.api.account._delete_auth_user", new=AsyncMock()) as auth_del,
@@ -77,13 +65,12 @@ def test_delete_account_removes_all_rows(
 
 
 def test_delete_account_fails_closed_when_auth_delete_fails(
-    monkeypatch: pytest.MonkeyPatch, client: TestClient
+    client: TestClient,
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
 ) -> None:
-
-    session = MagicMock()
-    session.execute = AsyncMock()
-    session.commit = AsyncMock()
-    factory = _mock_session_factory(session)
+    session = make_session()
+    factory = mock_session_factory(session)
 
     with (
         patch(
@@ -100,19 +87,17 @@ def test_delete_account_fails_closed_when_auth_delete_fails(
     session.commit.assert_not_awaited()
 
 
-def test_delete_account_requires_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_delete_account_requires_auth(
+    monkeypatch: pytest.MonkeyPatch, app_factory: Callable[..., FastAPI]
+) -> None:
     monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
-    client = TestClient(_make_app())
+    client = TestClient(app_factory(account.router, user_id=None))
 
     resp = client.delete("/account")
     assert resp.status_code == 401
 
 
-def test_delete_account_rejects_non_uuid_user_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = TestClient(with_header_auth(_make_app()))
-
+def test_delete_account_rejects_non_uuid_user_id(client: TestClient) -> None:
     with patch("backend.api.account._delete_auth_user", new=AsyncMock()) as auth_del:
         resp = client.delete(
             "/account", headers=_auth_headers("not-a-uuid; DROP TABLE")
@@ -166,13 +151,12 @@ def test_delete_auth_user_configures_a_bounded_timeout(
 
 
 def test_delete_account_502_and_zero_deletes_on_auth_timeout(
-    monkeypatch: pytest.MonkeyPatch, client: TestClient
+    client: TestClient,
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
 ) -> None:
-
-    session = MagicMock()
-    session.execute = AsyncMock()
-    session.commit = AsyncMock()
-    factory = _mock_session_factory(session)
+    session = make_session()
+    factory = mock_session_factory(session)
 
     with (
         patch(
