@@ -200,7 +200,7 @@ recall it in chat by the new name. Both must show the edited version.
     `ingredients[]` with `target_qty_g?`) to `frontend/src/api/types.ts`.
   - Add `put` to `apiClient` in `frontend/src/api/client.ts` if it is
     missing.
-- [ ] T017 [P] [US1] Create
+- [X] T017 [P] [US1] Create
   `frontend/src/components/my-meals/my-meal-editor-row.tsx`. It takes the
   food name, an estimate badge when `item.estimated`, a gram input
   (`type="number"`, `min=1`, with an inline error for ≤ 0 or non-numeric) and
