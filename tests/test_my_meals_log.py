@@ -236,3 +236,75 @@ def test_all_removed_422(
         )
     assert resp.status_code == 422
     logged.assert_not_called()
+
+
+def test_log_stamps_saved_meal_id_flag_and_label(
+    build_logmeal: Callable[[object], tuple[FastAPI, MagicMock, AsyncMock]],
+) -> None:
+    app, factory, logged = build_logmeal(_meal())
+    client = TestClient(app)
+    with (
+        patch("backend.api.my_meals.get_session", return_value=factory),
+        patch("backend.api.my_meals.log_meal", logged),
+    ):
+        resp = client.post("/my-meals/meal-1/log", json={"meal_type": "lunch"})
+    assert resp.status_code == 200
+    assert logged.call_args.kwargs["extra_flags"] == {"saved_meal_id": "meal-1"}
+    assert logged.call_args.kwargs["label"] == "Chicken Biryani"
+
+
+def _list_meal(meal_id: str, name: str) -> MagicMock:
+    meal = MagicMock()
+    meal.id = meal_id
+    meal.name = name
+    meal.name_normalized = name.lower()
+    meal.kcal = meal.protein_g = meal.carbs_g = meal.fat_g = meal.fiber_g = 1.0
+    meal.ingredients = ["x"]
+    meal.deleted_at = None
+    return meal
+
+
+def _list_with_logs(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    meals: list[MagicMock],
+    log_rows: list[SimpleNamespace],
+) -> dict[str, bool]:
+    session = MagicMock()
+    meals_result = MagicMock()
+    meals_result.scalars.return_value.all.return_value = meals
+    logs_result = MagicMock()
+    logs_result.all.return_value = log_rows
+    session.execute = AsyncMock(side_effect=[meals_result, logs_result])
+    factory = mock_session_factory(session)
+    client = TestClient(app_factory(my_meals.router))
+    with patch("backend.api.my_meals.get_session", return_value=factory):
+        resp = client.get("/my-meals")
+    assert resp.status_code == 200
+    return {m["id"]: m["logged_today"] for m in resp.json()}
+
+
+def test_list_logged_today_via_flag_after_rename(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    # Logged as "Chicken Biryani", renamed to "Biryani" afterwards: the label no
+    # longer matches but the saved_meal_id flag does.
+    renamed = _list_meal("meal-1", "Biryani")
+    other = _list_meal("meal-2", "Salad")
+    rows = [SimpleNamespace(label="Chicken Biryani", saved_meal_id="meal-1")]
+    flags = _list_with_logs(app_factory, mock_session_factory, [renamed, other], rows)
+    assert flags == {"meal-1": True, "meal-2": False}
+
+
+def test_list_logged_today_legacy_label_without_flag(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    meal = _list_meal("meal-1", "Chicken Biryani")
+    rows = [
+        SimpleNamespace(label="Chicken Biryani", saved_meal_id=None),
+        SimpleNamespace(label=None, saved_meal_id=None),
+    ]
+    flags = _list_with_logs(app_factory, mock_session_factory, [meal], rows)
+    assert flags == {"meal-1": True}

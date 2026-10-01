@@ -136,7 +136,7 @@ recall it in chat by the new name. Both must show the edited version.
   "chicken biryani" to "biryani", `_best_saved_match("had biryani for lunch",
   meals)` hits, and `_best_saved_match("chicken biryani", meals)` with only
   the renamed meal does not (FR-007).
-- [ ] T010 [P] [US1] Add flag tests in `tests/test_my_meals_log.py`:
+- [X] T010 [P] [US1] Add flag tests in `tests/test_my_meals_log.py`:
   - `POST /my-meals/{id}/log` writes `flags.saved_meal_id == meal.id` and
     `label == meal.name`.
   - `list_meals` reports `logged_today=True` for a meal renamed after it was
