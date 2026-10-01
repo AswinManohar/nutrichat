@@ -92,7 +92,7 @@ codes. US1, US2 and US4 all depend on these.
   - Extra fields pass through.
   - `GET /my-meals/{id}` includes `updated_at`.
   - A duplicate `POST` returns `{"detail": "name_taken"}`.
-- [ ] T006 [P] Update the web types in `frontend/src/api/types.ts`:
+- [X] T006 [P] Update the web types in `frontend/src/api/types.ts`:
   - Add `updated_at: string` to `MyMealDetail`.
   - Add `target_qty_g?: number` to the save-ingredient type, and `portion?:
     number` to `SaveMealRequest`.

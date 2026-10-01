@@ -28,6 +28,8 @@ export interface MealItem {
   unknown_nutrients?: string[];
   /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */
   nutrients?: Record<string, { amount: number; unit: string }>;
+  /** Edited weight when saving; macros refer to qty_g. Defaults to qty_g. */
+  target_qty_g?: number;
 }
 
 export interface MyMealSummary {
@@ -43,10 +45,13 @@ export interface MyMealSummary {
 
 export interface MyMealDetail extends MyMealSummary {
   ingredients: MealItem[];
+  /** ISO-8601 with microseconds; echo back as expected_updated_at on PUT */
+  updated_at: string;
 }
 
 export interface SaveMealRequest {
   name: string;
+  portion?: number;
   ingredients: MealItem[];
 }
 
