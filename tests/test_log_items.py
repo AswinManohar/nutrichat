@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -272,3 +272,59 @@ def test_log_items_without_client_request_id_still_logs(app_factory) -> None:
         )
     assert resp.status_code == 200
     assert resp.json()["deduplicated"] is False
+
+
+def _saved_meal_session(make_session, meal: SimpleNamespace | None):
+    session = make_session()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = meal
+    session.execute = AsyncMock(return_value=result)
+    return session
+
+
+def test_saved_meal_id_stamps_flag_and_label(app_factory, make_session) -> None:
+    app, logged = _app_with_auth(app_factory)
+    session = _saved_meal_session(
+        make_session, SimpleNamespace(id="sm1", name="Chicken biryani")
+    )
+    with (
+        patch("backend.api.meals.persist_meal", logged),
+        patch(
+            "backend.api.meals.get_session",
+            return_value=MagicMock(return_value=session),
+        ),
+    ):
+        resp = TestClient(app).post(
+            "/meals/log-items",
+            json={
+                "meal_type": "lunch",
+                "saved_meal_id": "sm1",
+                "items": [_item("rice", 150, 150, 200)],
+            },
+        )
+    assert resp.status_code == 200
+    assert logged.call_args.kwargs["label"] == "Chicken biryani"
+    assert logged.call_args.kwargs["extra_flags"] == {"saved_meal_id": "sm1"}
+
+
+def test_foreign_or_unknown_saved_meal_id_ignored(app_factory, make_session) -> None:
+    app, logged = _app_with_auth(app_factory)
+    session = _saved_meal_session(make_session, None)
+    with (
+        patch("backend.api.meals.persist_meal", logged),
+        patch(
+            "backend.api.meals.get_session",
+            return_value=MagicMock(return_value=session),
+        ),
+    ):
+        resp = TestClient(app).post(
+            "/meals/log-items",
+            json={
+                "meal_type": "lunch",
+                "saved_meal_id": "someone-elses",
+                "items": [_item("rice", 150, 150, 200)],
+            },
+        )
+    assert resp.status_code == 200
+    assert logged.call_args.kwargs["label"] == "rice"
+    assert logged.call_args.kwargs["extra_flags"] is None

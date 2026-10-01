@@ -379,11 +379,11 @@ change. Change only the portion: no offer.
   `UserMeal`. If it belongs to the caller and isn't deleted, use
   `label=meal.name` and `extra_flags={"saved_meal_id": meal.id}`. Otherwise
   ignore it silently.
-- [ ] T036 [P] [US3] Add graph tests in `tests/test_my_meals_graph.py`:
+- [X] T036 [P] [US3] Add graph tests in `tests/test_my_meals_graph.py`:
   - `saved_lookup_node` sets and clears `saved_meal_id`;
   - the paused response includes `saved_meal` on a hit and `null` otherwise;
   - `log_node` stamps the flag and label.
-- [ ] T037 [P] [US3] Add log-items tests in `tests/test_meal_log_api.py`:
+- [X] T037 [P] [US3] Add log-items tests in `tests/test_meal_log_api.py`:
   - `saved_meal_id` for the caller's meal stamps the flag and label;
   - a foreign or unknown id logs normally without the flag.
 
