@@ -1,0 +1,31 @@
+{
+  "ingredient_replace": {
+    "mean": 94.64,
+    "stdev": 0.0,
+    "min": 94.64,
+    "max": 94.64,
+    "noise_band": 0.0,
+    "runs": [
+      94.64285714285714,
+      94.64285714285714,
+      94.64285714285714,
+      94.64285714285714,
+      94.64285714285714
+    ],
+    "ingredient_replace_fdc_match": null,
+    "failing_cases": {
+      "swap-full-01": {
+        "runs_failed": 5,
+        "last_reason": "name='rice brown cooked' qty=150/150"
+      },
+      "swap-amt-01": {
+        "runs_failed": 5,
+        "last_reason": "name='rice brown cooked' qty=195/195"
+      },
+      "add-typ-04": {
+        "runs_failed": 5,
+        "last_reason": "name='cheese cheddar' qty=28/20"
+      }
+    }
+  }
+}

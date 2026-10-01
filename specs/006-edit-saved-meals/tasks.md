@@ -594,7 +594,7 @@ at 90% or more.
   - Add an `ABSOLUTE_FLOORS = {"ingredient_replace": 90.0}` check that fails
     the gate when the mean over runs is below the floor, regardless of
     baseline.
-- [ ] T055 [US4] Run `uv run --env-file .env python eval/gate.py --only
+- [X] T055 [US4] Run `uv run --env-file .env python eval/gate.py --only
   ingredient_replace --runs 5`.
   - Iterate on `replace_ingredient_system.md` (not the cases) until the mean
     reaches ≥ 90%.

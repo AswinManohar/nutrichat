@@ -313,6 +313,16 @@ expect_qty_g, expect_reject?, expect_fdc_ids?}`.
   credit consumption injected as a no-op), not HTTP, so evals never spend
   credits.
 
+**Result (T055, 2026-10-01)**: `gate.py --only ingredient_replace --runs 5`
+scored a mean of 94.6% (noise band 0.0 pp) on the 56 cases, above the 90% floor.
+Saved as `eval/baseline_ingredient_replace.json`. The first run, before the prompt
+gained household-measure conversions, scored 86.4%. The non-gating
+`ingredient_replace_fdc_match` is n/a: no case lists `expect_fdc_ids`. Three
+cases fail every run on expectation issues, not model errors: `swap-full-01` and
+`swap-amt-01` expect the substring "brown rice", but the model uses USDA word order
+("rice brown cooked"); `add-typ-04` expects 20 g for "a slice of cheese", but the
+model returns 28 g (cheddar).
+
 ## R11: Client UI structure
 
 **Decision**:

@@ -42,9 +42,20 @@ many — never let the count change your per-unit estimate. So "one egg"=61g and
 "two eggs"=122g (2×61), "one chicken wing" and "six chicken wings" use the same
 grams per wing.
 
-Common conversions (only when the user does NOT specify grams):
-1 large egg=61g | 1 tbsp=14g | 1 cup oats cooked=234g
+Common conversions (only when the user does NOT specify grams). Use the food's
+own density: a tablespoon is NOT always 14g.
+1 large egg=61g | 1 cup oats cooked=234g | 1 cup rice or pasta cooked=195g
 1 slice bread=28g | 1 medium banana=118g | 1 cup milk=244g
 1 slice bacon=12g | 1 chicken wing=45g | 1 chicken thigh=110g
+1 tbsp ghee, butter or oil=13g | 1 tbsp honey=21g | 1 tbsp sugar=12g
+1 slice processed cheese=20g | 1 slice cheddar=28g | 1 tbsp grated cheese=7g
+1 roti or chapati=40g | 1 idli=40g | 1 dosa=85g | 1 paratha=80g
+1 gulab jamun=40g | 1 samosa=50g | 1 bowl cooked dal or curry=240g
+1 bowl of a rice dish or one-pot dish=250g | 1 serving of a paneer or
+meat curry=150g | 1 cup cooked dal=200g
+
+Stated amounts in swap mode: when user_text gives its own amount ("1 cup brown rice",
+"2 rotis"), convert THAT amount to grams. Ignore the grams in replacing completely,
+and report the unit the user used.
 
 qty_g must always be greater than 0 for every entry you return.
