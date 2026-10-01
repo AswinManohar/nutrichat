@@ -623,6 +623,7 @@ data class MyMealDetailDto(
     @SerialName("fiber_g") val fiberG: Double,
     @SerialName("n_ingredients") val nIngredients: Int,
     @SerialName("logged_today") val loggedToday: Boolean = false,
+    @SerialName("updated_at") val updatedAt: String? = null,
     val ingredients: List<ItemDto>,
 )
 

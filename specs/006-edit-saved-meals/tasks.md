@@ -96,7 +96,7 @@ codes. US1, US2 and US4 all depend on these.
   - Add `updated_at: string` to `MyMealDetail`.
   - Add `target_qty_g?: number` to the save-ingredient type, and `portion?:
     number` to `SaveMealRequest`.
-- [ ] T007 [P] Add `updatedAt` to the Android DTO: add `@SerialName("updated_at")
+- [X] T007 [P] Add `updatedAt` to the Android DTO: add `@SerialName("updated_at")
   val updatedAt: String? = null` to `MyMealDetailDto` in
   `android/core/data/src/main/kotlin/app/mealsy/data/api/Dtos.kt`. It is
   nullable so older backends still parse.

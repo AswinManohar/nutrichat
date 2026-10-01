@@ -52,6 +52,7 @@ data class SavedMealItem(
 data class SavedMealDetail(
     val meal: SavedMeal,
     val ingredients: List<SavedMealItem>,
+    val updatedAt: String? = null,
 )
 
 /**
@@ -167,6 +168,7 @@ private fun MyMealDetailDto.toSavedMealDetail(): SavedMealDetail =
                 loggedToday = loggedToday,
             ),
         ingredients = ingredients.map { it.toSavedMealItem() },
+        updatedAt = updatedAt,
     )
 
 private fun ItemDto.toSavedMealItem(): SavedMealItem =
