@@ -40,3 +40,9 @@ skills-lock.json
 android/local.properties
 android/app/google-services.json
 eval/coaching_feedback.jsonl
+
+# Local tooling / scratch (not project code)
+.agent/
+.impeccable/
+.scratch/
+google-health-cli/
