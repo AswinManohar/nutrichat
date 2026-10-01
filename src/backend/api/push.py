@@ -10,6 +10,8 @@ from backend.auth.supabase import get_current_user_id
 from backend.db.models import PushSubscription
 from backend.db.session import get_session
 
+# TODO: no push sender exists yet (deferred per the onboarding rewrite). These
+# endpoints only store PushSubscription rows; they are retained for that sender.
 router = APIRouter(prefix="/push", tags=["push"])
 
 

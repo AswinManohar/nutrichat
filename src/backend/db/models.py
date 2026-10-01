@@ -79,6 +79,8 @@ class PushSubscription(Base):
     is unique so re-subscribing the same browser upserts rather than duplicates.
     """
 
+    # TODO: no sender exists yet (deferred per the onboarding rewrite); rows are
+    # retained so a future sender can deliver to them.
     __tablename__ = "push_subscription"
 
     id: Mapped[str] = mapped_column(
