@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import billing as billing_module
 from backend.auth.supabase import get_current_user_id
 from backend.quota import PAID_QUOTA
+
+
+@pytest.fixture(autouse=True)
+def _enable_dev_upgrade(monkeypatch):
+    monkeypatch.setenv("BILLING_DEV_UPGRADE_ENABLED", "1")
 
 
 def _make_app() -> FastAPI:

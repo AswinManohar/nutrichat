@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
@@ -16,6 +18,14 @@ class UpgradeResponse(BaseModel):
     new_quota: int
 
     model_config = ConfigDict(extra="forbid")
+
+
+_TRUTHY = {"1", "true", "yes"}
+
+
+def _dev_upgrade_enabled() -> bool:
+    """Return True when BILLING_DEV_UPGRADE_ENABLED is truthy (read per request)."""
+    return os.environ.get("BILLING_DEV_UPGRADE_ENABLED", "").strip().lower() in _TRUTHY
 
 
 _UPGRADE_SQL = text("""
@@ -41,8 +51,12 @@ async def upgrade_quota(
         UpgradeResponse confirming the new quota.
 
     Raises:
-        HTTPException 404: If no user_goal row exists for this user.
+        HTTPException 404: If the dev upgrade flag is off, or if no user_goal
+            row exists for this user.
     """
+    if not _dev_upgrade_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
     session_factory = get_session()
     async with session_factory() as session:
         result = await session.execute(_UPGRADE_SQL, {"user_id": user_id, "paid_quota": PAID_QUOTA})
