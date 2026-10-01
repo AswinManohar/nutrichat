@@ -579,7 +579,7 @@ at 90% or more.
     "expect_fdc_ids"?}`.
   - Include Indian dishes that match the user base (dal, roti, paneer, ghee,
     idli). Base gram references on USDA household measures.
-- [ ] T054 [US4] Add a `score_ingredient_replace(sem)` scorer to
+- [X] T054 [US4] Add a `score_ingredient_replace(sem)` scorer to
   `eval/gate.py`.
   - It calls `resolve_ingredient(..., consume_credit=_always_true)` for each
     case, so no user credits are spent.

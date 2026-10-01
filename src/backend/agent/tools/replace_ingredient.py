@@ -65,6 +65,7 @@ class ResolvedIngredient(BaseModel):
     unit: str
     amount_stated: bool
     kept_previous_qty: bool
+    model_food_name: str = ""  # the LLM's name, before USDA matching (for evals)
 
 
 class QuotaExhausted(Exception):
@@ -172,4 +173,5 @@ async def resolve_ingredient(
             unit=unit,
             amount_stated=food.amount_stated,
             kept_previous_qty=kept,
+            model_food_name=food.food_name,
         )

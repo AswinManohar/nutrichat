@@ -76,7 +76,14 @@ TOLERANCES: dict[str, float] = {
     # measured CI of the mean at N=5 is ~16% (haleem alone swings 45%
     # run-to-run), so anything under that is noise. Raise N to tighten.
     "decomposition_kcal_pct": 25.0,
+    # 56 cases -> 1.8pp granularity. Two-to-three cases of slack.
+    "ingredient_replace": 5.0,
 }
+
+# Absolute floors, checked in addition to (and regardless of) any baseline:
+# the gate fails when the mean over runs is below the floor. Specified by
+# specs/006-edit-saved-meals/research.md R10 (SC-007).
+ABSOLUTE_FLOORS: dict[str, float] = {"ingredient_replace": 90.0}
 
 
 def load_cases(name: str) -> list[dict]:
@@ -355,6 +362,74 @@ async def score_decomposition(sem: asyncio.Semaphore) -> dict[str, float]:
     return dict(await asyncio.gather(*(one(c) for c in cases)))
 
 
+async def score_ingredient_replace(
+    sem: asyncio.Semaphore,
+) -> tuple[float, dict[str, Any]]:
+    """Percent of ingredient swap/add texts resolved to the expected food and grams.
+
+    Calls the service function (not HTTP) with credit consumption stubbed out,
+    so no user credits are spent. A case passes when the call does not raise,
+    the MODEL's food name contains an `expect_name_any` entry, and the final
+    grams are within +/-25% of `expect_qty_g`. Reject cases pass on
+    RephraseRequired. The USDA match (`fdc_id` in `expect_fdc_ids`) is
+    reported but does not gate.
+
+    Returns:
+        (pass %, details) where details holds failing case ids and the
+        non-gating fdc match rate (over cases that list `expect_fdc_ids`).
+    """
+    from backend.agent.tools.replace_ingredient import (
+        RephraseRequired,
+        ReplacingIngredient,
+        resolve_ingredient,
+    )
+
+    cases = load_cases("ingredient_replace")
+
+    async def _always_true(_user_id: str) -> bool:
+        return True
+
+    async def one(case: dict) -> tuple[bool, bool | None, str | None]:
+        replacing = (
+            ReplacingIngredient(**case["replacing"]) if case.get("replacing") else None
+        )
+        try:
+            async with sem:
+                res = await resolve_ingredient(
+                    TEST_USER,
+                    case["mode"],
+                    case["text"],
+                    case["meal"],
+                    replacing,
+                    consume_credit=_always_true,
+                )
+        except RephraseRequired:
+            ok = bool(case.get("expect_reject"))
+            return ok, None, None if ok else "rephrase"
+        except Exception as exc:  # noqa: BLE001 - any failure is a failed case
+            return False, None, f"{type(exc).__name__}"
+        if case.get("expect_reject"):
+            return False, None, f"expected reject, got {res.model_food_name!r}"
+        expected = case["expect_qty_g"]
+        name_ok = _matches(res.model_food_name, case["expect_name_any"])
+        qty_ok = abs(res.item.qty_g - expected) <= expected * QTY_TOL
+        fdc = None
+        if case.get("expect_fdc_ids"):
+            fdc = res.item.fdc_id in case["expect_fdc_ids"]
+        why = None
+        if not (name_ok and qty_ok):
+            why = f"name={res.model_food_name!r} qty={res.item.qty_g:g}/{expected:g}"
+        return name_ok and qty_ok, fdc, why
+
+    results = await asyncio.gather(*(one(c) for c in cases))
+    fdc_flags = [f for _, f, _ in results if f is not None]
+    details = {
+        "failures": {c["id"]: why for c, (ok, _, why) in zip(cases, results) if not ok},
+        "fdc_match_pct": (100 * sum(fdc_flags) / len(fdc_flags) if fdc_flags else None),
+    }
+    return 100 * sum(ok for ok, _, _ in results) / len(cases), details
+
+
 # ---------------------------------------------------------------------------
 # Harness
 # ---------------------------------------------------------------------------
@@ -403,7 +478,13 @@ def band(values: list[float]) -> dict[str, float]:
     }
 
 
-PCT_CATEGORIES = ("entity_recall", "quantity", "food_identity", "intent_routing")
+PCT_CATEGORIES = (
+    "entity_recall",
+    "quantity",
+    "food_identity",
+    "intent_routing",
+    "ingredient_replace",
+)
 ALL_CATEGORIES = (*PCT_CATEGORIES, "decomposition")
 
 
@@ -450,12 +531,14 @@ async def main() -> None:
         "quantity": score_quantity,
         "food_identity": score_food_identity,
         "intent_routing": score_intent_routing,
+        "ingredient_replace": score_ingredient_replace,
     }
     pct_scores: dict[str, list[float]] = {
         c: [] for c in PCT_CATEGORIES if c in selected
     }
     decomp_runs: list[dict[str, float]] = []
     routing_runs: list[dict[str, Any]] = []
+    replace_runs: list[dict[str, Any]] = []
 
     try:
         for i in range(args.runs):
@@ -469,6 +552,9 @@ async def main() -> None:
                 if cat == "intent_routing":
                     res, details = res
                     routing_runs.append(details)
+                if cat == "ingredient_replace":
+                    res, rdetails = res
+                    replace_runs.append(rdetails)
                 pct_scores[cat].append(res)
             if "decomposition" in selected:
                 decomp_runs.append(results[-1])
@@ -482,6 +568,23 @@ async def main() -> None:
     report: dict[str, Any] = {k: band(v) for k, v in pct_scores.items()}
     if routing_runs:
         report["intent_routing"].update(_summarize_routing(routing_runs))
+
+    if replace_runs:
+        fdc = [
+            r["fdc_match_pct"] for r in replace_runs if r["fdc_match_pct"] is not None
+        ]
+        fails: Counter[str] = Counter()
+        reasons: dict[str, str] = {}
+        for r in replace_runs:
+            fails.update(r["failures"].keys())
+            reasons.update(r["failures"])
+        report["ingredient_replace"]["ingredient_replace_fdc_match"] = (
+            round(statistics.fmean(fdc), 1) if fdc else None
+        )
+        report["ingredient_replace"]["failing_cases"] = {
+            cid: {"runs_failed": n, "last_reason": reasons[cid]}
+            for cid, n in fails.most_common()
+        }
 
     dishes = sorted(decomp_runs[0]) if decomp_runs else []
     per_dish = {d: band([run[d] for run in decomp_runs]) for d in dishes}
@@ -527,6 +630,17 @@ async def main() -> None:
                 f"  offer to log: recall {r['offer_recall_pct']}%  "
                 f"false offers {r['false_offer_pct']}%"
             )
+    if "ingredient_replace" in report:
+        r = report["ingredient_replace"]
+        print(
+            f"\ningredient_replace fdc match (non-gating): "
+            f"{r['ingredient_replace_fdc_match']}%"
+        )
+        for cid, f in r["failing_cases"].items():
+            print(
+                f"  fail {cid}: {f['runs_failed']}/{len(replace_runs)} runs "
+                f"({f['last_reason']})"
+            )
     if decomp_runs:
         print(
             f"\n{'decomposition kcal':16} worst dish: {worst[0]} "
@@ -537,8 +651,21 @@ async def main() -> None:
         pctb = 100 * b["noise_band"] / b["mean"] if b["mean"] else 0
         print(f"  {d:20} mean={b['mean']:8.0f} kcal  band={pctb:5.1f}%")
 
+    floor_failures = [
+        f"{cat}<{floor:g}"
+        for cat, floor in ABSOLUTE_FLOORS.items()
+        if cat in report and report[cat]["mean"] < floor
+    ]
+    for cat, floor in ABSOLUTE_FLOORS.items():
+        if cat in report:
+            ok = report[cat]["mean"] >= floor
+            print(
+                f"\n{cat:16} absolute floor {floor:.1f}: "
+                f"{'PASS' if ok else 'FAIL'} (mean {report[cat]['mean']:.1f})"
+            )
+
+    failures: list[str] = []
     if base is not None:
-        failures: list[str] = []
         print("\n=== delta vs baseline ===")
         for cat in pct_scores:
             if cat not in base:
@@ -572,7 +699,7 @@ async def main() -> None:
         print(f"\nGATE: {'FAIL -- ' + ', '.join(failures) if failures else 'PASS'}")
     if out_path:
         print(f"\nwrote {out_path}")
-    if base is not None and failures:
+    if floor_failures or (base is not None and failures):
         sys.exit(1)
 
 
