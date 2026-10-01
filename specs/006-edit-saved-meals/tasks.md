@@ -406,7 +406,7 @@ change. Change only the portion: no offer.
 
 ### Web for User Story 3
 
-- [ ] T040 [P] [US3] Create
+- [X] T040 [P] [US3] Create
   `frontend/src/components/my-meals/update-saved-meal-offer.tsx`.
   - Props: `savedMeal {id, name, updated_at}` and `items` (the final rows at
     1×).

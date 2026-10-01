@@ -115,6 +115,13 @@ export interface LogMealRequest {
   action?: string | null;
 }
 
+/** Reference to the saved meal a confirmation card was built from. */
+export interface SavedMealRef {
+  id: string;
+  name: string;
+  updated_at: string;
+}
+
 export interface LogMealResponse {
   status: string;
   message: string;
@@ -123,6 +130,8 @@ export interface LogMealResponse {
   meal_id?: string | null;
   /** Set on coaching replies once persisted; absent for meal logging. */
   response_id?: string | null;
+  /** Set when the card came from a saved meal (My Meals). */
+  saved_meal?: SavedMealRef | null;
 }
 
 export interface CategoryStat {
