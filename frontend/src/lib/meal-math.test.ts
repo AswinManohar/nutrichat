@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MealItem } from '@/api/types'
 
-import { isValidGrams, scaleItem, totals } from './meal-math'
+import { hasRecipeChanges, isValidGrams, scaleItem, totals } from './meal-math'
 
 const base = {
   food_name: 'Rice',
@@ -66,5 +66,33 @@ describe('isValidGrams', () => {
     for (const bad of ['', '  ', '0', '-3', 'abc', 'Infinity']) {
       expect(isValidGrams(bad)).toBe(false)
     }
+  })
+})
+
+describe('hasRecipeChanges', () => {
+  const snap = [base, { ...base, food_name: 'Chicken', fdc_id: 2, qty_g: 100 }]
+  const same = snap.map((item) => ({ item, qtyG: item.qty_g }))
+
+  it('is false for identical rows', () => {
+    expect(hasRecipeChanges(snap, same)).toBe(false)
+  })
+  it('is true when the count differs', () => {
+    expect(hasRecipeChanges(snap, same.slice(0, 1))).toBe(true)
+    expect(hasRecipeChanges(snap, [...same, same[0]])).toBe(true)
+  })
+  it('is true for a different fdc_id at the same position', () => {
+    const final = [{ item: { ...base, fdc_id: 9 }, qtyG: 200 }, same[1]]
+    expect(hasRecipeChanges(snap, final)).toBe(true)
+  })
+  it('is true for the same fdc_id with a different name', () => {
+    const final = [{ item: { ...base, food_name: 'Brown rice' }, qtyG: 200 }, same[1]]
+    expect(hasRecipeChanges(snap, final)).toBe(true)
+  })
+  it('is false for a 0.5 g difference', () => {
+    expect(hasRecipeChanges(snap, [{ item: base, qtyG: 200.5 }, same[1]])).toBe(false)
+  })
+  it('is true for a 1.0 g difference', () => {
+    expect(hasRecipeChanges(snap, [{ item: base, qtyG: 201 }, same[1]])).toBe(true)
+    expect(hasRecipeChanges(snap, [{ item: base, qtyG: 199 }, same[1]])).toBe(true)
   })
 })

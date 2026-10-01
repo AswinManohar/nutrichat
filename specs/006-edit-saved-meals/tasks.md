@@ -389,7 +389,7 @@ change. Change only the portion: no offer.
 
 ### Shared diff logic
 
-- [ ] T038 [P] [US3] Add `hasRecipeChanges(snapshot: CardItem[], final:
+- [X] T038 [P] [US3] Add `hasRecipeChanges(snapshot: CardItem[], final:
   {item: CardItem; qtyG: number}[]): boolean` to
   `frontend/src/lib/meal-math.ts`, with tests in
   `frontend/src/lib/meal-math.test.ts`. It is true when:

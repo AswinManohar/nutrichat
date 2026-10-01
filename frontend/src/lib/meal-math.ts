@@ -49,3 +49,24 @@ export function isValidGrams(value: string): boolean {
   const n = Number(value)
   return value.trim() !== '' && Number.isFinite(n) && n > 0
 }
+
+/**
+ * True when the final rows differ from the snapshot enough to change a saved
+ * recipe: different count, a different food at the same position (fdc_id or
+ * food_name), or a gram change of 1 g or more. Portion and meal type are
+ * deliberately not inputs (FR-012).
+ */
+export function hasRecipeChanges(
+  snapshot: readonly MealItem[],
+  final: readonly { item: MealItem; qtyG: number }[],
+): boolean {
+  if (snapshot.length !== final.length) return true
+  return final.some(({ item, qtyG }, i) => {
+    const before = snapshot[i]
+    return (
+      item.fdc_id !== before.fdc_id ||
+      item.food_name !== before.food_name ||
+      Math.abs(qtyG - before.qty_g) >= 1
+    )
+  })
+}
