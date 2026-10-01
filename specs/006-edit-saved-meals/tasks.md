@@ -118,7 +118,7 @@ recall it in chat by the new name. Both must show the edited version.
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Add `PUT /my-meals/{id}` tests in
+- [X] T008 [P] [US1] Add `PUT /my-meals/{id}` tests in
   `tests/test_my_meals_api.py`, mocking the session as the existing tests do:
   - The happy path recomputes the totals and returns a new `updated_at`.
   - Client totals are ignored.

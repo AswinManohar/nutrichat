@@ -6,8 +6,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from backend.api import my_meals
 from backend.api.my_meals import (
@@ -180,7 +182,7 @@ def test_save_meal_empty_name_422(app_factory: Callable[..., FastAPI]) -> None:
 
 
 async def test_find_saved_meal_normalizes_and_matches(
-    mock_session_factory: Callable[[MagicMock], MagicMock]
+    mock_session_factory: Callable[[MagicMock], MagicMock],
 ) -> None:
     meal = MagicMock(name_normalized="chicken biryani")
     session = MagicMock()
@@ -313,3 +315,259 @@ def test_list_meals_no_logs_today(
 
     assert resp.status_code == 200
     assert resp.json()[0]["logged_today"] is False
+
+
+# ---------------------------------------------------------------------------
+# PUT /my-meals/{id}
+# ---------------------------------------------------------------------------
+
+_STAMP = datetime(2026, 10, 1, 9, 12, 44, 123456, tzinfo=UTC)
+
+
+def _stored_meal(**overrides: object) -> MagicMock:
+    meal = MagicMock()
+    meal.id = "meal-1"
+    meal.user_id = DEFAULT_TEST_USER
+    meal.name = "Chicken Biryani"
+    meal.name_normalized = "chicken biryani"
+    meal.kcal = meal.protein_g = meal.carbs_g = meal.fat_g = meal.fiber_g = 1.0
+    meal.ingredients = [{"food_name": "rice", "qty_g": 100, "kcal": 130}]
+    meal.deleted_at = None
+    meal.updated_at = _STAMP
+    for key, value in overrides.items():
+        setattr(meal, key, value)
+    return meal
+
+
+def _put_body(**overrides: object) -> dict:
+    body: dict = {
+        "name": "Biryani",
+        "expected_updated_at": _STAMP.isoformat(),
+        "ingredients": [
+            {
+                "food_name": "rice",
+                "qty_g": 200,
+                "target_qty_g": 100,
+                "kcal": 260,
+                "protein_g": 5,
+                "carbs_g": 56,
+                "fat_g": 1,
+                "fiber_g": 2,
+            },
+            {"food_name": "chicken", "qty_g": 100, "kcal": 165, "protein_g": 31},
+        ],
+    }
+    body.update(overrides)
+    return body
+
+
+def _put(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    meal: object,
+    body: dict,
+    clash: object = None,
+) -> tuple[object, MagicMock]:
+    """PUT /my-meals/meal-1 against a mocked session; returns (response, session)."""
+    session = make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_returning(meal), _exec_returning(clash)]
+    )
+    factory = mock_session_factory(session)
+    client = TestClient(app_factory(my_meals.router))
+    with patch("backend.api.my_meals.get_session", return_value=factory):
+        resp = client.put("/my-meals/meal-1", json=body)
+    return resp, session
+
+
+def test_put_happy_path_recomputes_totals_and_bumps_updated_at(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    meal = _stored_meal()
+    resp, session = _put(
+        app_factory, make_session, mock_session_factory, meal, _put_body()
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # rice 200 -> target 100 (half): 130 kcal; chicken 165.
+    assert data["name"] == "Biryani" and data["n_ingredients"] == 2
+    assert data["kcal"] == 295 and data["protein_g"] == 33.5
+    assert meal.name == "Biryani" and meal.name_normalized == "biryani"
+    assert meal.updated_at > _STAMP
+    assert datetime.fromisoformat(data["updated_at"]) == meal.updated_at
+    session.commit.assert_awaited_once()
+
+
+def test_put_rejects_client_totals_and_never_stores_them(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    meal = _stored_meal()
+    resp, _ = _put(
+        app_factory,
+        make_session,
+        mock_session_factory,
+        meal,
+        _put_body(kcal=99999),
+    )
+    # extra="forbid" on the request: unknown top-level totals are rejected.
+    assert resp.status_code == 422
+    assert meal.kcal == 1.0
+
+
+def test_put_target_qty_rescales_ingredient(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    meal = _stored_meal()
+    resp, _ = _put(app_factory, make_session, mock_session_factory, meal, _put_body())
+    assert resp.status_code == 200
+    rice = meal.ingredients[0]
+    assert rice["qty_g"] == 100 and rice["kcal"] == 130
+    assert "target_qty_g" not in rice
+    assert meal.fiber_g == 1.0  # 2 * 0.5 + 0 (chicken fiber default)
+
+
+@pytest.mark.parametrize(
+    "meal",
+    [
+        None,
+        _stored_meal(deleted_at=_STAMP),
+        _stored_meal(user_id="someone-else"),
+    ],
+    ids=["missing", "deleted", "other-user"],
+)
+def test_put_missing_deleted_or_foreign_meal_404(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    meal: object,
+) -> None:
+    resp, session = _put(
+        app_factory, make_session, mock_session_factory, meal, _put_body()
+    )
+    assert resp.status_code == 404
+    session.commit.assert_not_awaited()
+
+
+def test_put_name_taken_409(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    resp, session = _put(
+        app_factory,
+        make_session,
+        mock_session_factory,
+        _stored_meal(),
+        _put_body(),
+        clash="other-meal-id",
+    )
+    assert resp.status_code == 409
+    assert resp.json() == {"detail": "name_taken"}
+    session.commit.assert_not_awaited()
+
+
+def test_put_integrity_error_maps_to_name_taken(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    session = make_session()
+    session.execute = AsyncMock(
+        side_effect=[_exec_returning(_stored_meal()), _exec_returning(None)]
+    )
+    session.commit = AsyncMock(side_effect=IntegrityError("x", {}, Exception()))
+    session.rollback = AsyncMock()
+    factory = mock_session_factory(session)
+    client = TestClient(app_factory(my_meals.router))
+    with patch("backend.api.my_meals.get_session", return_value=factory):
+        resp = client.put("/my-meals/meal-1", json=_put_body())
+    assert resp.status_code == 409
+    assert resp.json() == {"detail": "name_taken"}
+
+
+def test_put_same_name_different_case_allowed(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    # Renaming to a re-capitalized version of its own name finds no other meal.
+    meal = _stored_meal()
+    resp, _ = _put(
+        app_factory,
+        make_session,
+        mock_session_factory,
+        meal,
+        _put_body(name="CHICKEN biryani"),
+    )
+    assert resp.status_code == 200
+    assert meal.name == "CHICKEN biryani"
+    assert meal.name_normalized == "chicken biryani"
+
+
+def test_put_stale_expected_updated_at_409_meal_changed(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    meal = _stored_meal()
+    stale = datetime(2026, 10, 1, 9, 12, 44, 123455, tzinfo=UTC).isoformat()
+    resp, session = _put(
+        app_factory,
+        make_session,
+        mock_session_factory,
+        meal,
+        _put_body(expected_updated_at=stale),
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "meal_changed"
+    assert detail["current"]["name"] == "Chicken Biryani"
+    assert datetime.fromisoformat(detail["current"]["updated_at"]) == _STAMP
+    assert meal.name == "Chicken Biryani"
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _put_body(name=""),
+        _put_body(name="   "),
+        _put_body(name="!!!"),
+        _put_body(ingredients=[]),
+        _put_body(ingredients=[{"food_name": "rice", "qty_g": 0}]),
+        _put_body(ingredients=[{"food_name": "rice", "qty_g": 5, "target_qty_g": 0}]),
+        _put_body(expected_updated_at="2026-10-01T09:12:44"),  # naive
+    ],
+    ids=[
+        "empty-name",
+        "blank-name",
+        "punctuation-name",
+        "no-ingredients",
+        "qty-zero",
+        "target-zero",
+        "naive-timestamp",
+    ],
+)
+def test_put_validation_422(
+    app_factory: Callable[..., FastAPI],
+    make_session: Callable[..., MagicMock],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    body: dict,
+) -> None:
+    resp, session = _put(
+        app_factory, make_session, mock_session_factory, _stored_meal(), body
+    )
+    assert resp.status_code == 422
+    session.commit.assert_not_awaited()
+
+
+def test_put_requires_auth(app_factory: Callable[..., FastAPI]) -> None:
+    client = TestClient(app_factory(my_meals.router, user_id=None))
+    assert client.put("/my-meals/meal-1", json=_put_body()).status_code == 401
