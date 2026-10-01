@@ -64,7 +64,7 @@ codes. US1, US2 and US4 all depend on these.
 
 **⚠️ CRITICAL**: Finish this phase before starting any user story.
 
-- [ ] T003 Add a shared server-side ingredient builder in
+- [X] T003 Add a shared server-side ingredient builder in
   `src/backend/api/my_meals.py`:
   - Add `target_qty_g: float | None = Field(default=None, gt=0)` to
     `IngredientIn`.
@@ -79,13 +79,13 @@ codes. US1, US2 and US4 all depend on these.
       `unknown_nutrients`, `source_dish`, …) survive; scaled values win.
   - Change `_totals` to sum over the built dicts with `(d.get(f) or 0.0)`,
     so unknown counts as 0 in totals (data-model.md).
-- [ ] T004 Expose `updated_at` and switch 409s to error codes in
+- [X] T004 Expose `updated_at` and switch 409s to error codes in
   `src/backend/api/my_meals.py`:
   - Add `updated_at: datetime` to `MyMealDetail`. Populate it in `get_meal`
     and `save_meal` from `meal.updated_at`, ISO-8601 with microseconds.
   - Change the `POST /my-meals` duplicate-name 409 to
     `HTTPException(409, detail="name_taken")` (research R3).
-- [ ] T005 [P] Add foundational tests in `tests/test_my_meals_api.py`:
+- [X] T005 [P] Add foundational tests in `tests/test_my_meals_api.py`:
   - `_build_ingredients` scales `qty_g`, the macros and `nutrients[*].amount`
     by `(target_qty_g or qty_g) * portion / qty_g`.
   - A `null` `fiber_g`, or one listed in `unknown_nutrients`, stays `None`.

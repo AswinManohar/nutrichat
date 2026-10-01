@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api import my_meals
-from backend.api.my_meals import IngredientIn, _totals, find_saved_meal
+from backend.api.my_meals import (
+    IngredientIn,
+    _build_ingredients,
+    _totals,
+    find_saved_meal,
+)
+from tests.auth_helpers import DEFAULT_TEST_USER
 
 
 def _exec_returning(first):
@@ -42,9 +49,70 @@ def test_totals_summed_server_side() -> None:
         IngredientIn(food_name="rice", qty_g=150, kcal=200, protein_g=4, carbs_g=44),
         IngredientIn(food_name="chicken", qty_g=120, kcal=250, protein_g=46, fat_g=6),
     ]
-    t = _totals(ings)
+    t = _totals(_build_ingredients(ings, 1.0))
     assert t["kcal"] == 450 and t["protein_g"] == 50 and t["carbs_g"] == 44
     assert t["fat_g"] == 6 and t["fiber_g"] == 0
+
+
+def test_build_ingredients_scales_by_target_and_portion() -> None:
+    item = IngredientIn(
+        food_name="rice",
+        qty_g=200,
+        target_qty_g=100,
+        kcal=260,
+        protein_g=5,
+        carbs_g=56,
+        fat_g=1,
+        fiber_g=2,
+        nutrients={"iron": {"amount": 2.0, "unit": "mg"}},
+    )
+    (built,) = _build_ingredients([item], 2.0)  # scale = 100 * 2 / 200 = 1
+    assert built["qty_g"] == 200
+    assert built["kcal"] == 260 and built["fiber_g"] == 2
+    assert built["nutrients"]["iron"]["amount"] == 2.0
+    assert "target_qty_g" not in built
+
+    (half,) = _build_ingredients([item], 0.5)  # scale = 0.25
+    assert half["qty_g"] == 50 and half["kcal"] == 65
+    assert half["nutrients"]["iron"] == {"amount": 0.5, "unit": "mg"}
+
+
+def test_build_ingredients_no_target_portion_one_is_unchanged() -> None:
+    item = IngredientIn(food_name="rice", qty_g=150, kcal=200, protein_g=4)
+    (built,) = _build_ingredients([item], 1.0)
+    assert built["qty_g"] == 150 and built["kcal"] == 200
+    assert built["protein_g"] == 4 and built["carbs_g"] == 0.0
+
+
+def test_build_ingredients_unknown_macro_stays_none() -> None:
+    null_fiber = IngredientIn(food_name="a", qty_g=100, kcal=100, fiber_g=None)
+    listed = IngredientIn(
+        food_name="b",
+        qty_g=100,
+        target_qty_g=50,
+        kcal=100,
+        fiber_g=0.0,
+        unknown_nutrients=["fiber_g"],
+    )
+    a, b = _build_ingredients([null_fiber, listed], 1.0)
+    assert a["fiber_g"] is None
+    assert b["fiber_g"] is None and b["unknown_nutrients"] == ["fiber_g"]
+    assert _totals([a, b])["fiber_g"] == 0
+
+
+def test_build_ingredients_extra_fields_pass_through() -> None:
+    item = IngredientIn(
+        food_name="rice",
+        qty_g=100,
+        kcal=100,
+        unit="cup",
+        source_dish="biryani",
+        estimated=True,
+        source="llm",
+    )
+    (built,) = _build_ingredients([item], 1.0)
+    assert built["unit"] == "cup" and built["source_dish"] == "biryani"
+    assert built["estimated"] is True and built["source"] == "llm"
 
 
 def test_list_requires_auth(app_factory: Callable[..., FastAPI]) -> None:
@@ -71,6 +139,34 @@ def test_save_meal_rejects_duplicate_name(
             },
         )
     assert resp.status_code == 409
+    assert resp.json() == {"detail": "name_taken"}
+
+
+def test_get_meal_includes_updated_at(
+    app_factory: Callable[..., FastAPI],
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+) -> None:
+    client = TestClient(app_factory(my_meals.router))
+    stamp = datetime(2026, 10, 1, 9, 12, 44, 123456, tzinfo=UTC)
+    meal = MagicMock()
+    meal.id = "meal-1"
+    meal.user_id = DEFAULT_TEST_USER
+    meal.name = "Biryani"
+    meal.kcal = 500.0
+    meal.protein_g = meal.carbs_g = meal.fat_g = meal.fiber_g = 1.0
+    meal.ingredients = [{"food_name": "rice", "qty_g": 100}]
+    meal.deleted_at = None
+    meal.updated_at = stamp
+
+    session = MagicMock()
+    session.get = AsyncMock(return_value=meal)
+    factory = mock_session_factory(session)
+
+    with patch("backend.api.my_meals.get_session", return_value=factory):
+        resp = client.get("/my-meals/meal-1")
+
+    assert resp.status_code == 200
+    assert datetime.fromisoformat(resp.json()["updated_at"]) == stamp
 
 
 def test_save_meal_empty_name_422(app_factory: Callable[..., FastAPI]) -> None:
