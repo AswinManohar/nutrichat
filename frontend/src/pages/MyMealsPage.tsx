@@ -1,16 +1,35 @@
 import { useState } from 'react'
-import { BookMarked, Trash2, Plus, ChevronDown, Check, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, Trash2, Plus, ChevronDown, Check, SlidersHorizontal, Pencil } from 'lucide-react'
 import { useMyMeals, useDeleteMeal, useLogMyMeal } from '../api/hooks'
 import type { MealCategory, MyMealSummary } from '../api/types'
 import { MEAL_CATEGORIES } from '../api/types'
 import { CATEGORY_LABELS } from '../components/chat/meal-categories'
 import { MyMealCustomizer } from '../components/chat/MyMealCustomizer'
+import { MyMealEditor } from '@/components/my-meals/my-meal-editor'
 
-function MealRow({ meal }: { meal: MyMealSummary }) {
+type PanelKind = 'customize' | 'edit'
+interface OpenPanel {
+  mealId: string
+  kind: PanelKind
+}
+
+interface MealRowProps {
+  meal: MyMealSummary
+  /** The single open panel on the page, if any */
+  openPanel: OpenPanel | null
+  onPanelChange: (panel: OpenPanel | null) => void
+}
+
+function MealRow({ meal, openPanel, onPanelChange }: MealRowProps) {
   const deleteMeal = useDeleteMeal()
   const logMeal = useLogMyMeal(meal.id)
   const [logMenuOpen, setLogMenuOpen] = useState(false)
-  const [customizing, setCustomizing] = useState(false)
+  const panel = openPanel?.mealId === meal.id ? openPanel.kind : null
+  const customizing = panel === 'customize'
+  const editing = panel === 'edit'
+  const setPanel = (kind: PanelKind | null) =>
+    onPanelChange(kind ? { mealId: meal.id, kind } : null)
+  const toggle = (kind: PanelKind) => setPanel(panel === kind ? null : kind)
   const [justLogged, setJustLogged] = useState(false)
 
   const quickLog = (cat: MealCategory) => {
@@ -33,7 +52,7 @@ function MealRow({ meal }: { meal: MyMealSummary }) {
           {/* Customize toggle */}
           <button
             type="button"
-            onClick={() => setCustomizing((c) => !c)}
+            onClick={() => toggle('customize')}
             aria-expanded={customizing}
             className={`press cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium border border-sand-border ${
               customizing ? 'text-sage-deep border-sage' : 'text-ink hover:border-sage'
@@ -41,6 +60,19 @@ function MealRow({ meal }: { meal: MyMealSummary }) {
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             Customize
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggle('edit')}
+            aria-expanded={editing}
+            aria-label={`Edit ${meal.name}`}
+            className={`press cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium border border-sand-border ${
+              editing ? 'text-sage-deep border-sage' : 'text-ink hover:border-sage'
+            }`}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
           </button>
 
           {/* Quick-log → meal-type dropdown */}
@@ -101,17 +133,21 @@ function MealRow({ meal }: { meal: MyMealSummary }) {
         <MyMealCustomizer
           mealId={meal.id}
           onLogged={() => {
-            setCustomizing(false)
+            setPanel(null)
             setJustLogged(true)
           }}
         />
       )}
+
+      {editing && <MyMealEditor mealId={meal.id} onClose={() => setPanel(null)} />}
     </div>
   )
 }
 
 export function MyMealsPage() {
   const { data: meals, isLoading } = useMyMeals()
+  // One inline panel (customize or edit) open across the whole page.
+  const [openPanel, setOpenPanel] = useState<OpenPanel | null>(null)
 
   return (
     <div className="flex-1 overflow-y-auto bg-surface p-4 md:p-8">
@@ -142,7 +178,7 @@ export function MyMealsPage() {
           <div className="space-y-3 rise-stagger">
             {meals.map((meal) => (
               <div key={meal.id} style={{ '--i': 0 } as React.CSSProperties}>
-                <MealRow meal={meal} />
+                <MealRow meal={meal} openPanel={openPanel} onPanelChange={setOpenPanel} />
               </div>
             ))}
           </div>

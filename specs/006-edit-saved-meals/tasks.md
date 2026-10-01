@@ -221,7 +221,7 @@ recall it in chat by the new name. Both must show the edited version.
   - **Other errors**: keep the edits and show the error with Retry (FR-018).
   - **Cancel** discards the edits (FR-005).
   - Split out a subcomponent if the file goes over about 120 lines.
-- [ ] T019 [US1] Wire the editor into `frontend/src/pages/MyMealsPage.tsx`.
+- [X] T019 [US1] Wire the editor into `frontend/src/pages/MyMealsPage.tsx`.
   Add an "Edit" button (lucide `Pencil`) on each `MealRow`, next to Customize.
   It opens `MyMealEditor` inline for that meal. Only one editor or customizer
   is open at a time.
