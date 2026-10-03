@@ -142,7 +142,7 @@ repo root, and backend code lives in `src/backend/`.
   - `MyMealDetail` gains `micros_totals`, **computed on read** from the ingredients and never stored on `user_meal` (FR-014a);
   - legacy ingredients without `micros` are resolved on read from `fdc_id` or the name.
 - [X] T024 [US1] In `src/backend/agent/tools/saved_meals.py`, make `saved_meal_to_results` carry ingredient `micros` into `USDAResult.micros`, falling back to `resolve_micros` for legacy ingredients. The `_MACROS` behaviour is unchanged.
-- [ ] T025 [US1] *(Deferred to land with T037 so the Check-up, which still reads card `nutrients` until US2, never goes blind on this branch.)* In `src/backend/agent/orchestrator.py`, the card item payload stops sending `nutrients` and does **not** add `micros` (FR-014, contracts/meal-micros.md §1). Update the "Full breakdown so Save to My Meals preserves micros" comment, because saved meals now resolve on the server (T023).
+- [X] T025 [US1] *(Deferred to land with T037 so the Check-up, which still reads card `nutrients` until US2, never goes blind on this branch.)* In `src/backend/agent/orchestrator.py`, the card item payload stops sending `nutrients` and does **not** add `micros` (FR-014, contracts/meal-micros.md §1). Update the "Full breakdown so Save to My Meals preserves micros" comment, because saved meals now resolve on the server (T023).
 
 **Checkpoint**: US1 is complete. New meals store `micros`, and the card is unchanged. The Check-up and Mindful panel still read the old per-item `nutrients`, which remain stored until T037. **Do not release US1 without US2** (FR-019).
 
@@ -156,7 +156,7 @@ repo root, and backend code lives in `src/backend/`.
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T026 [P] [US2] Write `tests/test_daily_micros.py` covering contracts/daily-totals.md:
+- [X] T026 [P] [US2] Write `tests/test_daily_micros.py` covering contracts/daily-totals.md:
   - every day in the range is returned, and a day with no meals has `logged:false`;
   - salt is 0.0025 × sodium;
   - fiber comes from the `fiber_g` column with `est 0`;
@@ -165,37 +165,37 @@ repo root, and backend code lives in `src/backend/`.
   - `to − from > 364` gives 422, and an unknown key gives 422;
   - `meals=true` returns per-meal contributions;
   - a benchmark seeds 90 days × 4 meals and asserts p95 under 1 s (SC-008).
-- [ ] T027 [P] [US2] Write `tests/test_meta_nutrients.py` covering contracts/nutrients-catalogue.md: public access, the `Cache-Control` header, 48 entries, 5 groups, and no `usda_names`, `max_per_100g` or `column` in the payload.
-- [ ] T028 [P] [US2] Write `tests/test_reader_consistency.py` (SC-006). For one seeded week, the Check-up aggregates, the Mindful-panel day totals, the coaching micronutrient data ("how much iron this week") and `get_daily_micros` all agree for every key they report.
+- [X] T027 [P] [US2] Write `tests/test_meta_nutrients.py` covering contracts/nutrients-catalogue.md: public access, the `Cache-Control` header, 48 entries, 5 groups, and no `usda_names`, `max_per_100g` or `column` in the payload.
+- [X] T028 [P] [US2] Write `tests/test_reader_consistency.py` (SC-006). For one seeded week, the Check-up aggregates, the Mindful-panel day totals, the coaching micronutrient data ("how much iron this week") and `get_daily_micros` all agree for every key they report.
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Implement `get_daily_micros(user_id, date_from, date_to, keys, include_meals=False)` in `src/backend/nutrients/daily.py` as **one** SQL pass:
+- [X] T029 [US2] Implement `get_daily_micros(user_id, date_from, date_to, keys, include_meals=False)` in `src/backend/nutrients/daily.py` as **one** SQL pass:
   - `jsonb_each(meal_log.micros)` grouped by `NUTRITION_DATE_SQL`, with `jsonb_array_length(entities)` for `items` and `deleted_at IS NULL`;
   - fiber added from the `fiber_g` column, and salt computed from sodium;
   - every day in the range filled in, with `logged=false` for empty days;
   - Pydantic response models `DailyMicros` and `DailyMicrosResponse` per data-model §5.
-- [ ] T030 [US2] Create `src/backend/api/nutrients.py` with `GET /nutrients/daily` (authenticated with the existing user dependency, query params and 422 rules per contracts/daily-totals.md), and register the router in `src/backend/main.py`.
-- [ ] T031 [P] [US2] In `src/backend/api/meta.py`, add `GET /meta/nutrients`, returning `catalog.public_view()` with `version` and `groups`, plus the header `Cache-Control: public, max-age=3600`.
-- [ ] T032 [US2] Move the Check-up onto the catalogue:
+- [X] T030 [US2] Create `src/backend/api/nutrients.py` with `GET /nutrients/daily` (authenticated with the existing user dependency, query params and 422 rules per contracts/daily-totals.md), and register the router in `src/backend/main.py`.
+- [X] T031 [P] [US2] In `src/backend/api/meta.py`, add `GET /meta/nutrients`, returning `catalog.public_view()` with `version` and `groups`, plus the header `Cache-Control: public, max-age=3600`.
+- [X] T032 [US2] *(Check-up display names are now catalogue names, for example "Dietary Fiber", "Total Sugars", "Vitamin B12". Clients render server names, so nothing in the UI depended on the old labels.)* Move the Check-up onto the catalogue:
   - in `src/backend/agent/tools/history.py`, rewrite the Check-up aggregates (`get_nutrient_checkup_aggregates` and helpers) to use `get_daily_micros` and catalogue `daily_value`, and delete `get_micronutrients_for_range`'s one-query-per-nutrient loop;
   - in `src/backend/config/tunables.yaml`, replace `nutrient_checkup.micronutrients` and `nutrient_checkup.rda` with `nutrient_checkup.keys: [protein, fiber, total_sugars, vitamin_c, vitamin_d, iron, calcium, vitamin_b12]`, plus `nutrient_checkup.daily_value_overrides: {total_sugars: 50}` (the existing 50 g proxy, spec FR-001a), and keep `flat_threshold_pct`;
   - in `src/backend/config/__init__.py`, delete `MicronutrientConfig` and update `NutrientCheckupConfig` to match.
-- [ ] T033 [US2] Move the Mindful panel onto the catalogue:
+- [X] T033 [US2] Move the Mindful panel onto the catalogue:
   - in `src/backend/agent/tools/mindful.py`, read day totals from `get_daily_micros` and safety thresholds from catalogue `upper_limit`;
   - delete the top-level `upper_limits:` block from `src/backend/config/tunables.yaml`, and delete `UpperLimitEntry` and the `upper_limits` field from `src/backend/config/__init__.py` (FR-018).
-- [ ] T034 [US2] Move coaching onto catalogue keys:
+- [X] T034 [US2] Move coaching onto catalogue keys:
   - in `src/backend/agent/coaching.py`, resolve parsed nutrient names via `catalog.resolve_key`, which accepts keys or USDA aliases, and fetch micros via `get_daily_micros`. `_MACRO_ALIASES` is unchanged, and `_humanize_nutrient_name` uses the catalogue `name`;
   - in `src/backend/config/prompts/query_parse_system.md`, replace "EXACT USDA names" with the catalogue keys (list them).
-- [ ] T035 [US2] Check that the nightly task in `src/backend/workers/tasks.py` (`build_nutrient_checkup`) works with the new aggregates. The `nutrient_checkup` table shape is unchanged (it is a rebuildable cache), and `notable_nutrients` naming uses catalogue names.
-- [ ] T036 [US2] Update the existing tests that assert the old Check-up, Mindful or coaching shapes or USDA names: `tests/test_nutrient_checkup_api.py`, `tests/test_mindful_api.py`, `tests/test_coaching.py`, `tests/test_workers.py`, `tests/test_trends.py`.
-- [ ] T037 [US2] **Remove the duplicate storage** now that every reader has switched (FR-018, research R12):
+- [X] T035 [US2] *(Verified, no code change: the worker calls the rewritten aggregates and `test_workers.py` passes.)* Check that the nightly task in `src/backend/workers/tasks.py` (`build_nutrient_checkup`) works with the new aggregates. The `nutrient_checkup` table shape is unchanged (it is a rebuildable cache), and `notable_nutrients` naming uses catalogue names.
+- [X] T036 [US2] Update the existing tests that assert the old Check-up, Mindful or coaching shapes or USDA names: `tests/test_nutrient_checkup_api.py`, `tests/test_mindful_api.py`, `tests/test_coaching.py`, `tests/test_workers.py`, `tests/test_trends.py`.
+- [X] T037 [US2] *(Also: `log_meal` fills missing `sugar_g`/`sat_fat_g` from server-resolved micros, so the junk flag still works on "Log again". Stored entities also exclude `micros`.)* **Remove the duplicate storage** now that every reader has switched (FR-018, research R12):
   - in `src/backend/agent/tools/meals.py`, the stored `entities` exclude `nutrients`, `sugar_g` and `sat_fat_g`;
   - in `src/backend/agent/tools/usda.py`, remove the `USDAResult.nutrients` field and `NutrientValue` usages from the builders (`_result_from_local`, `_result_from_cache`, `_parse_fdc_response`, `_miss_result`, `_estimate_result`);
   - in `src/backend/api/my_meals.py`, remove the `nutrients` scaling loop in `_scaled_result` and scale `micros` instead.
   
   Keep the in-memory `sugar_g` and `sat_fat_g` for `_is_junk`.
-- [ ] T038 [US2] Update the remaining tests that build or assert per-item `nutrients`: `tests/test_my_meals_api.py`, `tests/test_my_meals_graph.py`, `tests/test_my_meals_log.py`, `tests/test_log_items.py`, `tests/test_log_items_corrections.py`, `tests/test_meal_tools.py`, `tests/test_usda_tools.py`, `tests/test_usda_local.py`, `tests/test_usda_source_dish.py`, `tests/test_usda_unknown_portions.py`, `tests/test_usda_import.py`, `tests/test_foods_api.py`. Change assertions only where they assume the old shape.
+- [X] T038 [US2] Update the remaining tests that build or assert per-item `nutrients`: `tests/test_my_meals_api.py`, `tests/test_my_meals_graph.py`, `tests/test_my_meals_log.py`, `tests/test_log_items.py`, `tests/test_log_items_corrections.py`, `tests/test_meal_tools.py`, `tests/test_usda_tools.py`, `tests/test_usda_local.py`, `tests/test_usda_source_dish.py`, `tests/test_usda_unknown_portions.py`, `tests/test_usda_import.py`, `tests/test_foods_api.py`. Change assertions only where they assume the old shape.
 
 **Checkpoint**: US1 and US2 together form the releasable MVP. One catalogue, one stored summary, and every reader consistent.
 
