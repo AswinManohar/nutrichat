@@ -21,6 +21,18 @@ from backend.api.my_meals import (
 from tests.auth_helpers import DEFAULT_TEST_USER
 
 
+@pytest.fixture(autouse=True)
+def _stub_resolve_micros(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These API tests mock the DB session; keep spec 008's server-side micro
+    resolution off the real estimate cache (all values unknown)."""
+    from backend.nutrients.resolve import build_item_micros
+
+    async def fake(fdc_id, food_name, qty_g, rejected=None):
+        return build_item_micros({}, qty_g)
+
+    monkeypatch.setattr("backend.api.my_meals.resolve_micros", fake)
+
+
 def _exec_returning(first):
     """A mock execute() result whose .scalars().first() returns `first`."""
     result = MagicMock()

@@ -215,3 +215,41 @@ async def test_saved_meal_legacy_ingredient_gets_micros() -> None:
 def test_micro_value_roundtrip() -> None:
     # Guard the model the stored saved-meal ingredients rely on.
     assert MicroValue.model_validate({"amount": None, "source": "unknown"})
+
+
+# -- saved meals: per-ingredient micros, totals on read (FR-014a) -------------
+
+
+async def test_saved_meal_stores_ingredient_micros_and_computes_totals() -> None:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from backend.api import my_meals
+
+    async def fake_resolve(fdc_id, food_name, qty_g, rejected=None):
+        return resolve.build_item_micros({"iron": (2.0, "usda")}, qty_g)
+
+    raw = [
+        {"food_name": "rice", "qty_g": 100.0, "fdc_id": RICE, "nutrients": {"x": 1}},
+        {"food_name": "dal", "qty_g": 50.0, "fdc_id": -1, "micros": {"bogus": 1}},
+    ]
+    with patch.object(my_meals, "resolve_micros", side_effect=fake_resolve):
+        stored = await my_meals._with_micros(raw)
+        assert all("nutrients" not in i for i in stored)
+        assert stored[0]["micros"]["iron"] == {"amount": 2.0, "source": "usda"}
+        assert "bogus" not in stored[1]["micros"]  # client micros not trusted
+
+        meal = SimpleNamespace(
+            id="m",
+            name="lunch",
+            kcal=1.0,
+            protein_g=0.0,
+            carbs_g=0.0,
+            fat_g=0.0,
+            fiber_g=0.0,
+            ingredients=stored,
+            updated_at=datetime.now(UTC),
+        )
+        detail = await my_meals._detail(meal)
+
+    assert detail.micros_totals["iron"] == {"total": 3.0, "est": 0.0, "known": 2}

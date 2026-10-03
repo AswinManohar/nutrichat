@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Literal, Self
@@ -30,6 +31,8 @@ from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog, UserMeal
 from backend.db.redis_client import current_day_bounds
 from backend.db.session import get_session
+from backend.nutrients.models import MicroValue
+from backend.nutrients.resolve import resolve_micros, summarise
 from backend.quota import UPGRADE_MSG
 from backend.ratelimit import user_rate_limiter
 
@@ -141,6 +144,9 @@ class MyMealSummary(BaseModel):
 class MyMealDetail(MyMealSummary):
     ingredients: list[dict]
     updated_at: datetime
+    # Spec 008: meal-level micronutrient summary {key: {total, est, known}},
+    # computed on read from the ingredients — never stored (FR-014a).
+    micros_totals: dict[str, dict] = {}
 
 
 def _totals(ingredients: list[dict]) -> dict[str, float]:
@@ -272,6 +278,50 @@ def _build_ingredients(items: list[IngredientIn], portion: float) -> list[dict]:
     return built
 
 
+async def _ingredient_micros(ing: dict) -> dict[str, MicroValue]:
+    """An ingredient's tracked micros: stored ones, else resolved (legacy)."""
+    stored = ing.get("micros")
+    if isinstance(stored, dict) and stored:
+        return {k: MicroValue.model_validate(v) for k, v in stored.items()}
+    return await resolve_micros(
+        int(ing.get("fdc_id", -1)), ing["food_name"], float(ing["qty_g"])
+    )
+
+
+async def _with_micros(ingredients: list[dict]) -> list[dict]:
+    """Attach server-resolved per-ingredient micros; drop raw USDA nutrients.
+
+    Saved meals store micros per ingredient only (spec 008 FR-014a, R12): the
+    raw USDA-named ``nutrients`` map is re-derivable from ``fdc_id`` and is
+    not stored again. Client-sent micros are never trusted.
+    """
+    resolved = await asyncio.gather(
+        *[
+            resolve_micros(
+                int(ing.get("fdc_id", -1)), ing["food_name"], float(ing["qty_g"])
+            )
+            for ing in ingredients
+        ]
+    )
+    out: list[dict] = []
+    for ing, micros in zip(ingredients, resolved, strict=True):
+        clean = {k: v for k, v in ing.items() if k != "nutrients"}
+        clean["micros"] = {k: v.model_dump() for k, v in micros.items()}
+        out.append(clean)
+    return out
+
+
+async def _detail(meal: UserMeal) -> MyMealDetail:
+    """Build the detail response, computing micros_totals on read."""
+    items = await asyncio.gather(*[_ingredient_micros(i) for i in meal.ingredients])
+    return MyMealDetail(
+        **_summary(meal).model_dump(),
+        ingredients=meal.ingredients,
+        updated_at=meal.updated_at,
+        micros_totals=summarise(list(items)),
+    )
+
+
 @router.get("")
 async def list_meals(
     user_id: str = Depends(get_current_user_id),
@@ -361,12 +411,7 @@ async def get_meal(
         meal = await session.get(UserMeal, meal_id)
         if meal is None or meal.user_id != user_id or meal.deleted_at is not None:
             raise HTTPException(status_code=404, detail="Meal not found")
-        base = _summary(meal)
-        return MyMealDetail(
-            **base.model_dump(),
-            ingredients=meal.ingredients,
-            updated_at=meal.updated_at,
-        )
+        return await _detail(meal)
 
 
 @router.post("/{meal_id}/log")
@@ -426,7 +471,7 @@ async def save_meal(
     normalized = normalize_meal_name(req.name)
     if not normalized:
         raise HTTPException(status_code=422, detail="Meal name is empty")
-    ingredients = _build_ingredients(req.ingredients, req.portion)
+    ingredients = await _with_micros(_build_ingredients(req.ingredients, req.portion))
     totals = _totals(ingredients)
 
     async with get_session()() as session:
@@ -451,12 +496,7 @@ async def save_meal(
         session.add(meal)
         await session.commit()
         await session.refresh(meal)
-        base = _summary(meal)
-        return MyMealDetail(
-            **base.model_dump(),
-            ingredients=meal.ingredients,
-            updated_at=meal.updated_at,
-        )
+        return await _detail(meal)
 
 
 @router.put("/{meal_id}")
@@ -485,11 +525,7 @@ async def update_meal(
             raise HTTPException(status_code=404, detail="Meal not found")
 
         if meal.updated_at != req.expected_updated_at:
-            current = MyMealDetail(
-                **_summary(meal).model_dump(),
-                ingredients=meal.ingredients,
-                updated_at=meal.updated_at,
-            )
+            current = await _detail(meal)
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -509,7 +545,7 @@ async def update_meal(
         if clash.scalars().first() is not None:
             raise HTTPException(status_code=409, detail="name_taken")
 
-        ingredients = _build_ingredients(req.ingredients, 1.0)
+        ingredients = await _with_micros(_build_ingredients(req.ingredients, 1.0))
         meal.name = req.name.strip()
         meal.name_normalized = normalized
         meal.ingredients = ingredients
@@ -524,11 +560,7 @@ async def update_meal(
             await session.rollback()
             raise HTTPException(status_code=409, detail="name_taken") from None
         await session.refresh(meal)
-        return MyMealDetail(
-            **_summary(meal).model_dump(),
-            ingredients=meal.ingredients,
-            updated_at=meal.updated_at,
-        )
+        return await _detail(meal)
 
 
 @router.delete("/{meal_id}", status_code=204)
