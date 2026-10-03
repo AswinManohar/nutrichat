@@ -185,6 +185,16 @@ async def _estimate_cache_lookup(food_name: str) -> dict | None:
     return await lookup(food_name)
 
 
+async def _ensure_micro_estimate(food_name: str) -> dict[str, float]:
+    """Await (or run) the background micro estimate for an estimated food.
+
+    Lazy import for the same circular-import reason as above.
+    """
+    from backend.agent.tools.usda import ensure_micro_estimate
+
+    return await ensure_micro_estimate(food_name)
+
+
 async def resolve_micros(
     fdc_id: int, food_name: str, qty_g: float, rejected: list[str] | None = None
 ) -> dict[str, MicroValue]:
@@ -197,8 +207,9 @@ async def resolve_micros(
         rejected: Optional collector for rejected estimate keys.
 
     Returns:
-        A MicroValue for every stored key. Never makes an LLM call: an
-        estimated food without a cache row resolves to all unknown.
+        A MicroValue for every stored key. For an estimated food whose cache
+        row has no micros yet, waits for the background micro estimate
+        started at card time (or runs it, bounded) — spec 008 research R7.
     """
     per_100g: PerHundred = {}
     if fdc_id > 0:
@@ -211,8 +222,10 @@ async def resolve_micros(
             per_100g = per_100g_from_usda(*inputs)
     else:
         cached = await _estimate_cache_lookup(food_name)
-        if cached:
-            per_100g = per_100g_from_estimate_row(cached.get("nutrients") or {})
+        row = dict((cached or {}).get("nutrients") or {})
+        if not row.get("micros"):
+            row["micros"] = await _ensure_micro_estimate(food_name)
+        per_100g = per_100g_from_estimate_row(row)
     return build_item_micros(per_100g, qty_g, rejected)
 
 

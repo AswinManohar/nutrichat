@@ -13,7 +13,6 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
-    create_model,
     field_serializer,
 )
 from pydantic_ai import Agent
@@ -165,32 +164,45 @@ class USDAResult(BaseModel):
         return 0.0 if value is None else value
 
 
-def _estimated_micros_model() -> type[BaseModel]:
-    """Build the per-100 g micronutrient part of the estimate output (spec 008).
+class MicroEstimate(BaseModel):
+    """One estimated micronutrient, per 100 g (spec 008).
 
-    One optional field per estimable catalogue key, except total sugars and
-    saturated fat (already estimated as ``sugar_g`` / ``sat_fat_g``). Built
-    from the catalogue so the two never drift (FR-018).
+    A flat list of ``{key, per_100g}`` entries instead of one optional field
+    per nutrient: Gemini rejects a schema with ~40 optional nullable fields
+    ("too much branching for serving"). Keys are validated server-side
+    against the catalogue (:func:`_estimated_micros`).
     """
-    fields = {
-        key: (
-            float | None,
-            Field(
-                default=None,
-                ge=0.0,
-                description=f"{catalog.nutrient(key).name}, "
-                f"{catalog.nutrient(key).unit} per 100 g",
-            ),
-        )
-        for key in catalog.estimable_keys()
-        if key not in ("total_sugars", "saturated_fat")
-    }
-    return create_model(
-        "EstimatedMicros", __config__=ConfigDict(extra="forbid"), **fields
+
+    key: str
+    per_100g: float = Field(ge=0.0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# Keys the single estimate call may return: estimable catalogue keys except
+# total sugars / saturated fat, already estimated as sugar_g / sat_fat_g.
+_ESTIMATE_MICRO_KEYS = tuple(
+    k for k in catalog.estimable_keys() if k not in ("total_sugars", "saturated_fat")
+)
+
+
+def _estimated_micros(entries: list[MicroEstimate]) -> dict[str, float]:
+    """Keep only allowed catalogue keys (first wins); per-100 g values."""
+    allowed = set(_ESTIMATE_MICRO_KEYS)
+    out: dict[str, float] = {}
+    for entry in entries:
+        key = entry.key.strip().lower()
+        if key in allowed and key not in out:
+            out[key] = entry.per_100g
+    return out
+
+
+def _micro_keys_prompt() -> str:
+    """Prompt suffix listing the allowed micro keys with their units."""
+    keys = ", ".join(
+        f"{k} ({catalog.nutrient(k).unit})" for k in _ESTIMATE_MICRO_KEYS
     )
-
-
-EstimatedMicros = _estimated_micros_model()
+    return f"\n\nAllowed `micros` keys (unit per 100 g): {keys}\n"
 
 
 class NutritionEstimate(BaseModel):
@@ -207,9 +219,14 @@ class NutritionEstimate(BaseModel):
     fiber_g: float = Field(ge=0.0)
     sugar_g: float = Field(ge=0.0)
     sat_fat_g: float = Field(ge=0.0)
-    # Spec 008: tracked micronutrients PER 100 G (unlike the totals above);
-    # null where the model can't estimate. Same single call (FR-009).
-    micros: EstimatedMicros = Field(default_factory=EstimatedMicros)  # type: ignore[valid-type]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MicroEstimates(BaseModel):
+    """Structured output of the separate micronutrient estimate (spec 008)."""
+
+    micros: list[MicroEstimate] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -483,6 +500,88 @@ _estimate_agent = Agent(
 )
 
 
+# Spec 008: micronutrients come from a SEPARATE call that runs in the
+# background after the card renders (research R7 fallback). Folding ~36
+# micros into the macro call made the card ~40% slower and the model filled
+# only ~5 of them; the card doesn't show micros (FR-014), so they're fetched
+# off the critical path and cached by name for log time.
+_micro_agent = Agent(
+    GoogleModel(FLASH_LITE_MODEL),
+    output_type=MicroEstimates,
+    system_prompt=_TUNABLES.prompts.micro_estimate_system + _micro_keys_prompt(),
+    model_settings=GoogleModelSettings(
+        google_thinking_config={
+            "thinking_budget": _TUNABLES.token_limits.extraction_thinking_budget
+        }
+    ),
+)
+
+# normalized food name -> in-flight/finished micro-estimate task (this process).
+_micro_tasks: dict[str, asyncio.Task] = {}
+_MICRO_TASKS_MAX = 512
+_MICRO_WAIT_S = 10.0
+
+
+async def _estimate_cache_merge_micros(food_name: str, micros: dict) -> None:
+    """Add per-100 g micros to an existing LLM-estimate cache row."""
+    try:
+        async with get_session()() as session:
+            await session.execute(
+                text(
+                    "UPDATE food_source SET nutrients = nutrients || "
+                    "jsonb_build_object('micros', CAST(:micros AS jsonb)) "
+                    "WHERE food_name = :name AND source_db = 'LLM_ESTIMATE'"
+                ),
+                {
+                    "micros": json.dumps(micros),
+                    "name": _normalize_food_name(food_name),
+                },
+            )
+            await session.commit()
+    except SQLAlchemyError as exc:
+        logger.warning("Estimate cache micros merge failed: %s", exc)
+
+
+async def _run_micro_estimate(food_name: str) -> dict[str, float]:
+    """One micro-estimate call; caches and returns key -> per-100 g value."""
+    try:
+        run = await _micro_agent.run(f"Food: {food_name}")
+    except Exception as exc:  # noqa: BLE001 — any LLM/provider failure -> none
+        logger.error("LLM micro estimate failed for %s: %s", food_name, exc)
+        return {}
+    micros = _estimated_micros(run.output.micros)
+    if micros:
+        await _estimate_cache_merge_micros(food_name, micros)
+    return micros
+
+
+def schedule_micro_estimate(food_name: str) -> None:
+    """Start the background micro estimate for a food (deduplicated)."""
+    key = _normalize_food_name(food_name)
+    if key in _micro_tasks:
+        return
+    if len(_micro_tasks) >= _MICRO_TASKS_MAX:
+        for done in [k for k, t in _micro_tasks.items() if t.done()]:
+            _micro_tasks.pop(done, None)
+    _micro_tasks[key] = asyncio.create_task(_run_micro_estimate(food_name))
+
+
+async def ensure_micro_estimate(food_name: str) -> dict[str, float]:
+    """Micro estimate for a food: await the background task, else run it now.
+
+    Called at log time (``resolve_micros``) when the cache row has no micros
+    yet. Never raises; returns {} on failure or after ``_MICRO_WAIT_S``.
+    """
+    task = _micro_tasks.get(_normalize_food_name(food_name))
+    if task is None:
+        return await _run_micro_estimate(food_name)
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), _MICRO_WAIT_S)
+    except TimeoutError:
+        logger.warning("Micro estimate still running for %s; unknown", food_name)
+        return {}
+
+
 _ESTIMATE_MACROS = (
     "kcal",
     "protein_g",
@@ -535,6 +634,8 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
     """
     cached = await _estimate_cache_lookup(food_name)
     if cached:
+        if not (cached["nutrients"] or {}).get("micros"):
+            schedule_micro_estimate(food_name)
         entity_like = _EntityShim(food_name=cached["food_name"], qty_g=qty_g)
         return _estimate_result(entity_like, cached["nutrients"])
 
@@ -551,9 +652,8 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
     per_100g: dict = {
         field: getattr(estimate, field) * scale_to_100 for field in _ESTIMATE_MACROS
     }
-    # Micros are already per 100 g (spec 008).
-    per_100g["micros"] = estimate.micros.model_dump(exclude_none=True)
     await _estimate_cache_write(food_name, per_100g)
+    schedule_micro_estimate(food_name)  # spec 008: off the card's critical path
 
     return USDAResult(
         fdc_id=-1,
