@@ -168,11 +168,6 @@ class MealLog(Base):
     client_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     flags: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    # Spec 008: meal-level micronutrient summary {key: {total, est, known}};
-    # absent key = unknown. Only stored micros on a logged meal (data-model §3).
-    micros: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
-    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

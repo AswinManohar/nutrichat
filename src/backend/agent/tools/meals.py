@@ -19,7 +19,7 @@ from backend.agent.llm import make_llm
 from backend.agent.tools.usda import sum_known
 from backend.config import get_tunables
 from backend.db.session import get_session
-from backend.nutrients.resolve import resolve_micros, summarise
+from backend.nutrients.resolve import resolve_micros, to_stored
 from backend.workers.tasks import embed_meal_summary
 
 logger = logging.getLogger(__name__)
@@ -455,15 +455,16 @@ async def _insert_meal_log(
     client_request_id: str | None = None,
     corrections: list[dict] | None = None,
     extra_flags: dict[str, str] | None = None,
-    micros: dict | None = None,
+    item_micros: list[dict] | None = None,
 ) -> str:
     """Insert a meal_log row (and any food_correction rows) in one transaction.
 
     Args:
         extra_flags: Optional extra keys merged into `meal_log.flags` after the
             junk flags (e.g. `{"saved_meal_id": "<uuid>"}`).
-        micros: Meal-level micronutrient summary for `meal_log.micros`
-            (spec 008, data-model §3); `{}` when nothing is known.
+        item_micros: Server-resolved MicroValues per result (same order as
+            `usda_results`); stored compactly on each entity as its only
+            micronutrient copy (spec 008 data-model §2).
         corrections: Optional list of correction dicts (spec 003, FR-012),
             aligned index-for-index with `usda_results` (already filtered
             the same way, i.e. one entry — possibly None — per resolved
@@ -481,10 +482,16 @@ async def _insert_meal_log(
             prepared to catch this and treat it as "already logged".
     """
     meal_id = str(uuid.uuid4())
-    # Spec 008 FR-018: stored items carry no per-item micros (the meal-level
-    # summary in meal_log.micros is the only copy); sugar / sat fat live there.
+    # Spec 008 FR-018: each stored item carries its server-resolved micros in
+    # compact form — the only copy (sugar / sat fat live there too); meal and
+    # day totals are computed on read.
+    item_micros = item_micros or [{} for _ in usda_results]
     entities = [
-        r.model_dump(exclude={"micros", "sugar_g", "sat_fat_g"}) for r in usda_results
+        {
+            **r.model_dump(exclude={"micros", "sugar_g", "sat_fat_g"}),
+            "micros": to_stored(m),
+        }
+        for r, m in zip(usda_results, item_micros, strict=True)
     ]
     flags = {**_junk_flags(usda_results), **(extra_flags or {})}
     async with get_session()() as session:
@@ -492,12 +499,10 @@ async def _insert_meal_log(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities, flags, label, client_request_id, "
-                "micros) "
+                "fat_g, fiber_g, entities, flags, label, client_request_id) "
                 "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, "
                 ":carbs_g, :fat_g, :fiber_g, CAST(:entities AS jsonb), "
-                "CAST(:flags AS jsonb), :label, :client_request_id, "
-                "CAST(:micros AS jsonb))"
+                "CAST(:flags AS jsonb), :label, :client_request_id)"
             ),
             {
                 "meal_id": meal_id,
@@ -512,7 +517,6 @@ async def _insert_meal_log(
                 "flags": json.dumps(flags),
                 "label": label,
                 "client_request_id": client_request_id,
-                "micros": json.dumps(micros or {}),
             },
         )
         for result, correction in zip(usda_results, corrections or [], strict=False):
@@ -544,19 +548,18 @@ async def _insert_meal_log(
     return meal_id
 
 
-async def _meal_micros(resolved: list) -> tuple[dict, list[dict]]:
-    """Resolve every item's micros server-side and summarise them (spec 008).
+async def _meal_micros(resolved: list) -> list[dict]:
+    """Resolve every item's micros server-side (spec 008).
 
     Client- or state-supplied ``micros`` on the results are ignored: values
     are always re-derived from each item's food id or estimate-cache row
-    (research R9), so the stored summary never holds client data.
+    (research R9), so stored items never hold client data.
 
     Args:
         resolved: The USDAResults being logged.
 
     Returns:
-        ``(summary, items)``: the ``meal_log.micros`` summary and each item's
-        resolved MicroValues (same order as ``resolved``).
+        Each item's resolved MicroValues (same order as ``resolved``).
     """
     rejected: list[str] = []
     items = await asyncio.gather(
@@ -571,7 +574,7 @@ async def _meal_micros(resolved: list) -> tuple[dict, list[dict]]:
         **{f"micros.{k}": v for k, v in counts.items()},
         **{"micros.rejected": len(rejected)},
     )
-    return summarise(list(items)), list(items)
+    return list(items)
 
 
 def _with_server_sugars(resolved: list, items: list[dict]) -> list:
@@ -640,7 +643,7 @@ async def log_meal(
         "fat_g": round(sum_known(r.fat_g for r in resolved), 1),
         "fiber_g": round(sum_known(r.fiber_g for r in resolved), 1),
     }
-    micros, item_micros = await _meal_micros(resolved)
+    item_micros = await _meal_micros(resolved)
     resolved = _with_server_sugars(resolved, item_micros)
     junk_items = _junk_flags(resolved)["junk_items"]
 
@@ -655,7 +658,7 @@ async def log_meal(
             client_request_id,
             resolved_corrections,
             extra_flags,
-            micros=micros,
+            item_micros=item_micros,
         )
         # Best-effort embedding for history search; a broker outage (e.g. Redis
         # down) must never fail the meal log the user just confirmed.

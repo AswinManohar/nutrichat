@@ -126,8 +126,8 @@ class USDAResult(BaseModel):
     sat_fat_g: float | None = None
 
     # Spec 008: tracked micronutrients (catalogue keys) scaled to qty_g, each
-    # with its source. In memory and in saved-meal ingredients only — a
-    # logged meal stores just the meal-level summary (meal_log.micros).
+    # with its source. Logged items and saved-meal ingredients store them in
+    # compact form (resolve.to_stored), always re-derived server-side.
     micros: dict[str, MicroValue] = {}
 
     # Plan A — LLM nutrition estimation fallback (agent/tools/usda.py
