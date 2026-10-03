@@ -113,21 +113,29 @@ runtime AI call per matched item would add latency and cost to every log
 
 ## R7. Foods with no USDA match (whole-food estimate)
 
-- **Decision**: Extend the existing single structured call
-  (`estimate_nutrition_llm`, `NutritionEstimate`) with a nested `micros`
-  object. It has one optional field for each AI-estimable key (40 nutrients:
-  48 minus the 8 USDA-only trace elements, with fiber, sugars and saturated
-  fat already present). Values are **per 100 g**, unlike the macros, which are
-  totals for the portion. The estimate cache (`food_source`, keyed by
-  normalised name) stores the micros next to the macros.
-  `nutrition_estimate_system.md` is updated to match. This is still **one AI
-  call** (FR-009).
-- **Rationale**: It needs no second round trip, and the cache already makes
-  repeat foods free.
-- **Risk**: More output tokens mean more latency. A latency eval runs before
-  and after the change, and SC-003 is the gate. If it fails, the fallback is
-  to estimate the micros in a parallel second call that does not block the
-  card.
+- **Decision (revised during implementation, 2026-10-03)**: The card's macro
+  estimate call is **unchanged**. Micronutrients come from a **separate
+  call** (`_micro_agent`, prompt `micro_estimate_system.md`) that is
+  **scheduled in the background** when the card's estimate is made, and its
+  result is merged into the same estimate cache row (`food_source`). At log
+  time, `resolve_micros` awaits that background task if it is still running
+  (capped at 10 s), or runs the call itself if this process never scheduled
+  one. The output is a flat list of `{key, per_100g}` entries. Keys are
+  validated against the catalogue server-side, and unknown or USDA-only keys
+  are dropped.
+- **Why the original single-call design was dropped** (measured live):
+  1. Gemini rejected the schema with one optional nullable field per
+     nutrient (about 40 fields) with "too much branching for serving". This
+     would have made every unmatched-food estimate fail.
+  2. With a flat list in the same call, the card got about 40% slower
+     (median 0.91 s → 1.28 s, 8 foods), and the model filled only about 5 of
+     36 micros.
+- **Measured after the change**: the card estimate's median is 0.76 s
+  (unchanged from before). The background micro call has a median of 3.6 s
+  and returns 36 of 36 micros for every test food. Log time waits only if the
+  user confirms within about 3.6 s of the card appearing.
+- **FR-009 reading**: the micro estimate runs in parallel with the user
+  reviewing the card, not after it, so it adds no latency on the card path.
 
 ## R8. Plausibility ranges (FR-007)
 
