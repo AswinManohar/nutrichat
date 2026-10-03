@@ -111,8 +111,12 @@ Request:
 
 `items[].qty_g` is the originally resolved gram weight (scaling base);
 `target_qty_g` is the user-edited weight before the `portion` multiplier is
-applied. Extra fields on each item (nutrients, `fdc_id`, macros, `source`,
-`estimated`) are preserved verbatim. `client_request_id` is optional but
+applied. Extra fields on each item (`fdc_id`, macros, `source`,
+`estimated`) are preserved verbatim. Any `nutrients` / `micros` sent are
+**ignored**: the server re-derives tracked micronutrients from each item's
+`fdc_id` (or its cached estimate) and stores only the meal-level `micros`
+summary (spec 008). Re-sending a logged meal's `items` ("Log again") therefore
+reproduces the same micronutrients. `client_request_id` is optional but
 required for idempotent retries.
 
 Response (`MealLogResult`):
@@ -199,7 +203,10 @@ Full detail for one logged meal, including its resolved items.
 
 Response: the same fields as a `GET /meals/log` entry, plus `items` — the
 stored entities array verbatim (the same item shape used when logging via
-`POST /meals/log-items`).
+`POST /meals/log-items`) — and `micros`, the meal-level micronutrient summary
+`{key: {"total", "est", "known"}}` (absent key = unknown; keys from
+`GET /meta/nutrients`). Stored items no longer carry `nutrients`, `sugar_g`
+or `sat_fat_g` (spec 008).
 
 ```json
 {
@@ -225,15 +232,16 @@ stored entities array verbatim (the same item shape used when logging via
       "carbs_g": 1.2,
       "fat_g": 10.8,
       "fiber_g": 0.0,
-      "sugar_g": 1.0,
-      "sat_fat_g": 3.3,
-      "nutrients": {},
       "source": "USDA",
       "estimated": false,
       "source_dish": null,
       "is_composite": false
     }
-  ]
+  ],
+  "micros": {
+    "vitamin_c": { "total": 0.0, "est": 0.0, "known": 1 },
+    "iron": { "total": 1.75, "est": 0.0, "known": 1 }
+  }
 }
 ```
 
@@ -439,6 +447,24 @@ Sourced from env vars `ANDROID_MIN_VERSION_CODE` / `ANDROID_LATEST_VERSION_CODE`
 `min_supported_version_code` must block usage and prompt a mandatory
 upgrade; a client between `min_supported_version_code` and
 `latest_version_code` may show a dismissible soft-nudge.
+
+## `GET /meta/nutrients`
+
+**Unauthed, cacheable (1 h).** The tracked-nutrient catalogue (spec 008): 48
+nutrients in 5 display groups with key, name, unit, group, order, direction,
+daily value, derived rule (salt from sodium) and upper limit. The only place a
+client learns the nutrient list — never hard-code it. Contract:
+`specs/008-fixed-micronutrients/contracts/nutrients-catalogue.md`.
+
+## `GET /nutrients/daily?from=&to=&keys=&meals=`
+
+Per-day micronutrient totals for the signed-in user, computed from logged
+meals (nothing stored). Every day in the range (max 365) is returned; a day
+with no meals has `"logged": false` — show "no data", not zero. Each value is
+`{total, est, known}`; completeness is `known / items`. `salt` is derived
+from `sodium`, `fiber` comes from the meal's `fiber_g`. 422 for an unknown key
+or a range over 365 days. Contract:
+`specs/008-fixed-micronutrients/contracts/daily-totals.md`.
 
 ## `DELETE /account`
 

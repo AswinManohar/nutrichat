@@ -44,8 +44,9 @@ accept `since` (opaque cursor) and `limit` (default 100, max 500).
 
 Returns `meal_log` rows updated since the cursor, oldest-first.
 
-- **Active meals** include the full nutrient breakdown, `entities`, and
-  `flags`. `embedding` is never exposed.
+- **Active meals** include the macros, `entities`, `flags` and `micros`
+  (the meal-level micronutrient summary, see below). `embedding` is never
+  exposed.
 - **Soft-deleted meals** are returned as tombstones:
   `{"meal_id": "...", "updated_at": "...", "deleted": true}` — all other
   fields are `null`/omitted. Consumers should remove the meal from their
@@ -55,6 +56,17 @@ Returns `meal_log` rows updated since the cursor, oldest-first.
 
 Dedup on `meal_id` — a consumer's local store should upsert by `meal_id`,
 treating tombstones as deletes.
+
+**`micros`** (spec 008) is `{key: {"total", "est", "known"}}` for every
+tracked nutrient with at least one known value: `total` is the sum over the
+meal's foods, `est` the AI-estimated part of it, `known` how many foods had a
+value. A missing key means unknown, not zero. Keys and units come from
+`GET /meta/nutrients`. `null` on tombstones.
+
+> **Changelog 2026-10-03 (breaking):** `entities[].nutrients` (the per-item
+> USDA nutrient map) is no longer stored or returned, and `entities[].sugar_g`
+> / `sat_fat_g` are gone from stored items. Read micronutrients from the new
+> meal-level `micros` field instead.
 
 ### `GET /v1/integrations/daily-summary`
 
