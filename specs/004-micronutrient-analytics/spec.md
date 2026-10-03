@@ -19,7 +19,7 @@ Mealsy already gives users two related views:
 - **Trends section**: day-by-day calorie and meal history (heatmap/sparkline).
 
 Neither view lets a user see how sugar or a micronutrient changes **day by day**
-over a period they choose, which foods drive it, or how complete the underlying
+over a period they choose, which meals drive it, or how complete the underlying
 data is. This feature adds that analytics view. It builds on the Check-up
 instead of replacing it.
 
@@ -100,7 +100,7 @@ number.
 > (label, type, day), not to individual foods. Data source:
 > `GET /nutrients/daily?meals=true` (spec 008 FR-017).
 
-**Why this priority**: Knowing which foods drive a number is what turns it into a
+**Why this priority**: Knowing which meals drive a number is what turns it into a
 change in behaviour. It ranks just below Story 2 because the charts are useful
 on their own.
 
@@ -229,7 +229,7 @@ full completeness for calories.
 - **SC-004**: Among users who log meals on at least 3 days, 30% or more open the
   analytics view within their first 14 days after launch.
 - **SC-005**: In a usability check, 4 out of 5 test users can correctly say which
-  food contributed most to their sugar last week, using only the analytics view.
+  meal contributed most to their sugar last week, using only the analytics view.
 - **SC-006**: No period whose data completeness is below 50% is shown to the user
   as "low" without the undercount warning.
 
