@@ -39,21 +39,21 @@ read-only on 2026-10-02 and 2026-10-03).
   are what the app uses today. They are unstable across FDC releases (the
   sugars spelling issue) and awkward in JSON paths.
 
-## R3. Storage shape on logged meals
+## R3. Storage shape
 
-- **Decision**: Add one new column, `meal_log.micros JSONB NOT NULL DEFAULT
-  '{}'`, holding `{key: {"total": float, "est": float, "known": int}}`. A key
-  that is **absent** means "unknown", meaning no food in the meal had a value.
-  The number of foods comes from `jsonb_array_length(entities)`, so it is not
-  stored again.
-- **Rationale**: The user chose meal-level only (Clarifications). It is one
-  column and one migration, and adding a nutrient is a config change (FR-016).
-  Treating absence as unknown matches how USDA itself marks missing data
-  (R-zero finding) and keeps unknown separate from 0.
-- **Alternatives considered**: 48 or 96 typed columns were rejected by the
-  user (option A). A separate `meal_micro` table with one row per meal and
-  nutrient would mean about 40 rows per meal, an extra join, and more
-  complicated writes for no gain at this scale.
+- **Decision (revised 2026-10-03)**: Store micros **per logged item**, inside
+  the existing `meal_log.entities[]` JSON, in compact form
+  `{key: [amount, "u"|"e"]}` with known values only (data-model §2). Meal, day
+  and period summaries are **computed when read** (`resolve.summarise`).
+  There is no new column and no migration.
+- **Rationale**: The per-item values already exist at log time, so keeping
+  them costs a few KB per meal. It keeps per-item sources, enables food-level
+  "top contributors" (spec 004), and matches how saved meals store
+  ingredients. FR-018 still holds because the items are the only copy.
+- **Alternatives considered**: A meal-level `meal_log.micros` summary was
+  built first and replaced: it threw away per-item detail. A summary column
+  next to the items would store the data twice. 48 typed columns were
+  rejected by the user.
 
 ## R4. Nutrients already stored as macro columns
 

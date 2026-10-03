@@ -37,7 +37,11 @@ service function, `get_daily_micros`, internally (SC-006).
       },
       "meals": [
         {"meal_id": "7f3a…", "meal_type": "lunch", "label": "Dal and rice",
-         "values": {"sodium": {"total": 302.0, "est": 300.0, "known": 2}}}
+         "values": {"sodium": {"total": 302.0, "est": 300.0, "known": 2}},
+         "foods": [
+           {"food_name": "dal", "values": {"sodium": {"total": 300.0, "est": 300.0, "known": 1}}},
+           {"food_name": "Rice, white, cooked", "values": {"sodium": {"total": 2.0, "est": 0.0, "known": 1}}}
+         ]}
       ]
     },
     {"date": "2026-10-03", "logged": false, "n_meals": 0, "items": 0, "values": {}}
@@ -58,6 +62,6 @@ service function, `get_daily_micros`, internally (SC-006).
 - Day boundaries use the app's nutrition day (`NUTRITION_DATE_SQL`, with the
   reset hour and timezone).
 - Soft-deleted meals are excluded.
-- `meals` is included only when `meals=true`. It is used for "top
-  contributors" (spec 004, attributed to meals).
+- `meals` is included only when `meals=true`. Each meal lists its `foods`,
+  so "top contributors" (spec 004) can be attributed to individual foods.
 - Performance: p95 under 1 s for 90 days and all keys (SC-008).

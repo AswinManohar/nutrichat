@@ -33,61 +33,47 @@ File: `src/backend/config/nutrients.yaml`, validated by Pydantic (`extra="forbid
 - `usda_only = true` applies exactly to arsenic, boron, cobalt, rubidium,
   silicon, sulfur, tin and vanadium.
 
-## 2. Item Micronutrient Value: in memory, and in saved-meal ingredients
+## 2. Item Micronutrient Value: the only stored copy
 
-On `USDAResult` (`agent/tools/usda.py`), the field `nutrients: dict[str, NutrientValue]`
-is **replaced** by `micros: dict[str, MicroValue]`.
+In memory, `USDAResult.micros: dict[str, MicroValue]` holds
+`amount: float | None` and `source: "usda" | "estimated" | "unknown"`.
+
+**Stored** on every logged item (`meal_log.entities[].micros`) and every
+saved-meal ingredient (`user_meal.ingredients[].micros`) in compact form:
 
 ```
-MicroValue
-  amount: float | None     # scaled to the item's qty_g; None when unknown
-  source: "usda" | "estimated" | "unknown"
+"micros": { "<key>": [amount, "u" | "e"], ... }   # u = USDA, e = estimated
 ```
 
-- It holds every active, non-derived, non-column key. Fiber is kept on
-  `fiber_g`, and salt is never held.
+- Only **known** values are stored, and an absent key means unknown (never 0).
 - A USDA value, **including 0**, wins. Otherwise the pre-computed or
-  whole-food estimate is used, unless the key is `usda_only`. Otherwise the
+  background estimate is used, unless the key is `usda_only`. Otherwise the
   value is unknown.
-- Scaling: `amount = per_100g × qty_g / 100`. It is rescaled whenever qty or
-  portion changes (FR-013).
-- **Stored**: only inside `user_meal.ingredients[].micros` (saved meals). It is
-  never stored on `meal_log`.
+- `amount = per_100g × qty_g / 100`, derived server-side at log or save time
+  from `fdc_id` or the estimate cache (research R9). Client values are ignored.
+- Fiber (column `fiber_g`) and salt (derived) are never in `micros`.
 
-## 3. Meal Micronutrient Summary: `meal_log.micros` (new column)
+## 3. Micronutrient Summary: computed, never stored
 
-```
-meal_log.micros JSONB NOT NULL DEFAULT '{}'
-  { "<key>": { "total": float, "est": float, "known": int }, ... }
-```
-
-| Field | Meaning | Rule |
-|---|---|---|
-| total | Sum of the known item amounts | ≥ 0 |
-| est | The part of `total` that came from estimates | 0 ≤ est ≤ total |
-| known | Number of foods with a known value | 1 ≤ known ≤ jsonb_array_length(entities) |
-
-- A key is **absent** when no food has a value, which means "unknown" (spec
-  FR-005).
-- The number of foods is **not stored**. It comes from `entities`.
-- It is written once, by `log_meal`, from the server-resolved items
-  (research R9). A logged meal is immutable except for soft delete.
-- `added_sugars.total` is at most `total_sugars.total` when both are present.
+For a meal, day or period: `{key: {"total", "est", "known"}}`.
+`total` is the sum of the known item amounts, `est` is the estimated part
+(0 ≤ est ≤ total), and `known` is the number of items with a value. Keys with
+no known value are omitted. It is computed by `resolve.summarise()` from item
+micros, whenever it is read.
 
 ## 4. Existing tables that change
 
 | Table.column | Change |
 |---|---|
-| `meal_log.micros` | **New** (migration `20261003_018_meal_micros`) |
-| `meal_log.entities[]` | Stored items **drop** `nutrients`, `sugar_g` and `sat_fat_g` (R12). Everything else stays |
-| `user_meal.ingredients[]` | `nutrients` (USDA-named) is replaced by `micros` (catalogue keys). Totals are computed when read and never stored |
+| `meal_log.entities[]` | Stored items **drop** `nutrients`, `sugar_g` and `sat_fat_g`, and **gain** compact `micros` (§2). No new column, so no migration |
+| `user_meal.ingredients[]` | `nutrients` (USDA-named) is replaced by compact `micros` (§2). Totals are computed when read and never stored |
 | `food_source` (estimate cache) | Rows with `source_db='LLM_ESTIMATE'` gain per-100 g `micros` inside their existing `nutrients` JSONB. No schema change |
-| `nutrient_checkup.nutrients` | Unchanged shape. It is a nightly, rebuildable cache, now fed from `meal_log.micros` |
+| `nutrient_checkup.nutrients` | Unchanged shape. It is a nightly, rebuildable cache, now fed from item micros |
 | `usda_fdc.sqlite3` (bundled) | **New** table `food_micro_estimate(fdc_id INTEGER, key TEXT, per_100g REAL, PRIMARY KEY(fdc_id, key))`. `PRAGMA user_version` becomes 3 |
 | `tunables.yaml` | `nutrient_checkup.micronutrients`, `.rda` and top-level `upper_limits` are **removed**. They are replaced by `nutrient_checkup.keys: [...]` and the catalogue's `daily_value` and `upper_limit` |
 
-No backfill (FR-012). Existing rows get `micros = '{}'`, which means
-everything is unknown.
+No backfill (FR-012). Existing items have no `micros`, so everything is
+unknown for them.
 
 ## 5. Daily totals: computed, never stored
 
@@ -114,5 +100,5 @@ user text → extract → usda_lookup_batch
                                                             ↓ confirm / log-items / saved meal
                      log_meal: resolve_micros() per item (server-side, R9)
                                                             ↓
-            meal_log.micros = summarise(items)    entities stored without micros
+            entities[].micros = compact(item)   (summaries computed on read)
 ```
