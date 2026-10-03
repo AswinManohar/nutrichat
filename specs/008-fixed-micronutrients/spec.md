@@ -57,13 +57,15 @@ came from.
   a value, or leave some "unknown"? → A: Estimate essential nutrients that have
   an official daily value. Arsenic, Boron, Cobalt, Rubidium, Silicon, Sulfur,
   Tin and Vanadium are USDA-only and are "unknown" when USDA has no value.
-- Q: At what level are tracked micronutrients stored? → A: A logged meal
-  stores one meal-level summary per nutrient (total, estimated portion and
-  coverage). It has no per-item copy, because a logged meal is never edited
-  item by item, only deleted whole. Saved meals (My Meals) keep values per
-  ingredient, because users add, remove and resize ingredients and the totals
-  are recomputed from them. Per-item values exist only in memory until the
-  meal is confirmed.
+- Q: At what level are tracked micronutrients stored? → A: Per logged item
+  (each food on the confirmed card), as the only stored copy. Meal, day and
+  period totals are computed from the items when read. Saved meals already
+  store per ingredient, so both use one model. A composite dish logged as one
+  item stores that item's micros. "Break into ingredients" stays an explicit
+  user action and is not done automatically. *(Revised 2026-10-03. This
+  replaces an earlier meal-level-summary decision: the per-item values exist at
+  log time anyway, and keeping them enables food-level insights and per-item
+  sources without storing anything twice.)*
 - Q: Should the data be ready for a future micronutrient visualization
   feature? → A: Yes. Visualization is a separate, later feature. This spec
   must make sure the stored data and the nutrient catalogue can support it
@@ -147,9 +149,9 @@ foods. Confirm that the reported estimated share is about 50%.
    total is shown, **Then** the share of that total that came from estimates is
    available alongside it.
 2. **Given** a single logged meal, **When** its stored data is inspected,
-   **Then** each tracked micronutrient records the meal total, how much of it
-   was estimated, and how many of the meal's foods had a known value. This is
-   not shown on the confirmation card (FR-014).
+   **Then** each food records its tracked micronutrients and whether each came
+   from USDA or was estimated, and the meal total can be computed from them.
+   This is not shown on the confirmation card (FR-014).
 
 ---
 
@@ -236,13 +238,14 @@ foods. Confirm that the reported estimated share is about 50%.
   has no value for one of them, it is recorded as "unknown". Every other
   tracked nutrient, including Biotin, Iodine, Chromium, Molybdenum, Chloride,
   Fluoride and Added sugars, uses the AI fallback.
-- **FR-005**: Each per-item value (in memory and in saved-meal ingredients)
-  MUST carry its source: "USDA", "estimated" or "unknown". Each logged meal
-  MUST store, for every tracked nutrient, a meal-level summary. The summary
-  holds the total (the sum of known values), the part of that total that was
-  estimated, and how many of the meal's foods had a known value out of how
-  many foods in total. If no food has a known value, the nutrient is "unknown"
-  for that meal, not 0.
+- **FR-005**: Each per-item value MUST carry its source: "USDA",
+  "estimated" or "unknown". Every logged item and every saved-meal ingredient
+  MUST store its known tracked values with their sources, and an absent value
+  means unknown. Any meal, day or period summary MUST be computed from the
+  items when read. A summary holds the total (the sum of known values), the
+  part that was estimated, and how many foods had a known value out of how
+  many in total. If no food has a known value, the nutrient is "unknown", not
+  0.
 - **FR-006**: The system MUST map every accepted source name and unit onto the
   canonical nutrient and unit. For example, each spelling of total sugars counts
   as Total sugars, and micrograms are recorded consistently.
@@ -257,7 +260,7 @@ foods. Confirm that the reported estimated share is about 50%.
   estimate, or in parallel with it, not one after another.
 - **FR-010**: The Nutrient Check-up, coaching answers and the analytics view
   (spec 004) MUST read tracked micronutrients from this fixed set. Their
-  completeness and estimated-share figures MUST use the meal-level summaries.
+  completeness and estimated-share figures MUST use per-item sources.
 - **FR-011**: The system MUST record which source an estimated value came from
   in its usual telemetry. This lets the estimate rate and the rejection rate be
   monitored.
@@ -272,10 +275,11 @@ foods. Confirm that the reported estimated share is about 50%.
   resolved and saved when the meal is logged, with no user action and no
   notice. They may travel with the card's data, so that confirming, editing
   or saving the meal keeps them intact.
-- **FR-014a**: Logged meals MUST store tracked micronutrients only as
-  meal-level summaries (FR-005), not per food item. Saved meals MUST store them
-  per ingredient only. A saved meal's micronutrient totals MUST be computed
-  from its ingredients when read, and never stored next to them.
+- **FR-014a**: Logged meals and saved meals MUST store tracked
+  micronutrients per item or ingredient only (FR-005). Their totals MUST be
+  computed from the items when read, and never stored next to them. A
+  composite dish logged as one item stores that item's values. Breaking a dish
+  into ingredients only happens when the user asks.
 - **FR-015** *(visualization readiness)*: The nutrient catalogue MUST be
   available to every client from one source. For each tracked nutrient it
   gives a stable key, display name, unit, display group (Carbohydrate detail,
@@ -293,15 +297,15 @@ foods. Confirm that the reported estimated share is about 50%.
   boundary.
 - **FR-018** *(single source of truth)*: No micronutrient data may be stored
   twice:
-  - Logged meals keep only the meal-level summary (no per-item values).
-  - Saved meals keep only per-ingredient values (no stored totals).
+  - Logged meals and saved meals keep only per-item values, with no stored
+    meal totals.
   - Per-day and per-period totals are computed from logged meals when read,
     never stored as a second copy. A cache is allowed only if it is
     disposable and rebuilt from the logged meals.
   - The nutrient catalogue (FR-015) is the only definition of tracked
     nutrients, units and daily values. It replaces the Check-up's separate
     micronutrient list and daily values, rather than sitting next to them.
-  - A meal logged from a saved meal stores its own summary. This is a
+  - A meal logged from a saved meal stores its own items. This is a
     deliberate historical snapshot, not a duplicate: editing the saved meal
     later MUST NOT change meals already logged.
 - **FR-019** *(backward compatibility)*: Moving logged meals from per-item to
@@ -318,9 +322,10 @@ foods. Confirm that the reported estimated share is about 50%.
     whenever an item arrives without them. A re-logged meal MUST therefore end
     up with the same summary as the original, scaled to the portion.
   - **Third-party integration feed** (read-only meal export for external
-    consumers) returns logged-meal items with per-item nutrients. The feed
-    MUST expose the meal-level summaries instead, and the change MUST be
-    documented in the integration API docs before release.
+    consumers) returns logged-meal items with per-item nutrients (raw USDA
+    names). The feed MUST expose per-item tracked micros plus a computed meal
+    summary instead, and the change MUST be documented in the integration API
+    docs before release.
   - **Meal detail (web and Android)** returns a logged meal's items. Clients
     treat item nutrients as optional, opaque extras, so removing them MUST NOT
     change what either client shows.
@@ -342,12 +347,11 @@ foods. Confirm that the reported estimated share is about 50%.
   (shared with the Check-up).
 - **Item Micronutrient Value**: The amount of one tracked micronutrient in one
   food item. It has an amount in the canonical unit and a source of USDA,
-  estimated or unknown. It exists while a meal is being resolved and inside
-  saved-meal ingredients. It is not kept on logged meals.
-- **Meal Micronutrient Summary**: For one logged meal and one tracked nutrient,
-  it holds the total, the estimated portion of that total, and coverage
-  (foods with a known value out of all foods). It is the only stored
-  micronutrient data on a logged meal.
+  estimated or unknown. It is stored on every logged item and saved-meal
+  ingredient, and it is the only stored micronutrient data.
+- **Micronutrient Summary** *(computed, never stored)*: For a meal, day or
+  period and one tracked nutrient, it holds the total, the estimated portion
+  of that total, and coverage (foods with a known value out of all foods).
 - **Micronutrient Estimate**: An AI-produced set of per-100 g values for a food,
   covering the tracked micronutrients that USDA could not provide. It may be
   reused for the same food name.
@@ -418,9 +422,9 @@ foods. Confirm that the reported estimated share is about 50%.
 - The estimated-share figure (User Story 3) is a data capability. Micronutrient
   visualization (charts, the full nutrient list) is a separate, later feature.
   This spec only makes the data and catalogue ready for it (FR-015 to FR-017).
-- Because logged meals keep only meal-level summaries, any "top contributors"
-  view (spec 004, User Story 3) attributes intake to meals, such as "Tuesday
-  lunch", not to individual foods. Spec 004 should be updated to match.
+- Because values are stored per item, a "top contributors" view (spec 004,
+  User Story 3) can attribute intake to individual foods ("Orange juice: 38%
+  of your sugar").
 - Pre-existing duplication is out of scope for this feature but noted for
   later cleanup. Logged meals store macro totals as columns and again per
   item. Saved meals store macro totals as columns next to their ingredients.
