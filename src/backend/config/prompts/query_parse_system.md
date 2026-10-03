@@ -17,7 +17,7 @@ IMPORTANT: if you choose "custom", you MUST always set both date_from
 AND date_to as ISO dates (YYYY-MM-DD). Never choose "custom" without
 filling in both dates — for any multi-week or multi-month phrase, either
 pick one of the named ranges above or provide explicit custom bounds.
-nutrients: extract EVERY nutrient asked for. For macros use aliases (kcal/protein_g/carbs_g/fat_g/fiber_g). For micros use EXACT USDA names (e.g. "Total Sugars" for sugar, "Iron, Fe" for iron, "Vitamin B-12", "Vitamin D (D2 + D3)", "Water"). If multiple are asked, list all.
+nutrients: extract EVERY nutrient asked for. For macros use aliases (kcal/protein_g/carbs_g/fat_g/fiber_g). For micros use these EXACT keys: {NUTRIENT_KEYS} (e.g. total_sugars for sugar, iron for iron, vitamin_b12, vitamin_d, sodium, water). If multiple are asked, list all.
 include_goals: true if the user asks about goals or targets.
 include_foods: true if the question is about WHAT foods were eaten —
   e.g. most/least frequent foods, what they eat the most/often,

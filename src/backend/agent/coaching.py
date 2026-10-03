@@ -29,7 +29,7 @@ from backend.agent.tools.history import (
     get_macros_for_range,
     get_micronutrients_for_range,
 )
-from backend.config import get_tunables
+from backend.config import get_catalog, get_tunables
 from backend.core.nutrition_day import nutrition_today
 from backend.db.models import UserGoal
 from backend.db.redis_client import (
@@ -39,6 +39,7 @@ from backend.db.redis_client import (
 )
 from backend.db.session import get_session
 from backend.guidelines.retrieval import RetrievedChunk, retrieve
+from backend.nutrients import catalog
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,9 @@ _UNIT_SUFFIXES = ("_mcg", "_mg", "_g", "_iu")
 def _humanize_nutrient_name(nutrient: str) -> str:
     """Convert a raw nutrient identifier into a human-readable name.
 
-    Strips trailing unit suffixes (e.g. "_mcg", "_mg", "_g") and replaces
+    Catalogue keys and USDA aliases use the catalogue's display name (e.g.
+    "vitamin_b12" -> "Vitamin B12"). Anything else falls back to stripping
+    trailing unit suffixes (e.g. "_mcg", "_mg", "_g") and replacing
     underscores with spaces, e.g. "vitamin_d_mcg" -> "vitamin D",
     "water_g" -> "water".
 
@@ -184,6 +187,9 @@ def _humanize_nutrient_name(nutrient: str) -> str:
     Returns:
         Human-readable nutrient name, e.g. "vitamin D".
     """
+    key = catalog.resolve_key(nutrient)
+    if key is not None:  # spec 008: catalogue keys / USDA aliases
+        return catalog.nutrient(key).name
     name = nutrient
     for suffix in _UNIT_SUFFIXES:
         if name.endswith(suffix):
@@ -193,7 +199,16 @@ def _humanize_nutrient_name(nutrient: str) -> str:
     return " ".join("D" if w.lower() == "d" else w for w in words)
 
 
-_QUERY_PARSE_SYSTEM = _TUNABLES.prompts.query_parse_system
+# Spec 008: the parser emits catalogue keys; the list comes from the
+# catalogue so the prompt can never drift from it (fiber stays a macro alias).
+_QUERY_PARSE_SYSTEM = _TUNABLES.prompts.query_parse_system.replace(
+    "{NUTRIENT_KEYS}",
+    ", ".join(
+        n.key
+        for n in get_catalog().nutrients
+        if n.status == "active" and n.column is None
+    ),
+)
 
 _RESPONSE_SYSTEM = _TUNABLES.prompts.coaching_response_system
 
