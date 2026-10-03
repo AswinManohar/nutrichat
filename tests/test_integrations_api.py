@@ -38,9 +38,8 @@ def _meal_row(
         carbs_g=30.0,
         fat_g=15.0,
         fiber_g=6.0,
-        entities=[],
+        entities=[{"food_name": "egg", "micros": {"iron": [1.0, "u"]}}],
         flags={},
-        micros={"iron": {"total": 1.0, "est": 0.0, "known": 1}},
         updated_at=updated_at,
         deleted_at=deleted_at,
     )

@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from backend.api import nutrients as nutrients_api
 from backend.db.session import dispose_engine, get_session
+from backend.nutrients import catalog
 from backend.nutrients.daily import get_daily_micros
 from tests.conftest import DATABASE_URL_PRESET
 
@@ -46,32 +47,37 @@ async def _user() -> str:
     return user_id
 
 
+Food = dict[str, tuple[float, str]]  # key -> (amount, "u" | "e")
+
+
 async def _meal(
     user_id: str,
     at: datetime,
-    micros: dict,
+    foods: list[Food],
     *,
-    items: int = 1,
     fiber_g: float = 0.0,
     deleted: bool = False,
     label: str = "meal",
 ) -> str:
+    """Insert a meal whose items carry compact micros (spec 008 §2)."""
     meal_id = str(uuid.uuid4())
+    entities = [
+        {"food_name": f"f{i}", "micros": {k: [a, s] for k, (a, s) in food.items()}}
+        for i, food in enumerate(foods)
+    ]
     async with get_session()() as session:
         await session.execute(
             text(
                 "INSERT INTO meal_log (meal_id, user_id, meal_type, kcal, "
-                "protein_g, carbs_g, fat_g, fiber_g, entities, micros, label, "
+                "protein_g, carbs_g, fat_g, fiber_g, entities, label, "
                 "logged_at, deleted_at) VALUES (:m, :u, 'lunch', 100, 1, 1, 1, "
-                ":fib, CAST(:ent AS jsonb), CAST(:mic AS jsonb), :label, :at, "
-                ":del)"
+                ":fib, CAST(:ent AS jsonb), :label, :at, :del)"
             ),
             {
                 "m": meal_id,
                 "u": user_id,
                 "fib": fiber_g,
-                "ent": json.dumps([{"food_name": f"f{i}"} for i in range(items)]),
-                "mic": json.dumps(micros),
+                "ent": json.dumps(entities),
                 "label": label,
                 "at": at,
                 "del": at if deleted else None,
@@ -87,7 +93,7 @@ def _noon(day: date) -> datetime:
 
 async def test_every_day_returned_and_empty_days_are_no_data() -> None:
     u = await _user()
-    await _meal(u, _noon(D1), {"iron": {"total": 3.0, "est": 1.0, "known": 1}})
+    await _meal(u, _noon(D1), [{"iron": (2.0, "u")}, {"iron": (1.0, "e")}])
     resp = await get_daily_micros(u, D1, D1 + timedelta(days=2), keys=["iron"])
     assert [d.date for d in resp.days] == [D1 + timedelta(days=i) for i in range(3)]
     assert resp.days[0].logged and resp.days[0].values["iron"].total == 3.0
@@ -96,8 +102,8 @@ async def test_every_day_returned_and_empty_days_are_no_data() -> None:
 
 async def test_salt_derived_from_sodium_and_fiber_from_column() -> None:
     u = await _user()
-    sodium = {"sodium": {"total": 2000.0, "est": 400.0, "known": 2}}
-    await _meal(u, _noon(D1), sodium, items=2, fiber_g=7.5)
+    foods = [{"sodium": (1600.0, "u")}, {"sodium": (400.0, "e")}]
+    await _meal(u, _noon(D1), foods, fiber_g=7.5)
     day = (await get_daily_micros(u, D1, D1, keys=["salt", "fiber"])).days[0]
     assert day.values["salt"].total == pytest.approx(5.0)
     assert day.values["salt"].est == pytest.approx(1.0)
@@ -108,11 +114,9 @@ async def test_salt_derived_from_sodium_and_fiber_from_column() -> None:
 
 async def test_sums_across_meals_and_skips_deleted() -> None:
     u = await _user()
-    await _meal(u, _noon(D1), {"iron": {"total": 1.0, "est": 0.0, "known": 1}})
-    await _meal(u, _noon(D1), {"iron": {"total": 2.0, "est": 2.0, "known": 1}})
-    await _meal(
-        u, _noon(D1), {"iron": {"total": 50.0, "est": 0.0, "known": 1}}, deleted=True
-    )
+    await _meal(u, _noon(D1), [{"iron": (1.0, "u")}])
+    await _meal(u, _noon(D1), [{"iron": (2.0, "e")}])
+    await _meal(u, _noon(D1), [{"iron": (50.0, "u")}], deleted=True)
     day = (await get_daily_micros(u, D1, D1, keys=["iron"])).days[0]
     assert day.n_meals == 2
     assert day.values["iron"].total == pytest.approx(3.0)
@@ -124,7 +128,7 @@ async def test_nutrition_day_boundary() -> None:
     u = await _user()
     # 00:30 local on D2 is before the 01:00 reset -> belongs to D1.
     late = datetime(2026, 9, 2, 0, 30, tzinfo=OSLO)
-    await _meal(u, late, {"iron": {"total": 4.0, "est": 0.0, "known": 1}})
+    await _meal(u, late, [{"iron": (4.0, "u")}])
     resp = await get_daily_micros(u, D1, D1 + timedelta(days=1), keys=["iron"])
     assert resp.days[0].values["iron"].total == 4.0
     assert resp.days[1].logged is False
@@ -133,7 +137,7 @@ async def test_nutrition_day_boundary() -> None:
 async def test_unknown_key_absent_and_meal_contributions() -> None:
     u = await _user()
     meal_id = await _meal(
-        u, _noon(D1), {"iron": {"total": 1.0, "est": 0.0, "known": 1}}, label="dal"
+        u, _noon(D1), [{"iron": (1.0, "u")}, {"zinc": (0.5, "e")}], label="dal"
     )
     resp = await get_daily_micros(
         u, D1, D1, keys=["iron", "biotin"], include_meals=True
@@ -142,6 +146,10 @@ async def test_unknown_key_absent_and_meal_contributions() -> None:
     assert "biotin" not in day.values  # unknown everywhere
     assert day.meals[0].meal_id == meal_id and day.meals[0].label == "dal"
     assert day.meals[0].values["iron"].total == 1.0
+    # spec 004 top contributors: per-food values
+    assert [f.food_name for f in day.meals[0].foods] == ["f0", "f1"]
+    assert day.meals[0].foods[0].values["iron"].total == 1.0
+    assert "iron" not in day.meals[0].foods[1].values
 
 
 async def test_rejects_bad_requests() -> None:
@@ -155,7 +163,7 @@ async def test_rejects_bad_requests() -> None:
 
 async def test_endpoint_contract(app_factory) -> None:
     u = await _user()
-    await _meal(u, _noon(D1), {"sodium": {"total": 1000.0, "est": 0.0, "known": 1}})
+    await _meal(u, _noon(D1), [{"sodium": (1000.0, "u")}])
     app = app_factory(nutrients_api.router, user_id=u)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
@@ -186,12 +194,13 @@ async def test_endpoint_contract(app_factory) -> None:
 
 
 async def test_90_days_all_keys_under_one_second() -> None:
-    """SC-008: 90 days × 4 meals, every key."""
+    """SC-008: 90 days × 4 meals × 3 foods, every key known."""
     u = await _user()
-    micros = {
-        k: {"total": 1.0, "est": 0.5, "known": 2}
-        for k in ("iron", "sodium", "calcium", "vitamin_c", "biotin", "zinc")
+    item = {
+        "food_name": "x",
+        "micros": {k: [0.5, "u"] for k in catalog.stored_keys()},
     }
+    entities = json.dumps([item, item, item])
     async with get_session()() as session:
         for d in range(90):
             for h in (8, 12, 16, 20):
@@ -199,11 +208,11 @@ async def test_90_days_all_keys_under_one_second() -> None:
                 await session.execute(
                     text(
                         "INSERT INTO meal_log (meal_id, user_id, meal_type, kcal, "
-                        "protein_g, carbs_g, fat_g, fiber_g, entities, micros, "
-                        "logged_at) VALUES (gen_random_uuid(), :u, 'lunch', 1, 1, "
-                        "1, 1, 1, '[{}, {}]'::jsonb, CAST(:mic AS jsonb), :at)"
+                        "protein_g, carbs_g, fat_g, fiber_g, entities, logged_at) "
+                        "VALUES (gen_random_uuid(), :u, 'lunch', 1, 1, 1, 1, 1, "
+                        "CAST(:ent AS jsonb), :at)"
                     ),
-                    {"u": u, "mic": json.dumps(micros), "at": at},
+                    {"u": u, "ent": entities, "at": at},
                 )
         await session.commit()
     timings = []

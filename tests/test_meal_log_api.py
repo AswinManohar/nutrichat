@@ -43,7 +43,6 @@ def _mock_row(
     row.fat_g = fat_g
     row.fiber_g = fiber_g
     row.entities = entities if entities is not None else [{"food_name": "eggs"}]
-    row.micros = {}  # spec 008: meal-level summary column
     return row
 
 

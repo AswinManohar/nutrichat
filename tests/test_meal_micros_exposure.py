@@ -35,22 +35,26 @@ async def _fresh_engine():
 
 
 async def _seed(
-    user_id: str, at: datetime, micros: dict, deleted: bool = False
+    user_id: str, at: datetime, foods: list[dict], deleted: bool = False
 ) -> str:
+    """Insert a meal whose items carry compact micros {key: [amount, u|e]}."""
     meal_id = str(uuid.uuid4())
+    entities = [
+        {"food_name": f"food{i}", "qty_g": 100, "micros": micros}
+        for i, micros in enumerate(foods)
+    ]
     async with get_session()() as session:
         await session.execute(
             text(
                 "INSERT INTO meal_log (meal_id, user_id, meal_type, kcal, "
-                "protein_g, carbs_g, fat_g, fiber_g, entities, micros, logged_at, "
+                "protein_g, carbs_g, fat_g, fiber_g, entities, logged_at, "
                 "deleted_at) VALUES (:m, :u, 'lunch', 300, 10, 40, 8, 4, "
-                '\'[{"food_name": "dal", "qty_g": 150}]\'::jsonb, '
-                "CAST(:mic AS jsonb), :at, :del)"
+                "CAST(:ent AS jsonb), :at, :del)"
             ),
             {
                 "m": meal_id,
                 "u": user_id,
-                "mic": json.dumps(micros),
+                "ent": json.dumps(entities),
                 "at": at,
                 "del": at if deleted else None,
             },
@@ -76,7 +80,7 @@ async def test_meal_detail_includes_micros_and_items_have_no_nutrients(
     meal_id = await _seed(
         user_id,
         datetime(2026, 9, 1, 12, tzinfo=OSLO),
-        {"iron": {"total": 3.0, "est": 1.5, "known": 1}},
+        [{"iron": [1.5, "u"]}, {"iron": [1.5, "e"]}],
     )
     app = app_factory(meals_api.router, user_id=user_id)
     transport = httpx.ASGITransport(app=app)
@@ -84,19 +88,16 @@ async def test_meal_detail_includes_micros_and_items_have_no_nutrients(
         resp = await c.get(f"/meals/log/{meal_id}")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["micros"]["iron"] == {"total": 3.0, "est": 1.5, "known": 1}
+    assert body["micros"]["iron"] == {"total": 3.0, "est": 1.5, "known": 2}
     assert all("nutrients" not in item for item in body["items"])
+    assert body["items"][1]["micros"] == {"iron": [1.5, "e"]}  # per-item source
 
 
 async def test_integration_feed_carries_micros_not_on_tombstones(app_factory) -> None:
     user_id = await _user()
     at = datetime(2026, 9, 1, 12, tzinfo=OSLO)
-    live = await _seed(
-        user_id, at, {"sodium": {"total": 900.0, "est": 0.0, "known": 1}}
-    )
-    gone = await _seed(
-        user_id, at, {"sodium": {"total": 1.0, "est": 0.0, "known": 1}}, True
-    )
+    live = await _seed(user_id, at, [{"sodium": [900.0, "u"]}])
+    gone = await _seed(user_id, at, [{"sodium": [1.0, "u"]}], deleted=True)
 
     async def _auth() -> str:
         return user_id
@@ -109,6 +110,7 @@ async def test_integration_feed_carries_micros_not_on_tombstones(app_factory) ->
     assert resp.status_code == 200, resp.text
     by_id = {m["meal_id"]: m for m in resp.json()["items"]}
     assert by_id[live]["micros"]["sodium"]["total"] == 900.0
+    assert by_id[live]["entities"][0]["micros"] == {"sodium": [900.0, "u"]}
     assert by_id[gone]["deleted"] is True
     assert by_id[gone].get("micros") is None
 
@@ -120,7 +122,7 @@ async def test_half_estimated_week_reports_half_estimated_iron() -> None:
         await _seed(
             user_id,
             datetime(2026, 9, 1, 12, tzinfo=OSLO) + timedelta(days=d),
-            {"iron": {"total": 4.0, "est": 2.0, "known": 2}},
+            [{"iron": [2.0, "u"]}, {"iron": [2.0, "e"]}],
         )
     week = range_totals(
         await get_daily_micros(user_id, start, start + timedelta(days=6), ["iron"])

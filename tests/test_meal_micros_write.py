@@ -20,6 +20,7 @@ from backend.api import meals as meals_api
 from backend.db.session import dispose_engine, get_session
 from backend.nutrients import resolve
 from backend.nutrients.models import MicroValue
+from backend.nutrients.resolve import summarise_items
 from tests.conftest import DATABASE_URL_PRESET
 from tests.factories_micros import make_usda_result
 
@@ -71,8 +72,8 @@ async def test_log_meal_passes_server_resolved_summary() -> None:
     ):
         await meal_tools.log_meal("u1", [item], "lunch")
 
-    micros = insert.await_args.kwargs["micros"]
-    assert micros["iron"] == {"total": 1.0, "est": 0.0, "known": 1}
+    (micros,) = insert.await_args.kwargs["item_micros"]
+    assert micros["iron"] == MicroValue(amount=1.0, source="usda")  # not 999
     assert "fiber" not in micros and "salt" not in micros
 
 
@@ -90,7 +91,8 @@ async def test_estimate_failure_logs_meal_with_empty_micros() -> None:
         result = await meal_tools.log_meal("u1", [item], "lunch")
 
     assert result.meal_id == "m1"
-    assert insert.await_args.kwargs["micros"] == {}
+    (micros,) = insert.await_args.kwargs["item_micros"]
+    assert all(v.source == "unknown" for v in micros.values())
 
 
 # -- DB-backed ------------------------------------------------------------------
@@ -107,25 +109,27 @@ async def _new_user() -> str:
 
 
 async def _stored(meal_id: str) -> tuple[dict, list]:
+    """(meal summary computed from the items, stored entities)."""
     async with get_session()() as session:
         row = (
             await session.execute(
-                text("SELECT micros, entities FROM meal_log WHERE meal_id = :m"),
+                text("SELECT entities FROM meal_log WHERE meal_id = :m"),
                 {"m": meal_id},
             )
         ).one()
-    return row.micros, row.entities
+    return summarise_items(row.entities), row.entities
 
 
 @needs_db
-async def test_log_meal_writes_micros_column() -> None:
+async def test_log_meal_stores_compact_micros_on_each_item() -> None:
     user_id = await _new_user()
     banana = make_usda_result(food_name="Bananas, raw", fdc_id=BANANA, qty_g=120)
     embed, reply = _patch_side_effects()
     with embed, reply:
         result = await meal_tools.log_meal(user_id, [banana], "snack")
 
-    micros, _ = await _stored(result.meal_id)
+    micros, entities = await _stored(result.meal_id)
+    assert entities[0]["micros"]["vitamin_c"] == [pytest.approx(8.7 * 1.2), "u"]
     assert micros["vitamin_c"]["total"] == pytest.approx(8.7 * 1.2)
     assert micros["vitamin_c"]["est"] == 0
     assert micros["vitamin_d"] == {"total": 0.0, "est": 0.0, "known": 1}
@@ -236,7 +240,7 @@ async def test_saved_meal_stores_ingredient_micros_and_computes_totals() -> None
     with patch.object(my_meals, "resolve_micros", side_effect=fake_resolve):
         stored = await my_meals._with_micros(raw)
         assert all("nutrients" not in i for i in stored)
-        assert stored[0]["micros"]["iron"] == {"amount": 2.0, "source": "usda"}
+        assert stored[0]["micros"]["iron"] == [2.0, "u"]  # compact form
         assert "bogus" not in stored[1]["micros"]  # client micros not trusted
 
         meal = SimpleNamespace(

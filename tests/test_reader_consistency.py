@@ -46,22 +46,36 @@ async def _seed_week() -> str:
             text("INSERT INTO user_goal (user_id) VALUES (:u)"), {"u": user_id}
         )
         for d in range(7):
-            micros = {
-                "iron": {"total": 2.0 + d, "est": 1.0, "known": 2},
-                "total_sugars": {"total": 10.0, "est": 5.0, "known": 2},
-                "vitamin_b12": {"total": 1.5, "est": 0.0, "known": 1},
-                "sodium": {"total": 2400.0, "est": 0.0, "known": 2},
-            }
+            # two foods per meal, compact per-item micros (data-model §2)
+            entities = [
+                {
+                    "food_name": "a",
+                    "micros": {
+                        "iron": [1.0 + d, "u"],
+                        "total_sugars": [5.0, "u"],
+                        "vitamin_b12": [1.5, "u"],
+                        "sodium": [1200.0, "u"],
+                    },
+                },
+                {
+                    "food_name": "b",
+                    "micros": {
+                        "iron": [1.0, "e"],
+                        "total_sugars": [5.0, "e"],
+                        "sodium": [1200.0, "u"],
+                    },
+                },
+            ]
             await session.execute(
                 text(
                     "INSERT INTO meal_log (meal_id, user_id, meal_type, kcal, "
-                    "protein_g, carbs_g, fat_g, fiber_g, entities, micros, "
-                    "logged_at) VALUES (gen_random_uuid(), :u, 'lunch', 500, 20, "
-                    "60, 15, 6, '[{}, {}]'::jsonb, CAST(:mic AS jsonb), :at)"
+                    "protein_g, carbs_g, fat_g, fiber_g, entities, logged_at) "
+                    "VALUES (gen_random_uuid(), :u, 'lunch', 500, 20, 60, 15, 6, "
+                    "CAST(:ent AS jsonb), :at)"
                 ),
                 {
                     "u": user_id,
-                    "mic": json.dumps(micros),
+                    "ent": json.dumps(entities),
                     "at": datetime(2026, 9, 1, 12, tzinfo=OSLO) + timedelta(days=d),
                 },
             )
