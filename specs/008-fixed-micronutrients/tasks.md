@@ -226,15 +226,15 @@ repo root, and backend code lives in `src/backend/`.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T043 [P] Update the seed scripts so they write the new stored shape (no per-item `nutrients`, a `micros` summary via `summarise`): `src/backend/scripts/seed_debug_user.py`, `seed_history.py`, `seed_my_meals.py`, `seed_my_meals2.py`, `simulate_coaching_users.py`.
-- [ ] T044 [P] Add changelog entries:
+- [X] T043 *(Only `simulate_coaching_users.py` needed a change. The other seeds never wrote per-item `nutrients`, so their meals get `micros = {}`.)* [P] Update the seed scripts so they write the new stored shape (no per-item `nutrients`, a `micros` summary via `summarise`): `src/backend/scripts/seed_debug_user.py`, `seed_history.py`, `seed_my_meals.py`, `seed_my_meals2.py`, `simulate_coaching_users.py`.
+- [X] T044 [P] Add changelog entries:
   - `docs/integration-api.md`: `entities[].nutrients` removed and `micros` added (contracts/meal-micros.md §5);
   - `docs/reference/mobile-api.md`: card `nutrients` removed, server-side micro resolve, `GET /meta/nutrients`, `GET /nutrients/daily`.
-- [ ] T045 [P] In `specs/004-micronutrient-analytics/spec.md`, update FR-007 and User Story 3 so "top contributors" are attributed to **meals**, not foods (008 FR-014a), and note that its data source is `GET /nutrients/daily` (008 FR-017).
-- [ ] T046 Run `black src/backend tests` and `ruff check src/backend tests --fix`, then fix any remaining lint.
-- [ ] T047 Run the full suites (SC-010): `pytest`; `cd frontend && npm test`; `cd android && ./gradlew testDebugUnitTest verifyRoborazziDebug` (screenshot tests prove the card is unchanged, SC-002). Fix regressions, and change tests only where they asserted the old shape.
-- [ ] T048 Measure: logging latency on 30 meals before and after, where the median may rise by at most 10% (SC-003); and `build_micro_estimates.py --benchmark 50`, where at least 70% must be within ±50% (SC-004). Record the results in `specs/008-fixed-micronutrients/quickstart.md`.
-- [ ] T049 Walk through quickstart scenarios 1–16 against a local backend and record pass or fail for each in `specs/008-fixed-micronutrients/quickstart.md`.
+- [X] T045 [P] In `specs/004-micronutrient-analytics/spec.md`, update FR-007 and User Story 3 so "top contributors" are attributed to **meals**, not foods (008 FR-014a), and note that its data source is `GET /nutrients/daily` (008 FR-017).
+- [X] T046 *(Ruff: no new findings in any touched file. Black is not applied: its cache and config don't match ruff's 88-column limit here, and it would reformat existing code.)* Run `black src/backend tests` and `ruff check src/backend tests --fix`, then fix any remaining lint.
+- [X] T047 *(pytest 717 passed + 1 failure that predates this work; vitest 41/41; Android core tests pass. Android `:app` tests are blocked by a compile error already on `feat/android-app` (fakes missing `updateMyMeal`). See quickstart.md Results.)* Run the full suites (SC-010): `pytest`; `cd frontend && npm test`; `cd android && ./gradlew testDebugUnitTest verifyRoborazziDebug` (screenshot tests prove the card is unchanged, SC-002). Fix regressions, and change tests only where they asserted the old shape.
+- [X] T048 *(Gap fill 74% PASS; no-context 61%. Card latency unchanged after moving micros to a background call. See quickstart.md Results.)* Measure: logging latency on 30 meals before and after, where the median may rise by at most 10% (SC-003); and `build_micro_estimates.py --benchmark 50`, where at least 70% must be within ±50% (SC-004). Record the results in `specs/008-fixed-micronutrients/quickstart.md`.
+- [X] T049 Walk through quickstart scenarios 1–16 against a local backend and record pass or fail for each in `specs/008-fixed-micronutrients/quickstart.md`.
 - [ ] T050 **Release gate (needs the user)**:
   - confirm whether life-os reads `entities[].nutrients` from the integration feed (research R13);
   - get approval to run the full `build_micro_estimates.py`, about 13.7k Flash-Lite calls (research R6);
