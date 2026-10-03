@@ -338,6 +338,26 @@ def _build_rows(user_id: str, templates: list[dict], seed: int) -> list[dict]:
     return rows
 
 
+def _split_micros(entities: list[dict]) -> tuple[list[dict], dict]:
+    """Move template sugar / sat-fat into a meal_log.micros summary (spec 008).
+
+    Stored items carry no per-item micronutrients; the meal-level summary is
+    the only copy (FR-018). Template values are USDA-like, so est = 0.
+    """
+    summary: dict = {}
+    stripped: list[dict] = []
+    for ent in entities:
+        for field, key in (("sugar_g", "total_sugars"), ("sat_fat_g", "saturated_fat")):
+            if ent.get(field) is not None:
+                cur = summary.setdefault(key, {"total": 0.0, "est": 0.0, "known": 0})
+                cur["total"] = round(cur["total"] + float(ent[field]), 4)
+                cur["known"] += 1
+        stripped.append(
+            {k: v for k, v in ent.items() if k not in ("sugar_g", "sat_fat_g")}
+        )
+    return stripped, summary
+
+
 async def seed_users() -> None:
     """Insert user_goal + meal_log rows for the 5 synthetic users."""
     session_factory = get_session()
@@ -359,19 +379,23 @@ async def seed_users() -> None:
             )
             rows = _build_rows(user_id, USER_TEMPLATES[user_id], seed=100 + i)
             for row in rows:
+                entities, micros = _split_micros(row["entities"])
                 await session.execute(
                     sa_text(
                         "INSERT INTO meal_log "
                         "(meal_id, user_id, logged_at, meal_type, kcal, protein_g, "
-                        "carbs_g, fat_g, fiber_g, entities, flags, updated_at) "
+                        "carbs_g, fat_g, fiber_g, entities, flags, updated_at, "
+                        "micros) "
                         "VALUES (:meal_id, :user_id, :logged_at, :meal_type, :kcal, "
                         ":protein_g, :carbs_g, :fat_g, :fiber_g, "
-                        "CAST(:entities AS jsonb), CAST(:flags AS jsonb), :updated_at)"
+                        "CAST(:entities AS jsonb), CAST(:flags AS jsonb), "
+                        ":updated_at, CAST(:micros AS jsonb))"
                     ),
                     {
                         **row,
-                        "entities": json.dumps(row["entities"]),
+                        "entities": json.dumps(entities),
                         "flags": json.dumps(row["flags"]),
+                        "micros": json.dumps(micros),
                     },
                 )
             print(f"Seeded {len(rows)} meal_log rows for {user_id}")
