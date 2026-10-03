@@ -64,7 +64,7 @@ All must pass. Tests change only where they asserted the old per-item
 
 | Suite | Result |
 |---|---|
-| Backend `pytest` | 717 passed, 1 xfailed, **1 failed**: `test_e2e_meals.py::test_chat_history_isolation`, which calls real Gemini with the dummy key. It fails the same way on `feat/android-app` before this work |
+| Backend `pytest` (after per-item switch) | 717 passed, 1 xfailed, **1 failed**: `test_e2e_meals.py::test_chat_history_isolation`, which calls real Gemini with the dummy key. It fails the same way on `feat/android-app` before this work |
 | Web `vitest` | 41 / 41 passed; `tsc` clean |
 | Android `:core:data` + `:core:domain` tests | passed |
 | Android `:app` unit + Roborazzi | **blocked by a failure already on `feat/android-app`**: the app's test fakes don't implement `MealsyApi.updateMyMeal` (8 files). This branch changes no Android files |
@@ -83,7 +83,7 @@ All must pass. Tests change only where they asserted the old per-item
 | 8 | `test_meal_micros_write.py::test_estimate_failure_logs_meal_with_empty_micros` | ✅ |
 | 9 | `test_meal_micros_write.py::test_log_items_ignores_client_micros_and_log_again_matches` | ✅ |
 | 10 | `test_meal_micros_write.py::test_saved_meal_stores_ingredient_micros_and_computes_totals` | ✅ |
-| 11 | `test_meal_tools.py::test_usda_result_has_micros`, stored-entity exclusion in `log_meal` | ✅ |
+| 11 | `test_meal_micros_write.py::test_log_meal_stores_compact_micros_on_each_item`; no summary column, no raw `nutrients` | ✅ |
 | 12 | `test_daily_micros.py` | ✅ |
 | 13 | `test_daily_micros.py::test_90_days_all_keys_under_one_second` | ✅ |
 | 14 | `test_reader_consistency.py::test_all_readers_agree` | ✅ |
