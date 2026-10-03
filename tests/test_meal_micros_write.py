@@ -11,13 +11,13 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from backend.agent.tools import meals as meal_tools
 from backend.api import meals as meals_api
-from backend.db.session import get_session
+from backend.db.session import dispose_engine, get_session
 from backend.nutrients import resolve
 from backend.nutrients.models import MicroValue
 from tests.conftest import DATABASE_URL_PRESET
@@ -29,6 +29,14 @@ RICE = 168878
 needs_db = pytest.mark.skipif(
     not DATABASE_URL_PRESET, reason="needs a real Postgres (set DATABASE_URL)"
 )
+
+
+@pytest.fixture(autouse=True)
+async def _fresh_engine():
+    """Dispose the cached engine after each test: its asyncpg pool is bound to
+    the test's event loop (see backend.db.session.dispose_engine)."""
+    yield
+    await dispose_engine()
 
 
 def _patch_side_effects():
@@ -47,7 +55,9 @@ async def test_log_meal_passes_server_resolved_summary() -> None:
     # The result arrives with bogus client-side micros; they must be ignored.
     item = make_usda_result(micros={"iron": (999.0, "usda")})
 
-    async def fake_resolve(fdc_id: int, food_name: str, qty_g: float):
+    async def fake_resolve(
+        fdc_id: int, food_name: str, qty_g: float, rejected: list[str]
+    ):
         return resolve.build_item_micros({"iron": (1.0, "usda")}, qty_g)
 
     embed, reply = _patch_side_effects()
@@ -122,14 +132,13 @@ async def test_log_meal_writes_micros_column() -> None:
 
 
 @needs_db
-def test_log_items_ignores_client_micros_and_log_again_matches(app_factory) -> None:
+async def test_log_items_ignores_client_micros_and_log_again_matches(
+    app_factory,
+) -> None:
     """Client-sent micros are ignored; re-logging stored items gives the same
     summary at portion 1 (Android "Log again", FR-019)."""
-    import asyncio
-
-    user_id = asyncio.run(_new_user())
+    user_id = await _new_user()
     app = app_factory(meals_api.router, user_id=user_id)
-    client = TestClient(app)
     item = {
         "food_name": "Bananas, raw",
         "qty_g": 120.0,
@@ -143,23 +152,27 @@ def test_log_items_ignores_client_micros_and_log_again_matches(app_factory) -> N
         "source": "USDA",
         "estimated": False,
         "micros": {"vitamin_c": {"amount": 500.0, "source": "usda"}},
-        "nutrients": {"Vitamin C, total ascorbic acid": {"amount": 500.0}},
+        "nutrients": {
+            "Vitamin C, total ascorbic acid": {"amount": 500.0, "unit": "mg"}
+        },
     }
     embed, reply = _patch_side_effects()
+    transport = httpx.ASGITransport(app=app)
     with embed, reply:
-        first = client.post(
-            "/meals/log-items", json={"meal_type": "snack", "items": [item]}
-        )
-        assert first.status_code == 200, first.text
-        micros1, entities = asyncio.run(_stored(first.json()["meal_id"]))
-        assert micros1["vitamin_c"]["total"] == pytest.approx(8.7 * 1.2)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            first = await c.post(
+                "/meals/log-items", json={"meal_type": "snack", "items": [item]}
+            )
+            assert first.status_code == 200, first.text
+            micros1, entities = await _stored(first.json()["meal_id"])
+            assert micros1["vitamin_c"]["total"] == pytest.approx(8.7 * 1.2)
 
-        again = [{**e, "target_qty_g": e["qty_g"]} for e in entities]
-        second = client.post(
-            "/meals/log-items", json={"meal_type": "snack", "items": again}
-        )
-        assert second.status_code == 200, second.text
-        micros2, _ = asyncio.run(_stored(second.json()["meal_id"]))
+            again = [{**e, "target_qty_g": e["qty_g"]} for e in entities]
+            second = await c.post(
+                "/meals/log-items", json={"meal_type": "snack", "items": again}
+            )
+            assert second.status_code == 200, second.text
+            micros2, _ = await _stored(second.json()["meal_id"])
 
     assert micros2 == micros1
 
