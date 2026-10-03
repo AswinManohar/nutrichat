@@ -85,7 +85,7 @@ repo root, and backend code lives in `src/backend/`.
 
 ### Tests for User Story 1 ⚠️ (write first, ensure they fail)
 
-- [ ] T010 [P] [US1] Write `tests/test_resolve_micros.py` covering:
+- [X] T010 [P] [US1] Write `tests/test_resolve_micros.py` covering:
   - a USDA value wins, including 0;
   - a gap is filled from the pre-computed estimate and marked `estimated`;
   - a USDA-only key with no USDA value is `unknown`, never estimated;
@@ -98,12 +98,12 @@ repo root, and backend code lives in `src/backend/`.
   - `total` is the sum of known values, `0 ≤ est ≤ total`, and `1 ≤ known ≤ items`;
   - a key is absent when no item is known;
   - `fiber` and `salt` never appear.
-- [ ] T011 [P] [US1] Write `tests/test_estimate_micros.py` with a stubbed pydantic-ai agent. Check that:
+- [X] T011 [P] [US1] Write `tests/test_estimate_micros.py` with a stubbed pydantic-ai agent. Check that:
   - the estimate output with `micros` (per 100 g) produces `USDAResult.micros` scaled to qty;
   - a cache hit on `food_source` returns the same micros with no agent call;
   - an agent exception still returns the macro miss path, with micros all `unknown` (FR-008);
   - the agent is called **once** per food (FR-009).
-- [ ] T012 [P] [US1] Write `tests/test_meal_micros_write.py` (real test DB). Check that:
+- [X] T012 [P] [US1] Write `tests/test_meal_micros_write.py` (real test DB). Check that:
   - `log_meal` writes `micros` per data-model §3;
   - client-sent `micros` and `nutrients` on `POST /meals/log-items` are ignored (the server values win);
   - "Log again" parity: logging a meal's stored items again at portion 1 gives an identical `micros`;
@@ -112,37 +112,37 @@ repo root, and backend code lives in `src/backend/`.
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] In `src/backend/scripts/build_usda_db.py`, bump `_SCHEMA_VERSION` to 3 and `PRAGMA user_version = 3`. Add `CREATE TABLE food_micro_estimate (fdc_id INTEGER NOT NULL, key TEXT NOT NULL, per_100g REAL NOT NULL, PRIMARY KEY (fdc_id, key))`. In `src/backend/agent/tools/usda_local.py`, accept schema v2 or v3: if the table is missing, there are simply no gap estimates.
-- [ ] T014 [US1] Create `src/backend/scripts/compute_micro_caps.py`. For each stored key with at least 30% USDA coverage in `usda_fdc.sqlite3`, compute `max_per_100g = 1.5 × p99.9` of the per-100 g values. For the sparse or USDA-less keys (added_sugars, chloride, chromium, iodine, molybdenum, biotin, fluoride), print the hand-set caps from research R8 for review. Write the results into `max_per_100g` in `src/backend/config/nutrients.yaml`. Add a CLI flag `--write` (the default is print only).
-- [ ] T015 [US1] Create `src/backend/scripts/build_micro_estimates.py`. For every food in the bundled SQLite, it sends Gemini 2.5 Flash-Lite (batch API) the food description, the USDA nutrients that food already has, and the **estimable** keys it is missing. The model returns per-100 g values. Values over `max_per_100g`, and added_sugars greater than total sugars, are dropped. The rest are inserted into `food_micro_estimate`. Flags:
+- [X] T013 [US1] In `src/backend/scripts/build_usda_db.py`, bump `_SCHEMA_VERSION` to 3 and `PRAGMA user_version = 3`. Add `CREATE TABLE food_micro_estimate (fdc_id INTEGER NOT NULL, key TEXT NOT NULL, per_100g REAL NOT NULL, PRIMARY KEY (fdc_id, key))`. In `src/backend/agent/tools/usda_local.py`, accept schema v2 or v3: if the table is missing, there are simply no gap estimates.
+- [X] T014 [US1] Create `src/backend/scripts/compute_micro_caps.py`. For each stored key with at least 30% USDA coverage in `usda_fdc.sqlite3`, compute `max_per_100g = 1.5 × p99.9` of the per-100 g values. For the sparse or USDA-less keys (added_sugars, chloride, chromium, iodine, molybdenum, biotin, fluoride), print the hand-set caps from research R8 for review. Write the results into `max_per_100g` in `src/backend/config/nutrients.yaml`. Add a CLI flag `--write` (the default is print only).
+- [X] T015 [US1] *(Uses concurrent standard calls instead of the batch API. Dry run: 13,694 foods, 149,399 pairs, ≈ $1.75. Full run still awaits approval, T050.)* Create `src/backend/scripts/build_micro_estimates.py`. For every food in the bundled SQLite, it sends Gemini 2.5 Flash-Lite (batch API) the food description, the USDA nutrients that food already has, and the **estimable** keys it is missing. The model returns per-100 g values. Values over `max_per_100g`, and added_sugars greater than total sugars, are dropped. The rest are inserted into `food_micro_estimate`. Flags:
   - `--dry-run`: print the food count, missing-key count, token and cost estimate, and make no calls;
   - `--limit N`;
   - `--benchmark N`: pick N foods that have USDA values, hide them, estimate them, and report the share within ±50% (SC-004 needs ≥70%).
   
   Log the rejection rate for each key. **Do not run the full build without explicit user approval.**
-- [ ] T016 [US1] In `src/backend/agent/tools/usda_local.py`, add `load_micros_per_100g(conn, fdc_id) -> dict[str, tuple[float, str]]`. It maps the food's USDA nutrients through `catalog.key_for_usda_name` (first alias wins, and a USDA 0 is kept as `usda`), then merges in `food_micro_estimate` rows for keys still missing as `estimated`, skipping `usda_only_keys()`. Add `micros_per_100g` to `LocalMatch` and fill it in `lookup()`.
-- [ ] T017 [US1] Implement `src/backend/nutrients/resolve.py`:
+- [X] T016 [US1] *(Done via T013 + T017: `usda_local.micro_inputs`/`LocalMatch.micro_estimates_per_100g` return raw rows; the alias mapping lives in `resolve.per_100g_from_usda` to avoid an import cycle.)* In `src/backend/agent/tools/usda_local.py`, add `load_micros_per_100g(conn, fdc_id) -> dict[str, tuple[float, str]]`. It maps the food's USDA nutrients through `catalog.key_for_usda_name` (first alias wins, and a USDA 0 is kept as `usda`), then merges in `food_micro_estimate` rows for keys still missing as `estimated`, skipping `usda_only_keys()`. Add `micros_per_100g` to `LocalMatch` and fill it in `lookup()`.
+- [X] T017 [US1] Implement `src/backend/nutrients/resolve.py`:
   - `build_item_micros(per_100g: dict[str, tuple[float, str]], qty_g: float) -> dict[str, MicroValue]`: covers every `stored_keys()` entry, missing means `unknown`, applies the caps and the rule "added_sugars ≤ total_sugars".
   - `async resolve_micros(fdc_id: int, food_name: str, qty_g: float) -> dict[str, MicroValue]`: `fdc_id > 0` uses the local SQLite via `asyncio.to_thread`; `-1` uses the estimate cache (`food_source`, `source_db='LLM_ESTIMATE'`, normalised name); a miss gives all unknown, with no AI call at log time.
   - `summarise(items: list[dict[str, MicroValue]]) -> dict[str, dict]`: produces `{key: {"total", "est", "known"}}`, omits keys with no known value, and rounds to 4 decimals.
-- [ ] T018 [US1] In `src/backend/agent/tools/usda.py`:
+- [X] T018 [US1] In `src/backend/agent/tools/usda.py`:
   - add a nested `EstimatedMicros` model to `NutritionEstimate`, with one optional `float | None` field (ge 0) per `estimable_keys()` entry except total_sugars and saturated_fat (those come from `sugar_g` and `sat_fat_g`), as per-100 g values, using `extra="forbid"`;
   - store the per-100 g micros under a `"micros"` key inside the existing `food_source.nutrients` JSONB on cache write, and read them on a cache hit;
   - populate `USDAResult.micros` in `estimate_nutrition_llm` and `_estimate_result` using `build_item_micros` (source `estimated`);
   - keep it to **one** agent call.
-- [ ] T019 [P] [US1] Update `src/backend/config/prompts/nutrition_estimate_system.md`. Macros stay totals for the given grams. Add a `micros` object of **per-100 g** values for the listed keys, with units from the catalogue. The model should return null when it truly can't estimate, and never invent USDA-only trace elements.
-- [ ] T020 [US1] In `src/backend/agent/tools/usda.py`, have `_result_from_local` set `micros` from `match.micros_per_100g` via `build_item_micros`. The FDC-API rollback path (`_parse_fdc_response` and `_result_from_cache`) maps its raw nutrients through `catalog.key_for_usda_name`, and its gaps stay `unknown` (research R6).
-- [ ] T021 [US1] In `src/backend/agent/tools/meals.py` (`log_meal` / `_insert_meal_log`):
+- [X] T019 [P] [US1] Update `src/backend/config/prompts/nutrition_estimate_system.md`. Macros stay totals for the given grams. Add a `micros` object of **per-100 g** values for the listed keys, with units from the catalogue. The model should return null when it truly can't estimate, and never invent USDA-only trace elements.
+- [X] T020 [US1] In `src/backend/agent/tools/usda.py`, have `_result_from_local` set `micros` from `match.micros_per_100g` via `build_item_micros`. The FDC-API rollback path (`_parse_fdc_response` and `_result_from_cache`) maps its raw nutrients through `catalog.key_for_usda_name`, and its gaps stay `unknown` (research R6).
+- [X] T021 [US1] In `src/backend/agent/tools/meals.py` (`log_meal` / `_insert_meal_log`):
   - call `resolve_micros` for every item concurrently (`asyncio.gather`), ignoring any `micros` already on the result;
   - compute `summarise(...)` and insert it into the new `micros` column;
   - add Logfire span attributes `micros.usda`, `micros.estimated`, `micros.unknown` and `micros.rejected` (FR-011).
-- [ ] T022 [US1] In `src/backend/api/meals.py` (`log_items`) and `src/backend/api/my_meals.py` (`_scaled_result` and the `/{meal_id}/log` route), make sure no client-supplied `micros` or `nutrients` reaches `meal_log.micros`. Everything flows through `log_meal`'s server-side resolve (contracts/meal-micros.md §2). Update the docstrings to say so.
-- [ ] T023 [US1] In `src/backend/api/my_meals.py`:
+- [X] T022 [US1] In `src/backend/api/meals.py` (`log_items`) and `src/backend/api/my_meals.py` (`_scaled_result` and the `/{meal_id}/log` route), make sure no client-supplied `micros` or `nutrients` reaches `meal_log.micros`. Everything flows through `log_meal`'s server-side resolve (contracts/meal-micros.md §2). Update the docstrings to say so.
+- [X] T023 [US1] In `src/backend/api/my_meals.py`:
   - `_build_ingredients` stores per-ingredient `micros` (`{key: {amount, source}}`) produced server-side by `resolve_micros`, and stores **no** raw `nutrients`;
   - `MyMealDetail` gains `micros_totals`, **computed on read** from the ingredients and never stored on `user_meal` (FR-014a);
   - legacy ingredients without `micros` are resolved on read from `fdc_id` or the name.
-- [ ] T024 [US1] In `src/backend/agent/tools/saved_meals.py`, make `saved_meal_to_results` carry ingredient `micros` into `USDAResult.micros`, falling back to `resolve_micros` for legacy ingredients. The `_MACROS` behaviour is unchanged.
-- [ ] T025 [US1] In `src/backend/agent/orchestrator.py`, the card item payload stops sending `nutrients` and does **not** add `micros` (FR-014, contracts/meal-micros.md §1). Update the "Full breakdown so Save to My Meals preserves micros" comment, because saved meals now resolve on the server (T023).
+- [X] T024 [US1] In `src/backend/agent/tools/saved_meals.py`, make `saved_meal_to_results` carry ingredient `micros` into `USDAResult.micros`, falling back to `resolve_micros` for legacy ingredients. The `_MACROS` behaviour is unchanged.
+- [ ] T025 [US1] *(Deferred to land with T037 so the Check-up, which still reads card `nutrients` until US2, never goes blind on this branch.)* In `src/backend/agent/orchestrator.py`, the card item payload stops sending `nutrients` and does **not** add `micros` (FR-014, contracts/meal-micros.md §1). Update the "Full breakdown so Save to My Meals preserves micros" comment, because saved meals now resolve on the server (T023).
 
 **Checkpoint**: US1 is complete. New meals store `micros`, and the card is unchanged. The Check-up and Mindful panel still read the old per-item `nutrients`, which remain stored until T037. **Do not release US1 without US2** (FR-019).
 
