@@ -164,7 +164,7 @@ async def test_endpoint_contract(app_factory) -> None:
             params={"from": "2026-09-01", "to": "2026-09-02", "keys": "sodium,salt"},
         )
         too_long = await c.get(
-            "/nutrients/daily", params={"from": "2026-01-01", "to": "2026-12-31"}
+            "/nutrients/daily", params={"from": "2025-12-31", "to": "2026-12-31"}
         )
         bad_key = await c.get(
             "/nutrients/daily",

@@ -21,6 +21,7 @@ from backend.api import (
     mindful,
     my_meals,
     nutrient_checkup,
+    nutrients,
     push,
     quota,
     telegram_link,
@@ -84,6 +85,7 @@ app.include_router(my_meals.router)
 app.include_router(push.router)
 app.include_router(devices.router)
 app.include_router(meta.router)
+app.include_router(nutrients.router)
 app.include_router(account.router)
 app.include_router(foods.router)
 app.include_router(coaching_feedback.router)
