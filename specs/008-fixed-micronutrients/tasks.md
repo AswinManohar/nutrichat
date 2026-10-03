@@ -209,16 +209,16 @@ repo root, and backend code lives in `src/backend/`.
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T039 [P] [US3] Write `tests/test_meal_micros_exposure.py`. Check that:
+- [X] T039 [P] [US3] Write `tests/test_meal_micros_exposure.py`. Check that:
   - `GET /meals/log/{id}` includes `micros` with `total`, `est` and `known`, and its `items[]` have no `nutrients`;
   - `GET /v1/integrations/meals` includes `micros` on active meals and none on tombstones;
   - the seeded half-estimated week gives an iron `est/total` of 0.5 ± 0.01 from `/nutrients/daily`.
 
 ### Implementation for User Story 3
 
-- [ ] T040 [P] [US3] In `src/backend/api/meals.py`, add `micros: dict[str, MealMicro]` to `MealLogDetail` (a Pydantic `MealMicro` with `total: float`, `est: float` and `known: int`, ge 0) and populate it from `row.micros` in `get_meal_log`.
-- [ ] T041 [P] [US3] In `src/backend/api/integrations.py`, add `micros` to `MealOut` (same `MealMicro` model, imported and not redefined), include `micros` in the feed's SELECT, and omit it for tombstones.
-- [ ] T042 [P] [US3] In `frontend/src/api/types.ts`, add the types `NutrientDef`, `NutrientCatalog`, `MealMicro`, `DailyMicros` and `DailyMicrosResponse`, plus `micros?: Record<string, MealMicro>` on the meal-detail type. Keep `nutrients?` optional on card items. No UI changes (FR-014; visualization is a later feature).
+- [X] T040 [P] [US3] In `src/backend/api/meals.py`, add `micros: dict[str, MealMicro]` to `MealLogDetail` (a Pydantic `MealMicro` with `total: float`, `est: float` and `known: int`, ge 0) and populate it from `row.micros` in `get_meal_log`.
+- [X] T041 [P] [US3] In `src/backend/api/integrations.py`, add `micros` to `MealOut` (same `MealMicro` model, imported and not redefined), include `micros` in the feed's SELECT, and omit it for tombstones.
+- [X] T042 [P] [US3] In `frontend/src/api/types.ts`, add the types `NutrientDef`, `NutrientCatalog`, `MealMicro`, `DailyMicros` and `DailyMicrosResponse`, plus `micros?: Record<string, MealMicro>` on the meal-detail type. Keep `nutrients?` optional on card items. No UI changes (FR-014; visualization is a later feature).
 
 **Checkpoint**: All three stories are done.
 
