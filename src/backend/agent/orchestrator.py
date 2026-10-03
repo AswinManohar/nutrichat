@@ -369,11 +369,12 @@ def _serialize_items(usda_results: list[dict[str, Any]]) -> list[dict[str, Any]]
                 # Spec 003 research R9: the user's original words, when not
                 # already derivable from food_name (picker prefill).
                 "input_phrase": r.get("input_phrase"),
-                # Full breakdown so "Save to My Meals" preserves micros.
+                # Optional on every client. Micronutrients are not part of the
+                # card (spec 008 FR-014): the server re-derives them at log /
+                # save time, so no `nutrients` / `micros` payload is sent.
                 "sugar_g": r.get("sugar_g"),
                 "sat_fat_g": r.get("sat_fat_g"),
                 "unknown_nutrients": unknown,
-                "nutrients": r.get("nutrients", {}),
             }
         )
     return items
