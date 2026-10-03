@@ -12,12 +12,14 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _DEFAULT_PATH = Path(__file__).parent / "tunables.yaml"
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
+_CATALOG_PATH = Path(__file__).parent / "nutrients.yaml"
 
 
 class ModelsConfig(BaseModel):
@@ -257,4 +259,132 @@ def get_tunables() -> Tunables:
     return Tunables.model_validate(raw)
 
 
-__all__ = ["RetrievalConfig", "Tunables", "UpperLimitEntry", "get_tunables"]
+# ---------------------------------------------------------------------------
+# Nutrient catalogue (spec 008) — nutrients.yaml
+# ---------------------------------------------------------------------------
+
+# FR-004a: the trace elements that are never AI-estimated.
+USDA_ONLY_KEYS = frozenset(
+    {"arsenic", "boron", "cobalt", "rubidium", "silicon", "sulfur", "tin", "vanadium"}
+)
+
+NutrientUnit = Literal["g", "mg", "mcg"]
+NutrientGroupId = Literal["carbs", "fat", "other", "vitamins", "minerals"]
+
+
+class NutrientGroup(BaseModel):
+    """A display group of the catalogue (e.g. "Vitamins")."""
+
+    id: NutrientGroupId
+    name: str
+    order: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class Derived(BaseModel):
+    """A nutrient computed on read from another key (value = source × factor)."""
+
+    source_key: str = Field(alias="from", serialization_alias="from")
+    factor: float = Field(gt=0)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class UpperLimit(BaseModel):
+    """Tolerable Upper Intake Level used by Mindful safety alerts."""
+
+    value: float = Field(gt=0)
+    source: str
+    url: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NutrientDef(BaseModel):
+    """One tracked nutrient (see the field rules at the top of nutrients.yaml)."""
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    name: str
+    unit: NutrientUnit
+    group: NutrientGroupId
+    order: int
+    direction: Literal["limit", "target", "none"]
+    daily_value: float | None = Field(default=None, gt=0)
+    usda_names: list[str] = Field(default_factory=list)
+    usda_only: bool = False
+    max_per_100g: float | None = Field(default=None, gt=0)
+    column: str | None = None
+    derived: Derived | None = None
+    upper_limit: UpperLimit | None = None
+    status: Literal["active", "retired"] = "active"
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_storage(self) -> NutrientDef:
+        """At most one of column/derived; a derived entry has no USDA source."""
+        if self.column is not None and self.derived is not None:
+            raise ValueError(f"{self.key}: at most one of column and derived")
+        if self.derived is not None and (self.usda_names or self.usda_only):
+            raise ValueError(
+                f"{self.key}: derived entries take no usda_names/usda_only"
+            )
+        return self
+
+
+class NutrientCatalog(BaseModel):
+    """Validated view of nutrients.yaml — the only nutrient definition."""
+
+    version: int = Field(ge=1)
+    groups: list[NutrientGroup]
+    nutrients: list[NutrientDef]
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_catalog(self) -> NutrientCatalog:
+        """Unique keys, known derived sources, and the exact USDA-only set."""
+        keys = [n.key for n in self.nutrients]
+        dupes = {k for k in keys if keys.count(k) > 1}
+        if dupes:
+            raise ValueError(f"duplicate nutrient keys: {sorted(dupes)}")
+        for n in self.nutrients:
+            if n.derived is not None and n.derived.source_key not in keys:
+                raise ValueError(f"{n.key}: derived from unknown key")
+        usda_only = {n.key for n in self.nutrients if n.usda_only}
+        if usda_only != USDA_ONLY_KEYS:
+            raise ValueError(
+                f"usda_only must be exactly {sorted(USDA_ONLY_KEYS)}, "
+                f"got {sorted(usda_only)}"
+            )
+        return self
+
+
+@lru_cache(maxsize=1)
+def get_catalog() -> NutrientCatalog:
+    """Load and validate nutrients.yaml (cached for the process lifetime).
+
+    Set NUTRICHAT_CATALOG_PATH to load an alternative file (tests).
+
+    Returns:
+        Validated NutrientCatalog.
+
+    Raises:
+        FileNotFoundError: If the catalogue file is missing.
+        pydantic.ValidationError: If the file breaks a catalogue rule.
+    """
+    path = Path(os.environ.get("NUTRICHAT_CATALOG_PATH", _CATALOG_PATH))
+    with path.open(encoding="utf-8") as fh:
+        return NutrientCatalog.model_validate(yaml.safe_load(fh))
+
+
+__all__ = [
+    "NutrientCatalog",
+    "NutrientDef",
+    "RetrievalConfig",
+    "Tunables",
+    "UpperLimitEntry",
+    "get_catalog",
+    "get_tunables",
+]
