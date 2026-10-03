@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-
 from backend.agent.tools.mindful import (
     NutrientAmount,
     evaluate_safety,
     get_daily_intake,
 )
+from backend.nutrients.daily import DailyMicrosResponse, DayMicros
+from backend.nutrients.models import MealMicro
 
 
 async def test_get_daily_intake_merges_macros_and_micros():
@@ -22,17 +23,30 @@ async def test_get_daily_intake_merges_macros_and_micros():
         "fiber_g": 18.0,
         "n_meals": 3,
     }
-    micros = {
-        "Sodium, Na": {"amount": 2500.0, "unit": "mg"},
-        "Total Sugars": {"amount": 58.0, "unit": "g"},
-    }
+    day = date(2026, 6, 16)
+    micros = DailyMicrosResponse(
+        from_=day,
+        to=day,
+        days=[
+            DayMicros(
+                date=day,
+                logged=True,
+                n_meals=3,
+                items=5,
+                values={
+                    "sodium": MealMicro(total=2500.0, est=0.0, known=5),
+                    "total_sugars": MealMicro(total=58.0, est=10.0, known=4),
+                },
+            )
+        ],
+    )
     with (
         patch(
             "backend.agent.tools.mindful.get_macros_for_range",
             new=AsyncMock(return_value=macros),
         ),
         patch(
-            "backend.agent.tools.mindful.get_micronutrients_for_range",
+            "backend.agent.tools.mindful.get_daily_micros",
             new=AsyncMock(return_value=micros),
         ),
     ):
@@ -42,7 +56,7 @@ async def test_get_daily_intake_merges_macros_and_micros():
     assert by_name["Energy"].amount == 1840.0
     assert by_name["Energy"].unit == "kcal"
     assert by_name["Protein"].amount == 72.0
-    # micros mapped from USDA name to display name
+    # micros named by the catalogue (spec 008)
     assert by_name["Sodium"].amount == 2500.0
     assert by_name["Total Sugars"].amount == 58.0
 

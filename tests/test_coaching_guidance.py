@@ -242,7 +242,7 @@ async def test_handle_no_micronutrient_data_returns_result_not_str() -> None:
         result = await CoachingAgent().handle("user-1", "b12 today?")
 
     assert isinstance(result, CoachingResult)
-    assert result.message == "I don't have data on Vitamin B-12 for that period."
+    assert result.message == "I don't have data on Vitamin B12 for that period."
 
 
 async def test_handle_answers_from_passages_when_nutrient_has_no_logged_data() -> None:

@@ -16,6 +16,8 @@ from backend.agent.tools.history import (
 )
 from backend.core.nutrition_day import NUTRITION_DATE_SQL, sql_day_params
 from backend.db.models import MealLog
+from backend.nutrients.daily import DailyMicrosResponse, DayMicros
+from backend.nutrients.models import MealMicro
 
 
 def _mock_session_factory(session: MagicMock) -> MagicMock:
@@ -121,35 +123,65 @@ async def test_get_macros_for_range_empty_returns_zeros():
     assert totals["n_meals"] == 0
 
 
-async def test_get_micronutrients_for_range_returns_amount_and_unit():
-    row = MagicMock(total=2.1, unit="mcg")
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.one.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
+def _daily(values: dict[str, tuple[float, float, int]]) -> DailyMicrosResponse:
+    """One-day get_daily_micros response with {key: (total, est, known)}."""
+    day = date(2026, 6, 11)
+    return DailyMicrosResponse(
+        from_=day,
+        to=day,
+        days=[
+            DayMicros(
+                date=day,
+                logged=bool(values),
+                n_meals=1 if values else 0,
+                items=2 if values else 0,
+                values={
+                    k: MealMicro(total=t, est=e, known=n)
+                    for k, (t, e, n) in values.items()
+                },
+            )
+        ],
+    )
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+
+async def test_get_micronutrients_for_range_returns_amount_and_unit():
+    with patch(
+        "backend.agent.tools.history.get_daily_micros",
+        new_callable=AsyncMock,
+        return_value=_daily({"vitamin_b12": (2.1, 0.5, 2)}),
+    ) as daily:
         result = await get_micronutrients_for_range(
             "user-1", date(2026, 6, 11), date(2026, 6, 11), ["Vitamin B-12"]
         )
 
-    assert result == {"Vitamin B-12": {"amount": 2.1, "unit": "mcg"}}
+    assert daily.await_args.kwargs["keys"] == ["vitamin_b12"]  # alias resolved
+    assert result == {
+        "vitamin_b12": {
+            "name": "Vitamin B12",
+            "amount": 2.1,
+            "unit": "mcg",
+            "estimated": 0.5,
+        }
+    }
 
 
 async def test_get_micronutrients_for_range_omits_missing_nutrients():
-    row = MagicMock(total=None, unit=None)
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.one.return_value = row
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
-
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch(
+        "backend.agent.tools.history.get_daily_micros",
+        new_callable=AsyncMock,
+        return_value=_daily({}),
+    ):
         result = await get_micronutrients_for_range(
             "user-1", date(2026, 6, 11), date(2026, 6, 11), ["Vitamin B-12"]
         )
 
+    assert result == {}
+
+
+async def test_get_micronutrients_for_range_ignores_unknown_names():
+    result = await get_micronutrients_for_range(
+        "user-1", date(2026, 6, 11), date(2026, 6, 11), ["unobtainium"]
+    )
     assert result == {}
 
 
@@ -292,8 +324,8 @@ async def test_nutrient_checkup_computes_averages_and_trend():
     cur_macros = _macros(protein_g=700.0, fiber_g=140.0)
     prev_macros = _macros(protein_g=350.0, fiber_g=140.0)
 
-    cur_micro = {"Total Sugars": {"amount": 700.0, "unit": "g"}}
-    prev_micro = {"Total Sugars": {"amount": 700.0, "unit": "g"}}
+    cur_micro = _daily({"total_sugars": (700.0, 0.0, 7), "fiber": (140.0, 0.0, 7)})
+    prev_micro = _daily({"total_sugars": (700.0, 0.0, 7), "fiber": (140.0, 0.0, 7)})
 
     with (
         patch(
@@ -302,7 +334,7 @@ async def test_nutrient_checkup_computes_averages_and_trend():
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.tools.history.get_daily_micros",
             new_callable=AsyncMock,
             side_effect=[cur_micro, prev_micro],
         ),
@@ -315,21 +347,21 @@ async def test_nutrient_checkup_computes_averages_and_trend():
     assert result["Protein"]["direction"] == "up"
     assert result["Protein"]["unit"] == "g"
 
-    # Fiber unchanged -> flat.
-    assert result["Fiber"]["trend_pct"] == pytest.approx(0.0)
-    assert result["Fiber"]["direction"] == "flat"
+    # Fiber unchanged -> flat (catalogue display name, spec 008).
+    assert result["Dietary Fiber"]["trend_pct"] == pytest.approx(0.0)
+    assert result["Dietary Fiber"]["direction"] == "flat"
 
-    # Sugar unchanged -> flat, unit taken from the micronutrient result.
-    assert result["Sugar"]["avg"] == pytest.approx(100.0)
-    assert result["Sugar"]["direction"] == "flat"
-    assert result["Sugar"]["unit"] == "g"
+    # Sugar unchanged -> flat, unit from the catalogue.
+    assert result["Total Sugars"]["avg"] == pytest.approx(100.0)
+    assert result["Total Sugars"]["direction"] == "flat"
+    assert result["Total Sugars"]["unit"] == "g"
 
     # rda_pct = avg / RDA * 100. Protein avg=100, RDA=50 -> 200%.
     assert result["Protein"]["rda_pct"] == pytest.approx(200.0)
     # Fiber avg=20, RDA=28 -> ~71.4%.
-    assert result["Fiber"]["rda_pct"] == pytest.approx(100.0 * 20.0 / 28.0)
-    # Sugar avg=100, RDA=50 -> 200%.
-    assert result["Sugar"]["rda_pct"] == pytest.approx(200.0)
+    assert result["Dietary Fiber"]["rda_pct"] == pytest.approx(100.0 * 20.0 / 28.0)
+    # Sugar avg=100, Check-up override 50 -> 200%.
+    assert result["Total Sugars"]["rda_pct"] == pytest.approx(200.0)
 
 
 async def test_nutrient_checkup_handles_missing_data():
@@ -343,9 +375,9 @@ async def test_nutrient_checkup_handles_missing_data():
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.tools.history.get_daily_micros",
             new_callable=AsyncMock,
-            side_effect=[{}, {}],
+            side_effect=[_daily({}), _daily({})],
         ),
     ):
         result = await get_nutrient_checkup_aggregates("user-1", date(2026, 6, 14))
@@ -355,8 +387,8 @@ async def test_nutrient_checkup_handles_missing_data():
     assert result["Protein"]["trend_pct"] is None
     assert result["Protein"]["direction"] == "flat"
 
-    # Vitamins absent from the micronutrient result -> zero avg, fall back
-    # to the configured unit.
+    # Vitamins absent from the daily totals -> zero avg, unit from the
+    # catalogue.
     assert result["Vitamin C"]["avg"] == 0.0
     assert result["Vitamin C"]["unit"] == "mg"
 
@@ -375,9 +407,9 @@ async def test_nutrient_checkup_no_prior_baseline_is_up_not_division_error():
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.tools.history.get_daily_micros",
             new_callable=AsyncMock,
-            side_effect=[{}, {}],
+            side_effect=[_daily({}), _daily({})],
         ),
     ):
         result = await get_nutrient_checkup_aggregates("user-1", date(2026, 6, 14))
@@ -405,7 +437,7 @@ def _item(rda_pct: float | None) -> dict[str, float | str | None]:
 
 
 def test_summarize_nutrient_checkup_returns_none_when_nothing_notable():
-    nutrients = {"Protein": _item(100.0), "Fiber": _item(120.0)}
+    nutrients = {"Protein": _item(100.0), "Dietary Fiber": _item(120.0)}
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
@@ -414,25 +446,25 @@ def test_summarize_nutrient_checkup_returns_none_when_nothing_notable():
 
 
 def test_summarize_nutrient_checkup_single_under_target():
-    nutrients = {"Protein": _item(100.0), "Fiber": _item(50.0)}
+    nutrients = {"Protein": _item(100.0), "Dietary Fiber": _item(50.0)}
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
-    assert notable == [{"name": "Fiber", "rda_pct": 50.0, "status": "under"}]
+    assert notable == [{"name": "Dietary Fiber", "rda_pct": 50.0, "status": "under"}]
     assert summary_text == (
-        "This week, your Fiber intake is at 50% of the daily target — "
+        "This week, your Dietary Fiber intake is at 50% of the daily target — "
         "consider eating more whole grains, legumes, or vegetables."
     )
 
 
 def test_summarize_nutrient_checkup_single_over_target():
-    nutrients = {"Protein": _item(100.0), "Sugar": _item(220.0)}
+    nutrients = {"Protein": _item(100.0), "Total Sugars": _item(220.0)}
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
-    assert notable == [{"name": "Sugar", "rda_pct": 220.0, "status": "over"}]
+    assert notable == [{"name": "Total Sugars", "rda_pct": 220.0, "status": "over"}]
     assert summary_text == (
-        "This week, your Sugar intake is at 220% of the daily target — "
+        "This week, your Total Sugars intake is at 220% of the daily target — "
         "you're well above the daily target."
     )
 
@@ -440,37 +472,37 @@ def test_summarize_nutrient_checkup_single_over_target():
 def test_summarize_nutrient_checkup_top_two_by_distance_from_100():
     # Distances from 100: Fiber=50, Iron=10, Sugar=70. Top 2 -> Sugar, Fiber.
     nutrients = {
-        "Fiber": _item(50.0),
+        "Dietary Fiber": _item(50.0),
         "Iron": _item(110.0),
-        "Sugar": _item(170.0),
+        "Total Sugars": _item(170.0),
     }
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
-    assert [item["name"] for item in notable] == ["Sugar", "Fiber"]
+    assert [item["name"] for item in notable] == ["Total Sugars", "Dietary Fiber"]
     assert summary_text == (
-        "This week: Sugar is at 170% and Fiber is at 50% of their daily "
+        "This week: Total Sugars is at 170% and Dietary Fiber is at 50% of their daily "
         "targets — let's bring these closer to your daily targets."
     )
 
 
 def test_summarize_nutrient_checkup_two_under_target_combines_hints():
-    nutrients = {"Fiber": _item(50.0), "Protein": _item(40.0)}
+    nutrients = {"Dietary Fiber": _item(50.0), "Protein": _item(40.0)}
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
-    assert [item["name"] for item in notable] == ["Protein", "Fiber"]
+    assert [item["name"] for item in notable] == ["Protein", "Dietary Fiber"]
     assert summary_text == (
-        "This week: Protein is at 40% and Fiber is at 50% of their daily "
+        "This week: Protein is at 40% and Dietary Fiber is at 50% of their daily "
         "targets — consider eating more lean meat, eggs, beans, or dairy "
         "and whole grains, legumes, or vegetables."
     )
 
 
 def test_summarize_nutrient_checkup_ignores_none_rda_pct():
-    nutrients = {"Protein": _item(None), "Fiber": _item(50.0)}
+    nutrients = {"Protein": _item(None), "Dietary Fiber": _item(50.0)}
 
     notable, summary_text = summarize_nutrient_checkup(nutrients)
 
-    assert [item["name"] for item in notable] == ["Fiber"]
+    assert [item["name"] for item in notable] == ["Dietary Fiber"]
     assert summary_text is not None
