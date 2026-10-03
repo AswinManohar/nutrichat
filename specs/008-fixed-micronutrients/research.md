@@ -132,8 +132,10 @@ runtime AI call per matched item would add latency and cost to every log
 ## R8. Plausibility ranges (FR-007)
 
 - **Decision**: Each catalogue entry has `max_per_100g`. For nutrients USDA
-  reports for at least 30% of foods, the cap is 1.5 × the 99.9th percentile
-  of the USDA per-100 g distribution, computed once by the build script and
+  reports for at least 30% of foods, the cap is 1.5 × the largest
+  per-100 g value USDA reports (changed during implementation: a 99.9th
+  percentile cut rejected real extremes such as cod liver oil's vitamin D;
+  gram caps are clamped to 100 g per 100 g), computed once by the build script and
   written into the catalogue. For sparse or USDA-less nutrients (added sugars,
   chloride, chromium, iodine, molybdenum, biotin, fluoride), the cap is set by
   hand from published food-composition maxima. There is also one cross-field

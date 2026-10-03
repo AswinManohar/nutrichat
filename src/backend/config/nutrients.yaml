@@ -50,7 +50,7 @@ nutrients:
     daily_value: null
     usda_names: ["Total Sugars", "Sugars, Total"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: {value: 50, source: "WHO — Sugars intake for adults and children (2015)", url: "https://www.who.int/publications/i/item/9789241549028"}
@@ -64,7 +64,7 @@ nutrients:
     daily_value: 50
     usda_names: []
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: null
@@ -78,7 +78,7 @@ nutrients:
     daily_value: 20
     usda_names: ["Fatty acids, total saturated"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: {value: 22, source: "FDA Dietary Guidelines for Americans 2020-2025", url: "https://www.dietaryguidelines.gov"}
@@ -92,7 +92,7 @@ nutrients:
     daily_value: null
     usda_names: ["Fatty acids, total monounsaturated"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: null
@@ -106,7 +106,7 @@ nutrients:
     daily_value: null
     usda_names: ["Fatty acids, total polyunsaturated"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: null
@@ -120,7 +120,7 @@ nutrients:
     daily_value: null
     usda_names: ["Fatty acids, total trans"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 64.28
     column: null
     derived: null
     upper_limit: null
@@ -134,7 +134,7 @@ nutrients:
     daily_value: null
     usda_names: ["Alcohol, ethyl"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 63.75
     column: null
     derived: null
     upper_limit: null
@@ -148,7 +148,7 @@ nutrients:
     daily_value: 300
     usda_names: ["Cholesterol"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 4650
     column: null
     derived: null
     upper_limit: null
@@ -176,7 +176,7 @@ nutrients:
     daily_value: 2300
     usda_names: ["Sodium, Na"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 58140
     column: null
     derived: null
     upper_limit: {value: 2300, source: "WHO — Sodium intake for adults (2012)", url: "https://www.who.int/publications/i/item/9789241504836"}
@@ -190,7 +190,7 @@ nutrients:
     daily_value: null
     usda_names: ["Water"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 100
     column: null
     derived: null
     upper_limit: null
@@ -204,7 +204,7 @@ nutrients:
     daily_value: 900
     usda_names: ["Vitamin A, RAE"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 45000
     column: null
     derived: null
     upper_limit: {value: 3000, source: "NASEM DRI — Vitamin A (2001)", url: "https://www.ncbi.nlm.nih.gov/books/NBK222318/"}
@@ -218,7 +218,7 @@ nutrients:
     daily_value: 1.2
     usda_names: ["Thiamin"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 35.06
     column: null
     derived: null
     upper_limit: null
@@ -232,7 +232,7 @@ nutrients:
     daily_value: 1.3
     usda_names: ["Riboflavin"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 26.25
     column: null
     derived: null
     upper_limit: null
@@ -246,7 +246,7 @@ nutrients:
     daily_value: 16
     usda_names: ["Niacin"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 191.2
     column: null
     derived: null
     upper_limit: {value: 35, source: "NASEM DRI — Niacin (1998)", url: "https://www.ncbi.nlm.nih.gov/books/NBK114304/"}
@@ -260,7 +260,7 @@ nutrients:
     daily_value: 5
     usda_names: ["Pantothenic acid"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 44.7
     column: null
     derived: null
     upper_limit: null
@@ -274,7 +274,7 @@ nutrients:
     daily_value: 1.7
     usda_names: ["Vitamin B-6"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 12
     column: null
     derived: null
     upper_limit: null
@@ -288,7 +288,7 @@ nutrients:
     daily_value: 30
     usda_names: ["Biotin"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 1000
     column: null
     derived: null
     upper_limit: null
@@ -302,7 +302,7 @@ nutrients:
     daily_value: 400
     usda_names: ["Folate, DFE", "Folate, total"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 8822
     column: null
     derived: null
     upper_limit: null
@@ -316,7 +316,7 @@ nutrients:
     daily_value: 2.4
     usda_names: ["Vitamin B-12"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 148.3
     column: null
     derived: null
     upper_limit: null
@@ -330,7 +330,7 @@ nutrients:
     daily_value: 90
     usda_names: ["Vitamin C, total ascorbic acid"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 4098
     column: null
     derived: null
     upper_limit: null
@@ -344,7 +344,7 @@ nutrients:
     daily_value: 20
     usda_names: ["Vitamin D (D2 + D3)"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 375
     column: null
     derived: null
     upper_limit: {value: 100, source: "NASEM DRI — Vitamin D (2011)", url: "https://www.ncbi.nlm.nih.gov/books/NBK56070/"}
@@ -358,7 +358,7 @@ nutrients:
     daily_value: 15
     usda_names: ["Vitamin E (alpha-tocopherol)"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 224.1
     column: null
     derived: null
     upper_limit: null
@@ -372,7 +372,7 @@ nutrients:
     daily_value: 120
     usda_names: ["Vitamin K (phylloquinone)"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 2572
     column: null
     derived: null
     upper_limit: null
@@ -414,7 +414,7 @@ nutrients:
     daily_value: 1300
     usda_names: ["Calcium, Ca"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 11050
     column: null
     derived: null
     upper_limit: null
@@ -428,7 +428,7 @@ nutrients:
     daily_value: 2300
     usda_names: []
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 60000
     column: null
     derived: null
     upper_limit: null
@@ -442,7 +442,7 @@ nutrients:
     daily_value: 550
     usda_names: ["Choline, total"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 3605
     column: null
     derived: null
     upper_limit: null
@@ -456,7 +456,7 @@ nutrients:
     daily_value: 35
     usda_names: []
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 1000
     column: null
     derived: null
     upper_limit: null
@@ -484,7 +484,7 @@ nutrients:
     daily_value: 0.9
     usda_names: ["Copper, Cu"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 555
     column: null
     derived: null
     upper_limit: null
@@ -498,7 +498,7 @@ nutrients:
     daily_value: null
     usda_names: ["Fluoride, F"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 400000
     column: null
     derived: null
     upper_limit: null
@@ -512,7 +512,7 @@ nutrients:
     daily_value: 150
     usda_names: ["Iodine, I"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 300000
     column: null
     derived: null
     upper_limit: null
@@ -526,7 +526,7 @@ nutrients:
     daily_value: 18
     usda_names: ["Iron, Fe"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 185.4
     column: null
     derived: null
     upper_limit: {value: 45, source: "NASEM DRI — Iron (2001)", url: "https://www.ncbi.nlm.nih.gov/books/NBK222309/"}
@@ -540,7 +540,7 @@ nutrients:
     daily_value: 420
     usda_names: ["Magnesium, Mg"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 1172
     column: null
     derived: null
     upper_limit: null
@@ -554,7 +554,7 @@ nutrients:
     daily_value: 2.3
     usda_names: ["Manganese, Mn"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 403.7
     column: null
     derived: null
     upper_limit: null
@@ -568,7 +568,7 @@ nutrients:
     daily_value: 45
     usda_names: ["Molybdenum, Mo"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 1725
     column: null
     derived: null
     upper_limit: null
@@ -582,7 +582,7 @@ nutrients:
     daily_value: 1250
     usda_names: ["Phosphorus, P"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 14880
     column: null
     derived: null
     upper_limit: null
@@ -596,7 +596,7 @@ nutrients:
     daily_value: 4700
     usda_names: ["Potassium, K"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 24750
     column: null
     derived: null
     upper_limit: null
@@ -624,7 +624,7 @@ nutrients:
     daily_value: 55
     usda_names: ["Selenium, Se"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 2876
     column: null
     derived: null
     upper_limit: null
@@ -694,7 +694,7 @@ nutrients:
     daily_value: 11
     usda_names: ["Zinc, Zn"]
     usda_only: false
-    max_per_100g: null
+    max_per_100g: 148.3
     column: null
     derived: null
     upper_limit: {value: 40, source: "NASEM DRI — Zinc (2001)", url: "https://www.ncbi.nlm.nih.gov/books/NBK222317/"}
