@@ -40,6 +40,7 @@ def _meal_row(
         fiber_g=6.0,
         entities=[],
         flags={},
+        micros={"iron": {"total": 1.0, "est": 0.0, "known": 1}},
         updated_at=updated_at,
         deleted_at=deleted_at,
     )

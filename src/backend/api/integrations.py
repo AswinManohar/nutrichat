@@ -19,6 +19,7 @@ from sqlalchemy import text as sa_text
 from backend.auth.integration import get_integration_user
 from backend.db.models import UserGoal
 from backend.db.session import get_session
+from backend.nutrients.models import MealMicro
 
 router = APIRouter(
     prefix="/v1/integrations",
@@ -76,6 +77,8 @@ class IntegrationMeal(BaseModel):
     fiber_g: float | None = None
     entities: list | None = None
     flags: dict | None = None
+    # Spec 008: meal-level micronutrient summary; None on tombstones.
+    micros: dict[str, MealMicro] | None = None
     updated_at: datetime
     deleted: bool = False
 
@@ -174,7 +177,7 @@ async def list_meals(
 
     query = (
         "SELECT meal_id, user_id, logged_at, meal_type, kcal, protein_g, "
-        "carbs_g, fat_g, fiber_g, entities, flags, updated_at, deleted_at "
+        "carbs_g, fat_g, fiber_g, entities, flags, micros, updated_at, deleted_at "
         "FROM meal_log WHERE user_id = :user_id "
     )
     params: dict = {"user_id": user_id, "limit": limit + 1}
@@ -218,6 +221,7 @@ async def list_meals(
                     fiber_g=row.fiber_g,
                     entities=row.entities,
                     flags=row.flags,
+                    micros=row.micros or {},
                     updated_at=row.updated_at,
                     deleted=False,
                 )
