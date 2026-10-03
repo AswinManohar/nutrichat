@@ -148,10 +148,47 @@ def build_item_micros(
     return micros
 
 
-def summarise(items: list[dict[str, MicroValue]]) -> dict[str, dict]:
-    """Meal-level summary ``{key: {total, est, known}}`` (data-model §3).
+_SOURCE_CODE = {"usda": "u", "estimated": "e"}
+_CODE_SOURCE = {"u": "usda", "e": "estimated"}
 
-    Keys with no known value on any item are omitted (= unknown).
+
+def to_stored(micros: dict[str, MicroValue]) -> dict[str, list]:
+    """Compact stored form ``{key: [amount, "u"|"e"]}`` — known values only.
+
+    This is the only stored copy of an item's micronutrients (spec 008
+    data-model §2); an absent key means unknown.
+    """
+    return {
+        key: [mv.amount, _SOURCE_CODE[mv.source]]
+        for key, mv in micros.items()
+        if mv.amount is not None and mv.source in _SOURCE_CODE
+    }
+
+
+def from_stored(stored: dict | None) -> dict[str, MicroValue]:
+    """Inverse of :func:`to_stored`; malformed or unknown entries are skipped."""
+    out: dict[str, MicroValue] = {}
+    for key, value in (stored or {}).items():
+        if (
+            isinstance(value, list)
+            and len(value) == 2
+            and isinstance(value[0], (int, float))
+            and value[1] in _CODE_SOURCE
+        ):
+            out[key] = MicroValue(amount=float(value[0]), source=_CODE_SOURCE[value[1]])
+    return out
+
+
+def summarise_items(items: list[dict]) -> dict[str, dict]:
+    """Meal summary computed from stored items' compact ``micros``."""
+    return summarise([from_stored(item.get("micros")) for item in items])
+
+
+def summarise(items: list[dict[str, MicroValue]]) -> dict[str, dict]:
+    """Summary ``{key: {total, est, known}}`` over items (data-model §3).
+
+    Computed on read — never stored. Keys with no known value on any item are
+    omitted (= unknown).
     """
     summary: dict[str, dict] = {}
     for key in catalog.stored_keys():
@@ -231,6 +268,9 @@ async def resolve_micros(
 
 __all__ = [
     "build_item_micros",
+    "from_stored",
+    "summarise_items",
+    "to_stored",
     "per_100g_from_estimate_row",
     "per_100g_from_usda",
     "resolve_micros",
