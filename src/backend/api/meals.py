@@ -185,8 +185,9 @@ class LogItemIn(BaseModel):
 
     `qty_g` is the originally resolved gram weight (the scaling base);
     `target_qty_g` is the user-edited weight before the portion multiplier.
-    Extra fields (nutrients, fdc_id, macros, source, estimated, source_dish)
-    are kept verbatim so the logged row carries full nutrition.
+    Extra fields (fdc_id, macros, source, estimated, source_dish) are kept
+    verbatim. Any ``nutrients`` / ``micros`` sent are ignored — log_meal
+    re-derives micronutrients server-side (spec 008).
 
     `correction` is optional (spec 003): when set, its `to_fdc_id` must
     equal this item's own `fdc_id` (an extra field kept via `extra="allow"`)
@@ -304,7 +305,7 @@ async def log_items(
 ) -> MealLogResult:
     """Log a client-provided resolved item set without any LLM round-trip.
 
-    Each item is re-scaled server-side from its own nutrients (never trusting
+    Each item is re-scaled server-side from its own macros (never trusting
     client macros beyond the provided gram weight + portion), then persisted
     via the same log_meal path as chat/My-Meals logging so flags, Redis
     today-totals, and the embedding enqueue all match. Tracked

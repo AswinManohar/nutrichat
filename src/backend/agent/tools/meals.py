@@ -481,7 +481,11 @@ async def _insert_meal_log(
             prepared to catch this and treat it as "already logged".
     """
     meal_id = str(uuid.uuid4())
-    entities = [r.model_dump() for r in usda_results]
+    # Spec 008 FR-018: stored items carry no per-item micros (the meal-level
+    # summary in meal_log.micros is the only copy); sugar / sat fat live there.
+    entities = [
+        r.model_dump(exclude={"micros", "sugar_g", "sat_fat_g"}) for r in usda_results
+    ]
     flags = {**_junk_flags(usda_results), **(extra_flags or {})}
     async with get_session()() as session:
         await session.execute(
@@ -540,7 +544,7 @@ async def _insert_meal_log(
     return meal_id
 
 
-async def _meal_micros(resolved: list) -> dict:
+async def _meal_micros(resolved: list) -> tuple[dict, list[dict]]:
     """Resolve every item's micros server-side and summarise them (spec 008).
 
     Client- or state-supplied ``micros`` on the results are ignored: values
@@ -551,7 +555,8 @@ async def _meal_micros(resolved: list) -> dict:
         resolved: The USDAResults being logged.
 
     Returns:
-        The ``meal_log.micros`` summary.
+        ``(summary, items)``: the ``meal_log.micros`` summary and each item's
+        resolved MicroValues (same order as ``resolved``).
     """
     rejected: list[str] = []
     items = await asyncio.gather(
@@ -566,7 +571,24 @@ async def _meal_micros(resolved: list) -> dict:
         **{f"micros.{k}": v for k, v in counts.items()},
         **{"micros.rejected": len(rejected)},
     )
-    return summarise(list(items))
+    return summarise(list(items)), list(items)
+
+
+def _with_server_sugars(resolved: list, items: list[dict]) -> list:
+    """Fill missing sugar / sat-fat from the server-resolved micros.
+
+    Items re-sent by a client ("Log again") no longer carry ``sugar_g`` /
+    ``sat_fat_g``; the junk-food flag must still see them.
+    """
+    out = []
+    for r, micros in zip(resolved, items, strict=True):
+        update = {}
+        for field, key in (("sugar_g", "total_sugars"), ("sat_fat_g", "saturated_fat")):
+            mv = micros.get(key)
+            if getattr(r, field) is None and mv is not None and mv.amount is not None:
+                update[field] = mv.amount
+        out.append(r.model_copy(update=update) if update else r)
+    return out
 
 
 async def log_meal(
@@ -618,8 +640,9 @@ async def log_meal(
         "fat_g": round(sum_known(r.fat_g for r in resolved), 1),
         "fiber_g": round(sum_known(r.fiber_g for r in resolved), 1),
     }
+    micros, item_micros = await _meal_micros(resolved)
+    resolved = _with_server_sugars(resolved, item_micros)
     junk_items = _junk_flags(resolved)["junk_items"]
-    micros = await _meal_micros(resolved)
 
     async def _persist() -> str:
         """Insert the row, bump Redis, enqueue the embedding; return meal_id."""

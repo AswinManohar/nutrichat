@@ -58,8 +58,9 @@ _SCALED_MACROS = (
 class IngredientIn(BaseModel):
     """One resolved ingredient as shown on the confirmation card.
 
-    Extra fields (nutrients, fdc_id, source, estimated, candidates) are kept
-    and stored verbatim so a logged-from-saved meal carries full data.
+    Extra fields (fdc_id, source, estimated, candidates) are kept and stored
+    verbatim. A raw USDA ``nutrients`` map is dropped and ``micros`` are
+    re-derived server-side (spec 008 FR-018).
     """
 
     food_name: str
@@ -219,10 +220,10 @@ def _scaled_macro(stored: dict, macro: str, scale: float) -> float | None:
 def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDAResult:
     """Rebuild a USDAResult from a stored ingredient, scaled server-side.
 
-    `scale = (edited_qty_g * portion) / stored_qty_g` is applied to qty, the
-    promoted macros, and every value in the nested `nutrients` dict. Client
-    macros are never trusted — only the gram weight and portion are taken from
-    the request.
+    `scale = (edited_qty_g * portion) / stored_qty_g` is applied to qty and
+    the promoted macros. Client macros are never trusted — only the gram
+    weight and portion are taken from the request; tracked micronutrients are
+    re-derived server-side by log_meal (spec 008).
 
     Args:
         stored: One saved ingredient dict (meal.ingredients element).
@@ -236,20 +237,12 @@ def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDARes
     new_qty = edited_qty_g * portion
     scale = new_qty / base_qty if base_qty else 0.0
 
-    nutrients: dict = {}
-    for name, nv in (stored.get("nutrients") or {}).items():
-        if isinstance(nv, dict):
-            nutrients[name] = {**nv, "amount": round(nv.get("amount", 0.0) * scale, 4)}
-        else:
-            nutrients[name] = nv
-
     return USDAResult(
         fdc_id=stored.get("fdc_id", -1),
         food_name=stored["food_name"],
         qty_g=round(new_qty, 2),
         match_confidence=stored.get("match_confidence", stored.get("confidence", 1.0)),
         candidates=stored.get("candidates", []),
-        nutrients=nutrients,
         source=stored.get("source", "USDA"),
         estimated=stored.get("estimated", False),
         **{m: _scaled_macro(stored, m, scale) for m in _SCALED_MACROS},

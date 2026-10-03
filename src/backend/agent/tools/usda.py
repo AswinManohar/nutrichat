@@ -87,11 +87,6 @@ def sum_known(values: Iterable[float | None]) -> float:
     return sum(v for v in values if v is not None)
 
 
-class NutrientValue(BaseModel):
-    amount: float
-    unit: str  # g, mg, mcg, kcal
-
-
 class CandidateDetail(BaseModel):
     """One candidate's nutrition, for the confirm card's picker (spec 003).
 
@@ -131,8 +126,6 @@ class USDAResult(BaseModel):
     sugar_g: float | None = None
     sat_fat_g: float | None = None
 
-    # Full nutrient breakdown scaled to qty_g (~50 nutrients)
-    nutrients: dict[str, NutrientValue]
     # Spec 008: tracked micronutrients (catalogue keys) scaled to qty_g, each
     # with its source. In memory and in saved-meal ingredients only — a
     # logged meal stores just the meal-level summary (meal_log.micros).
@@ -355,7 +348,6 @@ def _miss_result(entity) -> USDAResult:
         fiber_g=0.0,
         sugar_g=0.0,
         sat_fat_g=0.0,
-        nutrients={},
         micros=build_item_micros({}, entity.qty_g),
     )
 
@@ -391,10 +383,6 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         for fdc_name, field in _MACRO_MAP.items()
     }
     macros["kcal"] = round(_energy_kcal(raw) * scale, 2)
-    nutrients = {
-        name: NutrientValue(amount=round(val * scale, 3), unit=unit)
-        for name, (val, unit) in raw.items()
-    }
     candidates = [f["description"] for f in foods[:3]]
     # FDC-API rollback path: no pre-computed gap estimates (research R6).
     micros = build_item_micros(
@@ -412,7 +400,6 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         match_confidence=_confidence(entity.food_name, top["description"]),
         candidates=candidates,
         **macros,
-        nutrients=nutrients,
         micros=micros,
     )
 
@@ -424,10 +411,6 @@ def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
         field: scale_macro(match.macros_per_100g[field], scale)
         for field in ("kcal", *NULLABLE_MACROS)
     }
-    nutrients = {
-        name: NutrientValue(amount=round(v["amount"] * scale, 3), unit=v["unit"])
-        for name, v in match.nutrients_per_100g.items()
-    }
     return USDAResult(
         fdc_id=match.fdc_id,
         food_name=match.description,
@@ -438,7 +421,6 @@ def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
             CandidateDetail(**detail) for detail in match.candidate_details
         ],
         **macros,
-        nutrients=nutrients,
         micros=build_item_micros(
             per_100g_from_usda(
                 match.nutrients_per_100g, match.micro_estimates_per_100g
@@ -464,17 +446,6 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
     macros["kcal"] = round(
         next((_val(k) for k in _ENERGY_KEYS if _val(k) > 0), 0.0) * scale, 2
     )
-    nutrients = {
-        name: NutrientValue(
-            amount=(
-                round(float(v.get("amount", 0)) * scale, 3)
-                if isinstance(v, dict)
-                else 0.0
-            ),
-            unit=v.get("unit", "g") if isinstance(v, dict) else "g",
-        )
-        for name, v in raw.items()
-    }
     return USDAResult(
         fdc_id=cached["fdc_id"],
         food_name=cached["food_name"],
@@ -482,7 +453,6 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
         match_confidence=_TUNABLES.usda.cache_hit_confidence,
         candidates=[],
         **macros,
-        nutrients=nutrients,
         micros=build_item_micros(
             per_100g_from_usda(
                 {k: v for k, v in raw.items() if isinstance(v, dict)}, estimates={}
@@ -543,7 +513,6 @@ def _estimate_result(entity, per_100g: dict) -> USDAResult:
         match_confidence=_TUNABLES.usda.llm_estimate_confidence,
         candidates=[],
         **macros,
-        nutrients={},
         micros=build_item_micros(per_100g_from_estimate_row(per_100g), entity.qty_g),
         source="LLM_ESTIMATE",
         estimated=True,
@@ -599,7 +568,6 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
         fiber_g=estimate.fiber_g,
         sugar_g=estimate.sugar_g,
         sat_fat_g=estimate.sat_fat_g,
-        nutrients={},
         micros=build_item_micros(per_100g_from_estimate_row(per_100g), qty_g),
         source="LLM_ESTIMATE",
         estimated=True,

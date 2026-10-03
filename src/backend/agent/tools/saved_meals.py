@@ -106,7 +106,6 @@ def saved_meal_to_results(meal: UserMeal) -> tuple[list[dict], list[dict]]:
                 "match_confidence": float(ing.get("match_confidence", 1.0)),
                 "candidates": ing.get("candidates", []),
                 **{m: _stored_macro(ing, m) for m in _MACROS},
-                "nutrients": ing.get("nutrients", {}),
                 # Spec 008: per-ingredient micros as saved (in memory only;
                 # log_meal re-derives them server-side before storing).
                 "micros": ing.get("micros", {}),

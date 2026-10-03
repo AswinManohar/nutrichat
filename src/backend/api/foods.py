@@ -20,11 +20,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.agent.tools import usda_local
 from backend.agent.tools.usda import (
     NULLABLE_MACROS,
-    NutrientValue,
     USDAResult,
     scale_macro,
 )
 from backend.auth.supabase import get_current_user_id
+from backend.nutrients.resolve import resolve_micros
 from backend.ratelimit import user_rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -165,10 +165,7 @@ async def get_food(
         field: scale_macro(food.macros_per_100g[field], scale)
         for field in ("kcal", *NULLABLE_MACROS)
     }
-    nutrients = {
-        name: NutrientValue(amount=round(v["amount"] * scale, 3), unit=v["unit"])
-        for name, v in food.nutrients_per_100g.items()
-    }
+    micros = await resolve_micros(food.fdc_id, food.name, qty_g)
     return USDAResult(
         fdc_id=food.fdc_id,
         food_name=food.name,
@@ -176,7 +173,7 @@ async def get_food(
         match_confidence=1.0,
         candidates=[],
         candidate_details=[],
-        nutrients=nutrients,
+        micros=micros,
         source="usda_local",
         estimated=False,
         **macros,
