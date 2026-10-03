@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+import logfire
 from kombu.exceptions import OperationalError
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,6 +19,7 @@ from backend.agent.llm import make_llm
 from backend.agent.tools.usda import sum_known
 from backend.config import get_tunables
 from backend.db.session import get_session
+from backend.nutrients.resolve import resolve_micros, summarise
 from backend.workers.tasks import embed_meal_summary
 
 logger = logging.getLogger(__name__)
@@ -453,12 +455,15 @@ async def _insert_meal_log(
     client_request_id: str | None = None,
     corrections: list[dict] | None = None,
     extra_flags: dict[str, str] | None = None,
+    micros: dict | None = None,
 ) -> str:
     """Insert a meal_log row (and any food_correction rows) in one transaction.
 
     Args:
         extra_flags: Optional extra keys merged into `meal_log.flags` after the
             junk flags (e.g. `{"saved_meal_id": "<uuid>"}`).
+        micros: Meal-level micronutrient summary for `meal_log.micros`
+            (spec 008, data-model §3); `{}` when nothing is known.
         corrections: Optional list of correction dicts (spec 003, FR-012),
             aligned index-for-index with `usda_results` (already filtered
             the same way, i.e. one entry — possibly None — per resolved
@@ -483,10 +488,12 @@ async def _insert_meal_log(
             sa_text(
                 "INSERT INTO meal_log "
                 "(meal_id, user_id, meal_type, kcal, protein_g, carbs_g, "
-                "fat_g, fiber_g, entities, flags, label, client_request_id) "
+                "fat_g, fiber_g, entities, flags, label, client_request_id, "
+                "micros) "
                 "VALUES (:meal_id, :user_id, :meal_type, :kcal, :protein_g, "
                 ":carbs_g, :fat_g, :fiber_g, CAST(:entities AS jsonb), "
-                "CAST(:flags AS jsonb), :label, :client_request_id)"
+                "CAST(:flags AS jsonb), :label, :client_request_id, "
+                "CAST(:micros AS jsonb))"
             ),
             {
                 "meal_id": meal_id,
@@ -501,6 +508,7 @@ async def _insert_meal_log(
                 "flags": json.dumps(flags),
                 "label": label,
                 "client_request_id": client_request_id,
+                "micros": json.dumps(micros or {}),
             },
         )
         for result, correction in zip(usda_results, corrections or [], strict=False):
@@ -530,6 +538,35 @@ async def _insert_meal_log(
             )
         await session.commit()
     return meal_id
+
+
+async def _meal_micros(resolved: list) -> dict:
+    """Resolve every item's micros server-side and summarise them (spec 008).
+
+    Client- or state-supplied ``micros`` on the results are ignored: values
+    are always re-derived from each item's food id or estimate-cache row
+    (research R9), so the stored summary never holds client data.
+
+    Args:
+        resolved: The USDAResults being logged.
+
+    Returns:
+        The ``meal_log.micros`` summary.
+    """
+    rejected: list[str] = []
+    items = await asyncio.gather(
+        *[resolve_micros(r.fdc_id, r.food_name, r.qty_g, rejected) for r in resolved]
+    )
+    counts = {"usda": 0, "estimated": 0, "unknown": 0}
+    for item in items:
+        for value in item.values():
+            counts[value.source] += 1
+    logfire.info(
+        "meal micros resolved",
+        **{f"micros.{k}": v for k, v in counts.items()},
+        **{"micros.rejected": len(rejected)},
+    )
+    return summarise(list(items))
 
 
 async def log_meal(
@@ -582,6 +619,7 @@ async def log_meal(
         "fiber_g": round(sum_known(r.fiber_g for r in resolved), 1),
     }
     junk_items = _junk_flags(resolved)["junk_items"]
+    micros = await _meal_micros(resolved)
 
     async def _persist() -> str:
         """Insert the row, bump Redis, enqueue the embedding; return meal_id."""
@@ -594,6 +632,7 @@ async def log_meal(
             client_request_id,
             resolved_corrections,
             extra_flags,
+            micros=micros,
         )
         # Best-effort embedding for history search; a broker outage (e.g. Redis
         # down) must never fail the meal log the user just confirmed.
