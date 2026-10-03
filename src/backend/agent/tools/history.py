@@ -13,19 +13,34 @@ from backend.core.nutrition_day import (
 )
 from backend.db.models import MealLog
 from backend.db.session import get_session
+from backend.nutrients import catalog
+from backend.nutrients.daily import get_daily_micros, range_totals
 
 _TUNABLES = get_tunables()
-_CHECKUP_MICRONUTRIENTS = _TUNABLES.nutrient_checkup.micronutrients
-_CHECKUP_FLAT_THRESHOLD = _TUNABLES.nutrient_checkup.flat_threshold_pct
-_CHECKUP_RDA = _TUNABLES.nutrient_checkup.rda
+_CHECKUP = _TUNABLES.nutrient_checkup
+_CHECKUP_FLAT_THRESHOLD = _CHECKUP.flat_threshold_pct
 
-# Display name -> (meal_log column, unit) for the macro nutrients in the
-# Daily Nutrient Check-up. Sugar and vitamins/minerals come from
-# _CHECKUP_MICRONUTRIENTS instead (entities[].nutrients, USDA names).
-_CHECKUP_MACROS: dict[str, tuple[str, str]] = {
-    "Protein": ("protein_g", "g"),
-    "Fiber": ("fiber_g", "g"),
-}
+# `protein` is the Check-up's one non-catalogue key: a macro read from
+# meal_log.protein_g. Everything else is a catalogue key (spec 008).
+_PROTEIN_KEY = "protein"
+_PROTEIN_NAME = "Protein"
+
+
+def _checkup_daily_value(key: str) -> float | None:
+    """Check-up target: a view override, else the catalogue daily value."""
+    if key in _CHECKUP.daily_value_overrides:
+        return _CHECKUP.daily_value_overrides[key]
+    return None if key == _PROTEIN_KEY else catalog.nutrient(key).daily_value
+
+
+def _checkup_name(key: str) -> str:
+    """Display name for a Check-up key (catalogue name; "Protein" for protein)."""
+    return _PROTEIN_NAME if key == _PROTEIN_KEY else catalog.nutrient(key).name
+
+
+for _key in _CHECKUP.keys:  # fail loudly at import on a typo'd key
+    if _key != _PROTEIN_KEY:
+        catalog.nutrient(_key)
 
 
 async def get_macros_for_range(
@@ -81,50 +96,36 @@ async def get_macros_for_range(
 async def get_micronutrients_for_range(
     user_id: str, date_from: date, date_to: date, nutrient_names: list[str]
 ) -> dict[str, dict[str, float | str]]:
-    """Sum micronutrient totals from `meal_log.entities` JSONB over a range.
+    """Sum tracked micronutrients over a range (coaching's micro data).
 
-    Unnests each meal's `entities` array (one element per logged food item,
-    each with a `nutrients` dict keyed by USDA nutrient name) and sums the
-    requested nutrients.
+    A thin wrapper over :func:`get_daily_micros` (one SQL pass, spec 008),
+    so coaching reports exactly what the Check-up and analytics report.
 
     Args:
         user_id: Supabase Auth UUID.
         date_from: Start of the range (inclusive).
         date_to: End of the range (inclusive).
-        nutrient_names: USDA nutrient names to sum, e.g.
-            ["Vitamin B-12", "Iron, Fe"].
+        nutrient_names: Catalogue keys or USDA aliases, e.g.
+            ["vitamin_b12", "Iron, Fe"]; unresolvable names are ignored.
 
     Returns:
-        Dict keyed by nutrient name, mapping to {"amount": total, "unit":
-        unit}. Nutrients not found in any logged item are omitted.
+        Dict keyed by catalogue key -> {"name", "amount", "unit",
+        "estimated"} (``estimated`` is the AI-estimated part of ``amount``).
+        Nutrients with no known value in the range are omitted.
     """
-    results: dict[str, dict[str, float | str]] = {}
-    async with get_session()() as session:
-        for nutrient in nutrient_names:
-            result = await session.execute(
-                sa_text(
-                    "SELECT "
-                    "SUM((item->'nutrients'->:nutrient->>'amount')::float) AS total, "
-                    "MAX(item->'nutrients'->:nutrient->>'unit') AS unit "
-                    "FROM meal_log, "
-                    "jsonb_array_elements(entities) AS item "
-                    "WHERE user_id = :user_id "
-                    "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
-                    "AND item->'nutrients' ? :nutrient"
-                ),
-                {
-                    "user_id": user_id,
-                    "date_from": date_from,
-                    "date_to": date_to,
-                    "nutrient": nutrient,
-                    **sql_day_params(),
-                },
-            )
-            row = result.one()
-            if row.total is not None:
-                results[nutrient] = {"amount": float(row.total), "unit": row.unit}
-
-    return results
+    keys = [k for k in (catalog.resolve_key(n) for n in nutrient_names) if k]
+    if not keys:
+        return {}
+    daily = await get_daily_micros(user_id, date_from, date_to, keys=keys)
+    return {
+        key: {
+            "name": catalog.nutrient(key).name,
+            "amount": total.total,
+            "unit": catalog.nutrient(key).unit,
+            "estimated": total.est,
+        }
+        for key, total in range_totals(daily).items()
+    }
 
 
 def _trend(cur_avg: float, prev_avg: float) -> tuple[float | None, str]:
@@ -153,86 +154,79 @@ async def get_nutrient_checkup_aggregates(
 ) -> dict[str, dict[str, float | str | None]]:
     """Compute rolling 7-day nutrient averages + trend vs the prior 7 days.
 
-    Protein and Fiber are averaged from `meal_log`'s top-level columns; Sugar
-    and the configured vitamins/minerals are averaged from
-    `meal_log.entities[].nutrients` (see `nutrient_checkup.micronutrients` in
-    tunables.yaml). Used by the build_nutrient_checkup cron.
+    Protein comes from ``meal_log.protein_g``; every other configured key
+    (``nutrient_checkup.keys``) from :func:`get_daily_micros`, so the card
+    agrees with every other reader (spec 008 SC-006). Used by the
+    build_nutrient_checkup cron.
 
     Args:
         user_id: Supabase Auth UUID.
         end_date: Last day (inclusive) of the current 7-day window.
 
     Returns:
-        Dict keyed by display nutrient name (e.g. "Protein", "Vitamin C") ->
-        {avg, prev_avg, unit, trend_pct, direction}. avg/prev_avg are daily
-        averages (sum over 7 days / 7); trend_pct is None when the prior
-        week has no data.
+        Dict keyed by display name (catalogue name, e.g. "Vitamin C") ->
+        {avg, prev_avg, unit, trend_pct, direction, rda_pct}. avg/prev_avg
+        are daily averages (sum over 7 days / 7); trend_pct is None when
+        the prior week has no data.
     """
     cur_from = end_date - timedelta(days=6)
     prev_to = cur_from - timedelta(days=1)
     prev_from = prev_to - timedelta(days=6)
+    micro_keys = [k for k in _CHECKUP.keys if k != _PROTEIN_KEY]
 
-    cur_macros = await get_macros_for_range(user_id, cur_from, end_date)
-    prev_macros = await get_macros_for_range(user_id, prev_from, prev_to)
-
-    usda_names = [m.usda_name for m in _CHECKUP_MICRONUTRIENTS.values()]
-    cur_micro = await get_micronutrients_for_range(
-        user_id, cur_from, end_date, usda_names
+    cur = range_totals(
+        await get_daily_micros(user_id, cur_from, end_date, keys=micro_keys)
     )
-    prev_micro = await get_micronutrients_for_range(
-        user_id, prev_from, prev_to, usda_names
+    prev = range_totals(
+        await get_daily_micros(user_id, prev_from, prev_to, keys=micro_keys)
     )
+    cur_protein = prev_protein = 0.0
+    if _PROTEIN_KEY in _CHECKUP.keys:
+        cur_protein = (await get_macros_for_range(user_id, cur_from, end_date))[
+            "protein_g"
+        ]
+        prev_protein = (await get_macros_for_range(user_id, prev_from, prev_to))[
+            "protein_g"
+        ]
 
     result: dict[str, dict[str, float | str | None]] = {}
-
-    for display_name, (field, unit) in _CHECKUP_MACROS.items():
-        cur_avg = cur_macros[field] / 7
-        prev_avg = prev_macros[field] / 7
+    for key in _CHECKUP.keys:
+        if key == _PROTEIN_KEY:
+            cur_sum, prev_sum, unit = cur_protein, prev_protein, "g"
+        else:
+            cur_sum = cur[key].total if key in cur else 0.0
+            prev_sum = prev[key].total if key in prev else 0.0
+            unit = catalog.nutrient(key).unit
+        cur_avg = cur_sum / 7
+        prev_avg = prev_sum / 7
         trend_pct, direction = _trend(cur_avg, prev_avg)
-        rda = _CHECKUP_RDA[display_name]
-        rda_pct = (cur_avg / rda) * 100 if rda else None
-        result[display_name] = {
+        target = _checkup_daily_value(key)
+        result[_checkup_name(key)] = {
             "avg": cur_avg,
             "prev_avg": prev_avg,
             "unit": unit,
             "trend_pct": trend_pct,
             "direction": direction,
-            "rda_pct": rda_pct,
+            "rda_pct": (cur_avg / target) * 100 if target else None,
         }
-
-    for display_name, micro_cfg in _CHECKUP_MICRONUTRIENTS.items():
-        cur_entry = cur_micro.get(micro_cfg.usda_name)
-        prev_entry = prev_micro.get(micro_cfg.usda_name)
-        cur_avg = float(cur_entry["amount"]) / 7 if cur_entry else 0.0
-        prev_avg = float(prev_entry["amount"]) / 7 if prev_entry else 0.0
-        entry_with_unit = cur_entry or prev_entry
-        unit = str(entry_with_unit["unit"]) if entry_with_unit else micro_cfg.unit
-        trend_pct, direction = _trend(cur_avg, prev_avg)
-        rda = _CHECKUP_RDA[display_name]
-        rda_pct = (cur_avg / rda) * 100 if rda else None
-        result[display_name] = {
-            "avg": cur_avg,
-            "prev_avg": prev_avg,
-            "unit": unit,
-            "trend_pct": trend_pct,
-            "direction": direction,
-            "rda_pct": rda_pct,
-        }
-
     return result
 
 
 _NOTABLE_UNDER_THRESHOLD = 70.0
 _NOTABLE_OVER_THRESHOLD = 150.0
 
+_HINTS_BY_KEY: dict[str, str] = {
+    "protein": "lean meat, eggs, beans, or dairy",
+    "fiber": "whole grains, legumes, or vegetables",
+    "vitamin_c": "citrus fruits, berries, or peppers",
+    "vitamin_d": "fatty fish, eggs, or fortified foods",
+    "iron": "red meat, spinach, or legumes",
+    "calcium": "dairy, leafy greens, or fortified plant milk",
+    "vitamin_b12": "meat, fish, eggs, or dairy",
+}
+# Keyed by the display names the Check-up emits (_checkup_name).
 _NUTRIENT_FOOD_HINTS: dict[str, str] = {
-    "Protein": "lean meat, eggs, beans, or dairy",
-    "Fiber": "whole grains, legumes, or vegetables",
-    "Vitamin C": "citrus fruits, berries, or peppers",
-    "Vitamin D": "fatty fish, eggs, or fortified foods",
-    "Iron": "red meat, spinach, or legumes",
-    "Calcium": "dairy, leafy greens, or fortified plant milk",
-    "Vitamin B-12": "meat, fish, eggs, or dairy",
+    _checkup_name(k): hint for k, hint in _HINTS_BY_KEY.items()
 }
 
 

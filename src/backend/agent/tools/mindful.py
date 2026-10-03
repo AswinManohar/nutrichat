@@ -2,8 +2,8 @@
 
 A goal-free user still logs meals and gets full nutrient data; this module
 computes what they consumed on a given day and flags any nutrient that reaches
-or exceeds a research-backed Tolerable Upper Intake Level (see the
-``upper_limits`` block in tunables.yaml).
+or exceeds a research-backed Tolerable Upper Intake Level (the catalogue's
+``upper_limit`` entries, config/nutrients.yaml — spec 008).
 """
 
 from __future__ import annotations
@@ -12,11 +12,10 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.tools.history import (
-    get_macros_for_range,
-    get_micronutrients_for_range,
-)
-from backend.config import get_tunables
+from backend.agent.tools.history import get_macros_for_range
+from backend.config import get_catalog, get_tunables
+from backend.nutrients import catalog
+from backend.nutrients.daily import get_daily_micros
 
 _TUNABLES = get_tunables()
 
@@ -53,14 +52,21 @@ class SafetyAlert(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _intake_keys() -> list[str]:
+    """Micros shown in Mindful: every key with an upper limit + Check-up keys."""
+    keys = [n.key for n in get_catalog().nutrients if n.upper_limit is not None]
+    for key in _TUNABLES.nutrient_checkup.keys:
+        if key not in keys and catalog.resolve_key(key) == key and key != "fiber":
+            keys.append(key)
+    return keys
+
+
 async def get_daily_intake(user_id: str, day: date) -> list[NutrientAmount]:
     """Sum macros and tracked micronutrients consumed on a single day.
 
-    Macros come from the meal_log columns; everything else (sugar, saturated
-    fat, sodium, vitamins, minerals) is summed from the per-item ``nutrients``
-    JSONB via the USDA names declared in the ``upper_limits`` and
-    ``nutrient_checkup.micronutrients`` tunables. LLM-estimated items
-    contribute macros but not micros (existing behaviour).
+    Macros come from the meal_log columns; micronutrients from the meal-level
+    summaries via :func:`get_daily_micros` (spec 008), named and united by
+    the nutrient catalogue. Unknown nutrients are omitted, never shown as 0.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -75,24 +81,11 @@ async def get_daily_intake(user_id: str, day: date) -> list[NutrientAmount]:
         NutrientAmount(name=label, amount=float(macros.get(col, 0.0)), unit=unit)
         for col, label, unit in _MACRO_FIELDS
     ]
-
-    # USDA name -> display name, de-duplicated across both tunable blocks.
-    usda_to_display: dict[str, str] = {}
-    for display, entry in _TUNABLES.upper_limits.items():
-        usda_to_display.setdefault(entry.usda_name, display)
-    for display, entry in _TUNABLES.nutrient_checkup.micronutrients.items():
-        usda_to_display.setdefault(entry.usda_name, display)
-
-    micros = await get_micronutrients_for_range(
-        user_id, day, day, list(usda_to_display.keys())
-    )
-    for usda_name, data in micros.items():
+    daily = await get_daily_micros(user_id, day, day, keys=_intake_keys())
+    for key, value in daily.days[0].values.items():
+        nutrient = catalog.nutrient(key)
         amounts.append(
-            NutrientAmount(
-                name=usda_to_display.get(usda_name, usda_name),
-                amount=float(data["amount"]),
-                unit=str(data["unit"]),
-            )
+            NutrientAmount(name=nutrient.name, amount=value.total, unit=nutrient.unit)
         )
     return amounts
 
@@ -101,24 +94,27 @@ def evaluate_safety(intake: list[NutrientAmount]) -> list[SafetyAlert]:
     """Flag nutrients whose intake reached or exceeded their UL.
 
     Args:
-        intake: Output of get_daily_intake (matched by display name).
+        intake: Output of get_daily_intake (matched by catalogue name).
 
     Returns:
         One SafetyAlert per breached limit (empty if none breached).
     """
     by_name = {n.name: n for n in intake}
     alerts: list[SafetyAlert] = []
-    for display, entry in _TUNABLES.upper_limits.items():
-        consumed = by_name.get(display)
-        if consumed is not None and consumed.amount >= entry.ul:
+    for nutrient in get_catalog().nutrients:
+        limit = nutrient.upper_limit
+        if limit is None:
+            continue
+        consumed = by_name.get(nutrient.name)
+        if consumed is not None and consumed.amount >= limit.value:
             alerts.append(
                 SafetyAlert(
-                    nutrient=display,
+                    nutrient=nutrient.name,
                     amount=consumed.amount,
-                    limit=entry.ul,
-                    unit=entry.unit,
-                    source=entry.source,
-                    url=entry.url,
+                    limit=limit.value,
+                    unit=nutrient.unit,
+                    source=limit.source,
+                    url=limit.url,
                 )
             )
     return alerts

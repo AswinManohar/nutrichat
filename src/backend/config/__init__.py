@@ -101,31 +101,16 @@ class DayConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MicronutrientConfig(BaseModel):
-    usda_name: str
-    unit: str
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class NutrientCheckupConfig(BaseModel):
-    """USDA nutrient map + trend threshold + RDA baseline for the Check-up."""
+    """Which nutrients the Check-up shows + its trend threshold.
 
-    micronutrients: dict[str, MicronutrientConfig]
+    Names, units and daily values come from the nutrient catalogue; only
+    view-specific targets live in ``daily_value_overrides`` (spec 008).
+    """
+
+    keys: list[str] = Field(min_length=1)
+    daily_value_overrides: dict[str, float] = Field(default_factory=dict)
     flat_threshold_pct: float = Field(ge=0.0, le=1.0)
-    rda: dict[str, float]
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class UpperLimitEntry(BaseModel):
-    """One Tolerable Upper Intake Level for a Mindful Eating safety alert."""
-
-    usda_name: str
-    unit: str
-    ul: float = Field(gt=0)
-    source: str
-    url: str
 
     model_config = ConfigDict(extra="forbid")
 
@@ -201,7 +186,6 @@ class Tunables(BaseModel):
     typesafe: TypeSafeConfig
     prompts: PromptsConfig
     features: FeaturesConfig
-    upper_limits: dict[str, UpperLimitEntry]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -384,7 +368,6 @@ __all__ = [
     "NutrientDef",
     "RetrievalConfig",
     "Tunables",
-    "UpperLimitEntry",
     "get_catalog",
     "get_tunables",
 ]
