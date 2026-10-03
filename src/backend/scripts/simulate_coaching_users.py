@@ -338,24 +338,23 @@ def _build_rows(user_id: str, templates: list[dict], seed: int) -> list[dict]:
     return rows
 
 
-def _split_micros(entities: list[dict]) -> tuple[list[dict], dict]:
-    """Move template sugar / sat-fat into a meal_log.micros summary (spec 008).
+def _with_item_micros(entities: list[dict]) -> list[dict]:
+    """Move template sugar / sat-fat into each item's compact micros (spec 008).
 
-    Stored items carry no per-item micronutrients; the meal-level summary is
-    the only copy (FR-018). Template values are USDA-like, so est = 0.
+    Items store micronutrients only as ``micros: {key: [amount, "u"|"e"]}``
+    (data-model §2); template values are USDA-like, hence "u".
     """
-    summary: dict = {}
-    stripped: list[dict] = []
+    out: list[dict] = []
     for ent in entities:
-        for field, key in (("sugar_g", "total_sugars"), ("sat_fat_g", "saturated_fat")):
-            if ent.get(field) is not None:
-                cur = summary.setdefault(key, {"total": 0.0, "est": 0.0, "known": 0})
-                cur["total"] = round(cur["total"] + float(ent[field]), 4)
-                cur["known"] += 1
-        stripped.append(
-            {k: v for k, v in ent.items() if k not in ("sugar_g", "sat_fat_g")}
-        )
-    return stripped, summary
+        pairs = (("sugar_g", "total_sugars"), ("sat_fat_g", "saturated_fat"))
+        micros = {
+            key: [float(ent[field]), "u"]
+            for field, key in pairs
+            if ent.get(field) is not None
+        }
+        rest = {k: v for k, v in ent.items() if k not in ("sugar_g", "sat_fat_g")}
+        out.append({**rest, "micros": micros})
+    return out
 
 
 async def seed_users() -> None:
@@ -379,23 +378,21 @@ async def seed_users() -> None:
             )
             rows = _build_rows(user_id, USER_TEMPLATES[user_id], seed=100 + i)
             for row in rows:
-                entities, micros = _split_micros(row["entities"])
+                entities = _with_item_micros(row["entities"])
                 await session.execute(
                     sa_text(
                         "INSERT INTO meal_log "
                         "(meal_id, user_id, logged_at, meal_type, kcal, protein_g, "
-                        "carbs_g, fat_g, fiber_g, entities, flags, updated_at, "
-                        "micros) "
+                        "carbs_g, fat_g, fiber_g, entities, flags, updated_at) "
                         "VALUES (:meal_id, :user_id, :logged_at, :meal_type, :kcal, "
                         ":protein_g, :carbs_g, :fat_g, :fiber_g, "
                         "CAST(:entities AS jsonb), CAST(:flags AS jsonb), "
-                        ":updated_at, CAST(:micros AS jsonb))"
+                        ":updated_at)"
                     ),
                     {
                         **row,
                         "entities": json.dumps(entities),
                         "flags": json.dumps(row["flags"]),
-                        "micros": json.dumps(micros),
                     },
                 )
             print(f"Seeded {len(rows)} meal_log rows for {user_id}")
