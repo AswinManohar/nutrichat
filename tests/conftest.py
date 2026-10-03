@@ -144,3 +144,20 @@ def patch_get_session(
         return session
 
     return patch_it
+
+
+@pytest.fixture(autouse=True)
+def _no_background_micro_estimates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Spec 008: never let a test fire a real background micro-estimate call.
+
+    Estimating a food schedules a Gemini call off the card's critical path;
+    stub it to "no micros" so no test touches the network or leaves tasks
+    pending. Tests of that machinery patch ``_run_micro_estimate`` themselves.
+    """
+    from backend.agent.tools import usda
+
+    async def _none(food_name: str) -> dict[str, float]:
+        return {}
+
+    monkeypatch.setattr(usda, "_run_micro_estimate", _none)
+    usda._micro_tasks.clear()

@@ -154,9 +154,25 @@ async def test_resolve_estimate_uses_cache_by_name() -> None:
 
 
 async def test_resolve_estimate_cache_miss_is_all_unknown() -> None:
-    with patch.object(resolve, "_estimate_cache_lookup", AsyncMock(return_value=None)):
+    with (
+        patch.object(resolve, "_estimate_cache_lookup", AsyncMock(return_value=None)),
+        patch.object(resolve, "_ensure_micro_estimate", AsyncMock(return_value={})),
+    ):
         micros = await resolve.resolve_micros(-1, "mystery stew", 100)
     assert all(v.source == "unknown" for v in micros.values())
+
+
+async def test_resolve_estimate_without_cached_micros_awaits_background() -> None:
+    cached = {"fdc_id": -1, "food_name": "dal", "nutrients": {"sugar_g": 1.0}}
+    ensure = AsyncMock(return_value={"iron": 2.0})
+    with (
+        patch.object(resolve, "_estimate_cache_lookup", AsyncMock(return_value=cached)),
+        patch.object(resolve, "_ensure_micro_estimate", ensure),
+    ):
+        micros = await resolve.resolve_micros(-1, "dal", 50)
+    ensure.assert_awaited_once_with("dal")
+    assert micros["iron"] == MicroValue(amount=1.0, source="estimated")
+    assert micros["total_sugars"] == MicroValue(amount=0.5, source="estimated")
 
 
 @pytest.mark.parametrize("qty", [50.0, 100.0, 250.0])
