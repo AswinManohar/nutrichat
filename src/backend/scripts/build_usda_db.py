@@ -45,7 +45,7 @@ _TARGET_DATA_TYPES: dict[str, int] = {
 }
 _EXPECTED_TOTAL = sum(_TARGET_DATA_TYPES.values())  # 13694
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 # Promoted macro columns that may be NULL (= FDC reports no value). ``kcal`` is
 # excluded: it is resolved through the Atwater fallback chain and stays 0.0 only
@@ -76,8 +76,21 @@ _SPOT_CHECK_QUERIES: tuple[str, ...] = (
     "fried rice",
 )
 
+# Spec 008 (schema v3): pre-computed per-100 g AI estimates for tracked
+# nutrients a food's USDA record lacks (research R6). Filled by
+# scripts/build_micro_estimates.py; never holds a key USDA reports for that
+# food, and never a USDA-only key.
+MICRO_ESTIMATE_DDL = """
+CREATE TABLE IF NOT EXISTS food_micro_estimate (
+    fdc_id   INTEGER NOT NULL,
+    key      TEXT NOT NULL,
+    per_100g REAL NOT NULL,
+    PRIMARY KEY (fdc_id, key)
+);
+"""
+
 _SCHEMA_SQL = """
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 CREATE TABLE food (
     fdc_id           INTEGER PRIMARY KEY,
@@ -111,7 +124,7 @@ CREATE TABLE food_portion (
 CREATE INDEX food_portion_fdc_id ON food_portion (fdc_id);
 
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-"""
+""" + MICRO_ESTIMATE_DDL
 
 
 def resolve_nutrients(

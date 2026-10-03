@@ -77,6 +77,9 @@ class LocalMatch:
             zero).
         nutrients_per_100g: Full nutrient map, name -> {"amount", "unit"},
             per 100 g, unscaled.
+        micro_estimates_per_100g: Pre-computed AI estimates (catalogue key ->
+            per-100 g amount) for tracked nutrients USDA lacks for this food
+            (spec 008, schema v3). Empty on a pre-v3 database.
     """
 
     fdc_id: int
@@ -86,6 +89,7 @@ class LocalMatch:
     candidate_details: list[dict] = field(default_factory=list)
     macros_per_100g: dict[str, float | None] = field(default_factory=dict)
     nutrients_per_100g: dict[str, dict] = field(default_factory=dict)
+    micro_estimates_per_100g: dict[str, float] = field(default_factory=dict)
 
 
 def database_path() -> Path:
@@ -407,6 +411,55 @@ def _load_row(
     return macros, nutrients
 
 
+def _micro_estimates(conn: sqlite3.Connection, fdc_id: int) -> dict[str, float]:
+    """Load one food's pre-computed micronutrient estimates, per 100 g.
+
+    A database built before schema v3 has no ``food_micro_estimate`` table;
+    that yields no estimates rather than an error (gaps stay unknown).
+
+    Args:
+        conn: Open read-only connection.
+        fdc_id: FDC id to load.
+
+    Returns:
+        Catalogue key -> per-100 g estimate.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT key, per_100g FROM food_micro_estimate WHERE fdc_id = ?",
+            (fdc_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return dict(rows)
+
+
+def micro_inputs(fdc_id: int) -> tuple[dict, dict[str, float]] | None:
+    """USDA nutrients and pre-computed estimates for one food, per 100 g.
+
+    Sync (SQLite); wrap in ``asyncio.to_thread`` on the event loop. Used by
+    spec 008's server-side resolve so a logged item's micronutrients are
+    always derived from the food id, never from client data.
+
+    Args:
+        fdc_id: USDA FoodData Central id.
+
+    Returns:
+        ``(nutrients_per_100g, micro_estimates_per_100g)``, or None if the
+        food is not in the database.
+
+    Raises:
+        FoodDbUnavailable: If the local database cannot be read.
+    """
+    _require_available()
+    conn = _get_connection()
+    exists = conn.execute("SELECT 1 FROM food WHERE fdc_id = ?", (fdc_id,)).fetchone()
+    if exists is None:
+        return None
+    _, nutrients = _load_row(conn, fdc_id)
+    return nutrients, _micro_estimates(conn, fdc_id)
+
+
 def _load_candidate_summary(conn: sqlite3.Connection, fdc_id: int) -> dict:
     """Load one candidate's data_type, kcal and protein per 100 g.
 
@@ -476,6 +529,7 @@ def lookup(
 
     best_fdc_id, (best_description, _) = ranked[0]
     macros, nutrients = _load_row(conn, best_fdc_id)
+    estimates = _micro_estimates(conn, best_fdc_id)
 
     top = ranked[:max_candidates]
     candidate_details = []
@@ -491,6 +545,7 @@ def lookup(
         candidate_details=candidate_details,
         macros_per_100g=macros,
         nutrients_per_100g=nutrients,
+        micro_estimates_per_100g=estimates,
     )
 
 
