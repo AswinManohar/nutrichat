@@ -10,7 +10,8 @@ from backend.agent.tools.meals import (
     classify_intent,
     format_confirmation_card,
 )
-from backend.agent.tools.usda import NutrientValue, USDAResult
+from backend.agent.tools.usda import USDAResult
+from backend.nutrients.models import MicroValue
 
 # ---------------------------------------------------------------------------
 # Model tests
@@ -32,7 +33,7 @@ def test_food_entity_rejects_extra_fields():
         FoodEntity(food_name="egg", qty_g=61.0, unit="piece", unknown_field="x")
 
 
-def test_usda_result_has_nutrients():
+def test_usda_result_has_micros():
     r = USDAResult(
         fdc_id=1,
         food_name="egg",
@@ -46,9 +47,10 @@ def test_usda_result_has_nutrients():
         fiber_g=0.0,
         sugar_g=0.6,
         sat_fat_g=1.6,
-        nutrients={"Vitamin C": NutrientValue(amount=0.0, unit="mg")},
+        micros={"vitamin_c": MicroValue(amount=0.0, source="usda")},
     )
-    assert r.nutrients["Vitamin C"].amount == 0.0
+    assert r.micros["vitamin_c"].amount == 0.0  # a USDA zero is a value
+    assert "nutrients" not in r.model_dump()  # spec 008: no raw per-item map
 
 
 def test_image_classification_no_food():

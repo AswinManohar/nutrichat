@@ -87,7 +87,9 @@ def test_logs_with_gram_and_portion_scaling(app_factory) -> None:
     results = logged.call_args.args[1]
     assert results[0].qty_g == 450
     assert results[0].kcal == 600  # 200 × 3
-    assert results[0].nutrients["Sodium, Na"].amount == 30.0  # 10 × 3
+    # Micros are re-derived server-side in log_meal (spec 008), not scaled
+    # from client data.
+    assert not hasattr(results[0], "nutrients")
     assert logged.call_args.args[2] == "dinner"
 
 

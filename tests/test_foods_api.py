@@ -206,7 +206,8 @@ def test_get_food_returns_card_item_shape(client: TestClient) -> None:
     assert body["candidate_details"] == []
     expected_kcal = round(_SAMPLE_MACROS["kcal"] * 28 / 100, 2)
     assert body["kcal"] == expected_kcal
-    assert "nutrients" in body
+    assert "nutrients" not in body  # spec 008: no raw per-item map
+    assert set(body["micros"]) >= {"iron", "sodium", "vitamin_c"}
 
 
 def test_get_food_unknown_fdc_id_is_404(client: TestClient) -> None:

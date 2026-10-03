@@ -217,7 +217,7 @@ def test_saved_meal_to_results_rebuilds_state() -> None:
     assert r["food_name"] == "basmati rice cooked"
     assert r["qty_g"] == 150 and r["kcal"] == 195 and r["fdc_id"] == 123
     assert r["match_confidence"] == 1.0 and r["source"] == "USDA"
-    assert "Sodium, Na" in r["nutrients"]
+    assert "nutrients" not in r  # spec 008: raw USDA map no longer carried
     # entities are the FoodEntity-shaped subset for correction re-resolution
     assert entities[0] == {
         "food_name": "basmati rice cooked",

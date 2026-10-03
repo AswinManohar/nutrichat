@@ -83,12 +83,10 @@ def test_build_ingredients_scales_by_target_and_portion() -> None:
     (built,) = _build_ingredients([item], 2.0)  # scale = 100 * 2 / 200 = 1
     assert built["qty_g"] == 200
     assert built["kcal"] == 260 and built["fiber_g"] == 2
-    assert built["nutrients"]["iron"]["amount"] == 2.0
     assert "target_qty_g" not in built
 
     (half,) = _build_ingredients([item], 0.5)  # scale = 0.25
     assert half["qty_g"] == 50 and half["kcal"] == 65
-    assert half["nutrients"]["iron"] == {"amount": 0.5, "unit": "mg"}
 
 
 def test_build_ingredients_no_target_portion_one_is_unchanged() -> None:

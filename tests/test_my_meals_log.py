@@ -129,7 +129,7 @@ def test_portion_and_gram_override_scales_macros_and_nutrients(
     r = results[0]
     assert r.qty_g == 450
     assert r.kcal == 600  # 200 × 3
-    assert r.nutrients["Sodium, Na"].amount == 30.0  # 10 × 3
+    assert not hasattr(r, "nutrients")  # micros re-derived in log_meal (008)
 
 
 def test_removed_ingredient_excluded(
