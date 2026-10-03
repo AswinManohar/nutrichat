@@ -30,6 +30,7 @@ from backend.agent.tools.usda_match import (
 )
 from backend.config import get_tunables
 from backend.db.session import get_session
+from backend.nutrients.models import MicroValue
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,10 @@ class USDAResult(BaseModel):
 
     # Full nutrient breakdown scaled to qty_g (~50 nutrients)
     nutrients: dict[str, NutrientValue]
+    # Spec 008: tracked micronutrients (catalogue keys) scaled to qty_g, each
+    # with its source. In memory and in saved-meal ingredients only — a
+    # logged meal stores just the meal-level summary (meal_log.micros).
+    micros: dict[str, MicroValue] = {}
 
     # Plan A — LLM nutrition estimation fallback (agent/tools/usda.py
     # estimate_nutrition_llm). "USDA" for real FoodData Central matches
