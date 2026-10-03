@@ -32,12 +32,13 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 
 from backend.agent.llm import FLASH_LITE_MODEL
 from backend.agent.tools import usda_local
+from backend.agent.tools.usda import MicroEstimate
 from backend.config import get_tunables
 from backend.nutrients import catalog
 from backend.nutrients.resolve import per_100g_from_usda
@@ -54,34 +55,38 @@ _TOKENS_PER_REQUEST_KEY = 15
 _TOKENS_PER_OUTPUT_KEY = 10
 _BENCH_TOLERANCE = 0.5  # ±50% (SC-004)
 _BENCH_TARGET = 0.70
+_BENCH_KEYS = (
+    "vitamin_c",
+    "iron",
+    "calcium",
+    "potassium",
+    "magnesium",
+    "zinc",
+    "vitamin_b6",
+    "folate",
+    "sodium",
+    "cholesterol",
+)
 
 _SYSTEM = """You estimate nutrient content of foods from food-composition
 knowledge. You are given a USDA food description and the nutrients USDA
 already reports for it (per 100 g). Estimate ONLY the requested nutrients,
 PER 100 g of the food as described, in the unit stated for each field.
 Added sugars are sugars added in processing or preparation and can never
-exceed total sugars. Return null for any nutrient you cannot estimate with
+exceed total sugars. Leave out any nutrient you cannot estimate with
 reasonable confidence; never guess wildly."""
 
 
-def _gap_model() -> type[BaseModel]:
-    """Structured output: one optional per-100 g field per estimable key."""
-    fields = {
-        key: (
-            float | None,
-            Field(
-                default=None,
-                ge=0.0,
-                description=f"{catalog.nutrient(key).name}, "
-                f"{catalog.nutrient(key).unit} per 100 g",
-            ),
-        )
-        for key in catalog.estimable_keys()
-    }
-    return create_model("GapEstimate", __config__=ConfigDict(extra="forbid"), **fields)
+class GapEstimate(BaseModel):
+    """Structured output: a flat list of per-100 g estimates.
 
+    A list of ``{key, per_100g}`` rather than one optional field per nutrient:
+    Gemini rejects schemas with ~40 optional nullable fields.
+    """
 
-GapEstimate = _gap_model()
+    micros: list[MicroEstimate] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
 
 _agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
@@ -144,10 +149,11 @@ def _prompt(description: str, known: dict[str, float], keys: list[str]) -> str:
         f"- {catalog.nutrient(k).name}: {v:g} {catalog.nutrient(k).unit}"
         for k, v in known.items()
     )
-    wanted = ", ".join(keys)
+    wanted = ", ".join(f"{k} ({catalog.nutrient(k).unit})" for k in keys)
     return (
         f"Food: {description}\n\nUSDA reports per 100 g:\n{known_lines or '- none'}"
-        f"\n\nEstimate per 100 g ONLY these fields (others null): {wanted}"
+        f"\n\nReturn `micros` entries per 100 g for ONLY these keys (unit in "
+        f"brackets); leave out any you cannot estimate: {wanted}"
     )
 
 
@@ -177,8 +183,12 @@ async def _estimate(
         except Exception as exc:  # noqa: BLE001 — any provider failure: skip food
             logger.warning("estimate failed for %s: %s", gap.fdc_id, exc)
             return {}
-    raw = run.output.model_dump()
-    got = {k: raw.get(k) for k in keys if raw.get(k) is not None}
+    wanted = set(keys)
+    got: dict[str, float] = {}
+    for entry in run.output.micros:
+        key = entry.key.strip().lower()
+        if key in wanted and key not in got:
+            got[key] = entry.per_100g
     return {k: v for k, v in got.items() if _accept(k, v, known, got)}
 
 
@@ -230,7 +240,13 @@ async def build(
 
 
 async def benchmark(conn: sqlite3.Connection, n: int, concurrency: int) -> float:
-    """SC-004: hide USDA values for N foods, estimate them, report ±50% share."""
+    """SC-004: hide USDA values for N foods, estimate them, report ±50% share.
+
+    Two modes, reported separately: "gap-fill" gives the model every other
+    nutrient USDA reports for the food (how this script really runs);
+    "no-context" gives only the description (how an unmatched food is
+    estimated at log time). Also prints per-key pass rates.
+    """
     rng = random.Random(8)
     estimable = set(catalog.estimable_keys())
     pool: list[FoodGap] = []
@@ -243,45 +259,41 @@ async def benchmark(conn: sqlite3.Connection, n: int, concurrency: int) -> float
             pool.append(FoodGap(fdc_id, description, known, []))
     sample = rng.sample(pool, min(n, len(pool)))
     sem = asyncio.Semaphore(concurrency)
-    hidden_keys = [
-        "vitamin_c",
-        "iron",
-        "calcium",
-        "potassium",
-        "magnesium",
-        "zinc",
-        "vitamin_b6",
-        "folate",
-        "sodium",
-        "cholesterol",
-    ]
 
-    async def one(food: FoodGap) -> list[bool]:
-        keys = [k for k in hidden_keys if k in food.known]
-        context = {
-            k: v
-            for k, v in food.known.items()
-            if k in {"water", "total_sugars", "saturated_fat"}
-        }
+    def _ok(key: str, truth: float, est: float | None) -> bool:
+        if est is None:
+            return False
+        if truth == 0:
+            return est <= 0.01 * (catalog.nutrient(key).max_per_100g or 1)
+        return abs(est - truth) <= _BENCH_TOLERANCE * truth
+
+    async def one(food: FoodGap, with_context: bool) -> list[tuple[str, bool]]:
+        keys = [k for k in _BENCH_KEYS if k in food.known]
+        context = (
+            {k: v for k, v in food.known.items() if k not in keys}
+            if with_context
+            else {}
+        )
         got = await _estimate(food, keys, context, sem)
-        out = []
-        for k in keys:
-            truth, est = food.known[k], got.get(k)
-            if est is None:
-                out.append(False)
-            elif truth == 0:
-                out.append(est <= 0.01 * (catalog.nutrient(k).max_per_100g or 1))
-            else:
-                out.append(abs(est - truth) <= _BENCH_TOLERANCE * truth)
-        return out
+        return [(k, _ok(k, food.known[k], got.get(k))) for k in keys]
 
-    results = [ok for food in await asyncio.gather(*map(one, sample)) for ok in food]
-    share = sum(results) / len(results) if results else 0.0
-    verdict = "PASS" if share >= _BENCH_TARGET else "FAIL"
-    print(f"benchmark: {sum(results)}/{len(results)} within ±50% = {share:.0%}")
-    print(f"SC-004 (≥{_BENCH_TARGET:.0%}): {verdict}")
-    return share
-
+    shares = {}
+    for mode, with_context in (("gap-fill", True), ("no-context", False)):
+        rows = [
+            r
+            for food in await asyncio.gather(*(one(f, with_context) for f in sample))
+            for r in food
+        ]
+        share = sum(ok for _, ok in rows) / len(rows) if rows else 0.0
+        shares[mode] = share
+        per_key = Counter(k for k, _ in rows)
+        passed = Counter(k for k, ok in rows if ok)
+        detail = ", ".join(f"{k} {passed[k]}/{per_key[k]}" for k in _BENCH_KEYS)
+        verdict = "PASS" if share >= _BENCH_TARGET else "FAIL"
+        print(f"[{mode}] {sum(ok for _, ok in rows)}/{len(rows)} within ±50% = "
+              f"{share:.0%} → SC-004 (≥{_BENCH_TARGET:.0%}) {verdict}")
+        print(f"  per key: {detail}")
+    return shares["gap-fill"]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
