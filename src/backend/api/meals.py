@@ -34,6 +34,7 @@ from backend.db.redis_client import (
     get_today_totals,
 )
 from backend.db.session import get_session
+from backend.nutrients.models import MealMicro
 from backend.ratelimit import user_rate_limiter
 
 router = APIRouter(prefix="/meals", tags=["meals"])
@@ -557,6 +558,8 @@ class MealLogDetail(MealLogSummary):
     """Full detail of one logged meal, including its resolved items."""
 
     items: list[dict]
+    # Spec 008: meal-level micronutrient summary (contracts/meal-micros.md §3).
+    micros: dict[str, MealMicro] = {}
 
     model_config = ConfigDict(extra="forbid")
 
@@ -688,4 +691,5 @@ async def get_meal_log(
         fiber_g=row.fiber_g,
         n_items=len(entities),
         items=entities,
+        micros=row.micros or {},
     )
