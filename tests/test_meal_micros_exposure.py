@@ -34,7 +34,9 @@ async def _fresh_engine():
     await dispose_engine()
 
 
-async def _seed(user_id: str, at: datetime, micros: dict, deleted: bool = False) -> str:
+async def _seed(
+    user_id: str, at: datetime, micros: dict, deleted: bool = False
+) -> str:
     meal_id = str(uuid.uuid4())
     async with get_session()() as session:
         await session.execute(
