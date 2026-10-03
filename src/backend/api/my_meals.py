@@ -377,6 +377,10 @@ async def log_my_meal(
 ) -> MealLogResult:
     """Log a saved meal directly (no chat round-trip).
 
+    Tracked micronutrients are re-derived server-side by log_meal from each
+    ingredient's food id; stored or client values are never trusted (spec
+    008 research R9).
+
     Quick-log (no `ingredients`) writes the stored meal verbatim at 1x.
     Customize (with `ingredients`) keeps only the listed ingredients, scaled
     by their gram override and the portion multiplier. Reuses `log_meal` so

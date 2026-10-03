@@ -307,7 +307,10 @@ async def log_items(
     Each item is re-scaled server-side from its own nutrients (never trusting
     client macros beyond the provided gram weight + portion), then persisted
     via the same log_meal path as chat/My-Meals logging so flags, Redis
-    today-totals, and the embedding enqueue all match.
+    today-totals, and the embedding enqueue all match. Tracked
+    micronutrients sent by the client (``micros`` / ``nutrients``) are never
+    stored: log_meal re-derives them from each item's food id (spec 008,
+    contracts/meal-micros.md §2), which also keeps "Log again" consistent.
 
     When client_request_id is set, this call is idempotent: a replay (e.g.
     a mobile client retrying after a dropped response) returns the original
