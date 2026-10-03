@@ -26,7 +26,10 @@ export interface MealItem {
    * older clients; treat them as unknown, not zero.
    */
   unknown_nutrients?: string[];
-  /** Full USDA nutrient breakdown (kept so saving a meal preserves micros) */
+  /**
+   * Deprecated (spec 008): the server no longer sends a raw USDA map and
+   * re-derives micronutrients itself; kept optional so older payloads parse.
+   */
   nutrients?: Record<string, { amount: number; unit: string }>;
   /** Edited weight when saving; macros refer to qty_g. Defaults to qty_g. */
   target_qty_g?: number;
@@ -47,6 +50,67 @@ export interface MyMealDetail extends MyMealSummary {
   ingredients: MealItem[];
   /** ISO-8601 with microseconds; echo back as expected_updated_at on PUT */
   updated_at: string;
+  /** Spec 008: micronutrient totals computed on read; absent key = unknown */
+  micros_totals?: Record<string, MealMicro>;
+}
+
+// -- Spec 008: tracked micronutrients (no UI yet; data for future charts) ----
+
+export type NutrientUnit = 'g' | 'mg' | 'mcg';
+export type NutrientGroupId = 'carbs' | 'fat' | 'other' | 'vitamins' | 'minerals';
+
+/** One catalogue entry from GET /meta/nutrients. */
+export interface NutrientDef {
+  key: string;
+  name: string;
+  unit: NutrientUnit;
+  group: NutrientGroupId;
+  order: number;
+  direction: 'limit' | 'target' | 'none';
+  /** FDA Daily Value in `unit`; null = show the amount only */
+  daily_value: number | null;
+  usda_only: boolean;
+  /** Computed on read from another key (salt = sodium × factor) */
+  derived: { from: string; factor: number } | null;
+  upper_limit: { value: number; source: string; url: string } | null;
+  status: 'active' | 'retired';
+}
+
+export interface NutrientCatalog {
+  version: number;
+  groups: { id: NutrientGroupId; name: string; order: number }[];
+  nutrients: NutrientDef[];
+}
+
+/** A summary of one nutrient: known total, its estimated part, known foods. */
+export interface MealMicro {
+  total: number;
+  est: number;
+  known: number;
+}
+
+/** One nutrition day from GET /nutrients/daily. */
+export interface DailyMicros {
+  date: string;
+  /** false = "no data" for that day, never zero intake */
+  logged: boolean;
+  n_meals: number;
+  /** Foods logged that day; completeness = known / items */
+  items: number;
+  /** Absent key = unknown for every food that day */
+  values: Record<string, MealMicro>;
+  meals?: {
+    meal_id: string;
+    meal_type: string;
+    label?: string;
+    values: Record<string, MealMicro>;
+  }[];
+}
+
+export interface DailyMicrosResponse {
+  from: string;
+  to: string;
+  days: DailyMicros[];
 }
 
 export interface SaveMealRequest {
