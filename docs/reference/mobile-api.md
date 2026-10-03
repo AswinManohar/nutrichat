@@ -114,8 +114,8 @@ Request:
 applied. Extra fields on each item (`fdc_id`, macros, `source`,
 `estimated`) are preserved verbatim. Any `nutrients` / `micros` sent are
 **ignored**: the server re-derives tracked micronutrients from each item's
-`fdc_id` (or its cached estimate) and stores only the meal-level `micros`
-summary (spec 008). Re-sending a logged meal's `items` ("Log again") therefore
+`fdc_id` (or its cached estimate) and stores them on each item as compact
+`micros` (spec 008). Re-sending a logged meal's `items` ("Log again") therefore
 reproduces the same micronutrients. `client_request_id` is optional but
 required for idempotent retries.
 
@@ -203,10 +203,11 @@ Full detail for one logged meal, including its resolved items.
 
 Response: the same fields as a `GET /meals/log` entry, plus `items` — the
 stored entities array verbatim (the same item shape used when logging via
-`POST /meals/log-items`) — and `micros`, the meal-level micronutrient summary
-`{key: {"total", "est", "known"}}` (absent key = unknown; keys from
-`GET /meta/nutrients`). Stored items no longer carry `nutrients`, `sugar_g`
-or `sat_fat_g` (spec 008).
+`POST /meals/log-items`) — and `micros`, the meal summary
+`{key: {"total", "est", "known"}}` computed from the items (absent key =
+unknown; keys from `GET /meta/nutrients`). Each stored item carries its own
+compact `micros` `{key: [amount, "u"|"e"]}` (u = USDA, e = estimated) in place
+of `nutrients`, `sugar_g` and `sat_fat_g` (spec 008).
 
 ```json
 {
@@ -235,7 +236,8 @@ or `sat_fat_g` (spec 008).
       "source": "USDA",
       "estimated": false,
       "source_dish": null,
-      "is_composite": false
+      "is_composite": false,
+      "micros": { "vitamin_c": [0.0, "u"], "iron": [1.75, "u"] }
     }
   ],
   "micros": {

@@ -44,9 +44,9 @@ accept `since` (opaque cursor) and `limit` (default 100, max 500).
 
 Returns `meal_log` rows updated since the cursor, oldest-first.
 
-- **Active meals** include the macros, `entities`, `flags` and `micros`
-  (the meal-level micronutrient summary, see below). `embedding` is never
-  exposed.
+- **Active meals** include the macros, `entities` (each with its own
+  `micros`), `flags` and `micros` (the meal summary, see below). `embedding`
+  is never exposed.
 - **Soft-deleted meals** are returned as tombstones:
   `{"meal_id": "...", "updated_at": "...", "deleted": true}` — all other
   fields are `null`/omitted. Consumers should remove the meal from their
@@ -57,16 +57,18 @@ Returns `meal_log` rows updated since the cursor, oldest-first.
 Dedup on `meal_id` — a consumer's local store should upsert by `meal_id`,
 treating tombstones as deletes.
 
-**`micros`** (spec 008) is `{key: {"total", "est", "known"}}` for every
-tracked nutrient with at least one known value: `total` is the sum over the
-meal's foods, `est` the AI-estimated part of it, `known` how many foods had a
-value. A missing key means unknown, not zero. Keys and units come from
-`GET /meta/nutrients`. `null` on tombstones.
+**Micronutrients** (spec 008): each item in `entities` carries
+`micros: {key: [amount, "u"|"e"]}` (u = USDA, e = AI-estimated) for its known
+tracked nutrients — the only stored copy. The meal-level `micros` is computed
+from them: `{key: {"total", "est", "known"}}` where `total` sums the foods,
+`est` is the estimated part, `known` counts foods with a value. A missing key
+means unknown, not zero. Keys and units come from `GET /meta/nutrients`.
+`null` on tombstones.
 
 > **Changelog 2026-10-03 (breaking):** `entities[].nutrients` (the per-item
-> USDA nutrient map) is no longer stored or returned, and `entities[].sugar_g`
-> / `sat_fat_g` are gone from stored items. Read micronutrients from the new
-> meal-level `micros` field instead.
+> USDA nutrient map, USDA names) and `entities[].sugar_g` / `sat_fat_g` are
+> gone from stored items. Read `entities[].micros` (catalogue keys) or the
+> meal-level `micros` instead.
 
 ### `GET /v1/integrations/daily-summary`
 
