@@ -32,7 +32,12 @@ from backend.db.models import MealLog, UserMeal
 from backend.db.redis_client import current_day_bounds
 from backend.db.session import get_session
 from backend.nutrients.models import MicroValue
-from backend.nutrients.resolve import resolve_micros, summarise
+from backend.nutrients.resolve import (
+    from_stored,
+    resolve_micros,
+    summarise,
+    to_stored,
+)
 from backend.quota import UPGRADE_MSG
 from backend.ratelimit import user_rate_limiter
 
@@ -273,9 +278,9 @@ def _build_ingredients(items: list[IngredientIn], portion: float) -> list[dict]:
 
 async def _ingredient_micros(ing: dict) -> dict[str, MicroValue]:
     """An ingredient's tracked micros: stored ones, else resolved (legacy)."""
-    stored = ing.get("micros")
-    if isinstance(stored, dict) and stored:
-        return {k: MicroValue.model_validate(v) for k, v in stored.items()}
+    stored = from_stored(ing.get("micros"))
+    if stored:
+        return stored
     return await resolve_micros(
         int(ing.get("fdc_id", -1)), ing["food_name"], float(ing["qty_g"])
     )
@@ -299,7 +304,7 @@ async def _with_micros(ingredients: list[dict]) -> list[dict]:
     out: list[dict] = []
     for ing, micros in zip(ingredients, resolved, strict=True):
         clean = {k: v for k, v in ing.items() if k != "nutrients"}
-        clean["micros"] = {k: v.model_dump() for k, v in micros.items()}
+        clean["micros"] = to_stored(micros)
         out.append(clean)
     return out
 

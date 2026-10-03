@@ -4,13 +4,15 @@ The single read path for tracked micronutrients (spec 008 FR-017, FR-018):
 the Check-up, Mindful panel, coaching and ``GET /nutrients/daily`` all go
 through :func:`get_daily_micros`, so they can never disagree (SC-006).
 
-One SQL pass loads the range's meals; summaries are added up in Python.
-Fiber comes from the ``meal_log.fiber_g`` column and salt is derived from
-sodium — neither is stored in ``meal_log.micros``.
+One SQL pass loads the range's meals; each meal's summary is computed from
+its items' stored micros (``entities[].micros``, the only copy) and added up
+in Python. Fiber comes from the ``meal_log.fiber_g`` column and salt is
+derived from sodium — neither is stored in item micros.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,9 +22,19 @@ from backend.config import NutrientDef, get_catalog
 from backend.core.nutrition_day import NUTRITION_DATE_SQL, sql_day_params
 from backend.db.session import get_session
 from backend.nutrients.models import MealMicro
+from backend.nutrients.resolve import from_stored, summarise, summarise_items
 
 MAX_RANGE_DAYS = 365
 _ROUND = 4
+
+
+class FoodContribution(BaseModel):
+    """One logged food's values within a meal (spec 004 top contributors)."""
+
+    food_name: str
+    values: dict[str, MealMicro]
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class MealContribution(BaseModel):
@@ -32,6 +44,7 @@ class MealContribution(BaseModel):
     meal_type: str
     label: str | None = None
     values: dict[str, MealMicro]
+    foods: list[FoodContribution] = []
 
     model_config = ConfigDict(extra="forbid")
 
@@ -153,8 +166,7 @@ async def get_daily_micros(
             await session.execute(
                 text(
                     "SELECT " + NUTRITION_DATE_SQL + " AS day, meal_id::text AS "
-                    "meal_id, meal_type, label, fiber_g, micros, "
-                    "jsonb_array_length(entities) AS items "
+                    "meal_id, meal_type, label, fiber_g, entities "
                     "FROM meal_log WHERE user_id = :user_id "
                     "AND deleted_at IS NULL "
                     "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
@@ -179,8 +191,16 @@ async def get_daily_micros(
         meals = by_day.get(current, [])
         totals: dict[str, MealMicro] = {}
         contributions: list[MealContribution] = []
+        n_items = 0
         for row in meals:
-            values = _meal_values(row.micros or {}, row.fiber_g, row.items, wanted)
+            items = row.entities
+            if isinstance(items, str):  # some JSONB paths return text
+                items = json.loads(items or "[]")
+            items = items if isinstance(items, list) else []
+            n_items += len(items)
+            values = _meal_values(
+                summarise_items(items), row.fiber_g, len(items), wanted
+            )
             _add(totals, values)
             if include_meals:
                 contributions.append(
@@ -189,6 +209,18 @@ async def get_daily_micros(
                         meal_type=row.meal_type,
                         label=row.label,
                         values=values,
+                        foods=[
+                            FoodContribution(
+                                food_name=str(item.get("food_name", "")),
+                                values=_meal_values(
+                                    summarise([from_stored(item.get("micros"))]),
+                                    float(item.get("fiber_g") or 0.0),
+                                    1,
+                                    wanted,
+                                ),
+                            )
+                            for item in items
+                        ],
                     )
                 )
         days.append(
@@ -196,7 +228,7 @@ async def get_daily_micros(
                 date=current,
                 logged=bool(meals),
                 n_meals=len(meals),
-                items=sum(row.items for row in meals),
+                items=n_items,
                 values=totals,
                 meals=contributions if include_meals else None,
             )
@@ -215,6 +247,7 @@ def range_totals(resp: DailyMicrosResponse) -> dict[str, MealMicro]:
 
 __all__ = [
     "DailyMicrosResponse",
+    "FoodContribution",
     "DayMicros",
     "MealContribution",
     "get_daily_micros",
