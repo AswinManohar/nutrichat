@@ -13,6 +13,7 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
+    create_model,
     field_serializer,
 )
 from pydantic_ai import Agent
@@ -30,7 +31,13 @@ from backend.agent.tools.usda_match import (
 )
 from backend.config import get_tunables
 from backend.db.session import get_session
+from backend.nutrients import catalog
 from backend.nutrients.models import MicroValue
+from backend.nutrients.resolve import (
+    build_item_micros,
+    per_100g_from_estimate_row,
+    per_100g_from_usda,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +172,34 @@ class USDAResult(BaseModel):
         return 0.0 if value is None else value
 
 
+def _estimated_micros_model() -> type[BaseModel]:
+    """Build the per-100 g micronutrient part of the estimate output (spec 008).
+
+    One optional field per estimable catalogue key, except total sugars and
+    saturated fat (already estimated as ``sugar_g`` / ``sat_fat_g``). Built
+    from the catalogue so the two never drift (FR-018).
+    """
+    fields = {
+        key: (
+            float | None,
+            Field(
+                default=None,
+                ge=0.0,
+                description=f"{catalog.nutrient(key).name}, "
+                f"{catalog.nutrient(key).unit} per 100 g",
+            ),
+        )
+        for key in catalog.estimable_keys()
+        if key not in ("total_sugars", "saturated_fat")
+    }
+    return create_model(
+        "EstimatedMicros", __config__=ConfigDict(extra="forbid"), **fields
+    )
+
+
+EstimatedMicros = _estimated_micros_model()
+
+
 class NutritionEstimate(BaseModel):
     """LLM-estimated nutrition for a food at a specific gram weight.
 
@@ -179,6 +214,9 @@ class NutritionEstimate(BaseModel):
     fiber_g: float = Field(ge=0.0)
     sugar_g: float = Field(ge=0.0)
     sat_fat_g: float = Field(ge=0.0)
+    # Spec 008: tracked micronutrients PER 100 G (unlike the totals above);
+    # null where the model can't estimate. Same single call (FR-009).
+    micros: EstimatedMicros = Field(default_factory=EstimatedMicros)  # type: ignore[valid-type]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -318,6 +356,7 @@ def _miss_result(entity) -> USDAResult:
         sugar_g=0.0,
         sat_fat_g=0.0,
         nutrients={},
+        micros=build_item_micros({}, entity.qty_g),
     )
 
 
@@ -357,6 +396,14 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         for name, (val, unit) in raw.items()
     }
     candidates = [f["description"] for f in foods[:3]]
+    # FDC-API rollback path: no pre-computed gap estimates (research R6).
+    micros = build_item_micros(
+        per_100g_from_usda(
+            {name: {"amount": val, "unit": unit} for name, (val, unit) in raw.items()},
+            estimates={},
+        ),
+        entity.qty_g,
+    )
 
     return USDAResult(
         fdc_id=top["fdcId"],
@@ -366,6 +413,7 @@ def _parse_fdc_response(data: dict, entity) -> USDAResult | None:
         candidates=candidates,
         **macros,
         nutrients=nutrients,
+        micros=micros,
     )
 
 
@@ -391,6 +439,12 @@ def _result_from_local(entity, match: usda_local.LocalMatch) -> USDAResult:
         ],
         **macros,
         nutrients=nutrients,
+        micros=build_item_micros(
+            per_100g_from_usda(
+                match.nutrients_per_100g, match.micro_estimates_per_100g
+            ),
+            entity.qty_g,
+        ),
     )
 
 
@@ -429,6 +483,12 @@ def _result_from_cache(cached: dict, entity) -> USDAResult:
         candidates=[],
         **macros,
         nutrients=nutrients,
+        micros=build_item_micros(
+            per_100g_from_usda(
+                {k: v for k, v in raw.items() if isinstance(v, dict)}, estimates={}
+            ),
+            entity.qty_g,
+        ),
     )
 
 
@@ -453,10 +513,29 @@ _estimate_agent = Agent(
 )
 
 
-def _estimate_result(entity, per_100g: dict[str, float]) -> USDAResult:
-    """Build a USDAResult tagged as an LLM estimate from per-100g macros."""
+_ESTIMATE_MACROS = (
+    "kcal",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+    "sugar_g",
+    "sat_fat_g",
+)
+
+
+def _estimate_result(entity, per_100g: dict) -> USDAResult:
+    """Build a USDAResult tagged as an LLM estimate from a per-100 g cache row.
+
+    ``per_100g`` holds macro floats plus (spec 008) a nested ``micros``
+    object; legacy rows without it still work.
+    """
     scale = entity.qty_g / 100.0
-    macros = {field: round(val * scale, 2) for field, val in per_100g.items()}
+    macros = {
+        field: round(float(per_100g[field]) * scale, 2)
+        for field in _ESTIMATE_MACROS
+        if per_100g.get(field) is not None
+    }
     return USDAResult(
         fdc_id=-1,
         food_name=entity.food_name,
@@ -465,6 +544,7 @@ def _estimate_result(entity, per_100g: dict[str, float]) -> USDAResult:
         candidates=[],
         **macros,
         nutrients={},
+        micros=build_item_micros(per_100g_from_estimate_row(per_100g), entity.qty_g),
         source="LLM_ESTIMATE",
         estimated=True,
     )
@@ -486,9 +566,8 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
     """
     cached = await _estimate_cache_lookup(food_name)
     if cached:
-        per_100g = {k: float(v) for k, v in cached["nutrients"].items()}
         entity_like = _EntityShim(food_name=cached["food_name"], qty_g=qty_g)
-        return _estimate_result(entity_like, per_100g)
+        return _estimate_result(entity_like, cached["nutrients"])
 
     entity_like = _EntityShim(food_name=food_name, qty_g=qty_g)
     try:
@@ -500,18 +579,11 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
 
     # Store per-100g so qty scaling works the same as USDA cache rows.
     scale_to_100 = 100.0 / qty_g if qty_g else 0.0
-    per_100g = {
-        field: getattr(estimate, field) * scale_to_100
-        for field in (
-            "kcal",
-            "protein_g",
-            "carbs_g",
-            "fat_g",
-            "fiber_g",
-            "sugar_g",
-            "sat_fat_g",
-        )
+    per_100g: dict = {
+        field: getattr(estimate, field) * scale_to_100 for field in _ESTIMATE_MACROS
     }
+    # Micros are already per 100 g (spec 008).
+    per_100g["micros"] = estimate.micros.model_dump(exclude_none=True)
     await _estimate_cache_write(food_name, per_100g)
 
     return USDAResult(
@@ -528,6 +600,7 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
         sugar_g=estimate.sugar_g,
         sat_fat_g=estimate.sat_fat_g,
         nutrients={},
+        micros=build_item_micros(per_100g_from_estimate_row(per_100g), qty_g),
         source="LLM_ESTIMATE",
         estimated=True,
     )
