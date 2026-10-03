@@ -88,27 +88,34 @@ and the percent-of-target figures match the logged foods.
 
 ---
 
-### User Story 3 - Know which foods drive a nutrient (Priority: P2)
+### User Story 3 - Know which meals drive a nutrient (Priority: P2)
 
-For the nutrient and period they have selected, the user sees the top foods that
-contributed most, for example "Orange juice: 38% of your sugar this week". They
-can then act on specific foods rather than on an abstract number.
+For the nutrient and period they have selected, the user sees the top meals that
+contributed most, for example "Tuesday lunch (dal and rice): 38% of your sodium
+this week". They can then act on specific meals rather than on an abstract
+number.
+
+> **Updated 2026-10-03 (spec 008 FR-014a):** logged meals store micronutrients
+> only as a meal-level summary, so contributions are attributed to **meals**
+> (label, type, day), not to individual foods. Data source:
+> `GET /nutrients/daily?meals=true` (spec 008 FR-017).
 
 **Why this priority**: Knowing which foods drive a number is what turns it into a
 change in behaviour. It ranks just below Story 2 because the charts are useful
 on their own.
 
-**Independent Test**: For a seeded week in which one food supplies most of the
-sugar, confirm that food is ranked first and that its share matches its
+**Independent Test**: For a seeded week in which one meal supplies most of the
+sugar, confirm that meal is ranked first and that its share matches its
 contribution.
 
 **Acceptance Scenarios**:
 
-1. **Given** a period with logged foods containing sugar, **When** the user views
-   sugar analytics, **Then** they see up to 5 top contributing foods, each with its
-   amount and its share of the period total.
-2. **Given** the same food was logged on several days, **When** contributors are
-   ranked, **Then** that food's contributions are combined into one entry.
+1. **Given** a period with logged meals containing sugar, **When** the user views
+   sugar analytics, **Then** they see up to 5 top contributing meals, each with
+   its label, day, amount and share of the period total.
+2. **Given** the same saved meal was logged on several days, **When**
+   contributors are ranked, **Then** each logging is its own entry (meals are
+   not merged across days).
 
 ---
 
@@ -178,9 +185,10 @@ full completeness for calories.
   over the limit or under the target.
 - **FR-006**: The system MUST exclude days with no logged meals from averages and
   day counts, and MUST show those days as "no data".
-- **FR-007**: The system MUST show up to 5 foods that contributed most to the
-  selected nutrient in the period. Each food MUST show its amount and its percent
-  share, and repeated foods MUST be combined into one entry.
+- **FR-007**: The system MUST show up to 5 meals that contributed most to the
+  selected nutrient in the period. Each meal MUST show its label, day, amount
+  and percent share. Contributions are per meal, not per food (spec 008
+  FR-014a).
 - **FR-008**: The system MUST show data completeness for the selected nutrient and
   period, meaning the share of logged items that carry a value for that nutrient.
   When completeness is below 50%, it MUST show an undercount warning.
@@ -205,8 +213,8 @@ full completeness for calories.
 - **Period Summary**: The figures for the selected nutrient and period: the
   average, the percent of the reference value, the count of days over the limit
   or under the target, and the data completeness.
-- **Food Contribution**: A food's combined amount of the selected nutrient in the
-  period, and its share of the total.
+- **Meal Contribution**: A logged meal's amount of the selected nutrient and its
+  share of the period total (from spec 008's meal-level summary).
 
 ## Success Criteria *(mandatory)*
 
