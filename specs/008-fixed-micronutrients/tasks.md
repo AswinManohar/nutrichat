@@ -37,8 +37,8 @@ repo root, and backend code lives in `src/backend/`.
 
 **Purpose**: Create the new package and test helpers.
 
-- [ ] T001 Create the `src/backend/nutrients/` package with `__init__.py`, `catalog.py`, `resolve.py` and `daily.py`. Each file gets a Google-style module docstring stating its single responsibility (catalogue lookups; per-item resolve and meal summary; per-day totals) and `from __future__ import annotations`.
-- [ ] T002 [P] Add test factories in `tests/factories_micros.py`. They should provide `make_usda_result(food_name, qty_g, fdc_id, micros={key: (amount|None, source)})` and `make_meal_micros({key: (total, est, known)})`, which later tests reuse.
+- [X] T001 Create the `src/backend/nutrients/` package with `__init__.py`, `catalog.py`, `resolve.py` and `daily.py`. Each file gets a Google-style module docstring stating its single responsibility (catalogue lookups; per-item resolve and meal summary; per-day totals) and `from __future__ import annotations`.
+- [X] T002 [P] Add test factories in `tests/factories_micros.py`. They should provide `make_usda_result(food_name, qty_g, fdc_id, micros={key: (amount|None, source)})` and `make_meal_micros({key: (total, est, known)})`, which later tests reuse.
 
 ---
 
@@ -48,7 +48,7 @@ repo root, and backend code lives in `src/backend/`.
 
 **⚠️ CRITICAL**: No user-story work can begin until this phase is complete.
 
-- [ ] T003 Write `src/backend/config/nutrients.yaml` with the 5 groups (`carbs` "Carbohydrate detail", `fat` "Fat detail", `other` "Other", `vitamins` "Vitamins", `minerals` "Minerals") and the 48 entries from spec FR-001.
+- [X] T003 Write `src/backend/config/nutrients.yaml` with the 5 groups (`carbs` "Carbohydrate detail", `fat` "Fat detail", `other` "Other", `vitamins` "Vitamins", `minerals` "Minerals") and the 48 entries from spec FR-001.
   - **Fields per entry**: key, name, unit, group, order, direction, daily_value, usda_names, usda_only, max_per_100g (leave null for now; T014 fills it), column, derived, upper_limit, status (`active`).
   - **Keys** are snake_case with no unit suffix (research R2): `fiber, total_sugars, added_sugars, saturated_fat, monounsaturated_fat, polyunsaturated_fat, trans_fat, alcohol, cholesterol, salt, sodium, water, vitamin_a, thiamin, riboflavin, niacin, pantothenic_acid, vitamin_b6, biotin, folate, vitamin_b12, vitamin_c, vitamin_d, vitamin_e, vitamin_k, arsenic, boron, calcium, chloride, choline, chromium, cobalt, copper, fluoride, iodine, iron, magnesium, manganese, molybdenum, phosphorus, potassium, rubidium, selenium, silicon, sulfur, tin, vanadium, zinc`.
   - **Units**: use the ones in spec FR-001. µg is written `mcg`.
@@ -61,17 +61,17 @@ repo root, and backend code lives in `src/backend/`.
   - **usda_only: true** for exactly arsenic, boron, cobalt, rubidium, silicon, sulfur, tin, vanadium.
   - `fiber` gets `column: fiber_g`. `salt` gets `derived: {from: sodium, factor: 0.0025}`.
   - **upper_limit**: copy the 8 entries verbatim from the `upper_limits:` block of `src/backend/config/tunables.yaml` (sodium, total_sugars, saturated_fat, vitamin_a, vitamin_d, iron, zinc, niacin) as `{value: <ul>, source, url}`.
-- [ ] T004 Add Pydantic models `NutrientGroup`, `NutrientDef`, `UpperLimit`, `Derived` and `NutrientCatalog`, plus a cached `get_catalog()` loader, to `src/backend/config/__init__.py`. Use `extra="forbid"` and the same loading pattern as `get_tunables()`. Validators must enforce:
+- [X] T004 Add Pydantic models `NutrientGroup`, `NutrientDef`, `UpperLimit`, `Derived` and `NutrientCatalog`, plus a cached `get_catalog()` loader, to `src/backend/config/__init__.py`. Use `extra="forbid"` and the same loading pattern as `get_tunables()`. Validators must enforce:
   - keys are unique;
   - "At most one of `column` and `derived` is set";
   - an entry with `derived` has no `usda_names` and `usda_only = false`;
   - "`usda_only = true` applies exactly to arsenic, boron, cobalt, rubidium, silicon, sulfur, tin and vanadium";
   - `unit` is one of `g`, `mg` or `mcg`; `group` is one of the 5 group ids; `direction` is one of `limit`, `target` or `none`; `status` is one of `active` or `retired`.
-- [ ] T005 Implement `src/backend/nutrients/catalog.py`: `key_for_usda_name(name) -> str | None` (alias map that honours the priority order), `stored_keys()` (active keys with neither `column` nor `derived`), `estimable_keys()` (stored keys minus usda_only), `usda_only_keys()`, `resolve_key(name_or_key) -> str | None` (accepts a catalogue key or any USDA alias, used by coaching), and `public_view()` (drops `usda_names`, `max_per_100g` and `column` for the API).
-- [ ] T006 [P] Write `tests/test_nutrient_catalog.py`. Check: 48 entries; 5 groups; each validator rejects a bad fixture; both sugar spellings map to `total_sugars`; folate prefers DFE; `stored_keys()` excludes fiber and salt; `estimable_keys()` has 38 entries (48 − fiber − salt − 8 USDA-only); `public_view()` hides the server-only fields.
-- [ ] T007 Create migration `src/backend/db/migrations/versions/20261003_018_meal_micros.py` with `revision = "018_meal_micros"` and `down_revision = "017_rls_new_tables"`. It adds `meal_log.micros JSONB NOT NULL DEFAULT '{}'::jsonb`, and the downgrade drops the column. There is no backfill (FR-012).
-- [ ] T008 Add `micros: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict)` to `MealLog` in `src/backend/db/models.py`, with a comment pointing to data-model.md §3.
-- [ ] T009 In `src/backend/agent/tools/usda.py`, add `class MicroValue(BaseModel)` with `amount: float | None` and `source: Literal["usda", "estimated", "unknown"]` (`extra="forbid"`). Add `micros: dict[str, MicroValue] = {}` to `USDAResult`. Keep the existing `nutrients` field for now; T037 removes it.
+- [X] T005 Implement `src/backend/nutrients/catalog.py`: `key_for_usda_name(name) -> str | None` (alias map that honours the priority order), `stored_keys()` (active keys with neither `column` nor `derived`), `estimable_keys()` (stored keys minus usda_only), `usda_only_keys()`, `resolve_key(name_or_key) -> str | None` (accepts a catalogue key or any USDA alias, used by coaching), and `public_view()` (drops `usda_names`, `max_per_100g` and `column` for the API).
+- [X] T006 [P] Write `tests/test_nutrient_catalog.py`. Check: 48 entries; 5 groups; each validator rejects a bad fixture; both sugar spellings map to `total_sugars`; folate prefers DFE; `stored_keys()` excludes fiber and salt; `estimable_keys()` has 38 entries (48 − fiber − salt − 8 USDA-only); `public_view()` hides the server-only fields.
+- [X] T007 Create migration `src/backend/db/migrations/versions/20261003_018_meal_micros.py` with `revision = "018_meal_micros"` and `down_revision = "017_rls_new_tables"`. It adds `meal_log.micros JSONB NOT NULL DEFAULT '{}'::jsonb`, and the downgrade drops the column. There is no backfill (FR-012).
+- [X] T008 Add `micros: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict)` to `MealLog` in `src/backend/db/models.py`, with a comment pointing to data-model.md §3.
+- [X] T009 In `src/backend/agent/tools/usda.py`, add `class MicroValue(BaseModel)` with `amount: float | None` and `source: Literal["usda", "estimated", "unknown"]` (`extra="forbid"`). Add `micros: dict[str, MicroValue] = {}` to `USDAResult`. Keep the existing `nutrients` field for now; T037 removes it.
 
 **Checkpoint**: The catalogue loads and validates, the migration applies (`alembic upgrade head`), and the existing suite still passes (`pytest`).
 
