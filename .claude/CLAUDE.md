@@ -13,21 +13,21 @@ and tracks daily nutrition goals.
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.12 · FastAPI · async |
-| Agent | LangGraph (logging) · Pydantic AI (coaching pilot) · tool-use router pattern |
+| Backend | Python 3.13 · FastAPI · async · SQLAlchemy 2 (asyncpg) · uv |
+| Agent | LangGraph (logging, Postgres checkpointer) · Pydantic AI (coaching) |
 | Observability | Logfire (OpenTelemetry) |
 | LLM — extraction | Gemini 2.5 Flash (thinking disabled — see tunables `extraction_thinking_budget`) |
 | LLM — coaching | Gemini 2.5 Flash |
-| LLM — fallback | Claude Haiku 4.5 |
 | Typed judgments | TypeSafe Jev (System One): log/coaching intent routing; Gemini classifier as safety net |
 | Database | PostgreSQL 16 + pgvector |
 | Cache | Redis |
 | Task queue | Celery + Redis |
 | Embeddings | Gemini gemini-embedding-001 (768-dim via output_dimensionality) |
-| Auth | Supabase Auth |
-| Frontend | React 19 · TypeScript · Vite · Tailwind CSS |
+| Auth | Supabase Auth (ES256 JWTs via JWKS; no dev bypass) |
+| Frontend | React 19 · TypeScript · Vite · Tailwind CSS 4 · TanStack Query · Zustand |
+| Android | Kotlin · Jetpack Compose · Hilt · Retrofit · Room · supabase-kt (see android/CLAUDE.md) |
 | Telegram bot | aiogram 3 (polling for dev, webhook for prod) |
-| Food data | USDA FoodData Central (CC0, free) |
+| Food data | USDA FoodData Central (CC0): bundled SQLite → FDC API → LLM estimate |
 | Hosting | Railway (backend: web/worker/bot + Redis) · Netlify (frontend) · Supabase (Postgres) |
 
 ---
@@ -39,27 +39,30 @@ Update this file when the layout changes significantly.
 
 ```
 nutrichat/
-├── backend/
+├── src/backend/                # Python package `backend` (run with PYTHONPATH=src)
 │   ├── agent/
 │   │   ├── context.py          # build_context(), build_system_prompt()
-│   │   ├── graph.py            # LangGraph StateGraph
+│   │   ├── graph.py            # LangGraph StateGraph (logging)
 │   │   ├── orchestrator.py     # handle_message(), _route() decision rule
 │   │   ├── system_one.py       # TypeSafe Jev routing judgment (judge_message)
-│   │   ├── coaching.py         # proactive coaching logic
+│   │   ├── coaching.py         # Pydantic AI coaching agent
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
+│   │   ├── llm.py · cost.py    # model clients, token cost accounting
 │   │   └── tools/
 │   │       ├── meals.py        # extract_entities, log_meal
 │   │       ├── usda.py         # usda_lookup_batch (parallel)
+│   │       ├── usda_local.py   # bundled USDA SQLite lookup
+│   │       ├── usda_match.py   # lexical ranker (_rank_key)
+│   │       ├── decompose.py    # recipe -> ingredients
+│   │       ├── replace_ingredient.py
+│   │       ├── saved_meals.py
 │   │       └── history.py      # get_history hybrid search
-│   ├── agents/                 # Phase 2 — specialist agents
-│   │   ├── logging_agent.py
-│   │   ├── coaching_agent.py
-│   │   └── recipe_agent.py
-│   ├── api/
-│   │   ├── meals.py            # POST /meals/log
-│   │   ├── goals.py            # GET/PUT /goals
-│   │   ├── coaching_feedback.py  # POST /coaching/{id}/feedback
-│   │   └── billing.py          # Stripe
+│   ├── api/                    # FastAPI routers: meals, goals, my_meals, foods,
+│   │                           # coaching_feedback, nutrient_checkup, mindful, quota,
+│   │                           # billing, push, devices, telegram_link, integrations
+│   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
+│   ├── config/                 # tunables.yaml, prompts/
+│   ├── core/                   # nutrition_day.py (day boundaries)
 │   ├── guidelines/             # curated dietary-guideline corpus
 │   │   ├── chunking.py         # markdown + frontmatter -> Chunk
 │   │   ├── ingest.py           # idempotent embed + sync CLI
@@ -67,23 +70,22 @@ nutrichat/
 │   │   └── export_feedback.py  # rated coaching turns -> JSONL
 │   ├── db/
 │   │   ├── models.py           # SQLAlchemy ORM
+│   │   ├── session.py          # async engine/session
+│   │   ├── checkpointer.py     # LangGraph Postgres checkpointer pool
 │   │   ├── redis_client.py     # connection pool + helpers
-│   │   └── migrations/
-│   │       └── versions/
-│   ├── workers/
-│   │   └── tasks.py            # Celery tasks
+│   │   └── migrations/versions/
+│   ├── push/                   # FCM sender
+│   ├── telegram/               # aiogram bot
+│   ├── workers/tasks.py        # Celery tasks + beat schedule
 │   └── main.py                 # FastAPI app
-├── frontend/
-│   └── src/
-│       ├── components/
-│       ├── stores/             # Zustand
-│       └── api/                # TanStack Query hooks
-├── eval/
-│   ├── eval_harness.py
-│   ├── run_eval.py
-│   └── test_set_200.jsonl
-└── docs/
-    └── PRD.md
+├── frontend/src/               # api/, components/, hooks/, lib/, pages/, stores/ (Zustand)
+├── android/                    # native app (own CLAUDE.md and README.md)
+├── tests/                      # pytest suite
+├── eval/                       # run_eval.py, gate.py, cases/, baselines
+├── specs/                      # spec-kit feature specs (NNN-name/)
+├── supabase/                   # Supabase config
+├── scripts/                    # run-local.sh, deploy helpers
+└── docs/                       # architecture.md, deployment/, guidelines/
 ```
 
 ---
@@ -91,14 +93,15 @@ nutrichat/
 ## Environment variables
 
 ```bash
-GOOGLE_API_KEY=          # Gemini Flash-Lite + embeddings
-ANTHROPIC_API_KEY=       # fallback / eval runs
+GOOGLE_API_KEY=          # Gemini 2.5 Flash + embeddings
+ANTHROPIC_API_KEY=       # reserved; not used by current code
 TYPESAFE_API_KEY=        # Jev intent routing; unset = Gemini routes everything
 DATABASE_URL=            # postgresql://...
 REDIS_URL=               # redis://...
 SUPABASE_URL=            # https://xxx.supabase.co
 SUPABASE_ANON_KEY=       # eyJ...
 USDA_API_KEY=            # fdc.nal.usda.gov/api-key-signup/
+# Full list (Logfire, Telegram, VAPID, Firebase, billing flags): .env.example
 ```
 
 ---
@@ -106,11 +109,16 @@ USDA_API_KEY=            # fdc.nal.usda.gov/api-key-signup/
 ## Commands
 
 ```bash
+# Everything at once (API + frontend + Redis; optional worker and bot)
+bash scripts/run-local.sh [--worker] [--bot]
+
 # Backend
-uvicorn backend.main:app --reload --port 8000
-alembic upgrade head
-celery -A backend.workers.tasks worker --loglevel=info
-python -m backend.telegram.bot   # Telegram bot, polling mode (dev)
+docker compose up -d                       # Postgres 16 + pgvector, Redis
+PYTHONPATH=src uv run alembic upgrade head
+uv run uvicorn backend.main:app --reload --port 8000 --app-dir src
+PYTHONPATH=src uv run celery -A backend.workers.tasks worker --loglevel=info
+PYTHONPATH=src uv run python -m backend.telegram.bot   # polling mode (dev)
+uv run pytest                              # DB tests need DATABASE_URL
 
 # Guidelines corpus
 PYTHONPATH=src python -m backend.guidelines.ingest --dir docs/guidelines [--dry-run]
@@ -119,6 +127,7 @@ PYTHONPATH=src python -m backend.guidelines.export_feedback \
 
 # Frontend
 cd frontend && npm run dev
+cd frontend && npm test          # Vitest
 
 # Eval
 python eval/run_eval.py --dataset eval/test_set_200.jsonl --mock  # offline
@@ -302,12 +311,13 @@ class FoodEntity(BaseModel):
 
 ### Line length and formatting
 
-Max line length: **88 characters** (Black default). Use Black for formatting,
-Ruff for linting. Do not configure either — use defaults.
+Max line length: **88 characters**. Use Ruff for linting and formatting, and run
+it only on the files you touch. Do not run Black: it is not installed in the venv,
+and `uvx black` disagrees with Ruff on existing files.
 
 ```bash
-black backend/
-ruff check backend/ --fix
+uv run ruff check src/backend/path/to/file.py --fix
+uv run ruff format src/backend/path/to/file.py
 ```
 
 ---
