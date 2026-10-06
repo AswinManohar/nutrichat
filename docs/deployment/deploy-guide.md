@@ -49,6 +49,40 @@ env var (`web`/`worker`/`bot`) and `start.sh` dispatches on it (see
 
 ---
 
+## Push to production (gated): the normal way to ship
+
+One command checks, promotes and deploys a commit. The `production` branch only
+ever fast-forwards to a commit that passed the checks.
+
+```bash
+scripts/install-git-hooks.sh                       # once per clone
+scripts/push-to-production.sh --dry-run [commit]   # checks only, ships nothing
+scripts/push-to-production.sh [commit]             # checks → confirm → promote → deploy
+```
+
+In Claude Code, `/ship` runs the same flow and asks for your go-ahead before
+anything is pushed.
+
+| Stage | What runs | Blocks on |
+|---|---|---|
+| Code | `uv sync --frozen`, ruff on changed `.py` files, backend pytest, frontend vitest + `tsc`/vite build | new lint findings, any failing test or build |
+| Database | Compares the commit's Alembic head(s) with production's `alembic_version` (one read-only SELECT using `.env`) | migrations not yet applied to Supabase; apply them first (below) |
+| Security | gitleaks on the commits being shipped; bandit (high severity); pip-audit + npm audit (high/critical) | any secret; any high-severity code issue; any dependency vulnerability **not** listed in `security/audit-baseline.json` |
+| Promote | `git push origin <sha>:production` (fast-forward only) | the `pre-push` hook rejects a push without a pass for that exact commit from the last 24 h |
+| Deploy | `scripts/deploy-railway.sh` (web, worker, bot) and `netlify deploy --build --prod`, both from a throwaway worktree of `production` | a failed service, a failed health check, or a missing site title |
+
+Notes:
+
+- Checks run in a temporary worktree at the commit, so uncommitted edits are
+  never tested or shipped.
+- `security/audit-baseline.json` lists the dependency vulnerabilities known on
+  2026-10-07. Remove entries as you upgrade. Don't add entries just to pass the
+  gate; give the reason in the commit message.
+- Needs `gitleaks` (installed at `~/.local/bin/gitleaks`), `uvx`, the Railway
+  and Netlify CLIs (logged in), and docker for the local test database.
+- Emergency bypass for an urgent rollback: `git push --no-verify`, then deploy
+  with the manual steps below.
+
 ## Deploy the backend (Railway)
 
 From the repo root:

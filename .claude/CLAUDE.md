@@ -122,6 +122,9 @@ PYTHONPATH=src uv run celery -A backend.workers.tasks worker --loglevel=info
 PYTHONPATH=src uv run python -m backend.telegram.bot   # polling mode (dev)
 uv run pytest                              # DB tests need DATABASE_URL
 
+# Ship to production (checks → promote → deploy); see deploy-guide.md
+scripts/push-to-production.sh --dry-run    # or /ship in Claude Code
+
 # Guidelines corpus
 PYTHONPATH=src python -m backend.guidelines.ingest --dir docs/guidelines [--dry-run]
 PYTHONPATH=src python -m backend.guidelines.export_feedback \
