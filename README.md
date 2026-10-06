@@ -1,29 +1,31 @@
 # Mealsy
 
-Log a meal in one sentence. Mealsy turns "had two eggs and toast this morning" into
-USDA-grounded nutrition data, tracks it against your daily goals, and coaches you
-from your own history.
+Mealsy is an agentic nutrition-tracking application. Users describe meals in natural
+language (for example, "two eggs and toast for breakfast"). The system extracts the
+food items, resolves them against USDA FoodData Central, tracks intake against daily
+goals, and provides coaching grounded in the user's logged history.
 
-> Formerly **NutriChat**. The repo and some infrastructure identifiers keep the old name.
+> The project was previously named NutriChat. The repository and some infrastructure
+> identifiers retain the original name.
 
 ---
 
 ## Project goal
 
-**Product goal.** Make food tracking light enough that people keep doing it. No forms,
-no calorie-obsessed grids, no red warning numbers: you describe what you ate, confirm
-the card, and move on. Numbers inform; they never judge.
+**Product goal.** Reduce the effort of food tracking enough for users to sustain the
+habit. Meals are logged through a single natural-language message and a confirmation
+step rather than manual forms. Nutrition data is presented as information, not as a
+pass/fail judgment.
 
-**Learning goal.** Mealsy is also a hands-on project for building *robust* agentic
-systems, the kind that hold up with real users rather than in a demo. It works
-through patterns such as:
+**Engineering goal.** Mealsy also serves as a reference project for building reliable
+agentic systems for production use. It demonstrates the following patterns:
 
 - **Human-in-the-loop state machines.** The logging graph pauses for confirmation and
   correction (LangGraph interrupts and a Postgres checkpointer).
 - **Typed routing judgments.** TypeSafe Jev decides between logging and coaching, with
   a Gemini classifier as a safety net.
 - **Layered fallbacks.** Food lookup goes from the bundled USDA database to the FDC API
-  to an LLM estimate, so a flaky upstream never blocks a log.
+  to an LLM estimate, so an upstream outage does not block logging.
 - **Grounded generation.** Coaching draws on the user's logged history and a curated,
   condition-filtered dietary-guideline corpus (pgvector).
 - **Evals as gates.** An offline and live eval harness, plus per-capability gates
@@ -35,12 +37,12 @@ through patterns such as:
 ## Features
 
 - **Natural-language and photo meal logging** with an editable confirmation card
-  (per-ingredient breakdown, quantity fixes, "replace X with Y").
-- **Saved meals** that you can re-log in one tap, with an offer to update a saved
-  recipe when you change it.
+  (per-ingredient breakdown, quantity corrections, ingredient substitution).
+- **Saved meals** that can be re-logged in a single step, with an option to update
+  the saved recipe when it is modified.
 - **Daily goals, totals and trends** for macros and micronutrients.
-- **Coaching**: questions like "how am I doing on protein?", meal plans for your
-  remaining goals, and proactive daily and weekly summaries and nutrient check-ups.
+- **Coaching**: answers to nutrition questions, meal plans for the remaining daily
+  goals, and scheduled daily and weekly summaries and nutrient check-ups.
 - **Multiple clients**: a React web app, a native Android app, and a Telegram bot.
 - **Integrations API** (`/v1/integrations`, scoped API keys) for reading meals and
   summaries from other tools. See [docs/integration-api.md](docs/integration-api.md).
