@@ -36,7 +36,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 
-from backend.agent.llm import FLASH_LITE_MODEL
 from backend.agent.tools import usda_local
 from backend.agent.tools.usda import MicroEstimate
 from backend.config import get_tunables
@@ -88,16 +87,26 @@ class GapEstimate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-_agent = Agent(
-    GoogleModel(FLASH_LITE_MODEL),
-    output_type=GapEstimate,
-    system_prompt=_SYSTEM,
-    model_settings=GoogleModelSettings(
-        google_thinking_config={
-            "thinking_budget": get_tunables().token_limits.extraction_thinking_budget
-        }
-    ),
-)
+# Offline batch job model; --model overrides it. Accuracy is gated by
+# --benchmark (2026-10-06, 50 foods: 3.5 Flash 84% gap-fill vs 2.5 Flash 74%;
+# 2.5 Flash-Lite is no longer served to new API users).
+DEFAULT_MODEL = "gemini-3.5-flash"
+
+
+def _make_agent(model: str) -> Agent:
+    """Gap-estimate agent on ``model`` (thinking off, like extraction)."""
+    budget = get_tunables().token_limits.extraction_thinking_budget
+    return Agent(
+        GoogleModel(model),
+        output_type=GapEstimate,
+        system_prompt=_SYSTEM,
+        model_settings=GoogleModelSettings(
+            google_thinking_config={"thinking_budget": budget}
+        ),
+    )
+
+
+_agent = _make_agent(DEFAULT_MODEL)
 
 
 @dataclass
@@ -301,8 +310,12 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="first N foods")
     parser.add_argument("--benchmark", type=int, default=None, metavar="N")
     parser.add_argument("--concurrency", type=int, default=16)
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Gemini model id")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
+    global _agent
+    _agent = _make_agent(args.model)
+    print(f"model: {args.model}")
 
     write = not (args.dry_run or args.benchmark)
     conn = _connect(usda_local.database_path(), write=write)

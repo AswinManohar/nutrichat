@@ -91,6 +91,7 @@ runtime AI call per matched item would add latency and cost to every log
   plausibility ranges, and rejected values are left out, which makes them
   "unknown". At runtime a USDA-matched item reads its USDA values first, then
   the pre-computed estimates, with **zero extra AI calls**.
+- **Model (2026-10-06)**: `gemini-3.5-flash`, chosen by the user after the benchmark. It scored 84% within ±50% in gap-fill mode (2.5 Flash scored 74%). `gemini-2.5-flash-lite` returned 404, because it is no longer available to new API users.
 - **Cost**: about 13,694 foods × ~700 tokens ≈ 10M tokens, a few dollars at
   Flash-Lite batch pricing. This is a one-off, and it is re-run only when the
   USDA release changes. **Running it needs the user's go-ahead** (see the
