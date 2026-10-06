@@ -141,6 +141,73 @@ python eval/probe_jev_latency.py --n 50 --concurrency 1,5,10      # Jev latency
 
 ---
 
+## Debugging workflow
+
+### On the phone (preferred): Pixel 9 over wireless adb
+
+The phone is already paired. When Wireless debugging is on, it advertises
+itself over mDNS, so you don't need to ask for an IP or port.
+
+```bash
+ADB=~/Android/Sdk/platform-tools/adb
+$ADB mdns services && $ADB devices -l      # should list "Pixel_9 … device"
+$ADB reverse tcp:8000 tcp:8000             # app → laptop backend at localhost:8000
+docker start nutrichat-redis               # backend needs local Redis
+PYTHONPATH=src uv run --env-file .env uvicorn backend.main:app \
+    --host 127.0.0.1 --port 8000           # code doesn't load .env itself
+curl -s localhost:8000/meta/app            # health check, expect 200
+cd android && ./gradlew :app:assembleDebug
+$ADB install -r android/app/build/outputs/apk/debug/app-debug.apk
+$ADB shell monkey -p app.mealsy.android -c android.intent.category.LAUNCHER 1
+$ADB logcat --pid=$($ADB shell pidof app.mealsy.android)   # app logs
+```
+
+- Repair only if `mdns services` is empty: Wireless debugging → *Pair device
+  with pairing code* → `adb pair IP:pairport CODE`, then `adb connect IP:port`.
+- `adb reverse` is lost whenever the phone reconnects. Re-run it if the app
+  shows network errors.
+- `android/local.properties` holds `API_BASE_URL=http://localhost:8000`. It
+  works for the phone and the emulator alike through `adb reverse`.
+
+### Emulator (fallback)
+
+AVD `Medium_Phone_API_36`. Launch with
+`emulator -avd Medium_Phone_API_36 -memory 2048 -gpu swiftshader_indirect
+-feature -Vulkan`. Without these flags it hangs on a grey screen. The host
+has ~14 GB of RAM and the emulator gets OOM-killed, so ask before launching
+it. Booting from a snapshot can bring back an old APK, so reinstall the APK
+after every boot.
+
+### Things that bite
+
+- **The local backend writes to the production Supabase database** (the
+  `DATABASE_URL` in `.env`). Anything you log while testing is real user
+  data. Run the backend from the branch that matches production's schema; a
+  feature branch with new migrations or a new data format must not point at
+  prod.
+- **Gemini key and spend cap.** `GOOGLE_API_KEY` in `.env` belongs to Google
+  project `gen-lang-client-0523573857`. When its monthly spend cap is hit,
+  every Gemini call returns HTTP 429 "exceeded its monthly spending cap", so
+  extraction, estimates and coaching all fail. Check the backend log before
+  debugging the app (issue #59).
+- One Gradle run at a time per checkout. Don't wrap builds in `pgrep` guards,
+  because they livelock.
+- `test_e2e_meals.py::test_chat_history_isolation` always fails offline (it
+  calls real Gemini).
+
+### Backend tests against a local database
+
+DB-backed tests skip unless `DATABASE_URL` is set. Use a throwaway database
+on the docker Postgres (`docker start nutrichat-pg`, port 5411). Before
+`alembic upgrade head`, run `CREATE EXTENSION vector; CREATE SCHEMA auth;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'select
+null::uuid';` because migration 017's RLS policies call Supabase's
+`auth.uid()`. Then run
+`DATABASE_URL=postgresql+asyncpg://nutrichat:nutrichat@127.0.0.1:5411/<db>
+uv run pytest`. Never point tests at the production `DATABASE_URL`.
+
+---
+
 ## Python coding standards
 
 Based on [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
