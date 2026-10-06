@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Mealsy</h1>
-  <h3>Natural-language nutrition tracking, built as a reference for reliable agentic systems.</h3>
+  <h3>Calorie and nutrient tracking that learns your eating habits and coaches you on them.</h3>
 </div>
 
 <div align="center">
@@ -14,11 +14,13 @@
 
 <br>
 
-Mealsy turns a meal description such as *"two eggs and toast for breakfast"* into
-structured nutrition data. The agent extracts each food item, resolves it against
-[USDA FoodData Central](https://fdc.nal.usda.gov/), asks the user to confirm, and
-tracks intake against daily goals. A separate coaching agent answers nutrition
-questions using the user's own history and a curated dietary-guideline corpus.
+Mealsy is a nutrition app that tracks calories, macronutrients and micronutrients,
+adapts to each user, and provides personalized coaching based on their eating habits.
+Users log a meal by describing it, for example *"two eggs and toast for breakfast"*.
+Mealsy identifies each food, resolves it against
+[USDA FoodData Central](https://fdc.nal.usda.gov/), and records it after the user
+confirms. Over time it learns the user's preferences and patterns, and uses them to
+give coaching, meal plans and summaries tailored to that person.
 
 The application runs on web, Android and Telegram.
 
@@ -33,33 +35,25 @@ bash scripts/run-local.sh
 
 ## Why Mealsy?
 
-Mealsy has two goals. The product goal is to make food tracking low-effort enough to
-sustain, with logging done through one message and a confirmation step, and data
-presented as information rather than as a pass/fail judgment. The engineering goal is
-to demonstrate the patterns that keep an LLM agent reliable in production:
+- **Logging in one message**: describe a meal in plain language or send a photo.
+  Mealsy breaks it into ingredients and portions, and the user confirms or corrects
+  the result before it is saved.
+- **Accurate nutrient data**: foods are matched to USDA FoodData Central, covering
+  calories, macronutrients and micronutrients.
+- **Adapts to the user**: Mealsy learns lasting preferences from conversations, keeps
+  saved meals for one-step re-logging, and tracks each user's own goals.
+- **Personalized coaching**: coaching draws on the user's logged meals, trends and
+  health context, plus a curated dietary-guideline corpus. It answers questions,
+  plans meals for the remaining daily goals, and sends daily and weekly summaries
+  and nutrient check-ups.
+- **Available where users are**: web, Android and Telegram share one account and one
+  history.
+- **Informative, not judgmental**: intake is shown as information. Going over a goal
+  is not presented as a failure.
 
-- **[Human-in-the-loop](docs/architecture.md)**: the logging graph pauses on a
-  LangGraph interrupt so the user can confirm, correct quantities or substitute
-  ingredients before anything is written. State persists in a Postgres checkpointer.
-- **Typed routing**: TypeSafe Jev classifies each message as logging or coaching and
-  returns a typed judgment. A Gemini classifier acts as a safety net.
-- **[Layered fallbacks](docs/usda-matching-methods.md)**: food lookup tries the bundled
-  USDA database, then the FDC API, then an LLM estimate, so an upstream outage does
-  not block logging.
-- **Grounded coaching**: a Pydantic AI agent answers from the user's logged meals and
-  a condition-filtered guideline corpus retrieved with pgvector.
-- **Evals as release gates**: an offline and live harness, plus per-capability gates
-  that are compared against stored baselines.
-- **[Observability](docs/observability.md)**: end-to-end Logfire (OpenTelemetry)
-  traces across the API, agents, Celery workers and external calls.
+## Integrations
 
-## Features
-
-- Natural-language and photo meal logging with an editable confirmation card
-- Saved meals that can be re-logged in a single step
-- Daily goals, totals and trends for macronutrients and micronutrients
-- Coaching, meal plans for remaining goals, and scheduled daily and weekly summaries
-- Clients: React web app, native Android app, [Telegram bot](docs/telegram-bot.md)
+- [Telegram bot](docs/telegram-bot.md) linked to the same account
 - Read-only [integrations API](docs/integration-api.md) with scoped API keys
 - Web push (VAPID) and Android push (FCM) notifications
 
@@ -86,6 +80,20 @@ to demonstrate the patterns that keep an LLM agent reliable in production:
                                               ▲
                         Celery beat: daily/weekly summaries, check-ups, digests
 ```
+
+### Reliability
+
+- **[Human-in-the-loop](docs/architecture.md)**: the logging graph pauses on a
+  LangGraph interrupt for confirmation and corrections. State persists in a Postgres
+  checkpointer, so a paused meal survives restarts.
+- **Typed routing**: TypeSafe Jev classifies each message as logging or coaching. A
+  Gemini classifier acts as a safety net.
+- **[Layered food lookup](docs/usda-matching-methods.md)**: bundled USDA database,
+  then the FDC API, then an LLM estimate, so an upstream outage does not block logging.
+- **Evals as release gates**: an offline and live harness, plus per-capability gates
+  compared against stored baselines.
+- **[Observability](docs/observability.md)**: end-to-end Logfire (OpenTelemetry)
+  traces across the API, agents, workers and external calls.
 
 See [docs/architecture.md](docs/architecture.md) for routes, graph nodes, the data
 model and background jobs.

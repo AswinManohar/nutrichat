@@ -1,11 +1,13 @@
 # CLAUDE.md — Mealsy
 
-Learning/pedagogical project for building robust agentic systems (the product
-was renamed from "NutriChat"; the git repo directory is still `nutrichat/` and
-some infra identifiers keep the old name — see docs/deployment/deploy-guide.md).
-Users describe meals in natural language;
-the agent extracts food entities, resolves them against USDA FoodData Central,
-and tracks daily nutrition goals.
+Mealsy is a production nutrition app (renamed from "NutriChat"; the git repo
+directory is still `nutrichat/` and some infra identifiers keep the old name — see
+docs/deployment/deploy-guide.md). It tracks calories, macronutrients and
+micronutrients, adapts to each user, and provides personalized coaching based on
+their eating habits. Users describe meals in natural language; the agent extracts
+food entities, resolves them against USDA FoodData Central, and tracks them against
+the user's goals. It is not a demo or learning project: treat changes as changes to
+a live app with real users.
 
 ---
 
