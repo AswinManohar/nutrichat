@@ -250,3 +250,21 @@ def test_build_nutrient_checkup_skips_users_without_recent_meals():
     agg_mock.assert_not_awaited()
     assert session.execute.await_count == 1
     session.commit.assert_awaited_once()
+
+
+def test_extract_and_store_facts_routes_profile_users_to_the_curator():
+    curate = AsyncMock()
+    legacy_llm = MagicMock()
+    legacy_llm.ainvoke = AsyncMock()
+
+    with (
+        patch("backend.workers.tasks.profile_active", return_value=True),
+        patch("backend.workers.tasks.curate_turn", curate),
+        patch("backend.workers.tasks._fact_extraction_llm", legacy_llm),
+        patch("backend.workers.tasks.embed_text", new_callable=AsyncMock) as embed,
+    ):
+        extract_and_store_facts("user-1", "I'm vegetarian now", "Noted.")
+
+    curate.assert_awaited_once_with("user-1", "I'm vegetarian now", "Noted.")
+    legacy_llm.ainvoke.assert_not_awaited()
+    embed.assert_not_awaited()

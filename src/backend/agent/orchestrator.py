@@ -255,8 +255,11 @@ async def handle_message(
     # Short-term coaching memory: both intents, so the coach knows what was
     # just logged as well as what was just asked.
     await _record_turn(user_id, user_input, image_b64, result)
-    # Preference memory (PRD F6): fire-and-forget on every handled turn.
-    _enqueue_fact_extraction(user_id, user_input, result["message"])
+    # Preference memory (PRD F6): fire-and-forget after the reply. Card
+    # button presses and photo-only turns carry no statement to learn from,
+    # so they skip the task (and its LLM call) entirely.
+    if action is None and user_input.strip():
+        _enqueue_fact_extraction(user_id, user_input, result["message"])
     return result
 
 

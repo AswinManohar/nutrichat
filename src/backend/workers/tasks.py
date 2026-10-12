@@ -16,6 +16,8 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.agent.llm import FLASH_LITE_MODEL, embed_text, make_llm
+from backend.agent.memory import profile_active
+from backend.agent.memory_curator import curate_turn
 from backend.agent.tools.history import (
     get_nutrient_checkup_aggregates,
     summarize_nutrient_checkup,
@@ -166,6 +168,11 @@ def embed_meal_summary(meal_id: str) -> None:
 async def _extract_and_store_facts(
     user_id: str, user_input: str, agent_reply: str
 ) -> None:
+    if profile_active(user_id):
+        await curate_turn(user_id, user_input, agent_reply)
+        return
+
+    # Legacy append-only path, for users not yet on the curated profile.
     extracted = await _fact_extraction_llm.ainvoke(
         [
             SystemMessage(content=_FACT_EXTRACTION_SYSTEM),
@@ -209,9 +216,12 @@ async def _extract_and_store_facts(
     name="backend.workers.tasks.extract_and_store_facts", ignore_result=True
 )
 def extract_and_store_facts(user_id: str, user_input: str, agent_reply: str) -> None:
-    """Extract lasting preference facts from a conversation turn and store them.
+    """Update the user's preference memory from one conversation turn.
 
-    Deduplicates against existing `user_memory` rows by cosine distance.
+    Users on the curated profile go through agent/memory_curator.py, which
+    can add, replace and remove facts. Everyone else stays on the legacy
+    path: append new facts, deduplicated against existing `user_memory`
+    rows by cosine distance.
 
     Args:
         user_id: Supabase Auth UUID.

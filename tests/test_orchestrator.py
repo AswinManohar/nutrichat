@@ -297,6 +297,15 @@ async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
     _mock_fact_task.delay.assert_called_once_with("user-1", "I had 2 eggs", "ok")
 
 
+async def test_handle_message_skips_fact_extraction_for_card_actions(_mock_fact_task):
+    for user_input, action in (("break it down", "decompose"), ("   ", None)):
+        graph = _mock_graph(is_paused=True)
+        with patch("backend.agent.orchestrator.build_graph", return_value=graph):
+            await handle_message("user-1", user_input, "thread-1", None, action=action)
+
+    _mock_fact_task.delay.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Coaching history recording (both intents)
 # ---------------------------------------------------------------------------
