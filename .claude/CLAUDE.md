@@ -49,6 +49,9 @@ nutrichat/
 │   │   ├── system_one.py       # TypeSafe Jev routing judgment (judge_message)
 │   │   ├── coaching.py         # Pydantic AI coaching agent
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
+│   │   ├── memory.py           # preference profile: apply_ops write rules, render
+│   │   ├── memory_curator.py   # background curators (per turn, weekly from logs)
+│   │   ├── memory_tools.py     # coach tools: remember, forget, set_diet
 │   │   ├── llm.py · cost.py    # model clients, token cost accounting
 │   │   └── tools/
 │   │       ├── meals.py        # extract_entities, log_meal
@@ -60,7 +63,7 @@ nutrichat/
 │   │       ├── saved_meals.py
 │   │       └── history.py      # get_history hybrid search
 │   ├── api/                    # FastAPI routers: meals, goals, my_meals, foods,
-│   │                           # coaching_feedback, nutrient_checkup, mindful, quota,
+│   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
 │   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
 │   ├── config/                 # tunables.yaml, prompts/
@@ -140,6 +143,8 @@ python eval/run_eval.py --dataset eval/test_set_200.jsonl          # live
 python eval/gate.py --only intent_routing --runs 5 \
     --baseline eval/baseline_intent_legacy.json                   # routing gate
 python eval/probe_jev_latency.py --n 50 --concurrency 1,5,10      # Jev latency
+PYTHONPATH=src python eval/eval_profile_curator.py --runs 3      # memory curator
+PYTHONPATH=src python eval/eval_profile_coaching.py --runs 3     # restrictions gate
 ```
 
 ---

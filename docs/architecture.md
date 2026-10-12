@@ -76,7 +76,9 @@ refetch on miss), HS256 via `SUPABASE_JWT_SECRET`, audience `authenticated`.
    log signals → log_meal, weak query signals → coaching), then LLM tiebreak
    (`_IntentResult`, 200 output tokens).
 4. `quota.consume_llm_credit` per fresh turn; over quota → upgrade message.
-5. Every turn fire-and-forgets `extract_and_store_facts.delay(...)` (kombu errors swallowed).
+5. Every turn with user text fire-and-forgets `extract_and_store_facts.delay(...)`
+   (kombu errors swallowed); card button presses and photo-only turns skip it.
+   See 4.5 for what the task does.
 
 Compiled graphs are cached per checkpointer identity.
 
@@ -141,7 +143,55 @@ optional comment via `POST /coaching/{id}/feedback`, and
 `guidelines/export_feedback.py` exports the rows as JSONL — the seed for a
 coaching eval set.
 
-### 4.5 LLM config
+### 4.5 Preference memory (`agent/memory.py`)
+
+The coach keeps a small typed profile per user in `user_memory` and sees all of
+it on every coaching turn. It is rolled out behind `memory.profile_enabled` and
+`memory.profile_allowlist`; users not on it keep the legacy path (append-only
+facts, top-3 by embedding similarity).
+
+**What is in the profile**
+
+| Part | Where it lives | Who changes it |
+|---|---|---|
+| Diet settings (vegetarian, gluten free, ...) | `user_goal.dietary_prefs` | Settings; chat statements that match a setting |
+| Facts: restriction, dislike, like, habit, context | `user_memory` | curators, coach tools, `/memory` API |
+| Staple foods per meal type | derived from `meal_log` on read, cached in Redis | nothing stores them |
+
+**One write path.** Everything goes through `apply_ops(user_id, ops, actor)`,
+which takes a per-user advisory lock and enforces:
+
+- *Tighten only.* The background actors (`curator`, `weekly`) can add a
+  restriction or switch a diet setting on. Changing or removing a restriction,
+  or switching a setting off, is allowed only to the `user` actor.
+- *Tombstones.* A fact the user removes keeps its row with `deleted_at` set, and
+  is not learned again until the user states it again.
+- *Cap.* At most `profile_max_facts` facts and `profile_max_chars` characters.
+  On overflow the oldest inferred like/habit/context fact is evicted;
+  restrictions and stated facts never are.
+
+**Writers**
+
+| Writer | When | Actor |
+|---|---|---|
+| `memory_curator.curate_turn` | Celery, after each turn (`extract_and_store_facts`) | `curator` |
+| `memory_curator.infer_log_habits` | Celery, weekly, users with enough logged meals | `weekly` |
+| `memory_tools` remember / forget / set_diet | in the coaching turn, on an explicit request | `user` |
+| `DELETE /memory/{id}` | client | `user` |
+
+**Read path and cost.** `build_context` loads the live facts with one indexed
+query (no embedding call) and the staples from Redis, and
+`render_profile_block` puts diet settings and restrictions first. The block is
+capped, so prompt size does not grow with history. A coaching turn is still two
+model calls; only an explicit remember/forget adds a third. Meal-logging turns
+do not read the profile.
+
+**Evals.** `eval/eval_profile_curator.py` (curator prompt) and
+`eval/eval_profile_coaching.py` (restrictions respected, no spurious tool
+calls, memory requests call the right tool). Both use live Gemini and no
+database.
+
+### 4.6 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction `gemini-2.5-flash`
 (thinking budget 0), coaching `gemini-2.5-flash`, embeddings
@@ -159,7 +209,7 @@ Logfire `llm_cost` + counter `gen_ai.cost_usd`. Override tunables with
 | `meal_log` | the ledger: macros, `entities` JSONB, `label`, `embedding vector(768)`, `flags`, `deleted_at` (soft delete); indexes for user+time, cursor, hybrid search |
 | `food_source` | USDA / LLM-estimate cache keyed by `fdc_id`, GIN trigram on `food_name` |
 | `user_meal` | "My Meals" saved recipes with embeddings |
-| `user_memory` | extracted facts with embeddings (RAG for coaching) |
+| `user_memory` | the coach's preference profile: typed facts, source, tombstones (see 4.5) |
 | `daily_summary`, `weekly_summary`, `nutrient_checkup` | worker outputs |
 | `telegram_link`, `integration_token`, `push_subscription` | channel bindings |
 
@@ -173,6 +223,7 @@ Day boundary: `Europe/Oslo`, resets at 01:00 (`current_day_bounds()`).
 | `ratelimit:{scope}:{identity}` | fixed-window counters | window |
 | `tgthread:{chat_id}` / `tgedit:{chat_id}` | Telegram thread + edit state | 24 h / 30 min |
 | `tglink:code:*` | account-link codes | short |
+| `staples:{user_id}` | staple foods per meal type for the coach prompt | 6 h |
 | Celery broker + result backend | | |
 
 ## 6. Workers (`workers/tasks.py`, Celery "nutrichat")
@@ -186,6 +237,7 @@ Timezone `Europe/Oslo`, `enable_utc=False`. Each task runs its async body with
 | 01:30 | `build_nutrient_checkup` |
 | 07:00 | `send_daily_summary_telegram` |
 | Sun 23:00 | `build_weekly_summary` |
+| Sun 23:20 | `dispatch_log_habits` → one rate-limited `infer_log_habits` per eligible user |
 | on demand | `embed_meal_summary`, `extract_and_store_facts` |
 
 Worker runs `--concurrency=${CELERY_CONCURRENCY:-2} --without-gossip --without-mingle`
