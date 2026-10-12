@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisError
 
-from backend.agent.context import _fetch_staples
+from backend.agent.context import fetch_staples
 from backend.agent.tools.history import get_staple_foods
 from backend.db.redis_client import get_cached_staples, set_cached_staples
 
@@ -84,33 +84,33 @@ async def test_staples_cache_treats_outage_and_garbage_as_miss() -> None:
         assert await get_cached_staples("user-1") is None
 
 
-async def test_fetch_staples_uses_cache_and_skips_database_on_hit() -> None:
+async def testfetch_staples_uses_cache_and_skips_database_on_hit() -> None:
     query = AsyncMock(return_value={"lunch": ["Rice"]})
     client = _FakeRedis()
     with (
         patch("backend.db.redis_client.get_redis", return_value=client),
         patch("backend.agent.context.get_staple_foods", query),
     ):
-        first = await _fetch_staples("user-1")
-        second = await _fetch_staples("user-1")
+        first = await fetch_staples("user-1")
+        second = await fetch_staples("user-1")
 
     assert first == second == {"lunch": ["Rice"]}
     query.assert_awaited_once()
 
 
-async def test_fetch_staples_caches_an_empty_result() -> None:
+async def testfetch_staples_caches_an_empty_result() -> None:
     query = AsyncMock(return_value={})
     with (
         patch("backend.db.redis_client.get_redis", return_value=_FakeRedis()),
         patch("backend.agent.context.get_staple_foods", query),
     ):
-        await _fetch_staples("user-1")
-        await _fetch_staples("user-1")
+        await fetch_staples("user-1")
+        await fetch_staples("user-1")
 
     query.assert_awaited_once()
 
 
-async def test_fetch_staples_degrades_to_empty_when_everything_is_down() -> None:
+async def testfetch_staples_degrades_to_empty_when_everything_is_down() -> None:
     with (
         patch("backend.db.redis_client.get_redis", return_value=_BrokenRedis()),
         patch(
@@ -118,7 +118,7 @@ async def test_fetch_staples_degrades_to_empty_when_everything_is_down() -> None
             AsyncMock(side_effect=RuntimeError("db down")),
         ),
     ):
-        assert await _fetch_staples("user-1") == {}
+        assert await fetch_staples("user-1") == {}
 
 
 async def test_get_staple_foods_against_live_postgres() -> None:

@@ -111,7 +111,7 @@ async def _fetch_preferences(user_id: str, user_message: str) -> list[str]:
     async with session_factory() as session:
         stmt = (
             select(UserMemory)
-            .where(UserMemory.user_id == user_id)
+            .where(UserMemory.user_id == user_id, UserMemory.deleted_at.is_(None))
             .order_by(UserMemory.embedding.cosine_distance(query_embedding))
             .limit(_TOP_K_PREFERENCES)
         )
@@ -119,7 +119,7 @@ async def _fetch_preferences(user_id: str, user_message: str) -> list[str]:
         return [row.fact for row in result.scalars().all()]
 
 
-async def _fetch_staples(user_id: str) -> dict[str, list[str]]:
+async def fetch_staples(user_id: str) -> dict[str, list[str]]:
     """Staple foods from the Redis cache, falling back to Postgres.
 
     The staples line is a soft enrichment, so any failure degrades to no
@@ -202,7 +202,7 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
     staples: dict[str, list[str]] = {}
     if use_profile:
         profile, staples = await asyncio.gather(
-            load_profile(user_id), _fetch_staples(user_id)
+            load_profile(user_id), fetch_staples(user_id)
         )
     elif user_message:
         preferences = await _fetch_preferences(user_id, user_message)
@@ -328,4 +328,5 @@ __all__ = [
     "WeeklyPattern",
     "build_context",
     "build_system_prompt",
+    "fetch_staples",
 ]

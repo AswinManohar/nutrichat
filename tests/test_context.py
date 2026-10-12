@@ -225,7 +225,7 @@ async def test_build_context_profile_path_loads_whole_profile_without_embedding(
             return_value=facts,
         ) as load,
         patch(
-            "backend.agent.context._fetch_staples",
+            "backend.agent.context.fetch_staples",
             new_callable=AsyncMock,
             return_value={"breakfast": ["Oats"]},
         ),
@@ -254,7 +254,7 @@ async def test_build_context_legacy_path_does_not_touch_profile():
         patch("backend.agent.context.get_session", return_value=session_factory),
         patch("backend.agent.context.load_profile", new_callable=AsyncMock) as load,
         patch(
-            "backend.agent.context._fetch_staples", new_callable=AsyncMock
+            "backend.agent.context.fetch_staples", new_callable=AsyncMock
         ) as staples,
     ):
         ctx = await build_context("user-1")
