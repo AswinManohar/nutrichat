@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -61,6 +62,8 @@ async def test_get_staple_foods_groups_orders_and_truncates() -> None:
     params = factory.return_value.execute.call_args.args[1]
     assert params["min_count"] == 3
     assert (params["date_to"] - params["date_from"]).days == 29
+    # Index-friendly lower bound, one day wider than the nutrition-day window.
+    assert params["logged_from"].date() == params["date_from"] - timedelta(days=1)
 
 
 async def test_staples_cache_round_trip_sets_ttl() -> None:

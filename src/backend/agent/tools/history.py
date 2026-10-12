@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
@@ -452,10 +452,17 @@ async def get_staple_foods(
     """
     window = days if days is not None else _STAPLES_WINDOW_DAYS
     today = nutrition_today()
+    date_from = today - timedelta(days=window - 1)
     params = {
         "user_id": user_id,
-        "date_from": today - timedelta(days=window - 1),
+        "date_from": date_from,
         "date_to": today,
+        # The nutrition-day expression cannot use an index. This plain,
+        # slightly wider bound on logged_at can (ix_meal_log_user_logged_at),
+        # so the scan covers the window rather than the user's whole history.
+        "logged_from": datetime.combine(
+            date_from - timedelta(days=1), time.min, tzinfo=UTC
+        ),
         "min_count": min_count if min_count is not None else _STAPLES_MIN_COUNT,
         "per_meal": _STAPLES_PER_MEAL_TYPE,
         **sql_day_params(),
@@ -470,6 +477,7 @@ async def get_staple_foods(
                 "ORDER BY COUNT(DISTINCT meal_id) DESC, item->>'food_name') AS rk "
                 "FROM meal_log, jsonb_array_elements(entities) AS item "
                 "WHERE user_id = :user_id "
+                "AND logged_at >= :logged_from "
                 "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
                 "AND deleted_at IS NULL "
                 "AND item->>'food_name' IS NOT NULL "
