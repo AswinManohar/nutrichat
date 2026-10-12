@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -7,6 +9,14 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
 from backend.agent.llm import EMBEDDING_DIM, EMBEDDING_MODEL
+from backend.agent.memory import (
+    MemoryFact,
+    active_chips,
+    load_profile,
+    profile_active,
+    render_profile_block,
+)
+from backend.agent.tools.history import get_staple_foods
 from backend.agent.tools.mindful import (
     SafetyAlert,
     evaluate_safety,
@@ -15,8 +25,15 @@ from backend.agent.tools.mindful import (
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
-from backend.db.redis_client import TodayTotals, get_today_totals
+from backend.db.redis_client import (
+    TodayTotals,
+    get_cached_staples,
+    get_today_totals,
+    set_cached_staples,
+)
 from backend.db.session import get_session
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
@@ -56,13 +73,19 @@ class ContextBundle(BaseModel):
     """Everything build_system_prompt needs to assemble the coaching prompt.
 
     Assembled by build_context() from Redis (today totals), Postgres
-    (goals + weekly pattern), and pgvector (top-3 relevant preferences).
+    (goals + weekly pattern), and the user's preferences. For users on the
+    curated profile (``profile_active``) that is the whole profile plus
+    staple foods from their logs; otherwise the legacy pgvector top-3
+    ``preferences``.
     """
 
     today_totals: TodayTotals
     goals: GoalSummary | None = None
     weekly_pattern: WeeklyPattern | None = None
     preferences: list[str] = []
+    profile_active: bool = False
+    profile: list[MemoryFact] = []
+    staples: dict[str, list[str]] = {}
 
     model_config = ConfigDict(extra="forbid")
 
@@ -96,12 +119,31 @@ async def _fetch_preferences(user_id: str, user_message: str) -> list[str]:
         return [row.fact for row in result.scalars().all()]
 
 
+async def _fetch_staples(user_id: str) -> dict[str, list[str]]:
+    """Staple foods from the Redis cache, falling back to Postgres.
+
+    The staples line is a soft enrichment, so any failure degrades to no
+    staples rather than failing the context build.
+    """
+    cached = await get_cached_staples(user_id)
+    if cached is not None:
+        return cached
+    try:
+        staples = await get_staple_foods(user_id)
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("staples query failed for %s: %s", user_id, exc)
+        return {}
+    await set_cached_staples(user_id, staples)
+    return staples
+
+
 async def build_context(user_id: str, user_message: str | None = None) -> ContextBundle:
     """Assemble the context bundle for build_system_prompt().
 
     Reads Redis today totals, Postgres goals + most recent weekly summary,
-    and (when `user_message` is given) the top-3 pgvector-relevant
-    preference facts.
+    and the user's preferences: the whole curated profile plus staple foods
+    for users on the profile path (no embedding call), otherwise (when
+    `user_message` is given) the top-3 pgvector-relevant preference facts.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -154,8 +196,15 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
         intake = await get_daily_intake(user_id, nutrition_today())
         goals.active_alerts = evaluate_safety(intake)
 
+    use_profile = profile_active(user_id)
     preferences: list[str] = []
-    if user_message:
+    profile: list[MemoryFact] = []
+    staples: dict[str, list[str]] = {}
+    if use_profile:
+        profile, staples = await asyncio.gather(
+            load_profile(user_id), _fetch_staples(user_id)
+        )
+    elif user_message:
         preferences = await _fetch_preferences(user_id, user_message)
 
     return ContextBundle(
@@ -163,6 +212,9 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
         goals=goals,
         weekly_pattern=weekly_pattern,
         preferences=preferences,
+        profile_active=use_profile,
+        profile=profile,
+        staples=staples,
     )
 
 
@@ -176,7 +228,10 @@ def build_system_prompt(ctx: ContextBundle) -> str:
 
     Follows the PRD §5.2 token budget: role/tone (~120), today totals
     (~80), weekly pattern (~120), preferences (~150, omitted if empty),
-    accountability rules (~95), hard constraints (~112).
+    accountability rules (~95), hard constraints (~112). For users on the
+    curated profile the preferences block is the whole profile instead,
+    capped at ``memory.profile_max_chars`` (~350 tokens) plus one staples
+    line.
 
     Note: this is consumed by the coaching agent (agent/coaching.py), not
     the meal-logging graph — extraction/classification prompts in
@@ -236,7 +291,15 @@ def build_system_prompt(ctx: ContextBundle) -> str:
             weekly_block += f" Frequently missed: {', '.join(wp.missed_meals)}."
         blocks.append(weekly_block)
 
-    if ctx.preferences:
+    if ctx.profile_active:
+        profile_block = render_profile_block(
+            ctx.profile,
+            active_chips(ctx.goals.dietary_prefs if ctx.goals else None),
+            ctx.staples,
+        )
+        if profile_block:
+            blocks.append(profile_block)
+    elif ctx.preferences:
         blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
 
     accountability_rules = [

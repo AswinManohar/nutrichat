@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from backend.agent.context import (
     ContextBundle,
     GoalSummary,
@@ -11,6 +10,7 @@ from backend.agent.context import (
     build_context,
     build_system_prompt,
 )
+from backend.agent.memory import MemoryFact
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
 from backend.db.redis_client import TodayTotals
 
@@ -200,3 +200,106 @@ def test_build_system_prompt_flags_low_protein():
     prompt = build_system_prompt(ctx)
 
     assert "Protein is below 60%" in prompt
+
+
+def _fact(text: str, kind: str) -> MemoryFact:
+    return MemoryFact(id=text, fact=text, kind=kind, source="stated")
+
+
+async def test_build_context_profile_path_loads_whole_profile_without_embedding():
+    session_factory = _mock_session()
+    facts = [_fact("Peanut allergy", "restriction")]
+    embed = AsyncMock()
+
+    with (
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
+        ),
+        patch("backend.agent.context.get_session", return_value=session_factory),
+        patch("backend.agent.context.profile_active", return_value=True),
+        patch(
+            "backend.agent.context.load_profile",
+            new_callable=AsyncMock,
+            return_value=facts,
+        ) as load,
+        patch(
+            "backend.agent.context._fetch_staples",
+            new_callable=AsyncMock,
+            return_value={"breakfast": ["Oats"]},
+        ),
+        patch("backend.agent.context._embed_query", embed),
+    ):
+        # No message: the profile does not depend on one.
+        ctx = await build_context("user-1")
+
+    load.assert_awaited_once_with("user-1")
+    embed.assert_not_awaited()
+    assert ctx.profile_active is True
+    assert ctx.profile == facts
+    assert ctx.staples == {"breakfast": ["Oats"]}
+    assert ctx.preferences == []
+
+
+async def test_build_context_legacy_path_does_not_touch_profile():
+    session_factory = _mock_session()
+
+    with (
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
+        ),
+        patch("backend.agent.context.get_session", return_value=session_factory),
+        patch("backend.agent.context.load_profile", new_callable=AsyncMock) as load,
+        patch(
+            "backend.agent.context._fetch_staples", new_callable=AsyncMock
+        ) as staples,
+    ):
+        ctx = await build_context("user-1")
+
+    load.assert_not_awaited()
+    staples.assert_not_awaited()
+    assert ctx.profile_active is False
+
+
+def test_build_system_prompt_renders_profile_with_diet_settings():
+    ctx = ContextBundle(
+        today_totals=TodayTotals(),
+        goals=GoalSummary(dietary_prefs={"vegetarian": True}, streak_days=0),
+        profile_active=True,
+        profile=[_fact("Peanut allergy", "restriction"), _fact("Mushrooms", "dislike")],
+        staples={"breakfast": ["Oats"]},
+        # Ignored on the profile path.
+        preferences=["legacy fact"],
+    )
+
+    prompt = build_system_prompt(ctx)
+
+    assert "- Diet settings (binding): vegetarian" in prompt
+    assert "- Never suggest (hard restrictions): Peanut allergy" in prompt
+    assert "- Dislikes (avoid): Mushrooms" in prompt
+    assert "breakfast: Oats" in prompt
+    assert "legacy fact" not in prompt
+    # Profile sits before the accountability rules and hard constraints.
+    assert prompt.index("Peanut allergy") < prompt.index("Accountability rules:")
+
+
+def test_build_system_prompt_empty_profile_adds_no_block():
+    ctx = ContextBundle(today_totals=TodayTotals(), profile_active=True)
+
+    assert "Long-term profile" not in build_system_prompt(ctx)
+
+
+def test_build_system_prompt_legacy_path_unchanged():
+    ctx = ContextBundle(
+        today_totals=TodayTotals(),
+        preferences=["prefers oat milk"],
+        profile=[_fact("Peanut allergy", "restriction")],
+    )
+
+    prompt = build_system_prompt(ctx)
+
+    assert "Known preferences: prefers oat milk." in prompt
+    assert "Peanut allergy" not in prompt

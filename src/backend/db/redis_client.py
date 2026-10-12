@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import date, datetime
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 _TUNABLES = get_tunables()
 _COACHING_HISTORY_TURNS = _TUNABLES.memory.coaching_history_turns
 _COACHING_HISTORY_TTL_S = _TUNABLES.memory.coaching_history_ttl_s
+_STAPLES_CACHE_TTL_S = _TUNABLES.memory.staples_cache_ttl_s
 
 # Global connection pool
 _redis_pool: redis.Redis | None = None
@@ -173,3 +175,56 @@ async def get_coaching_history(user_id: str) -> list[CoachingTurn]:
         except ValidationError:
             logger.warning("skipping malformed coaching history entry for %s", user_id)
     return turns
+
+
+def _staples_key(user_id: str) -> str:
+    return f"staples:{user_id}"
+
+
+async def get_cached_staples(user_id: str) -> dict[str, list[str]] | None:
+    """Return the cached staple foods for a user, or None on a miss.
+
+    Best-effort: a Redis outage or a malformed entry is a miss, so the
+    caller falls back to the database.
+
+    Args:
+        user_id: Supabase Auth UUID.
+
+    Returns:
+        Meal type -> food names as cached by :func:`set_cached_staples`
+        (possibly empty), or None when nothing usable is cached.
+    """
+    try:
+        raw = await get_redis().get(_staples_key(user_id))
+    except (RedisError, OSError) as exc:
+        logger.warning("staples cache read failed for %s: %s", user_id, exc)
+        return None
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    return {
+        str(k): [str(f) for f in v] for k, v in value.items() if isinstance(v, list)
+    }
+
+
+async def set_cached_staples(user_id: str, staples: dict[str, list[str]]) -> None:
+    """Cache a user's staple foods for ``memory.staples_cache_ttl_s``.
+
+    Best-effort: a Redis outage is logged and swallowed. An empty result is
+    cached too, so users with no staples do not hit the database each turn.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        staples: Output of ``agent.tools.history.get_staple_foods``.
+    """
+    try:
+        await get_redis().set(
+            _staples_key(user_id), json.dumps(staples), ex=_STAPLES_CACHE_TTL_S
+        )
+    except (RedisError, OSError) as exc:
+        logger.warning("staples cache write failed for %s: %s", user_id, exc)
