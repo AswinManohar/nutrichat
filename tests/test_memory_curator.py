@@ -14,8 +14,13 @@ from backend.agent.memory import (
 from backend.agent.memory_curator import (
     CuratorOp,
     CuratorOutput,
+    LogHabit,
+    LogHabitsOutput,
     build_curator_input,
+    build_log_habits_input,
     curate_turn,
+    infer_log_habits,
+    plan_log_habit_ops,
     to_memory_ops,
 )
 
@@ -161,3 +166,134 @@ async def test_curate_turn_blank_input_makes_no_calls() -> None:
 
     load.assert_not_awaited()
     llm.ainvoke.assert_not_awaited()
+
+
+# --- weekly log habits -------------------------------------------------------
+
+
+def _log_state() -> ProfileState:
+    return ProfileState(
+        facts=[
+            MemoryFact(
+                id="id-s", fact="Dislikes okra", kind="dislike", source="stated"
+            ),
+            MemoryFact(
+                id="id-old",
+                fact="Rarely logs breakfast",
+                kind="habit",
+                source="inferred_from_logs",
+            ),
+            MemoryFact(
+                id="id-keep",
+                fact="Eats mostly South Indian food",
+                kind="like",
+                source="inferred_from_logs",
+            ),
+        ],
+        tombstones=["Snacks most afternoons"],
+    )
+
+
+def test_plan_log_habit_ops_replaces_last_weeks_facts() -> None:
+    ops = plan_log_habit_ops(
+        [
+            LogHabit(fact="eats mostly south indian food.", kind="like"),
+            LogHabit(fact="Dinner is the largest meal", kind="habit"),
+        ],
+        _log_state(),
+        max_facts=3,
+    )
+
+    # Stale log fact removed, repeated one untouched, new one added; the
+    # stated fact is never touched.
+    assert ops == [
+        RemoveFact(id="id-old"),
+        AddFact(fact="Dinner is the largest meal", kind="habit"),
+    ]
+
+
+def test_plan_log_habit_ops_caps_and_dedups_proposals() -> None:
+    ops = plan_log_habit_ops(
+        [
+            LogHabit(fact="A", kind="habit"),
+            LogHabit(fact="a", kind="habit"),
+            LogHabit(fact="B", kind="habit"),
+            LogHabit(fact="C", kind="habit"),
+        ],
+        ProfileState(),
+        max_facts=2,
+    )
+
+    assert ops == [AddFact(fact="A", kind="habit"), AddFact(fact="B", kind="habit")]
+
+
+def test_build_log_habits_input_shows_stats_profile_and_removed() -> None:
+    text = build_log_habits_input(
+        _log_state(),
+        {"breakfast": ["Idli", "Dosa"]},
+        [
+            {
+                "meal_type": "breakfast",
+                "n_meals": 12,
+                "days_logged": 11,
+                "avg_kcal": 310.4,
+                "avg_protein_g": 9.6,
+            }
+        ],
+        days=30,
+        max_facts=3,
+    )
+
+    assert "- breakfast: Idli, Dosa" in text
+    assert "- breakfast: 12 meals on 11 of 30 days, avg 310 kcal, 10g protein" in text
+    assert "- [dislike] Dislikes okra" in text
+    assert "- Snacks most afternoons" in text
+    assert text.endswith("Return at most 3 facts.")
+
+
+async def test_infer_log_habits_applies_as_weekly_actor() -> None:
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(
+        return_value=LogHabitsOutput(
+            facts=[LogHabit(fact="Dinner is the largest meal", kind="habit")]
+        )
+    )
+    apply = AsyncMock(return_value=ApplyOutcome())
+
+    with (
+        patch(
+            "backend.agent.memory_curator.get_staple_foods",
+            AsyncMock(return_value={"dinner": ["Dal"]}),
+        ),
+        patch(
+            "backend.agent.memory_curator.get_category_breakdown",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.agent.memory_curator.load_state",
+            AsyncMock(return_value=ProfileState()),
+        ),
+        patch("backend.agent.memory_curator._log_habits_llm", llm),
+        patch("backend.agent.memory_curator.apply_ops", apply),
+    ):
+        await infer_log_habits("user-1")
+
+    apply.assert_awaited_once_with(
+        "user-1", [AddFact(fact="Dinner is the largest meal", kind="habit")], "weekly"
+    )
+
+
+async def test_infer_log_habits_without_staples_makes_no_model_call() -> None:
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock()
+
+    with (
+        patch(
+            "backend.agent.memory_curator.get_staple_foods", AsyncMock(return_value={})
+        ),
+        patch("backend.agent.memory_curator._log_habits_llm", llm),
+    ):
+        outcome = await infer_log_habits("user-1")
+
+    llm.ainvoke.assert_not_awaited()
+    assert outcome.results == []

@@ -268,3 +268,39 @@ def test_extract_and_store_facts_routes_profile_users_to_the_curator():
     curate.assert_awaited_once_with("user-1", "I'm vegetarian now", "Noted.")
     legacy_llm.ainvoke.assert_not_awaited()
     embed.assert_not_awaited()
+
+
+def test_dispatch_log_habits_fans_out_only_to_profile_users():
+    from backend.workers import tasks
+
+    with (
+        patch(
+            "backend.workers.tasks._log_habit_candidates",
+            new_callable=AsyncMock,
+            return_value=["user-a", "user-b"],
+        ),
+        patch(
+            "backend.workers.tasks.profile_active", side_effect=lambda u: u == "user-b"
+        ),
+        patch.object(tasks.infer_log_habits, "delay") as delay,
+    ):
+        tasks.dispatch_log_habits()
+
+    delay.assert_called_once_with("user-b")
+
+
+def test_log_habits_schedule_runs_after_the_weekly_summary():
+    from backend.workers.tasks import celery_app
+
+    schedule = celery_app.conf.beat_schedule
+    weekly = schedule["build-weekly-summary"]["schedule"]
+    habits = schedule["dispatch-log-habits"]["schedule"]
+
+    assert schedule["dispatch-log-habits"]["task"] == (
+        "backend.workers.tasks.dispatch_log_habits"
+    )
+    assert habits.day_of_week == weekly.day_of_week
+    assert (min(habits.hour), min(habits.minute)) > (
+        min(weekly.hour),
+        min(weekly.minute),
+    )
