@@ -68,6 +68,16 @@ class MemoryConfig(BaseModel):
     dedup_distance_threshold: float = Field(ge=0.0, le=2.0)
     new_fact_confidence: float = Field(ge=0.0, le=1.0)
     top_k_preferences: int = Field(gt=0)
+    profile_enabled: bool
+    profile_allowlist: list[str]
+    profile_max_facts: int = Field(gt=0)
+    profile_max_chars: int = Field(gt=0)
+    profile_max_tombstones: int = Field(ge=0)
+    staples_window_days: int = Field(gt=0)
+    staples_min_count: int = Field(gt=0)
+    staples_cache_ttl_s: int = Field(gt=0)
+    weekly_habits_min_meals: int = Field(gt=0)
+    weekly_habits_max_facts: int = Field(gt=0)
     coaching_history_turns: int = Field(gt=0)
     coaching_history_ttl_s: int = Field(gt=0)
 

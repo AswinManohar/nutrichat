@@ -199,6 +199,40 @@ memory:
   # Used in: agent/context.py
   top_k_preferences: 3
 
+  # --- Curated preference profile (agent/memory.py) -----------------------
+  # When on, the coach gets the user's WHOLE profile on every turn instead
+  # of the top-k facts above, and no embedding call is made for it. Off =
+  # legacy top-k path. Users in profile_allowlist get the profile even when
+  # profile_enabled is false (dark launch on named accounts).
+  profile_enabled: false
+  profile_allowlist: []
+
+  # Hard cap on live facts per user and on their total characters. The cap
+  # is what keeps the prompt block bounded (1500 chars is about 350
+  # tokens), so raise it only with the prompt budget in mind. On overflow
+  # the oldest inferred like/habit/context fact is evicted; restrictions
+  # and facts the user stated are never evicted.
+  profile_max_facts: 40
+  profile_max_chars: 1500
+
+  # Tombstones (facts the user removed) kept per user so they are not
+  # learned again. Oldest beyond this are purged.
+  profile_max_tombstones: 50
+
+  # "Often eats" block: foods logged at least staples_min_count times in
+  # the last staples_window_days, per meal type. Derived from meal_log on
+  # read and cached in Redis for staples_cache_ttl_s.
+  # Used in: agent/tools/history.py get_staple_foods
+  staples_window_days: 30
+  staples_min_count: 3
+  staples_cache_ttl_s: 21600
+
+  # Weekly log-habits job (workers/tasks.py): runs only for users with at
+  # least this many meals in the staples window, and writes at most this
+  # many interpreted habit facts per user.
+  weekly_habits_min_meals: 15
+  weekly_habits_max_facts: 3
+
   # Short-term conversation memory for the coaching agent: the last N
   # user/assistant exchanges (across BOTH logging and coaching turns —
   # logging turns are stored as one-line summaries) kept in Redis at
