@@ -178,6 +178,7 @@ class PromptsConfig(BaseModel):
     coaching_response_system: str
     coaching_role_and_tone: str
     coaching_hard_constraints: str
+    coaching_profile_rules: str
     fact_extraction_system: str
     profile_curator_system: str
     nutrition_estimate_system: str

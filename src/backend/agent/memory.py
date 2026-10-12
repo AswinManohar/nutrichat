@@ -212,7 +212,7 @@ def _clean(fact: str) -> str:
     return re.sub(r"\s+", " ", fact).strip().rstrip(".").strip()
 
 
-def _norm(fact: str) -> str:
+def normalize_fact(fact: str) -> str:
     """Key for exact-duplicate and tombstone matching."""
     return re.sub(r"[^a-z0-9]+", " ", fact.lower()).strip()
 
@@ -365,7 +365,7 @@ def plan_ops(
             continue
 
         fact = _clean(op.fact)
-        key = _norm(fact)
+        key = normalize_fact(fact)
         if not key:
             reject(op, "empty fact")
             continue
@@ -387,14 +387,19 @@ def plan_ops(
                 continue
 
         tombstone = next(
-            (r for r in rows if r.deleted_at is not None and _norm(r.fact) == key),
+            (
+                r
+                for r in rows
+                if r.deleted_at is not None and normalize_fact(r.fact) == key
+            ),
             None,
         )
         if tombstone is not None and actor != "user":
             reject(op, "the user removed this fact")
             continue
         twin = next(
-            (r for r in live() if r is not target and _norm(r.fact) == key), None
+            (r for r in live() if r is not target and normalize_fact(r.fact) == key),
+            None,
         )
 
         if target is not None:
@@ -654,6 +659,7 @@ __all__ = [
     "FactKind",
     "MemoryFact",
     "MemoryOp",
+    "normalize_fact",
     "OpResult",
     "ProfileLimits",
     "ProfileState",
