@@ -6,7 +6,7 @@
 #   2. confirm  shows what will ship and asks you to type the short SHA
 #   3. promote  fast-forwards origin/production to the commit (the pre-push
 #               hook re-verifies the checks passed)
-#   4. deploy   Railway web/worker/bot + Netlify frontend, from a throwaway
+#   4. deploy   Railway web/worker + Netlify frontend, from a throwaway
 #               worktree of `production` (your working tree is never touched)
 #   5. verify   Railway health + Netlify title
 #
@@ -17,6 +17,9 @@
 #   --yes            Skip the typed confirmation (for a confirmed /ship run)
 #   --skip-checks    Reuse a pass recorded in the last 24 h for this exact commit
 #   --backend-only   Deploy Railway only     --frontend-only   Deploy Netlify only
+#
+# The Telegram `bot` service is not deployed: Telegram is being discontinued
+# (2026-10-13). Deploy it by hand with scripts/deploy-railway.sh bot if needed.
 #
 # Migrations are NOT applied by this script; the checks block until the
 # production database is already at the commit's Alembic head(s).
@@ -75,7 +78,7 @@ echo "    production: ${BASE:0:8} -> $SHORT ($(git rev-list --count "$BASE..$SHA
 git --no-pager log --oneline --no-decorate -15 "$BASE..$SHA" | sed 's/^/      /'
 echo "    changed areas:"
 git diff --dirstat=files,5 "$BASE" "$SHA" | sed 's/^/      /'
-echo "    deploy: $([[ $BACKEND -eq 1 ]] && echo 'Railway (web worker bot) ')$([[ $FRONTEND -eq 1 ]] && echo 'Netlify')"
+echo "    deploy: $([[ $BACKEND -eq 1 ]] && echo 'Railway (web worker) ')$([[ $FRONTEND -eq 1 ]] && echo 'Netlify')"
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "==> Dry run: nothing pushed or deployed."
   exit 0
@@ -105,7 +108,7 @@ fi
 DEPLOY_FAILED=0
 if [[ $BACKEND -eq 1 ]]; then
   echo "==> Deploying backend to Railway"
-  (cd "$WORK/tree" && scripts/deploy-railway.sh -m "production @ $SHORT") || DEPLOY_FAILED=1
+  (cd "$WORK/tree" && scripts/deploy-railway.sh -m "production @ $SHORT" web worker) || DEPLOY_FAILED=1
 fi
 if [[ $FRONTEND -eq 1 ]]; then
   echo "==> Deploying frontend to Netlify"
