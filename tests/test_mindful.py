@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-
 from backend.agent.tools.mindful import (
     NutrientAmount,
     evaluate_safety,

@@ -4,7 +4,6 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
-
 def _mock_session_factory(session: MagicMock) -> MagicMock:
     session.__aenter__ = AsyncMock(return_value=session)
     session.__aexit__ = AsyncMock(return_value=False)
