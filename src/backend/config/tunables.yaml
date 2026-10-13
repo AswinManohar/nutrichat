@@ -385,7 +385,9 @@ glide:
   # decides. Routing is in front of every fresh message, so fail fast.
   # Measured 2026-10-13 from the dev machine: p50 360 ms, p95 615 ms at
   # concurrency 1 and p50 389 ms, p95 610 ms at 10; none of 150 requests
-  # passed 0.8 s. Re-check from the Railway container (eval/probe_glide.py).
+  # passed 0.8 s. From the Railway web container the same day: p50 242 ms,
+  # p95 456 ms at concurrency 1 (1 of 50 over 0.8 s); p50 277 ms, p95
+  # 1003 ms at 10 (3 of 50 over). First request on a cold connection: 1.9 s.
   request_timeout_s: 0.8
 
   # Wait for the startup warm-up request, which may hit a model that is

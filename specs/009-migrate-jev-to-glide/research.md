@@ -41,8 +41,21 @@ in 8 of 8 runs after a prompt fix, coaching restrictions 12/12 and memory
 requests 6/6 in 8 of 8 runs. Not run: the ingredient-replace gate, and any
 measure of coaching answer quality beyond restrictions.
 
-**Not measured**: cold start after idle, and latency from the Railway
-container.
+**Latency from the Railway `web` container** (sfo, 2026-10-13, 50 requests
+per level, same three-question request):
+
+| Concurrency | p50 | p95 | max | over 0.8 s |
+|---|---|---|---|---|
+| 1 | 242 ms | 456 ms | 1205 ms | 1 of 50 |
+| 5 | 253 ms | 351 ms | 385 ms | 0 |
+| 10 | 277 ms | 1003 ms | 1319 ms | 3 of 50 |
+
+Go by SC-002 (p50 < 300 ms and p95 < 800 ms at concurrency 1). The first
+request on a fresh connection took 1914 ms, which is why the startup warm-up
+matters. At 10 concurrent, 6% of requests would pass the routing timeout and
+fall to Gemini.
+
+**Not measured**: behaviour after a long idle period (cold model).
 
 The sections below were written from the docs before these measurements.
 
