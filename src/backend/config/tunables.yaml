@@ -13,12 +13,15 @@ models:
   # message touches this model at least once.
   # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/tools/meals.py,
   #          agent/orchestrator.py, agent/coaching.py, workers/tasks.py
-  extraction: "gemini-2.5-flash"
+  extraction: "gemini-3.1-flash-lite"
 
   # Conversational coaching responses (grounded answers to nutrition
-  # questions). Mid tier — better prose quality than flash-lite.
+  # questions). Same model as extraction since 2026-10-13: the Google
+  # project behind GOOGLE_API_KEY was replaced, and gemini-2.5-flash is not
+  # offered to new projects. A larger model here is the first thing to try
+  # if coaching answer quality drops.
   # Used in: agent/coaching.py generate_response()
-  coaching: "gemini-2.5-flash"
+  coaching: "gemini-3.1-flash-lite"
 
   # Embedding model for meal summaries, preference facts, and query-time
   # ANN search. MUST stay consistent with embedding_dim below and with the
@@ -43,8 +46,8 @@ token_limits:
   # Reasoning ("thinking") token budget for the extraction-tier Gemini calls:
   # entity extraction, correction, image classification, decomposition, intent
   # classification, log-reply, nutrition estimate, and query parsing. All are
-  # simple structured-output tasks, but gemini-2.5-flash enables *dynamic*
-  # thinking by default and spends ~1-3s of latency per call reasoning before
+  # simple structured-output tasks, and with thinking left on the model
+  # spends ~1-3s of latency per call reasoning before
   # emitting the JSON. 0 disables thinking entirely (applied in agent/llm.py
   # make_llm for LangChain calls and via GoogleModelSettings for the pydantic-ai
   # estimate/parse agents). Raise only if you see a structured-output quality

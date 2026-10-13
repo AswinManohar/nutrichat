@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13">
   <img src="https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/LangGraph-agent-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
-  <img src="https://img.shields.io/badge/Gemini-2.5%20Flash-4285F4?logo=googlegemini&logoColor=white" alt="Gemini 2.5 Flash">
+  <img src="https://img.shields.io/badge/Gemini-3.1%20Flash--Lite-4285F4?logo=googlegemini&logoColor=white" alt="Gemini 3.1 Flash-Lite">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19">
   <a href="https://github.com/AswinManohar/nutrichat/actions/workflows/android.yml"><img src="https://github.com/AswinManohar/nutrichat/actions/workflows/android.yml/badge.svg" alt="Android CI"></a>
 </div>
@@ -70,7 +70,7 @@ bash scripts/run-local.sh
                                          log_meal           coaching
                                               ▼                 ▼
                               LangGraph logging graph     Pydantic AI coaching agent
-                              extract (Gemini 2.5 Flash)  history + guideline RAG
+                              extract (Gemini Flash-Lite) history + guideline RAG
                               → USDA resolve                    │
                                 (SQLite → FDC API → LLM)        │
                               → interrupt: confirm/correct      │
@@ -105,7 +105,7 @@ model and background jobs.
 | Backend | Python 3.13 · FastAPI · SQLAlchemy 2 (asyncpg) · Alembic · uv |
 | Agents | LangGraph (logging) · Pydantic AI (coaching) |
 | Intent routing | Fastino GLiDE, with a Gemini classifier as safety net |
-| Models | Gemini 2.5 Flash · `gemini-embedding-001` (768-dim) |
+| Models | Gemini 3.1 Flash-Lite · `gemini-embedding-001` (768-dim) |
 | Data | PostgreSQL 16 + pgvector · Redis · USDA FoodData Central |
 | Background jobs | Celery + Celery beat |
 | Auth | Supabase Auth (ES256 JWTs verified through JWKS) |

@@ -7,7 +7,7 @@ Everything here is derived from the source; paths are relative to `src/backend/`
 
 Mealsy is a nutrition-logging agent. A user describes a meal in natural language
 (web chat or Telegram, optionally with a photo). A LangGraph state machine extracts
-food entities with Gemini 2.5 Flash, resolves each against a bundled USDA FoodData
+food entities with Gemini 3.1 Flash-Lite, resolves each against a bundled USDA FoodData
 Central SQLite database (falling back to the FDC API, then to an LLM estimate),
 pauses for user confirmation, and writes a `meal_log` row. Daily totals live in Redis
 as a write-through cache over Postgres. Coaching questions ("how am I doing on
@@ -204,8 +204,8 @@ database.
 
 ### 4.6 LLM config
 
-`agent/llm.py` reads `config/tunables.yaml`: extraction `gemini-2.5-flash`
-(thinking budget 0), coaching `gemini-2.5-flash`, embeddings
+`agent/llm.py` reads `config/tunables.yaml`: extraction `gemini-3.1-flash-lite`
+(thinking budget 0), coaching `gemini-3.1-flash-lite`, embeddings
 `gemini-embedding-001` @ 768 dims. No cross-provider fallback is wired. Costs recorded via `agent/cost.py` →
 Logfire `llm_cost` + counter `gen_ai.cost_usd`. Override tunables with
 `NUTRICHAT_TUNABLES_PATH`.

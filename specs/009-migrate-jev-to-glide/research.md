@@ -23,9 +23,17 @@ concurrent: GLiDE is slower for a single request and steadier under load. p50
 is above the 300 ms go bar and below the 500 ms no-go, so the container
 measurement decides.
 
-**Not run**: the end-to-end routing gate (`eval/gate.py`). It stopped on the
-Gemini spend cap (HTTP 429, issue #59), which the two unsure cases need. Cold
-start after idle and latency from the Railway container are also unmeasured.
+**End-to-end routing gate** (`eval/gate.py`, 5 runs, 94 cases, 2026-10-13):
+100.0% in every run against the legacy baseline's 77.3% (PASS). Decided by
+the judgment alone 97.7%, second opinion because unsure 2.1%, because GLiDE
+timed out 0.2% (1 of 470 requests); offer to log 100% recall, no false offers.
+That run used `gemini-3.8-flash` for the second opinion, as a temporary
+override: the replacement Google project is not offered `gemini-2.5-flash`.
+The owner then chose `gemini-3.1-flash-lite` for extraction and coaching, so
+the gate must be re-run on that model before shipping.
+
+**Not measured**: cold start after idle, and latency from the Railway
+container.
 
 The sections below were written from the docs before these measurements.
 
