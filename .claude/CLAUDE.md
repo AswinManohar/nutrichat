@@ -9,6 +9,13 @@ food entities, resolves them against USDA FoodData Central, and tracks them agai
 the user's goals. It is not a demo or learning project: treat changes as changes to
 a live app with real users.
 
+**Scope.** Active development covers the Android app (`android/`) and the
+backend services it uses (`src/backend/`). The web frontend (`frontend/`) is
+not being developed: do not add features or refactor there, and do not propose
+web work. It is still deployed and its tests and build still run in the
+production checks, so only touch it when a backend change would otherwise break
+them.
+
 ---
 
 ## Tech stack
@@ -26,7 +33,7 @@ a live app with real users.
 | Task queue | Celery + Redis |
 | Embeddings | Gemini gemini-embedding-001 (768-dim via output_dimensionality) |
 | Auth | Supabase Auth (ES256 JWTs via JWKS; no dev bypass) |
-| Frontend | React 19 · TypeScript · Vite · Tailwind CSS 4 · TanStack Query · Zustand |
+| Web frontend (not in active development) | React 19 · TypeScript · Vite · Tailwind CSS 4 · TanStack Query · Zustand |
 | Android | Kotlin · Jetpack Compose · Hilt · Retrofit · Room · supabase-kt (see android/CLAUDE.md) |
 | Telegram bot | aiogram 3 (polling for dev, webhook for prod) |
 | Food data | USDA FoodData Central (CC0): bundled SQLite → FDC API → LLM estimate |
@@ -80,7 +87,7 @@ nutrichat/
 │   ├── telegram/               # aiogram bot
 │   ├── workers/tasks.py        # Celery tasks + beat schedule
 │   └── main.py                 # FastAPI app
-├── frontend/src/               # api/, components/, hooks/, lib/, pages/, stores/ (Zustand)
+├── frontend/src/               # web app, not in active development
 ├── android/                    # native app (own CLAUDE.md and README.md)
 ├── tests/                      # pytest suite
 ├── eval/                       # run_eval.py, gate.py, cases/, baselines
@@ -130,7 +137,7 @@ PYTHONPATH=src python -m backend.guidelines.ingest --dir docs/guidelines [--dry-
 PYTHONPATH=src python -m backend.guidelines.export_feedback \
     [--rated-only] [--since YYYY-MM-DD] --out eval/coaching_feedback.jsonl
 
-# Frontend
+# Web frontend (not in active development; only to run its checks)
 cd frontend && npm run dev
 cd frontend && npm test          # Vitest
 
@@ -211,369 +218,143 @@ uv run pytest`. Never point tests at the production `DATABASE_URL`.
 
 ---
 
-## Python coding standards
+## Git
 
-Based on [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-and [PEP 8](https://peps.python.org/pep-0008/).
-
-### Naming
-
-```python
-# Modules and packages — short, lowercase, underscores only if needed
-import redis_client
-
-# Functions and variables — snake_case
-def build_system_prompt(ctx: ContextBundle) -> str: ...
-today_totals = get_today_totals(user_id)
-
-# Classes — PascalCase
-class ContextBundle:
-class FoodEntity(BaseModel):
-
-# Constants — UPPER_SNAKE_CASE at module level
-MAX_ITERATIONS = 5
-USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
-
-# Private helpers — leading underscore
-def _score_match(query: str, result: str) -> float: ...
-
-# Type aliases — PascalCase
-EntityList = list[FoodEntity]
-```
-
-### Type annotations
-
-All functions must have type annotations. Use `from __future__ import annotations`
-at the top of every file to avoid circular import issues with forward references.
-
-```python
-from __future__ import annotations
-from typing import Optional
-
-# Always annotate — no bare dicts or lists in function signatures
-def handle_message(
-    user_id: str,
-    user_input: str,
-    history: list[BaseMessage],
-) -> str: ...
-
-# Optional fields — use Optional[T] or T | None (Python 3.10+)
-disambiguation_hint: Optional[str] = None
-
-# Return None explicitly when a function can return nothing
-def reset_day_key(user_id: str) -> None: ...
-```
-
-### Docstrings — Google style
-
-```python
-def usda_lookup_batch(entities: list[dict]) -> list[dict]:
-    """Fetch USDA nutrients for multiple food entities in parallel.
-
-    Checks Postgres cache first. Falls back to FDC API on miss
-    and writes the result back to cache.
-
-    Args:
-        entities: List of dicts with keys food_name (str) and qty_g (float).
-
-    Returns:
-        List of dicts with fdc_id, food_name, qty_g, kcal, protein_g,
-        carbs_g, fat_g, fiber_g, match_confidence, and optional candidates.
-
-    Raises:
-        aiohttp.ClientError: If the FDC API is unreachable after retries.
-    """
-```
-
-One-liners are fine for simple private helpers:
-
-```python
-def _to_lower(s: str) -> str:
-    """Return lowercased string for case-insensitive comparison."""
-    return s.lower().strip()
-```
-
-### Imports
-
-```python
-# Order: stdlib → third-party → local. One blank line between groups.
-from __future__ import annotations
-
-import asyncio
-import json
-import os
-from typing import Optional
-
-import aiohttp
-from langchain_core.messages import BaseMessage
-from pydantic import BaseModel, Field
-
-from backend.db.redis_client import get_today_totals
-from backend.db.models import MealLog
-```
-
-Never use wildcard imports (`from module import *`). Never import inside
-function bodies unless avoiding a circular import — document why if you do.
-
-### Error handling
-
-```python
-# Be specific — never bare except
-try:
-    result = await fdc_api.search(food_name)
-except aiohttp.ClientTimeout:
-    logger.warning("FDC timeout for %s, returning cache miss", food_name)
-    return {"error": "timeout", "food_name": food_name}
-except aiohttp.ClientError as exc:
-    logger.error("FDC request failed: %s", exc)
-    raise
-
-# Use custom exceptions for domain errors
-class ClarificationRequired(Exception):
-    """Raised when an entity cannot be logged without user confirmation."""
-
-    def __init__(self, unresolved: list[dict]) -> None:
-        self.unresolved = unresolved
-        super().__init__(f"{len(unresolved)} entities need clarification")
-```
-
-### Async
-
-All I/O must be async. Never call blocking functions from async code.
-
-```python
-# Correct — parallel I/O with asyncio.gather
-async def _lookup_all(entities: list[dict]) -> list[dict]:
-    async with aiohttp.ClientSession() as session:
-        return await asyncio.gather(
-            *[_lookup_one(session, e["food_name"], e["qty_g"]) for e in entities]
-        )
-
-# Wrong — sequential in async context
-async def _lookup_all_slow(entities):
-    results = []
-    for e in entities:
-        results.append(await _lookup_one(e))  # blocks loop unnecessarily
-    return results
-
-# Wrong — blocking call in async context
-async def bad():
-    time.sleep(1)        # blocks event loop — use asyncio.sleep(1)
-    requests.get(url)    # use aiohttp instead
-```
-
-### Pydantic models
-
-Use Pydantic for all data that crosses a boundary (tool input/output, API
-request/response, database row). Do not use raw dicts for structured data.
-
-```python
-from pydantic import BaseModel, Field
-
-class FoodEntity(BaseModel):
-    food_name: str = Field(description="USDA-style name, specific")
-    qty_g: float   = Field(gt=0, description="Gram weight")
-    confidence: float = Field(ge=0.0, le=1.0)
-    disambiguation_hint: Optional[str] = None
-
-    class Config:
-        # Reject unknown fields — catches bugs early
-        extra = "forbid"
-```
-
-### Line length and formatting
-
-Max line length: **88 characters**. Use Ruff for linting and formatting, and run
-it only on the files you touch. Do not run Black: it is not installed in the venv,
-and `uvx black` disagrees with Ruff on existing files.
-
-```bash
-uv run ruff check src/backend/path/to/file.py --fix
-uv run ruff format src/backend/path/to/file.py
-```
+- **Branches.** Work on a feature branch (`feat/<name>` or the spec's
+  `NNN-name`). `master` is the main branch and the PR target. `production` is
+  what gets deployed.
+- **Never commit, cherry-pick or push to `production` directly.** Ship only
+  through `scripts/push-to-production.sh` (or `/ship`), and only when asked to
+  in that turn. A plain "commit" or "push" means the feature branch.
+- **Commit messages** follow Conventional Commits: `type(scope): summary`, with
+  types `feat`, `fix`, `test`, `docs`, `refactor`, `chore`. Write the summary in
+  the imperative and keep it under about 72 characters. Add the spec task ID
+  when there is one, for example `(T035)`.
+- **One logical change per commit.** During implementation, commit after each
+  completed task and push the feature branch.
+- **Authorship.** Commit under the repo's configured git identity. Do not add
+  AI co-author trailers.
+- **Stage only what you changed.** The working tree usually holds unrelated
+  uncommitted edits and untracked files. Never use `git add -A` or `git add .`;
+  if a file mixes your edits with someone else's, stage only your hunks.
+- **Never commit secrets** (`.env`, API keys, `.aws/`, service-account JSON).
+  Gitleaks runs in the production checks.
+- **Ask before anything destructive or history-rewriting:** force-push,
+  `reset --hard`, `clean`, rebasing pushed commits, deleting branches. Never
+  bypass hooks with `--no-verify`.
+- **Always resolve conflicts before moving to a feature branch.** Finish or
+  abort any merge, rebase or cherry-pick first, and never switch branches with
+  unresolved conflict markers in the tree. Resolve by reading both sides; do
+  not blanket-accept one of them.
 
 ---
 
-## TypeScript coding standards
+## Code quality
 
-Based on [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html)
-and the [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/).
+- **Match the gate.** A change is done when it would pass
+  `scripts/prod-checks.sh`: no new Ruff findings in changed Python files,
+  backend pytest, frontend Vitest, `tsc` + Vite build, gitleaks, bandit (high
+  severity), and no dependency vulnerabilities beyond
+  `security/audit-baseline.json`.
+- **Test what you change.** New behavior gets a test; a bug fix gets a test
+  that fails without the fix. Run the tests for the code you touched before
+  committing, and report failures as they are.
+- **Changes to prompts, routing or the USDA ranker need an eval run**
+  (`eval/gate.py`) against the current baseline, not only unit tests.
+- **NEVER add a dependency without asking first.** This covers Python
+  (`pyproject.toml`), npm (`package.json`) and Gradle
+  (`gradle/libs.versions.toml`), including dev dependencies and version
+  upgrades. Say what it is for and why existing code or libraries don't cover
+  it, then wait for approval.
+- **Keep diffs small and on topic.** No drive-by refactors or reformatting of
+  files you are not otherwise changing. Lint and format only the files you
+  touch.
+- **Protect chat-turn latency.** Do not add sequential I/O or an extra LLM call
+  to a chat turn without stating its latency and cost. Run independent I/O in
+  parallel.
+- **No dead code.** Remove unused code, commented-out blocks and stray debug
+  logging instead of leaving them behind. Tunable values belong in
+  `config/tunables.yaml` and prompts in `config/prompts/`, not inline.
+- **Fail visibly.** Log errors with context and surface them to the user. Do
+  not swallow exceptions or return a silent default.
+- **Comments explain why, not what.** Update docs (this file,
+  `docs/architecture.md`) when layout, commands or behavior change.
 
-### Naming
+---
 
-```typescript
-// Files — kebab-case
-// confirmation-card.tsx, meal-store.ts, use-meal-log.ts
+## Database
 
-// Components — PascalCase
-export function ConfirmationCard({ meal }: ConfirmationCardProps) {}
+Three rules, all IMPORTANT:
 
-// Functions and variables — camelCase
-const todayTotals = useTodayTotals()
-function buildSystemPrompt(ctx: ContextBundle): string {}
+1. **One source of truth.** Never store the same fact twice, whether in a
+   column, JSONB, a config list or a client-side constant. Derive totals on
+   read instead of persisting them next to their parts. If a copy is truly
+   needed (an immutable historical snapshot, a performance cache), say so and
+   justify it. Flag duplication when proposing a schema.
+2. **Schema changes go through Alembic migrations only.** Never alter the
+   schema by hand. Migrations are append-only: do not edit one that has been
+   applied to production; add a new one. Check for revision-number clashes with
+   other open branches first. New user-data tables need RLS policies, foreign
+   keys and indexes for the columns they are queried by.
+3. **Protect production data.** The `DATABASE_URL` in `.env` is the live
+   Supabase database. Never point tests, or a branch with unshipped migrations,
+   at it. Never run destructive SQL (`DELETE`, `UPDATE`, `DROP`, `TRUNCATE`)
+   against production without explicit approval in that turn.
 
-// Constants — UPPER_SNAKE_CASE for true constants, camelCase for config objects
-const MAX_RETRY_COUNT = 3
-const defaultQueryOptions = { staleTime: 30_000 }
+---
 
-// Types and interfaces — PascalCase
-interface MealEntity {
-  foodName: string
-  qtyG: number
-  confidence: number
-  disambiguationHint?: string
-}
+## Python coding standards
 
-type Intent = 'log_meal' | 'coaching' | 'recipe' | 'history'
-```
+Follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
+and [PEP 8](https://peps.python.org/pep-0008/).
 
-### Type safety
+- **Naming.** `snake_case` for modules, functions and variables; `PascalCase`
+  for classes and type aliases; `UPPER_SNAKE_CASE` for module-level constants;
+  a leading underscore for private helpers.
+- **Types.** Annotate every function, including a `-> None` return. Start every
+  file with `from __future__ import annotations`. Use `T | None` or
+  `Optional[T]` for optional values.
+- **Docstrings.** Google style, with `Args`, `Returns` and `Raises` on public
+  functions. A one-line docstring is enough for a simple private helper.
+- **Imports.** Order them stdlib, third-party, local, with a blank line between
+  groups. No wildcard imports. No imports inside function bodies except to
+  break a circular import, with a comment saying so.
+- **Errors.** Catch specific exceptions; never use a bare `except`. Log with
+  context and then handle or re-raise. Use custom exception classes for domain
+  errors.
+- **Async.** All I/O is async. Never call blocking functions (`time.sleep`,
+  `requests`) from async code. Use `asyncio.gather` for independent calls
+  instead of awaiting them in a loop.
+- **Data at boundaries.** Use Pydantic models for anything that crosses a
+  boundary (tool input/output, API request/response, database row), not raw
+  dicts. Set `extra = "forbid"` so unknown fields are rejected.
+- **Formatting.** Max line length is 88. Use Ruff for linting and formatting
+  (`uv run ruff check --fix <file>`, `uv run ruff format <file>`). Do not run
+  Black: it is not installed in the venv, and `uvx black` disagrees with Ruff
+  on existing files.
 
-Never use `any`. If a type is genuinely unknown, use `unknown` and narrow it.
+---
 
-```typescript
-// Wrong
-function parseResponse(data: any) { return data.entities }
+## Android development
 
-// Correct
-function parseResponse(data: unknown): MealEntity[] {
-  if (!isMealResponse(data)) throw new Error('Unexpected response shape')
-  return data.entities
-}
+Applies to `android/` (Kotlin, Jetpack Compose, Hilt, Retrofit, Room). The
+design-system rules are in `android/CLAUDE.md`.
 
-// Type guard
-function isMealResponse(val: unknown): val is MealResponse {
-  return (
-    typeof val === 'object' &&
-    val !== null &&
-    'entities' in val &&
-    Array.isArray((val as MealResponse).entities)
-  )
-}
-```
-
-Use `interface` for object shapes that may be extended. Use `type` for unions,
-intersections, and aliases.
-
-```typescript
-// interface — extendable object shape
-interface MealEntity {
-  foodName: string
-  qtyG: number
-}
-
-// type — union or computed shape
-type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner'
-type PartialEntity = Partial<MealEntity>
-```
-
-### React components
-
-One component per file. Props interface defined above the component.
-
-```typescript
-interface MacroRingProps {
-  label: string
-  current: number
-  goal: number
-  unit: string
-  color?: string
-}
-
-export function MacroRing({
-  label,
-  current,
-  goal,
-  unit,
-  color = '#1D9E75',
-}: MacroRingProps) {
-  const pct = Math.min(100, Math.round((current / goal) * 100))
-  return (
-    <div role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      {/* ... */}
-    </div>
-  )
-}
-```
-
-Keep components focused. If a component needs more than ~120 lines, split it.
-Extract data-fetching into custom hooks (`use-meal-log.ts`), not inside components.
-
-### Hooks
-
-```typescript
-// Custom hooks — always prefix with use
-export function useTodayTotals(userId: string) {
-  return useQuery({
-    queryKey: ['today', userId],
-    queryFn: () => api.getTodayTotals(userId),
-    staleTime: 10_000,
-  })
-}
-
-// Avoid — data fetching inside component
-export function Dashboard() {
-  const [data, setData] = useState(null)
-  useEffect(() => { fetch('/api/today').then(...) }, []) // extract this
-}
-```
-
-### Async and error handling
-
-```typescript
-// Prefer async/await over promise chains
-async function logMeal(input: LogMealInput): Promise<MealLogResult> {
-  const response = await api.post('/meals/log', input)
-  if (!response.ok) throw new ApiError(response.status, await response.text())
-  return response.json() as Promise<MealLogResult>
-}
-
-// Surface errors to the user — never swallow silently
-try {
-  await logMeal(entities)
-} catch (error) {
-  if (error instanceof ApiError) {
-    toast.error(`Could not log meal: ${error.message}`)
-  } else {
-    toast.error('Something went wrong. Try again.')
-    console.error(error)
-  }
-}
-```
-
-### Imports
-
-```typescript
-// Order: React → third-party → local (absolute) → local (relative)
-import { useState } from 'react'
-
-import { useQuery } from '@tanstack/react-query'
-
-import { api } from '@/api/client'
-import type { MealEntity } from '@/types/meal'
-
-import { MacroRing } from './macro-ring'
-```
-
-Use path aliases (`@/`) not `../../..` chains. Configure in `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "paths": { "@/*": ["./src/*"] }
-  }
-}
-```
-
-### Line length and formatting
-
-Max line length: **100 characters**. Use Prettier for formatting, ESLint for
-linting. Do not configure Prettier — use defaults.
-
-```bash
-npx prettier --write src/
-npx eslint src/ --fix
-```
+- Use AndroidX/Jetpack APIs and the libraries already in
+  `gradle/libs.versions.toml` when they cover the need. Adding a dependency
+  needs approval first (see Code quality).
+- Screens go in `app/.../ui/<feature>/`. Shared composables go in `:core:ui`
+  (or `ui/common/` when they are app-specific).
+- Navigation routes MUST be defined in `ui/AppNav.kt`.
+- Style with the `MealsyColors`, `MealsyType` and `MealsyShapes` tokens from
+  `:core:ui`. No hard-coded colors, text styles or radii in composables.
+- All backend requests go through `MealsyApi` in `:core:data`. No direct
+  OkHttp or `HttpURLConnection` calls from screens or view models.
+- IMPORTANT: Test on a device (the Pixel 9, or the emulator as fallback) in
+  both light and dark theme before calling UI work done.
+- NEVER store sensitive data (tokens, passwords) in plain SharedPreferences,
+  DataStore or Room, and never log it. Session tokens stay in supabase-kt's
+  session storage; anything else sensitive uses Keystore-backed encryption.
 
 ---
 
@@ -585,6 +366,5 @@ Things that should be decided as the project develops, not upfront:
 - Streaming: whether to stream LLM responses token-by-token or return complete
 - Voice input: Whisper API or browser Web Speech API (Phase 2)
 - Testing framework: pytest fixtures strategy as the agent grows
-- State management: whether Zustand is enough or if server state via TanStack Query covers it
 
 Add a decision record here when each is settled.
