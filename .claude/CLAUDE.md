@@ -51,6 +51,7 @@ nutrichat/
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
 │   │   ├── memory.py           # preference profile: apply_ops write rules, render
 │   │   ├── memory_curator.py   # background curators (per turn, weekly from logs)
+│   │   ├── memory_judge.py     # Jev scores curator candidates; threshold decides
 │   │   ├── memory_tools.py     # coach tools: remember, forget, set_diet
 │   │   ├── llm.py · cost.py    # model clients, token cost accounting
 │   │   └── tools/

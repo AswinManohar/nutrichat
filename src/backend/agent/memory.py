@@ -99,6 +99,13 @@ class AddFact(BaseModel):
     fact: str = Field(min_length=1, max_length=MAX_FACT_CHARS)
     kind: FactKind
 
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="P(lasting fact) from the Jev judgment, when there is one",
+    )
+
     model_config = ConfigDict(extra="forbid")
 
 
@@ -109,6 +116,13 @@ class ReplaceFact(BaseModel):
     id: str
     fact: str = Field(min_length=1, max_length=MAX_FACT_CHARS)
     kind: FactKind
+
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="P(lasting fact) from the Jev judgment, when there is one",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -274,7 +288,9 @@ def plan_ops(
     """
     plan = _Plan()
     source = _SOURCE_FOR[actor]
-    confidence = 1.0 if actor == "user" else _TUNABLES.memory.new_fact_confidence
+    default_confidence = (
+        1.0 if actor == "user" else _TUNABLES.memory.new_fact_confidence
+    )
     new_prefs = dict(prefs)
 
     def live() -> list[UserMemory]:
@@ -366,6 +382,9 @@ def plan_ops(
 
         fact = _clean(op.fact)
         key = normalize_fact(fact)
+        confidence = default_confidence
+        if actor != "user" and op.confidence is not None:
+            confidence = op.confidence
         if not key:
             reject(op, "empty fact")
             continue
@@ -414,6 +433,8 @@ def plan_ops(
             target.updated_at = now
             if actor == "user":
                 target.source = "stated"
+                target.confidence = confidence
+            elif op.confidence is not None and target.source != "stated":
                 target.confidence = confidence
             make_room(target)
             accept(op)

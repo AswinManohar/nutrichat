@@ -482,3 +482,15 @@ async def test_apply_ops_round_trip_against_live_postgres() -> None:
             await session.execute(delete(UserGoal).where(UserGoal.user_id == user_id))
             await session.commit()
         await dispose_engine()
+
+
+def test_curator_add_stores_the_judged_confidence() -> None:
+    rows: list[UserMemory] = []
+    _plan(rows, [AddFact(fact="Likes dal", kind="like", confidence=0.91)], "curator")
+    assert rows[0].confidence == 0.91
+
+
+def test_user_add_ignores_a_supplied_confidence() -> None:
+    rows: list[UserMemory] = []
+    _plan(rows, [AddFact(fact="Likes dal", kind="like", confidence=0.2)], "user")
+    assert rows[0].confidence == 1.0

@@ -73,6 +73,9 @@ class MemoryConfig(BaseModel):
     profile_max_facts: int = Field(gt=0)
     profile_max_chars: int = Field(gt=0)
     profile_max_tombstones: int = Field(ge=0)
+    save_min_probability: float = Field(ge=0.0, le=1.0)
+    save_unjudged: bool
+    judge_timeout_s: float = Field(gt=0)
     staples_window_days: int = Field(gt=0)
     staples_min_count: int = Field(gt=0)
     staples_cache_ttl_s: int = Field(gt=0)

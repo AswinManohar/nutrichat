@@ -219,6 +219,24 @@ memory:
   # learned again. Oldest beyond this are purged.
   profile_max_tombstones: 50
 
+  # Save decision (agent/memory_judge.py). The curator model drafts
+  # candidate changes; Jev scores each one and only those at or above
+  # save_min_probability are written. The score is stored as the fact's
+  # confidence. NOT yet measured: 0.6 is a starting point. Set it from the
+  # score distribution on eval/eval_profile_curator.py before widening the
+  # rollout, and favour recall: a missed allergy is silent, while a wrong
+  # fact is visible to the user and one tap to remove.
+  save_min_probability: 0.6
+
+  # What happens to a candidate Jev could not score (no TYPESAFE_API_KEY,
+  # timeout, error). true = save it on the curator's word, as before the
+  # judge existed; false = drop it.
+  save_unjudged: true
+
+  # Per-request wait for a memory judgment. Background work, so far more
+  # patient than typesafe.request_timeout_s on the reply path.
+  judge_timeout_s: 5.0
+
   # "Often eats" block: foods logged at least staples_min_count times in
   # the last staples_window_days, per meal type. Derived from meal_log on
   # read and cached in Redis for staples_cache_ttl_s.

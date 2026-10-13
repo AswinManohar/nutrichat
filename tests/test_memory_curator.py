@@ -118,15 +118,21 @@ async def test_curate_turn_applies_ops_as_curator() -> None:
         CuratorOutput(ops=[CuratorOp(action="set_diet", chip="vegetarian")])
     )
     apply = AsyncMock(return_value=ApplyOutcome())
+    judge = AsyncMock(return_value=[0.95])
 
     with (
         patch(
             "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
         ),
         patch("backend.agent.memory_curator._curator_llm", llm),
+        patch("backend.agent.memory_curator.judge_ops", judge),
         patch("backend.agent.memory_curator.apply_ops", apply),
     ):
         await curate_turn("user-1", "I'm vegetarian now", "Noted.")
+
+    judge.assert_awaited_once_with(
+        "I'm vegetarian now", [SetDietChip(chip="vegetarian", on=True)], _state()
+    )
 
     apply.assert_awaited_once_with(
         "user-1", [SetDietChip(chip="vegetarian", on=True)], "curator"
@@ -134,6 +140,57 @@ async def test_curate_turn_applies_ops_as_curator() -> None:
     system, human = llm.ainvoke.call_args.args[0]
     assert "long-term food profile" in system.content
     assert "I'm vegetarian now" in human.content
+
+
+async def test_curate_turn_saves_only_what_jev_scores_high_enough() -> None:
+    llm = _llm_returning(
+        CuratorOutput(
+            ops=[
+                CuratorOp(action="add", fact="Allergic to peanuts", kind="restriction"),
+                CuratorOp(action="add", fact="Likes salad", kind="like"),
+            ]
+        )
+    )
+    apply = AsyncMock(return_value=ApplyOutcome())
+
+    with (
+        patch(
+            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
+        ),
+        patch("backend.agent.memory_curator._curator_llm", llm),
+        patch(
+            "backend.agent.memory_curator.judge_ops",
+            AsyncMock(return_value=[0.97, 0.08]),
+        ),
+        patch("backend.agent.memory_curator.apply_ops", apply),
+    ):
+        await curate_turn("user-1", "salad, no peanuts, I'm allergic", "Logged.")
+
+    apply.assert_awaited_once_with(
+        "user-1",
+        [AddFact(fact="Allergic to peanuts", kind="restriction", confidence=0.97)],
+        "curator",
+    )
+
+
+async def test_curate_turn_all_candidates_scored_low_skips_the_write() -> None:
+    llm = _llm_returning(
+        CuratorOutput(ops=[CuratorOp(action="add", fact="Likes salad", kind="like")])
+    )
+    apply = AsyncMock()
+
+    with (
+        patch(
+            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
+        ),
+        patch("backend.agent.memory_curator._curator_llm", llm),
+        patch("backend.agent.memory_curator.judge_ops", AsyncMock(return_value=[0.1])),
+        patch("backend.agent.memory_curator.apply_ops", apply),
+    ):
+        outcome = await curate_turn("user-1", "had a salad", "Logged.")
+
+    apply.assert_not_awaited()
+    assert outcome.results == []
 
 
 async def test_curate_turn_nothing_to_store_skips_the_write() -> None:
