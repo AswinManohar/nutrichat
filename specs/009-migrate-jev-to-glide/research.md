@@ -27,10 +27,19 @@ measurement decides.
 100.0% in every run against the legacy baseline's 77.3% (PASS). Decided by
 the judgment alone 97.7%, second opinion because unsure 2.1%, because GLiDE
 timed out 0.2% (1 of 470 requests); offer to log 100% recall, no false offers.
-That run used `gemini-3.8-flash` for the second opinion, as a temporary
-override: the replacement Google project is not offered `gemini-2.5-flash`.
-The owner then chose `gemini-3.1-flash-lite` for extraction and coaching, so
-the gate must be re-run on that model before shipping.
+The same result was measured twice: once with `gemini-3.8-flash` as the
+second opinion and once with `gemini-3.1-flash-lite`, the model the owner
+chose after the Google project was replaced (new projects are not offered
+`gemini-2.5-flash`).
+
+**Model change to `gemini-3.1-flash-lite`, same day** (5 runs against
+`eval/baseline_scores.json`, measured on 2.5 Flash): entity recall 100.0
+(+0.0), quantity 80.0 (+5.0, band 12.5), food identity 82.6 (+5.3),
+decomposition within tolerance for all six dishes (worst: chicken biryani
+-20.2% against +/-25%). PASS. Memory evals on the same model: curator 19/19
+in 8 of 8 runs after a prompt fix, coaching restrictions 12/12 and memory
+requests 6/6 in 8 of 8 runs. Not run: the ingredient-replace gate, and any
+measure of coaching answer quality beyond restrictions.
 
 **Not measured**: cold start after idle, and latency from the Railway
 container.
