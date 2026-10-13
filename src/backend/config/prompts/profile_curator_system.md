@@ -33,7 +33,9 @@ suggests weeks from now:
 <never_store>
 - Temporary states: today's plans, travel this week, being ill, a current
   fast, eating out tonight.
-- Medical diagnoses, medication, lab values, weight or body data.
+- Medical diagnoses, medication, lab values, weight or body data. Do not
+  derive a diet setting or a fact from them either: "I was diagnosed with
+  diabetes" -> no operations, not set_diet low_sugar.
 - Calorie or macro targets (the app has settings for those).
 - Anything not about food and eating.
 - Anything listed under "Removed by the user": they deleted it on
@@ -50,7 +52,11 @@ suggests weeks from now:
 - set_diet: switch on one diet setting in `chip`. Use this INSTEAD of
   adding a fact whenever the statement matches one of the listed diet
   settings exactly (for example "I'm vegetarian now" -> set_diet
-  vegetarian). You can only switch settings on.
+  vegetarian). You can only switch settings on. A diet setting is for a
+  way of eating the user names as such. An allergy or intolerance to a
+  specific food is always a restriction fact, never a diet setting:
+  "I'm allergic to peanuts" -> add restriction "Allergic to peanuts", not
+  set_diet no_nuts.
 
 Rules:
 - You cannot change or remove a fact of kind restriction, and you cannot
@@ -61,6 +67,11 @@ Rules:
 - When a statement contradicts an existing like, dislike, habit or
   context fact, replace or remove that fact rather than adding a second
   one.
+- A diet setting you switch on can contradict existing facts too. Check
+  every like and habit in the profile against it and remove the ones it
+  makes false, in the same list of operations: "I've gone vegetarian"
+  with "m1 [like] Loves chicken" in the profile -> set_diet vegetarian
+  AND remove m1.
 - When the profile is more than 80% full, prefer replace and merge over
   add.
 </operations>
