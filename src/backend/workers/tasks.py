@@ -16,6 +16,9 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.agent.llm import FLASH_LITE_MODEL, embed_text, make_llm
+from backend.agent.memory import profile_active
+from backend.agent.memory_curator import curate_turn
+from backend.agent.memory_curator import infer_log_habits as _infer_log_habits
 from backend.agent.tools.history import (
     get_nutrient_checkup_aggregates,
     summarize_nutrient_checkup,
@@ -66,6 +69,11 @@ celery_app.conf.beat_schedule = {
         "task": "backend.workers.tasks.build_weekly_summary",
         "schedule": crontab(hour=23, minute=0, day_of_week="sun"),
     },
+    # After build-weekly-summary, so both read the same finished week.
+    "dispatch-log-habits": {
+        "task": "backend.workers.tasks.dispatch_log_habits",
+        "schedule": crontab(hour=23, minute=20, day_of_week="sun"),
+    },
     "send-daily-summary-push": {
         "task": "backend.workers.tasks.send_daily_summary_push",
         "schedule": crontab(hour=7, minute=0),
@@ -85,6 +93,9 @@ _NEW_FACT_CONFIDENCE = _TUNABLES.memory.new_fact_confidence
 _VEG_DAY_FIBER_THRESHOLD_G = _TUNABLES.summaries.veg_day_fiber_threshold_g
 _WEAK_SPOT_RATIO = _TUNABLES.summaries.weak_spot_ratio
 _MISSED_MEAL_MIN_DAYS = _TUNABLES.summaries.missed_meal_min_days
+
+_WEEKLY_HABITS_MIN_MEALS = _TUNABLES.memory.weekly_habits_min_meals
+_STAPLES_WINDOW_DAYS = _TUNABLES.memory.staples_window_days
 
 _MEAL_TYPES = ("breakfast", "lunch", "dinner")
 
@@ -166,6 +177,11 @@ def embed_meal_summary(meal_id: str) -> None:
 async def _extract_and_store_facts(
     user_id: str, user_input: str, agent_reply: str
 ) -> None:
+    if profile_active(user_id):
+        await curate_turn(user_id, user_input, agent_reply)
+        return
+
+    # Legacy append-only path, for users not yet on the curated profile.
     extracted = await _fact_extraction_llm.ainvoke(
         [
             SystemMessage(content=_FACT_EXTRACTION_SYSTEM),
@@ -209,9 +225,12 @@ async def _extract_and_store_facts(
     name="backend.workers.tasks.extract_and_store_facts", ignore_result=True
 )
 def extract_and_store_facts(user_id: str, user_input: str, agent_reply: str) -> None:
-    """Extract lasting preference facts from a conversation turn and store them.
+    """Update the user's preference memory from one conversation turn.
 
-    Deduplicates against existing `user_memory` rows by cosine distance.
+    Users on the curated profile go through agent/memory_curator.py, which
+    can add, replace and remove facts. Everyone else stays on the legacy
+    path: append new facts, deduplicated against existing `user_memory`
+    rows by cosine distance.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -292,6 +311,64 @@ def aggregate_daily_summary(target_date: str | None = None) -> None:
         else nutrition_today() - timedelta(days=1)
     )
     _run(_aggregate_daily_summary(resolved))
+
+
+# ---------------------------------------------------------------------------
+# dispatch_log_habits / infer_log_habits
+# ---------------------------------------------------------------------------
+
+
+async def _log_habit_candidates() -> list[str]:
+    """User ids with enough recent meals for the weekly log-habits job."""
+    today = nutrition_today()
+    session_factory = get_session()
+    async with session_factory() as session:
+        result = await session.execute(
+            sa_text(
+                "SELECT user_id FROM meal_log "
+                "WHERE " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
+                "AND deleted_at IS NULL "
+                "GROUP BY user_id HAVING COUNT(*) >= :min_meals"
+            ),
+            {
+                "date_from": today - timedelta(days=_STAPLES_WINDOW_DAYS - 1),
+                "date_to": today,
+                "min_meals": _WEEKLY_HABITS_MIN_MEALS,
+                **sql_day_params(),
+            },
+        )
+        return [str(row.user_id) for row in result]
+
+
+@celery_app.task(name="backend.workers.tasks.dispatch_log_habits", ignore_result=True)
+def dispatch_log_habits() -> None:
+    """Fan the weekly log-habits job out to one task per eligible user.
+
+    Eligible: at least ``memory.weekly_habits_min_meals`` meals in the last
+    ``memory.staples_window_days`` days, and on the curated profile. One
+    query finds them; the per-user work (and its LLM call) runs in
+    :func:`infer_log_habits`, so a slow or failing user never blocks the
+    rest.
+    """
+    for user_id in _run(_log_habit_candidates()):
+        if profile_active(user_id):
+            infer_log_habits.delay(user_id)
+
+
+# rate_limit is per worker process: it keeps a large fan-out from bursting
+# past the Gemini quota.
+@celery_app.task(
+    name="backend.workers.tasks.infer_log_habits",
+    ignore_result=True,
+    rate_limit="30/m",
+)
+def infer_log_habits(user_id: str) -> None:
+    """Rewrite one user's log-inferred habit facts.
+
+    Args:
+        user_id: Supabase Auth UUID.
+    """
+    _run(_infer_log_habits(user_id))
 
 
 # ---------------------------------------------------------------------------

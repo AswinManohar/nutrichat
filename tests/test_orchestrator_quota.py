@@ -76,6 +76,8 @@ async def test_routing_never_spends_a_credit(judgment_result):
             reports_food=0.0,
             needs_guidance=0.0,
             latency_ms=1.0,
+            model="glide",
+            input_tokens=700,
         ),
         "unsure": RoutingJudgment(
             intent="coaching",
@@ -84,6 +86,8 @@ async def test_routing_never_spends_a_credit(judgment_result):
             reports_food=0.0,
             needs_guidance=0.0,
             latency_ms=1.0,
+            model="glide",
+            input_tokens=700,
         ),
         "unavailable": None,
     }[judgment_result]
@@ -119,6 +123,8 @@ async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
         reports_food=0.0,
         needs_guidance=0.0,
         latency_ms=1.0,
+        model="glide",
+        input_tokens=700,
     )
     with (
         patch("backend.agent.orchestrator.build_graph", return_value=graph),

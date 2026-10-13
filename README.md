@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white" alt="Python 3.13">
   <img src="https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/LangGraph-agent-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
-  <img src="https://img.shields.io/badge/Gemini-2.5%20Flash-4285F4?logo=googlegemini&logoColor=white" alt="Gemini 2.5 Flash">
+  <img src="https://img.shields.io/badge/Gemini-3.1%20Flash--Lite-4285F4?logo=googlegemini&logoColor=white" alt="Gemini 3.1 Flash-Lite">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19">
   <a href="https://github.com/AswinManohar/nutrichat/actions/workflows/android.yml"><img src="https://github.com/AswinManohar/nutrichat/actions/workflows/android.yml/badge.svg" alt="Android CI"></a>
 </div>
@@ -65,12 +65,12 @@ bash scripts/run-local.sh
  Telegram     ─┘                        │
                                         ├─ paused thread? ─▶ resume logging graph
                                         │
-                                        └─ Jev router (Gemini safety net)
+                                        └─ GLiDE router (Gemini safety net)
                                               │                 │
                                          log_meal           coaching
                                               ▼                 ▼
                               LangGraph logging graph     Pydantic AI coaching agent
-                              extract (Gemini 2.5 Flash)  history + guideline RAG
+                              extract (Gemini Flash-Lite) history + guideline RAG
                               → USDA resolve                    │
                                 (SQLite → FDC API → LLM)        │
                               → interrupt: confirm/correct      │
@@ -86,7 +86,7 @@ bash scripts/run-local.sh
 - **[Human-in-the-loop](docs/architecture.md)**: the logging graph pauses on a
   LangGraph interrupt for confirmation and corrections. State persists in a Postgres
   checkpointer, so a paused meal survives restarts.
-- **Typed routing**: TypeSafe Jev classifies each message as logging or coaching. A
+- **Typed routing**: Fastino GLiDE classifies each message as logging or coaching. A
   Gemini classifier acts as a safety net.
 - **[Layered food lookup](docs/usda-matching-methods.md)**: bundled USDA database,
   then the FDC API, then an LLM estimate, so an upstream outage does not block logging.
@@ -104,8 +104,8 @@ model and background jobs.
 |---|---|
 | Backend | Python 3.13 · FastAPI · SQLAlchemy 2 (asyncpg) · Alembic · uv |
 | Agents | LangGraph (logging) · Pydantic AI (coaching) |
-| Intent routing | TypeSafe Jev, with a Gemini classifier as safety net |
-| Models | Gemini 2.5 Flash · `gemini-embedding-001` (768-dim) |
+| Intent routing | Fastino GLiDE, with a Gemini classifier as safety net |
+| Models | Gemini 3.1 Flash-Lite · `gemini-embedding-001` (768-dim) |
 | Data | PostgreSQL 16 + pgvector · Redis · USDA FoodData Central |
 | Background jobs | Celery + Celery beat |
 | Auth | Supabase Auth (ES256 JWTs verified through JWKS) |
@@ -136,7 +136,7 @@ bash scripts/run-local.sh --worker --bot  # also Celery worker and Telegram bot
 ```
 
 The web app runs at `http://localhost:5173/chat` and the API docs at
-`http://localhost:8000/docs`. `TYPESAFE_API_KEY` is optional; without it, Gemini
+`http://localhost:8000/docs`. `FASTINO_API_KEY` is optional; without it, Gemini
 handles all routing. See `.env.example` for the full list of settings and
 [android/README.md](android/README.md) for the Android client.
 
@@ -168,4 +168,4 @@ Nutrition data comes from [USDA FoodData Central](https://fdc.nal.usda.gov/), wh
 in the public domain (CC0). Agent orchestration is built on
 [LangGraph](https://github.com/langchain-ai/langgraph) and
 [Pydantic AI](https://github.com/pydantic/pydantic-ai), and intent routing uses
-TypeSafe Jev.
+Fastino GLiDE.

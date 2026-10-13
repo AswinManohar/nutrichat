@@ -192,10 +192,18 @@ class MealLog(Base):
 
 
 class UserMemory(Base):
-    """Extracted preference facts for a user, embedded for ANN retrieval.
+    """One fact in a user's curated preference profile.
 
-    Written by Celery extract_and_store_facts. Read by build_context() via
-    pgvector ANN search to retrieve the top-3 most relevant preferences.
+    All writes go through agent/memory.py apply_ops (background curator,
+    weekly log-habits job, the coach's remember/forget tools, the /memory
+    API). build_context() reads every live row for the user and renders the
+    whole profile into the coaching prompt.
+
+    ``category`` is the fact kind (restriction, dislike, like, habit,
+    context; 'preference' only on rows that predate migration 018).
+    ``deleted_at`` marks a fact the user removed: it stays as a tombstone so
+    it is not inferred again. ``embedding`` is used only by the legacy top-k
+    read path.
     """
 
     __tablename__ = "user_memory"
@@ -214,6 +222,12 @@ class UserMemory(Base):
     embedding: Mapped[list | None] = mapped_column(Vector(768), nullable=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="inferred_from_chat"
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -221,7 +235,23 @@ class UserMemory(Base):
         nullable=False,
     )
 
-    __table_args__ = (Index("ix_user_memory_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_user_memory_user_id", "user_id"),
+        Index(
+            "ix_user_memory_live",
+            "user_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        CheckConstraint(
+            "category IN ('restriction', 'dislike', 'like', 'habit', 'context', "
+            "'preference')",
+            name="ck_user_memory_category",
+        ),
+        CheckConstraint(
+            "source IN ('stated', 'inferred_from_chat', 'inferred_from_logs')",
+            name="ck_user_memory_source",
+        ),
+    )
 
 
 class UserMeal(Base):

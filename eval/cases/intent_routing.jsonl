@@ -86,3 +86,9 @@
 {"text": "had pancakes with syrup this morning, should i skip carbs later?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
 {"text": "eating a chocolate bar right now, is that ok?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
 {"text": "i had dosa and coffee for breakfast, was that balanced?", "expect": "coaching", "category": "mixed", "note": "reports food and asks about it -> coach + offer to log", "source": "synthetic", "expect_offer": true}
+{"text": "remember that I hate mushrooms", "expect": "coaching", "category": "memory_request", "note": "explicit remember request naming a food; must not start a meal log", "source": "synthetic"}
+{"text": "please remember I'm allergic to peanuts", "expect": "coaching", "category": "memory_request", "note": "explicit remember request with an allergy", "source": "synthetic"}
+{"text": "don't suggest fish to me again", "expect": "coaching", "category": "memory_request", "note": "lasting instruction about suggestions", "source": "synthetic"}
+{"text": "forget that I'm vegan", "expect": "coaching", "category": "memory_request", "note": "explicit forget request", "source": "synthetic"}
+{"text": "I've gone vegetarian, keep that in mind", "expect": "coaching", "category": "memory_request", "note": "diet change stated as a standing instruction", "source": "synthetic"}
+{"text": "what do you remember about me?", "expect": "coaching", "category": "memory_request", "note": "asks to see the profile", "source": "synthetic"}

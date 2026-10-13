@@ -13,12 +13,15 @@ models:
   # message touches this model at least once.
   # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/tools/meals.py,
   #          agent/orchestrator.py, agent/coaching.py, workers/tasks.py
-  extraction: "gemini-2.5-flash"
+  extraction: "gemini-3.1-flash-lite"
 
   # Conversational coaching responses (grounded answers to nutrition
-  # questions). Mid tier — better prose quality than flash-lite.
+  # questions). Same model as extraction since 2026-10-13: the Google
+  # project behind GOOGLE_API_KEY was replaced, and gemini-2.5-flash is not
+  # offered to new projects. A larger model here is the first thing to try
+  # if coaching answer quality drops.
   # Used in: agent/coaching.py generate_response()
-  coaching: "gemini-2.5-flash"
+  coaching: "gemini-3.1-flash-lite"
 
   # Embedding model for meal summaries, preference facts, and query-time
   # ANN search. MUST stay consistent with embedding_dim below and with the
@@ -43,8 +46,8 @@ token_limits:
   # Reasoning ("thinking") token budget for the extraction-tier Gemini calls:
   # entity extraction, correction, image classification, decomposition, intent
   # classification, log-reply, nutrition estimate, and query parsing. All are
-  # simple structured-output tasks, but gemini-2.5-flash enables *dynamic*
-  # thinking by default and spends ~1-3s of latency per call reasoning before
+  # simple structured-output tasks, and with thinking left on the model
+  # spends ~1-3s of latency per call reasoning before
   # emitting the JSON. 0 disables thinking entirely (applied in agent/llm.py
   # make_llm for LangChain calls and via GoogleModelSettings for the pydantic-ai
   # estimate/parse agents). Raise only if you see a structured-output quality
@@ -199,6 +202,60 @@ memory:
   # Used in: agent/context.py
   top_k_preferences: 3
 
+  # --- Curated preference profile (agent/memory.py) -----------------------
+  # When on, the coach gets the user's WHOLE profile on every turn instead
+  # of the top-k facts above, and no embedding call is made for it. Off =
+  # legacy top-k path. Users in profile_allowlist get the profile even when
+  # profile_enabled is false (dark launch on named accounts).
+  profile_enabled: false
+  profile_allowlist: []
+
+  # Hard cap on live facts per user and on their total characters. The cap
+  # is what keeps the prompt block bounded (1500 chars is about 350
+  # tokens), so raise it only with the prompt budget in mind. On overflow
+  # the oldest inferred like/habit/context fact is evicted; restrictions
+  # and facts the user stated are never evicted.
+  profile_max_facts: 40
+  profile_max_chars: 1500
+
+  # Tombstones (facts the user removed) kept per user so they are not
+  # learned again. Oldest beyond this are purged.
+  profile_max_tombstones: 50
+
+  # Save decision (agent/memory_judge.py). The curator model drafts
+  # candidate changes; GLiDE scores each one and only those at or above
+  # save_min_probability are written. The score is stored as the fact's
+  # confidence. Probe 2026-10-13 on eval/cases/memory_judge.jsonl (32
+  # hand-written message/candidate pairs): every candidate to keep scored
+  # >= 0.84 and every one to drop <= 0.09, so 0.6 sits in a wide gap. The
+  # cases are synthetic; re-check on real turns, and favour recall: a
+  # missed allergy is silent, while a wrong fact is visible to the user
+  # and one tap to remove.
+  save_min_probability: 0.6
+
+  # What happens to a candidate GLiDE could not score (no FASTINO_API_KEY,
+  # timeout, error). true = save it on the curator's word, as before the
+  # judge existed; false = drop it.
+  save_unjudged: true
+
+  # Per-request wait for a memory judgment. Background work, so far more
+  # patient than glide.request_timeout_s on the reply path.
+  judge_timeout_s: 5.0
+
+  # "Often eats" block: foods logged at least staples_min_count times in
+  # the last staples_window_days, per meal type. Derived from meal_log on
+  # read and cached in Redis for staples_cache_ttl_s.
+  # Used in: agent/tools/history.py get_staple_foods
+  staples_window_days: 30
+  staples_min_count: 3
+  staples_cache_ttl_s: 21600
+
+  # Weekly log-habits job (workers/tasks.py): runs only for users with at
+  # least this many meals in the staples window, and writes at most this
+  # many interpreted habit facts per user.
+  weekly_habits_min_meals: 15
+  weekly_habits_max_facts: 3
+
   # Short-term conversation memory for the coaching agent: the last N
   # user/assistant exchanges (across BOTH logging and coaching turns —
   # logging turns are stored as one-line summaries) kept in Redis at
@@ -299,35 +356,46 @@ features:
   # extractor's gram estimate; the user opts in via "Break into ingredients".
   auto_decompose_enabled: false
 
-typesafe:
-  # TypeSafe System One (Jev): one request per fresh text message answers
+glide:
+  # Fastino GLiDE (System One): one request per fresh text message answers
   # "log a meal or ask the coach?" plus two yes/no questions (does it also
   # report food; does it need guidance). See agent/system_one.py and
-  # specs/001-jev-intent-routing/. Needs TYPESAFE_API_KEY; without it every
-  # fresh message is routed by the Gemini classifier instead.
-  model: "jev-latest"
+  # specs/009-migrate-jev-to-glide/. Needs FASTINO_API_KEY; without it every
+  # fresh message is routed by the Gemini classifier instead. Also answers
+  # the memory save decision (agent/memory_judge.py).
+  base_url: "https://api.fastino.ai"
+  model: "fastino/GLiDE"
 
-  # Certainty behind the chosen handler (0.5-1.0) at or above which Jev's route
-  # is acted on directly. Below it, the Gemini classifier gives a second
-  # opinion. Both misroutes are recoverable (a card the user cancels, a text
-  # reply), so a moderate bar. Probe 2026-09-21: 33 of 35 messages scored
-  # >= 0.95, "eggs?" 0.66. Tune on the eval gate, not by feel.
+  # Certainty behind the chosen handler (0.5-1.0) at or above which the
+  # judgment's route is acted on directly. Below it, the Gemini classifier
+  # gives a second opinion. Both misroutes are recoverable (a card the user
+  # cancels, a text reply), so a moderate bar. Probe 2026-10-13 on the 94
+  # routing cases, GLiDE alone: 94/94 routed correctly, 92 scored >= 0.94
+  # and 2 fell below 0.75 (lowest 0.67). Tune on eval/probe_glide.py
+  # --scores and the eval gate, not by feel.
   intent_min_probability: 0.75
 
   # P(message also reports food) at or above which a coaching reply ends with
-  # log_offer_text ("I had pizza, was that bad?"). Probe: mixed messages
-  # 0.83-0.98, pure questions <= 0.03.
+  # log_offer_text ("I had pizza, was that bad?"). Probe 2026-10-13: mixed
+  # messages 0.99-1.00, pure questions and small talk <= 0.02.
   log_offer_min_probability: 0.7
   log_offer_text: "Want me to log that? Send me what you had and I'll add it."
 
-  # Per-request wait for Jev, no retries. Past it, Gemini decides. Routing is
-  # in front of every fresh message, so fail fast. Measured p95 346 ms
-  # sequential from the dev machine, but ~800 ms at 10 concurrent requests;
-  # re-check against the container latency probe (eval/probe_jev_latency.py).
+  # Per-request wait for a routing judgment, no retries. Past it, Gemini
+  # decides. Routing is in front of every fresh message, so fail fast.
+  # Measured 2026-10-13 from the dev machine: p50 360 ms, p95 615 ms at
+  # concurrency 1 and p50 389 ms, p95 610 ms at 10; none of 150 requests
+  # passed 0.8 s. From the Railway web container the same day: p50 242 ms,
+  # p95 456 ms at concurrency 1 (1 of 50 over 0.8 s); p50 277 ms, p95
+  # 1003 ms at 10 (3 of 50 over). First request on a cold connection: 1.9 s.
   request_timeout_s: 0.8
 
+  # Wait for the startup warm-up request, which may hit a model that is
+  # still loading.
+  warm_up_timeout_s: 30.0
+
 routing:
-  # log_meal/coaching routing moved to TypeSafe Jev (see `typesafe:` above);
+  # log_meal/coaching routing moved to a GLiDE judgment (see `glide:` above);
   # its keyword lists were deleted. What remains is the card-reply classifier.
   #
   # Keyword sets for the confirmation-card reply classifier in

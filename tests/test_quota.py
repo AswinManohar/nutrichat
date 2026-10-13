@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from backend.quota import FREE_QUOTA, PAID_QUOTA, consume_llm_credit
 
 

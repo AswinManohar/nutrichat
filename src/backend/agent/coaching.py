@@ -19,11 +19,14 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
+from pydantic_ai.usage import UsageLimits
 from redis.exceptions import RedisError
 
 from backend.agent.context import build_context, build_system_prompt
 from backend.agent.cost import record_run_cost
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
+from backend.agent.memory import profile_active
+from backend.agent.memory_tools import memory_toolset
 from backend.agent.tools.history import (
     get_food_breakdown_for_range,
     get_macros_for_range,
@@ -212,12 +215,22 @@ _parse_agent = Agent(
 )
 
 
+_PROFILE_RULES = _TUNABLES.prompts.coaching_profile_rules.strip()
+
+# Bounds a turn that uses the memory tools: the reply, at most a couple of
+# tool round trips, and the final answer.
+_MEMORY_RUN_LIMITS = UsageLimits(request_limit=4)
+
+
 @dataclass
 class _ResponseDeps:
     """Per-run input for the response agent's dynamic instructions."""
 
     context_prompt: str
     passage_block: str = ""
+    # Set only for users on the curated profile; enables the memory tools
+    # and the profile rules.
+    user_id: str | None = None
 
 
 # `instructions` rather than `system_prompt`: pydantic-ai only re-sends
@@ -236,10 +249,14 @@ _response_agent = Agent(
 def _user_context_instructions(ctx: RunContext[_ResponseDeps]) -> str:
     """Append the per-user context block (today, goals, weekly pattern,
     preferences) built by agent/context.py, then any guideline passages,
-    to the static coaching rules."""
-    return "\n\n".join(
-        block for block in (ctx.deps.context_prompt, ctx.deps.passage_block) if block
+    to the static coaching rules. Users on the curated profile also get
+    the profile rules, ahead of the context they govern."""
+    blocks = (
+        _PROFILE_RULES if ctx.deps.user_id else "",
+        ctx.deps.context_prompt,
+        ctx.deps.passage_block,
     )
+    return "\n\n".join(block for block in blocks if block)
 
 
 def _render_history_text(history: Sequence[CoachingTurn]) -> str:
@@ -407,8 +424,14 @@ async def generate_response(
     context_prompt: str = "",
     history: Sequence[CoachingTurn] = (),
     passages: Sequence[RetrievedChunk] = (),
+    user_id: str | None = None,
 ) -> str:
     """Generate a grounded natural-language answer from fetched data.
+
+    For a user on the curated profile the model is also offered the memory
+    tools (remember, forget, set_diet). It calls one only on an explicit
+    request, which costs one extra model round trip on that turn; every
+    other turn is a single round trip, as before.
 
     Args:
         message: The user's original question.
@@ -419,18 +442,25 @@ async def generate_response(
             message history ahead of this question.
         passages: Retrieved guideline passages; rendered by format_passages
             and appended after the context block. Empty omits the block.
+        user_id: Supabase Auth UUID. Memory tools are enabled only when
+            given and the user is on the curated profile.
 
     Returns:
         Natural language response, under 3 sentences, possibly carrying
         [n] citations into ``passages``.
     """
     content = f"User question: {message}\n\nData:\n{json.dumps(data, default=str)}"
+    use_memory = user_id is not None and profile_active(user_id)
     result = await _response_agent.run(
         content,
         deps=_ResponseDeps(
-            context_prompt=context_prompt, passage_block=format_passages(passages)
+            context_prompt=context_prompt,
+            passage_block=format_passages(passages),
+            user_id=user_id if use_memory else None,
         ),
         message_history=_history_to_messages(history) or None,
+        toolsets=[memory_toolset] if use_memory else None,
+        usage_limits=_MEMORY_RUN_LIMITS if use_memory else None,
     )
     record_run_cost(result, COACHING_MODEL, operation="coaching_response")
     return result.output
@@ -529,6 +559,7 @@ class CoachingAgent:
             context_prompt=context_prompt,
             history=history,
             passages=retrieved,
+            user_id=user_id,
         )
         return CoachingResult(
             message=text,

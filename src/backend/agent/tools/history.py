@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
@@ -18,6 +18,14 @@ _TUNABLES = get_tunables()
 _CHECKUP_MICRONUTRIENTS = _TUNABLES.nutrient_checkup.micronutrients
 _CHECKUP_FLAT_THRESHOLD = _TUNABLES.nutrient_checkup.flat_threshold_pct
 _CHECKUP_RDA = _TUNABLES.nutrient_checkup.rda
+
+_STAPLES_WINDOW_DAYS = _TUNABLES.memory.staples_window_days
+_STAPLES_MIN_COUNT = _TUNABLES.memory.staples_min_count
+# Output bounds for get_staple_foods: it feeds the coaching prompt, so its
+# size must not grow with the user's history.
+_STAPLES_PER_MEAL_TYPE = 5
+_STAPLE_NAME_MAX_CHARS = 40
+_STAPLE_MEAL_ORDER = ("breakfast", "lunch", "dinner", "snack")
 
 # Display name -> (meal_log column, unit) for the macro nutrients in the
 # Daily Nutrient Check-up. Sugar and vitamins/minerals come from
@@ -420,6 +428,74 @@ async def get_food_breakdown_for_range(
         "flagged_junk_foods": flagged_junk_foods,
         "highest_calorie_foods": highest_calorie_foods,
     }
+
+
+async def get_staple_foods(
+    user_id: str, days: int | None = None, min_count: int | None = None
+) -> dict[str, list[str]]:
+    """Foods the user logs repeatedly, grouped by meal type.
+
+    Derived from ``meal_log`` on every call (nothing is stored), so it is
+    always consistent with the log. One aggregate query, bounded output:
+    at most ``_STAPLES_PER_MEAL_TYPE`` foods per meal type.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        days: Look-back window ending today; defaults to
+            ``memory.staples_window_days``.
+        min_count: Minimum number of distinct meals a food must appear in;
+            defaults to ``memory.staples_min_count``.
+
+    Returns:
+        Meal type -> food names, most frequent first. Meal types with no
+        staple are absent. Breakfast, lunch, dinner, snack come first.
+    """
+    window = days if days is not None else _STAPLES_WINDOW_DAYS
+    today = nutrition_today()
+    date_from = today - timedelta(days=window - 1)
+    params = {
+        "user_id": user_id,
+        "date_from": date_from,
+        "date_to": today,
+        # The nutrition-day expression cannot use an index. This plain,
+        # slightly wider bound on logged_at can (ix_meal_log_user_logged_at),
+        # so the scan covers the window rather than the user's whole history.
+        "logged_from": datetime.combine(
+            date_from - timedelta(days=1), time.min, tzinfo=UTC
+        ),
+        "min_count": min_count if min_count is not None else _STAPLES_MIN_COUNT,
+        "per_meal": _STAPLES_PER_MEAL_TYPE,
+        **sql_day_params(),
+    }
+    async with get_session()() as session:
+        result = await session.execute(
+            sa_text(
+                "SELECT meal_type, food_name FROM ("
+                "SELECT meal_type, item->>'food_name' AS food_name, "
+                "COUNT(DISTINCT meal_id) AS n, "
+                "ROW_NUMBER() OVER (PARTITION BY meal_type "
+                "ORDER BY COUNT(DISTINCT meal_id) DESC, item->>'food_name') AS rk "
+                "FROM meal_log, jsonb_array_elements(entities) AS item "
+                "WHERE user_id = :user_id "
+                "AND logged_at >= :logged_from "
+                "AND " + NUTRITION_DATE_SQL + " BETWEEN :date_from AND :date_to "
+                "AND deleted_at IS NULL "
+                "AND item->>'food_name' IS NOT NULL "
+                "GROUP BY meal_type, item->>'food_name' "
+                "HAVING COUNT(DISTINCT meal_id) >= :min_count"
+                ") ranked WHERE rk <= :per_meal ORDER BY meal_type, rk"
+            ),
+            params,
+        )
+        by_meal: dict[str, list[str]] = {}
+        for row in result:
+            by_meal.setdefault(row.meal_type, []).append(
+                row.food_name[:_STAPLE_NAME_MAX_CHARS]
+            )
+
+    ordered = {m: by_meal[m] for m in _STAPLE_MEAL_ORDER if m in by_meal}
+    ordered.update({m: foods for m, foods in by_meal.items() if m not in ordered})
+    return ordered
 
 
 async def get_history(

@@ -31,7 +31,11 @@ def srgb_to_linear(c: float) -> float:
 
 def relative_luminance(rgb: tuple[int, int, int]) -> float:
     r, g, b = rgb
-    return 0.2126 * srgb_to_linear(r) + 0.7152 * srgb_to_linear(g) + 0.0722 * srgb_to_linear(b)
+    return (
+        0.2126 * srgb_to_linear(r)
+        + 0.7152 * srgb_to_linear(g)
+        + 0.0722 * srgb_to_linear(b)
+    )
 
 
 def contrast_ratio(c1: tuple[int, int, int], c2: tuple[int, int, int]) -> float:
@@ -87,7 +91,10 @@ def main() -> None:
             ratio = contrast_ratio(colors[text_tok], colors[bg_tok])
             threshold = 3.0 if large else 4.5
             status = "PASS" if ratio >= threshold else "FAIL"
-            print(f"{status:4} {text_tok:22} on {bg_tok:16} ratio={ratio:.2f} (need {threshold})")
+            print(
+                f"{status:4} {text_tok:22} on {bg_tok:16} "
+                f"ratio={ratio:.2f} (need {threshold})"
+            )
 
 
 if __name__ == "__main__":

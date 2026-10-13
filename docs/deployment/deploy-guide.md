@@ -12,7 +12,7 @@ that uncommitted/untracked files in the working directory are included.
 > Related runbooks: [`railway.md`](./railway.md) (backend services, env vars,
 > `scripts/deploy-railway.sh`) and [`netlify.md`](./netlify.md) (frontend). This
 > guide is the newer, authoritative overview; where the runbooks differ (e.g.
-> `TYPESAFE_API_KEY`, the removed `DEV_BYPASS_AUTH`), follow this guide.
+> `FASTINO_API_KEY`, the removed `DEV_BYPASS_AUTH`), follow this guide.
 
 ---
 
@@ -222,7 +222,7 @@ Set in each host's dashboard (or via CLI). Not committed.
 | `DATABASE_URL` | Supabase Postgres (`postgresql+asyncpg://…`, session pooler) |
 | `REDIS_URL` | Railway Redis |
 | `GOOGLE_API_KEY` | Gemini (extraction, coaching, embeddings) |
-| `TYPESAFE_API_KEY` | TypeSafe Jev intent routing (`web`, `bot`). Unset = the Gemini classifier routes every message; nothing breaks. Only the message text is sent to TypeSafe |
+| `FASTINO_API_KEY` | Fastino GLiDE judgments: intent routing (`web`, `bot`) and the memory save decision (`worker`). Unset = the Gemini classifier routes every message and memory candidates follow `memory.save_unjudged`; nothing breaks. Only the message text (and, for memory, the candidate fact) is sent to Fastino |
 | `USDA_API_KEY` | FoodData Central |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` | Auth / JWKS verification |
 | `FRONTEND_ORIGIN` | Netlify origin(s) allowed by CORS (comma-separated) |

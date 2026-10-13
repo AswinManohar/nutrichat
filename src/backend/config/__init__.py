@@ -68,6 +68,19 @@ class MemoryConfig(BaseModel):
     dedup_distance_threshold: float = Field(ge=0.0, le=2.0)
     new_fact_confidence: float = Field(ge=0.0, le=1.0)
     top_k_preferences: int = Field(gt=0)
+    profile_enabled: bool
+    profile_allowlist: list[str]
+    profile_max_facts: int = Field(gt=0)
+    profile_max_chars: int = Field(gt=0)
+    profile_max_tombstones: int = Field(ge=0)
+    save_min_probability: float = Field(ge=0.0, le=1.0)
+    save_unjudged: bool
+    judge_timeout_s: float = Field(gt=0)
+    staples_window_days: int = Field(gt=0)
+    staples_min_count: int = Field(gt=0)
+    staples_cache_ttl_s: int = Field(gt=0)
+    weekly_habits_min_meals: int = Field(gt=0)
+    weekly_habits_max_facts: int = Field(gt=0)
     coaching_history_turns: int = Field(gt=0)
     coaching_history_ttl_s: int = Field(gt=0)
 
@@ -139,14 +152,16 @@ class RoutingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TypeSafeConfig(BaseModel):
-    """TypeSafe System One (Jev) judgments; see agent/system_one.py."""
+class GlideConfig(BaseModel):
+    """Fastino GLiDE judgments; see agent/glide.py and agent/system_one.py."""
 
+    base_url: str = Field(min_length=1)
     model: str
     intent_min_probability: float = Field(ge=0.5, le=1.0)
     log_offer_min_probability: float = Field(ge=0.0, le=1.0)
     log_offer_text: str = Field(min_length=1)
     request_timeout_s: float = Field(gt=0)
+    warm_up_timeout_s: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -168,7 +183,10 @@ class PromptsConfig(BaseModel):
     coaching_response_system: str
     coaching_role_and_tone: str
     coaching_hard_constraints: str
+    coaching_profile_rules: str
     fact_extraction_system: str
+    profile_curator_system: str
+    log_habits_system: str
     nutrition_estimate_system: str
     decompose_system: str
     replace_ingredient_system: str
@@ -196,7 +214,7 @@ class Tunables(BaseModel):
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
-    typesafe: TypeSafeConfig
+    glide: GlideConfig
     prompts: PromptsConfig
     features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]

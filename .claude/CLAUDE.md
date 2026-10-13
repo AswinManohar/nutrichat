@@ -25,9 +25,9 @@ them.
 | Backend | Python 3.13 · FastAPI · async · SQLAlchemy 2 (asyncpg) · uv |
 | Agent | LangGraph (logging, Postgres checkpointer) · Pydantic AI (coaching) |
 | Observability | Logfire (OpenTelemetry) |
-| LLM — extraction | Gemini 2.5 Flash (thinking disabled — see tunables `extraction_thinking_budget`) |
-| LLM — coaching | Gemini 2.5 Flash |
-| Typed judgments | TypeSafe Jev (System One): log/coaching intent routing; Gemini classifier as safety net |
+| LLM — extraction | Gemini 3.1 Flash-Lite (thinking disabled — see tunables `extraction_thinking_budget`) |
+| LLM — coaching | Gemini 3.1 Flash-Lite |
+| Typed judgments | Fastino GLiDE (System One): log/coaching intent routing with Gemini classifier as safety net; memory save decision |
 | Database | PostgreSQL 16 + pgvector |
 | Cache | Redis |
 | Task queue | Celery + Redis |
@@ -53,9 +53,14 @@ nutrichat/
 │   │   ├── context.py          # build_context(), build_system_prompt()
 │   │   ├── graph.py            # LangGraph StateGraph (logging)
 │   │   ├── orchestrator.py     # handle_message(), _route() decision rule
-│   │   ├── system_one.py       # TypeSafe Jev routing judgment (judge_message)
+│   │   ├── glide.py            # Fastino GLiDE client (typed judgments)
+│   │   ├── system_one.py       # GLiDE routing judgment (judge_message)
 │   │   ├── coaching.py         # Pydantic AI coaching agent
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
+│   │   ├── memory.py           # preference profile: apply_ops write rules, render
+│   │   ├── memory_curator.py   # background curators (per turn, weekly from logs)
+│   │   ├── memory_judge.py     # GLiDE scores curator candidates; threshold decides
+│   │   ├── memory_tools.py     # coach tools: remember, forget, set_diet
 │   │   ├── llm.py · cost.py    # model clients, token cost accounting
 │   │   └── tools/
 │   │       ├── meals.py        # extract_entities, log_meal
@@ -67,7 +72,7 @@ nutrichat/
 │   │       ├── saved_meals.py
 │   │       └── history.py      # get_history hybrid search
 │   ├── api/                    # FastAPI routers: meals, goals, my_meals, foods,
-│   │                           # coaching_feedback, nutrient_checkup, mindful, quota,
+│   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
 │   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
 │   ├── config/                 # tunables.yaml, prompts/
@@ -102,9 +107,9 @@ nutrichat/
 ## Environment variables
 
 ```bash
-GOOGLE_API_KEY=          # Gemini 2.5 Flash + embeddings
+GOOGLE_API_KEY=          # Gemini 3.1 Flash-Lite + embeddings
 ANTHROPIC_API_KEY=       # reserved; not used by current code
-TYPESAFE_API_KEY=        # Jev intent routing; unset = Gemini routes everything
+FASTINO_API_KEY=         # GLiDE judgments (routing, memory); unset = Gemini routes everything
 DATABASE_URL=            # postgresql://...
 REDIS_URL=               # redis://...
 SUPABASE_URL=            # https://xxx.supabase.co
@@ -146,7 +151,9 @@ python eval/run_eval.py --dataset eval/test_set_200.jsonl --mock  # offline
 python eval/run_eval.py --dataset eval/test_set_200.jsonl          # live
 python eval/gate.py --only intent_routing --runs 5 \
     --baseline eval/baseline_intent_legacy.json                   # routing gate
-python eval/probe_jev_latency.py --n 50 --concurrency 1,5,10      # Jev latency
+python eval/probe_glide.py --check | --scores | --n 50          # GLiDE: request, thresholds, latency
+PYTHONPATH=src python eval/eval_profile_curator.py --runs 3      # memory curator
+PYTHONPATH=src python eval/eval_profile_coaching.py --runs 3     # restrictions gate
 ```
 
 ---
@@ -195,8 +202,9 @@ after every boot.
   data. Run the backend from the branch that matches production's schema; a
   feature branch with new migrations or a new data format must not point at
   prod.
-- **Gemini key and spend cap.** `GOOGLE_API_KEY` in `.env` belongs to Google
-  project `gen-lang-client-0523573857`. When its monthly spend cap is hit,
+- **Gemini key and spend cap.** The Google project behind `GOOGLE_API_KEY`
+  was replaced on 2026-10-13 after the old one hit its cap; new projects are
+  not offered `gemini-2.5-flash`. When a project's monthly spend cap is hit,
   every Gemini call returns HTTP 429 "exceeded its monthly spending cap", so
   extraction, estimates and coaching all fail. Check the backend log before
   debugging the app (issue #59).

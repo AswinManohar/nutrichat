@@ -1,0 +1,32 @@
+{"question": "worth_remembering", "message": "I'm allergic to peanuts", "candidate": "Allergic to peanuts", "expect": true}
+{"question": "worth_remembering", "message": "2 eggs and toast, and no peanuts ever please, I'm allergic", "candidate": "Allergic to peanuts", "expect": true}
+{"question": "worth_remembering", "message": "I don't eat pork for religious reasons", "candidate": "Does not eat pork (religious)", "expect": true}
+{"question": "worth_remembering", "message": "I hate mushrooms", "candidate": "Dislikes mushrooms", "expect": true}
+{"question": "worth_remembering", "message": "I usually skip breakfast", "candidate": "Usually skips breakfast", "expect": true}
+{"question": "worth_remembering", "message": "I cook for my family of four most nights", "candidate": "Cooks for a family of four most nights", "expect": true}
+{"question": "worth_remembering", "message": "I'm gluten free", "candidate": "Follows a gluten free diet", "expect": true}
+{"question": "worth_remembering", "message": "I've gone vegetarian", "candidate": "Follows a vegetarian diet", "expect": true}
+{"question": "worth_remembering", "message": "I've switched from oat milk to almond milk", "candidate": "Prefers almond milk", "expect": true}
+{"question": "worth_remembering", "message": "lactose doesn't sit well with me so I stay away from milk", "candidate": "Avoids milk (lactose intolerant)", "expect": true}
+{"question": "worth_remembering", "message": "remind me, I only have a microwave at work", "candidate": "Only has a microwave at work", "expect": true}
+{"question": "worth_remembering", "message": "lately I've been having a protein shake after the gym", "candidate": "Has a protein shake after the gym", "expect": true}
+{"question": "worth_remembering", "message": "log 2 eggs and toast", "candidate": "Likes eggs and toast", "expect": false}
+{"question": "worth_remembering", "message": "had a vegetarian lunch today: dal and rice", "candidate": "Follows a vegetarian diet", "expect": false}
+{"question": "worth_remembering", "message": "should I avoid dairy?", "candidate": "Avoids dairy", "expect": false}
+{"question": "worth_remembering", "message": "if I went vegan, would I get enough protein?", "candidate": "Follows a vegan diet", "expect": false}
+{"question": "worth_remembering", "message": "I'm eating out tonight, what should I order?", "candidate": "Eats out often", "expect": false}
+{"question": "worth_remembering", "message": "what should I have for dinner?", "candidate": "Likes grilled salmon with quinoa", "expect": false}
+{"question": "worth_remembering", "message": "had a salad for lunch", "candidate": "Likes salad", "expect": false}
+{"question": "worth_remembering", "message": "is tofu healthy?", "candidate": "Likes tofu", "expect": false}
+{"question": "worth_remembering", "message": "no chicken today, just rice and dal", "candidate": "Does not eat chicken", "expect": false}
+{"question": "worth_remembering", "message": "I hate mushrooms", "candidate": "Allergic to mushrooms", "expect": false}
+{"question": "worth_remembering", "message": "I'm so full I could never eat again lol", "candidate": "Does not eat", "expect": false}
+{"question": "worth_remembering", "message": "my friend is vegan", "candidate": "Follows a vegan diet", "expect": false}
+{"question": "no_longer_true", "message": "I've gone vegetarian", "candidate": "Loves chicken", "expect": true}
+{"question": "no_longer_true", "message": "I can't stand oats any more", "candidate": "Likes oatmeal", "expect": true}
+{"question": "no_longer_true", "message": "I've switched from oat milk to almond milk", "candidate": "Prefers oat milk in coffee", "expect": true}
+{"question": "no_longer_true", "message": "I started eating breakfast every day now", "candidate": "Usually skips breakfast", "expect": true}
+{"question": "no_longer_true", "message": "no chicken today, just rice and dal", "candidate": "Loves chicken", "expect": false}
+{"question": "no_longer_true", "message": "log 2 eggs and toast", "candidate": "Usually skips breakfast", "expect": false}
+{"question": "no_longer_true", "message": "I hate mushrooms", "candidate": "Loves chicken", "expect": false}
+{"question": "no_longer_true", "message": "should I stop drinking oat milk?", "candidate": "Prefers oat milk in coffee", "expect": false}
