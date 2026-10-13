@@ -35,7 +35,7 @@ from backend.ratelimit import RateLimitMiddleware
 async def lifespan(app_instance: FastAPI):
     warn_if_unconfigured()
     # Background: never delays startup; the reference keeps it from being GC'd.
-    app_instance.state.typesafe_warm_up = asyncio.create_task(warm_up())
+    app_instance.state.glide_warm_up = asyncio.create_task(warm_up())
     async with pooled_checkpointer() as checkpointer:
         app_instance.state.checkpointer = checkpointer
         yield

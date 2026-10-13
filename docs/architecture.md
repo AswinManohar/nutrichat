@@ -180,12 +180,12 @@ which takes a per-user advisory lock and enforces:
 | `DELETE /memory/{id}` | client | `user` |
 
 **Save decision.** In `curate_turn` the Gemini curator only drafts candidate
-changes (fact text and operation). `memory_judge.judge_ops` asks TypeSafe Jev
+changes (fact text and operation). `memory_judge.judge_ops` asks Fastino GLiDE
 one yes/no question per candidate ("does the message establish this as a
 lasting fact?", or for a removal "is the stored fact no longer true?") and
 `select_ops` keeps those scored at or above `memory.save_min_probability`. The
 score is stored in `user_memory.confidence`. `apply_ops` then enforces the
-write rules above. A candidate Jev cannot score (no key, timeout) is kept or
+write rules above. A candidate GLiDE cannot score (no key, timeout) is kept or
 dropped according to `memory.save_unjudged`. The weekly job and the coach
 tools are not judged: one has no message to judge against, the other is an
 explicit user request.

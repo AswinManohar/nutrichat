@@ -35,9 +35,9 @@ async def save_coaching_response(
         result: Output of CoachingAgent.handle().
         model: Model name used for the response (COACHING_MODEL).
         trace_id: OTel trace id as 32 hex chars, or None outside a trace.
-        routing: Jev's routing record for this turn (path, certainty,
-            raw_choice, reports_food, needs_guidance_jev, offer_to_log). Stored
-            as ``parsed_query["routing"]`` beside Gemini's ``needs_guidance``
+        routing: GLiDE's routing record for this turn (path, certainty,
+            raw_choice, reports_food, needs_guidance_jev, offer_to_log,
+            judge_model). Stored as ``parsed_query["routing"]`` beside Gemini's ``needs_guidance``
             so the two can be compared; omitted when None. No schema change:
             parsed_query is free-form JSONB.
 

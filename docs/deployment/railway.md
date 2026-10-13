@@ -124,7 +124,7 @@ REDIS_URL=redis://default:<password>@redis.railway.internal:6379
 
 GOOGLE_API_KEY=            # web, worker, bot
 ANTHROPIC_API_KEY=         # fallback / eval
-TYPESAFE_API_KEY=          # web, bot — Jev intent routing; optional (unset = Gemini routes everything)
+FASTINO_API_KEY=           # web, bot, worker — GLiDE judgments; optional (unset = Gemini routes everything)
 USDA_API_KEY=
 
 # --- Supabase Auth (web needs these; bot needs JWT secret for /link) ---------

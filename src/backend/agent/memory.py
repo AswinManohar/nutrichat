@@ -103,7 +103,7 @@ class AddFact(BaseModel):
         default=None,
         ge=0.0,
         le=1.0,
-        description="P(lasting fact) from the Jev judgment, when there is one",
+        description="P(lasting fact) from the GLiDE judgment, when there is one",
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -121,7 +121,7 @@ class ReplaceFact(BaseModel):
         default=None,
         ge=0.0,
         le=1.0,
-        description="P(lasting fact) from the Jev judgment, when there is one",
+        description="P(lasting fact) from the GLiDE judgment, when there is one",
     )
 
     model_config = ConfigDict(extra="forbid")

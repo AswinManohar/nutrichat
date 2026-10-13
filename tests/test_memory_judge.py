@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+import json
+from unittest.mock import patch
 
-import httpx2
+import httpx
 import pytest
-from typesafe_sdk import TypeSafeInternalServerError
 
 from backend.agent import memory_judge
 from backend.agent.memory import (
@@ -27,16 +26,24 @@ def _state() -> ProfileState:
     )
 
 
-def _client(side_effect) -> MagicMock:
-    client = MagicMock()
-    client.system_one = AsyncMock(side_effect=side_effect)
-    client.__aenter__ = AsyncMock(return_value=client)
-    client.__aexit__ = AsyncMock(return_value=None)
-    return client
+def _client(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url="https://glide.test", transport=httpx.MockTransport(handler)
+    )
 
 
-def _answer(question: str, probability: float) -> SimpleNamespace:
-    return SimpleNamespace(nouls={question: SimpleNamespace(noul=probability)})
+def _answer(question: str, probability: float, status: int = 200) -> httpx.Response:
+    return httpx.Response(
+        status,
+        json={
+            "model": "glide",
+            "answers": {
+                question: {"type": "noul", "noul": probability, "confidence": 0.5}
+            },
+            "usage": {"input_tokens": 300, "output_tokens": 1},
+            "token_usage": 301,
+        },
+    )
 
 
 # --- select_ops: the deterministic save decision -------------------------------
@@ -80,25 +87,26 @@ def test_select_ops_unjudged_follows_the_tunable(
     assert all(k.confidence is None for k in kept)
 
 
-# --- judge_ops: one Jev question per candidate -------------------------------------
+# --- judge_ops: one GLiDE question per candidate ------------------------------
 
 
 async def test_judge_ops_without_an_api_key_scores_nothing(monkeypatch) -> None:
-    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("FASTINO_API_KEY", raising=False)
 
     scores = await judge_ops("x", [AddFact(fact="Likes dal", kind="like")], _state())
 
     assert scores == [None]
 
 
-async def test_judge_ops_asks_the_right_question_per_op(monkeypatch) -> None:
-    monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+async def test_judge_ops_asks_the_right_question_per_op() -> None:
+    sent: list[tuple[str, dict]] = []
 
-    async def answer(state: dict, questions: dict) -> SimpleNamespace:
-        (question,) = questions
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        (question,) = body["questions"]
+        sent.append((question, body["state"]))
         return _answer(question, 0.9 if question == "worth_remembering" else 0.7)
 
-    client = _client(answer)
     ops = [
         AddFact(fact="Avoids chicken", kind="dislike"),
         SetDietChip(chip="gluten_free", on=True),
@@ -106,16 +114,15 @@ async def test_judge_ops_asks_the_right_question_per_op(monkeypatch) -> None:
         RemoveFact(id="unknown"),
     ]
 
-    with patch.object(memory_judge, "AsyncTypeSafeClient", return_value=client):
+    with patch.object(
+        memory_judge.glide, "make_client", return_value=_client(handler)
+    ) as make:
         scores = await judge_ops("I've gone vegetarian", ops, _state())
 
     assert scores == [0.9, 0.9, 0.7, None]
-    sent = [
-        (next(iter(call.args[1])), call.args[0])
-        for call in client.system_one.await_args_list
-    ]
+    make.assert_called_once_with(5.0)
     message = "I've gone vegetarian"
-    assert sent == [
+    assert sorted(sent, key=lambda s: s[1]["candidate"]) == [
         ("worth_remembering", {"message": message, "candidate": "Avoids chicken"}),
         (
             "worth_remembering",
@@ -125,13 +132,16 @@ async def test_judge_ops_asks_the_right_question_per_op(monkeypatch) -> None:
     ]
 
 
-async def test_judge_ops_service_error_scores_none_for_that_op(monkeypatch) -> None:
-    monkeypatch.setenv("TYPESAFE_API_KEY", "k")
-    error = TypeSafeInternalServerError(500, {}, httpx2.Headers(), message="boom")
-    client = _client([error, _answer("worth_remembering", 0.8)])
+async def test_judge_ops_service_error_scores_none_for_that_op() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        candidate = json.loads(request.content)["state"]["candidate"]
+        if candidate == "Likes dal":
+            return _answer("worth_remembering", 0.0, status=503)
+        return _answer("worth_remembering", 0.8)
+
     ops = [AddFact(fact="Likes dal", kind="like"), AddFact(fact="Vegan", kind="like")]
 
-    with patch.object(memory_judge, "AsyncTypeSafeClient", return_value=client):
+    with patch.object(memory_judge.glide, "make_client", return_value=_client(handler)):
         scores = await judge_ops("x", ops, _state())
 
     assert scores == [None, 0.8]

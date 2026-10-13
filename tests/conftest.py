@@ -5,8 +5,8 @@ import os
 # Set dummy env vars before any module-level LLM initialization
 os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-testing")
 # No key -> routing takes the Gemini path, so an exported key can never send
-# the suite to the TypeSafe network.
-os.environ.pop("TYPESAFE_API_KEY", None)
+# the suite to the Fastino network.
+os.environ.pop("FASTINO_API_KEY", None)
 # True when the operator pointed the suite at a real database. The fallback
 # below only exists so imports work; integration tests that would write rows
 # skip unless DATABASE_URL was set deliberately.

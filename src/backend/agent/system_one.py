@@ -1,9 +1,9 @@
-"""TypeSafe System One (Jev) judgments for routing a fresh chat message.
+"""Routing judgment for a fresh chat message (Fastino GLiDE, System One).
 
-Jev returns calibrated probabilities for fixed questions instead of generated
-text, so the orchestrator can act on how sure the judgment is. One request per
-fresh message asks three questions in parallel (they share the same state and
-cost no extra wait):
+GLiDE returns calibrated probabilities for fixed questions instead of
+generated text, so the orchestrator can act on how sure the judgment is. One
+request per fresh message asks three questions (they share the same state
+and one round trip):
 
 - ``intent``: is the user reporting food, asking the coach, or neither?
 - ``reports_food``: does a question also report food they just ate? Drives the
@@ -12,49 +12,46 @@ cost no extra wait):
   never acted on.
 
 Only the message text is sent: no user id, history, goals or conditions.
-Question wording is mirrored in specs/001-jev-intent-routing/contracts/
-jev-routing-request.md. Change both together and re-run the eval gate.
+Question wording is mirrored in specs/009-migrate-jev-to-glide/contracts/
+glide-routing-request.md. Change both together and re-run the eval gate.
 
 ``judge_message`` never raises for service problems: it returns ``None`` plus a
 reason, and the caller routes with the Gemini classifier instead.
+
+Until October 2026 this judgment came from TypeSafe Jev; stored routing
+records keep the ``needs_guidance_jev`` key and carry ``judge_model`` to tell
+the two apart.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from typing import Literal
 
-import httpx2
+import httpx
 from pydantic import BaseModel, ConfigDict, Field
-from typesafe_sdk import (
-    AsyncTypeSafeClient,
-    Choice,
-    Noul,
-    Question,
-    RetryPolicy,
-    TypeSafeError,
-)
 
+from backend.agent import glide
+from backend.agent.glide import GlideUnavailable, Questions, choice, noul
 from backend.config import get_tunables
 
 logger = logging.getLogger(__name__)
 
-_CONFIG = get_tunables().typesafe
-_API_KEY_ENV = "TYPESAFE_API_KEY"
+_CONFIG = get_tunables().glide
 
 # httpx drops an idle connection after 5 s by default, and a fresh TLS
-# handshake to TypeSafe costs ~400 ms on top of the ~250 ms call: measured
-# 600-700 ms after any gap > 5 s, against the 0.8 s routing timeout. TypeSafe
-# keeps idle connections open for at least 2 minutes, so keep ours for 10.
+# handshake costs several hundred ms against the 0.8 s routing timeout, so
+# idle connections are kept for 10 minutes.
 _KEEPALIVE_EXPIRY_S = 600.0
-_WARM_UP_TIMEOUT_S = 10.0
+# A cold model answers 425 until it has warmed up (about a minute).
+_WARMING_REASON = "http_425"
+_WARMING_WAIT_S = 60.0
 
 Intent = Literal["log_meal", "coaching"]
 
-_INTENT_QUESTION = Choice(
+_INTENT_QUESTION = choice(
     instructions=(
         "`message` was sent by a user to a nutrition-tracking assistant. "
         "What is the user doing in `message`?"
@@ -102,7 +99,7 @@ _INTENT_QUESTION = Choice(
     },
 )
 
-_REPORTS_FOOD_QUESTION = Noul(
+_REPORTS_FOOD_QUESTION = noul(
     instructions=(
         "Does `message` state that the user ate, drank, is eating, or is about "
         "to eat a specific food or drink at a specific meal or moment?"
@@ -120,7 +117,7 @@ _REPORTS_FOOD_QUESTION = Noul(
     },
 )
 
-_NEEDS_GUIDANCE_QUESTION = Noul(
+_NEEDS_GUIDANCE_QUESTION = noul(
     instructions=(
         "Assume `message` is addressed to a nutrition coach. Does answering it "
         "call for a dietary recommendation or a judgment about what is healthy "
@@ -129,7 +126,7 @@ _NEEDS_GUIDANCE_QUESTION = Noul(
     ),
 )
 
-ROUTING_QUESTIONS: dict[str, Question] = {
+ROUTING_QUESTIONS: Questions = {
     "intent": _INTENT_QUESTION,
     "reports_food": _REPORTS_FOOD_QUESTION,
     "needs_guidance": _NEEDS_GUIDANCE_QUESTION,
@@ -137,7 +134,7 @@ ROUTING_QUESTIONS: dict[str, Question] = {
 
 
 class RoutingJudgment(BaseModel):
-    """What Jev said about one message (see data-model.md)."""
+    """What GLiDE said about one message (see data-model.md)."""
 
     intent: Intent
     certainty: float = Field(ge=0.5, le=1.0)
@@ -145,82 +142,85 @@ class RoutingJudgment(BaseModel):
     reports_food: float = Field(ge=0.0, le=1.0)
     needs_guidance: float = Field(ge=0.0, le=1.0)
     latency_ms: float = Field(ge=0.0)
+    model: str
+    input_tokens: int = Field(ge=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
-_client: AsyncTypeSafeClient | None = None
+_client: httpx.AsyncClient | None = None
 
 
-def _get_client() -> AsyncTypeSafeClient | None:
+def _get_client() -> httpx.AsyncClient | None:
     """Return the process-wide client, or None when no API key is configured."""
     global _client
     if _client is None:
-        api_key = os.environ.get(_API_KEY_ENV, "")
-        if not api_key:
-            return None
-        # No retries: routing sits in front of every fresh message, and a
-        # second attempt would stack delay onto the user (spec FR-007).
-        _client = AsyncTypeSafeClient(
-            api_key=api_key,
-            model=_CONFIG.model,
-            timeout=_CONFIG.request_timeout_s,
-            retry=RetryPolicy(max_retries=0),
-            http_client=httpx2.AsyncClient(
-                timeout=_CONFIG.request_timeout_s,
-                limits=httpx2.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S),
-            ),
+        _client = glide.make_client(
+            _CONFIG.request_timeout_s,
+            limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S),
         )
     return _client
 
 
 def warn_if_unconfigured() -> None:
-    """Log one startup warning when Jev routing is not configured."""
-    if not os.environ.get(_API_KEY_ENV):
+    """Log one startup warning when GLiDE routing is not configured."""
+    if not glide.api_key():
         logger.warning(
             "%s is not set: every fresh message will be routed by the Gemini "
-            "classifier instead of TypeSafe Jev",
-            _API_KEY_ENV,
+            "classifier instead of GLiDE",
+            glide.API_KEY_ENV,
         )
 
 
 async def warm_up() -> None:
     """Open the connection at startup so the first real message is not cold.
 
-    The first request of a process pays DNS + TLS (~700 ms), which would push
-    the first user's message past the routing timeout onto the Gemini path.
-    Sends one canned message with a generous timeout, so the handshake
-    completes instead of being aborted at the routing limit. Never raises.
+    The first request of a process pays DNS + TLS, and a cold model answers
+    425 until it has loaded; either would push the first users' messages
+    past the routing timeout onto the Gemini path. Sends one canned message
+    with a generous timeout, and once more after a wait if the model was
+    still warming. Never raises.
     """
     client = _get_client()
     if client is None:
         return
-    start = time.perf_counter()
-    try:
-        await client.system_one(
-            {"message": "warm up"}, ROUTING_QUESTIONS, timeout=_WARM_UP_TIMEOUT_S
-        )
-    except TypeSafeError as exc:
-        logger.warning("TypeSafe warm-up failed: %s", type(exc).__name__)
+    for attempt in range(2):
+        start = time.perf_counter()
+        try:
+            await glide.ask(
+                client,
+                {"message": "warm up"},
+                ROUTING_QUESTIONS,
+                timeout_s=_CONFIG.warm_up_timeout_s,
+            )
+        except GlideUnavailable as exc:
+            logger.warning("GLiDE warm-up failed: %s", exc.reason)
+            if exc.reason != _WARMING_REASON or attempt:
+                return
+            await asyncio.sleep(_WARMING_WAIT_S)
+            continue
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.info("GLiDE warm-up took %.0f ms", elapsed_ms)
         return
-    logger.info("TypeSafe warm-up took %.0f ms", (time.perf_counter() - start) * 1000)
 
 
 async def judge_message(message: str) -> tuple[RoutingJudgment | None, str | None]:
-    """Ask Jev how to route one fresh message.
+    """Ask GLiDE how to route one fresh message.
 
     Routing is decided on P(log_meal) against everything else, because
     ``coaching`` and ``other`` share a handler: probability split between those
-    two is not routing uncertainty, so the SDK's own ``confidence`` (spread
-    over all three options) would understate how sure the route is.
+    two is not routing uncertainty, so the response's own ``confidence``
+    (margin between the top two of three options) would understate how sure
+    the route is.
 
     Args:
         message: The user's raw text.
 
     Returns:
         ``(judgment, None)`` on success, or ``(None, reason)`` where reason is
-        ``"not_configured"``, ``"malformed_response"``, or the SDK exception
-        class name. Never raises for service errors; re-raises cancellation.
+        ``"not_configured"``, ``"malformed_response"``, ``"timeout"``,
+        ``"http_<status>"`` or a transport exception class name. Never raises
+        for service errors; re-raises cancellation.
     """
     client = _get_client()
     if client is None:
@@ -228,28 +228,28 @@ async def judge_message(message: str) -> tuple[RoutingJudgment | None, str | Non
 
     start = time.perf_counter()
     try:
-        response = await client.system_one({"message": message}, ROUTING_QUESTIONS)
-        intent_answer = response.choices["intent"]
-        p_log = float(intent_answer.probabilities["log_meal"])
+        response = await glide.ask(client, {"message": message}, ROUTING_QUESTIONS)
+        raw_choice, probabilities = response.choice("intent")
+        p_log = probabilities["log_meal"]
         judgment = RoutingJudgment(
             intent="log_meal" if p_log >= 0.5 else "coaching",
             certainty=max(p_log, 1.0 - p_log),
-            raw_choice=intent_answer.choice,
-            reports_food=response.nouls["reports_food"].noul,
-            needs_guidance=response.nouls["needs_guidance"].noul,
+            raw_choice=raw_choice,
+            reports_food=response.noul("reports_food"),
+            needs_guidance=response.noul("needs_guidance"),
             latency_ms=(time.perf_counter() - start) * 1000,
+            model=response.model,
+            input_tokens=response.input_tokens,
         )
     except asyncio.CancelledError:
         raise
-    except TypeSafeError as exc:
-        # Class name only: exception text can echo the request body, and the
-        # message text must not reach logs (spec FR-015).
-        reason = type(exc).__name__
-        logger.warning("TypeSafe routing unavailable: %s", reason)
-        return None, reason
+    except GlideUnavailable as exc:
+        # Reason only: the message text must not reach logs (spec FR-015).
+        logger.warning("GLiDE routing unavailable: %s", exc.reason)
+        return None, exc.reason
     except (KeyError, ValueError) as exc:
-        # KeyError: an answer or option missing; ValueError: pydantic rejected
-        # an out-of-range probability or an unknown choice.
-        logger.warning("TypeSafe routing response malformed: %s", type(exc).__name__)
+        # KeyError: the log_meal option is missing; ValueError: pydantic
+        # rejected an out-of-range probability or an unknown choice.
+        logger.warning("GLiDE routing response malformed: %s", type(exc).__name__)
         return None, "malformed_response"
     return judgment, None

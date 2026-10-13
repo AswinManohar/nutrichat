@@ -1,10 +1,10 @@
-"""Jev decides which proposed memory changes are saved.
+"""GLiDE decides which proposed memory changes are saved.
 
 The curator model (agent/memory_curator.py) only drafts candidates: it
 writes the fact text and names the operation. Whether a candidate is kept
-is a TypeSafe System One (Jev) judgment: one calibrated probability per
-candidate, compared with a threshold from tunables by :func:`select_ops`.
-No generated text takes part in the decision.
+is a Fastino GLiDE judgment (agent/glide.py): one calibrated probability
+per candidate, compared with a threshold from tunables by
+:func:`select_ops`. No generated text takes part in the decision.
 
 Two yes/no questions, one per kind of change:
 
@@ -17,18 +17,19 @@ Runs in Celery after the reply is sent, so it adds nothing to a chat turn.
 Each Celery task has its own event loop, so the client is opened and closed
 per call instead of reusing the routing client in agent/system_one.py.
 
-Sent to TypeSafe: the message text and the candidate fact text. No user
-id, history or goals. Neither text is logged here.
+Sent to GLiDE: the message text and the candidate fact text. No user id,
+history or goals. Neither text is logged here.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 
-from typesafe_sdk import AsyncTypeSafeClient, Noul, RetryPolicy, TypeSafeError
+import httpx
 
+from backend.agent import glide
+from backend.agent.glide import GlideUnavailable, Questions, noul
 from backend.agent.memory import (
     AddFact,
     MemoryOp,
@@ -41,13 +42,12 @@ from backend.config import get_tunables
 logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
-_API_KEY_ENV = "TYPESAFE_API_KEY"
 
 _WORTH_REMEMBERING = "worth_remembering"
 _NO_LONGER_TRUE = "no_longer_true"
 
-_QUESTIONS: dict[str, Noul] = {
-    _WORTH_REMEMBERING: Noul(
+_QUESTIONS: Questions = {
+    _WORTH_REMEMBERING: noul(
         instructions=(
             "`message` was sent by a user to a nutrition-tracking assistant. "
             "`candidate` is a note about that user proposed for long-term "
@@ -75,7 +75,7 @@ _QUESTIONS: dict[str, Noul] = {
             ),
         },
     ),
-    _NO_LONGER_TRUE: Noul(
+    _NO_LONGER_TRUE: noul(
         instructions=(
             "`message` was sent by a user to a nutrition-tracking assistant. "
             "`candidate` is a note about that user held in long-term memory. "
@@ -100,7 +100,7 @@ _QUESTIONS: dict[str, Noul] = {
 
 
 def _candidate(op: MemoryOp, state: ProfileState) -> tuple[str, str] | None:
-    """Return the question key and candidate text Jev is asked about."""
+    """Return the question key and candidate text GLiDE is asked about."""
     if isinstance(op, AddFact | ReplaceFact):
         return _WORTH_REMEMBERING, op.fact
     if isinstance(op, SetDietChip):
@@ -110,29 +110,25 @@ def _candidate(op: MemoryOp, state: ProfileState) -> tuple[str, str] | None:
 
 
 async def _judge_one(
-    client: AsyncTypeSafeClient, message: str, question: str, candidate: str
+    client: httpx.AsyncClient, message: str, question: str, candidate: str
 ) -> float | None:
-    """Ask one question about one candidate; None when Jev gives no answer."""
+    """Ask one question about one candidate; None when GLiDE gives no answer."""
     try:
-        response = await client.system_one(
+        response = await glide.ask(
+            client,
             {"message": message, "candidate": candidate},
             {question: _QUESTIONS[question]},
         )
-        probability = float(response.nouls[question].noul)
-    except TypeSafeError as exc:
-        # Class name only: exception text can echo the request body.
-        logger.warning("TypeSafe memory judgment unavailable: %s", type(exc).__name__)
+        return response.noul(question)
+    except GlideUnavailable as exc:
+        logger.warning("GLiDE memory judgment unavailable: %s", exc.reason)
         return None
-    except (KeyError, ValueError) as exc:
-        logger.warning("TypeSafe memory judgment malformed: %s", type(exc).__name__)
-        return None
-    return probability if 0.0 <= probability <= 1.0 else None
 
 
 async def judge_ops(
     message: str, ops: list[MemoryOp], state: ProfileState
 ) -> list[float | None]:
-    """Score each proposed op with Jev.
+    """Score each proposed op with GLiDE.
 
     One request per op, sent concurrently on one connection. Never raises
     for service problems.
@@ -145,18 +141,15 @@ async def judge_ops(
     Returns:
         One probability per op, in order: P(save) for adds, replacements
         and diet settings, P(no longer true) for removals. ``None`` where
-        Jev gave no answer (no API key, timeout, error, unknown fact).
+        GLiDE gave no answer (no API key, timeout, error, unknown fact).
     """
-    api_key = os.environ.get(_API_KEY_ENV, "")
-    if not api_key or not ops:
+    if not ops:
+        return []
+    client = glide.make_client(_TUNABLES.memory.judge_timeout_s)
+    if client is None:
         return [None] * len(ops)
     candidates = [_candidate(op, state) for op in ops]
-    async with AsyncTypeSafeClient(
-        api_key=api_key,
-        model=_TUNABLES.typesafe.model,
-        timeout=_TUNABLES.memory.judge_timeout_s,
-        retry=RetryPolicy(max_retries=0),
-    ) as client:
+    async with client:
         return list(
             await asyncio.gather(
                 *[
@@ -175,11 +168,11 @@ async def _no_answer() -> None:
 
 
 def select_ops(ops: list[MemoryOp], scores: list[float | None]) -> list[MemoryOp]:
-    """Keep the ops Jev scored at or above the threshold.
+    """Keep the ops GLiDE scored at or above the threshold.
 
     The whole save decision: a comparison per op, no model call. A kept
-    add or replacement carries Jev's probability as its confidence. An op
-    Jev could not score is kept only when ``memory.save_unjudged`` is on.
+    add or replacement carries GLiDE's probability as its confidence. An op
+    GLiDE could not score is kept only when ``memory.save_unjudged`` is on.
 
     Args:
         ops: Candidate operations from the curator.

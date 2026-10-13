@@ -42,7 +42,7 @@ def _mock_history_store():
         yield append_mock
 
 
-_OFFER = get_tunables().typesafe.log_offer_text
+_OFFER = get_tunables().glide.log_offer_text
 
 
 def _judgment(
@@ -59,6 +59,8 @@ def _judgment(
         reports_food=reports_food,
         needs_guidance=needs_guidance,
         latency_ms=250.0,
+        model="glide",
+        input_tokens=700,
     )
 
 
@@ -147,7 +149,7 @@ async def test_route_offer_to_log_only_for_coaching_that_reports_food():
     assert meal.offer_to_log is False
 
 
-async def test_route_record_has_the_six_documented_keys():
+async def test_route_record_has_the_documented_keys():
     decision = await _route(
         "I had pizza, was that bad?",
         _task((_judgment("coaching", reports_food=0.9, needs_guidance=0.8), None)),
@@ -160,6 +162,7 @@ async def test_route_record_has_the_six_documented_keys():
         "reports_food": 0.9,
         "needs_guidance_jev": 0.8,
         "offer_to_log": True,
+        "judge_model": "glide",
     }
 
 
@@ -550,6 +553,7 @@ async def test_coaching_turn_passes_routing_record_to_store():
         "reports_food": 0.02,
         "needs_guidance_jev": 0.9,
         "offer_to_log": False,
+        "judge_model": "glide",
     }
 
 

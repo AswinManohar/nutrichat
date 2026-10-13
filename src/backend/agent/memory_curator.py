@@ -5,7 +5,7 @@ they add nothing to chat latency.
 
 * :func:`curate_turn` runs after each turn. One structured-output call
   sees the whole profile and drafts add / replace / remove / set_diet
-  candidates. Jev scores each candidate and a threshold decides which are
+  candidates. GLiDE scores each candidate and a threshold decides which are
   saved (agent/memory_judge.py); the model's draft is never saved as is.
 * :func:`infer_log_habits` runs weekly per active logger and rewrites the
   few facts inferred from their meal logs.
@@ -143,7 +143,7 @@ async def curate_turn(user_id: str, user_input: str, agent_reply: str) -> ApplyO
     """Update a user's profile from one conversation turn.
 
     Reads the profile, asks the curator model for candidate operations,
-    has Jev score each one, and applies those at or above
+    has GLiDE score each one, and applies those at or above
     ``memory.save_min_probability`` as the "curator" actor. No database
     session is held open during the model calls.
 

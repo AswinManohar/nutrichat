@@ -152,14 +152,16 @@ class RoutingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TypeSafeConfig(BaseModel):
-    """TypeSafe System One (Jev) judgments; see agent/system_one.py."""
+class GlideConfig(BaseModel):
+    """Fastino GLiDE judgments; see agent/glide.py and agent/system_one.py."""
 
+    base_url: str = Field(min_length=1)
     model: str
     intent_min_probability: float = Field(ge=0.5, le=1.0)
     log_offer_min_probability: float = Field(ge=0.0, le=1.0)
     log_offer_text: str = Field(min_length=1)
     request_timeout_s: float = Field(gt=0)
+    warm_up_timeout_s: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -212,7 +214,7 @@ class Tunables(BaseModel):
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
-    typesafe: TypeSafeConfig
+    glide: GlideConfig
     prompts: PromptsConfig
     features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]

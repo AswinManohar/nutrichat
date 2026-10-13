@@ -393,6 +393,8 @@ def test_resolved_flag_reset_on_fresh_meal_logging_turn() -> None:
             reports_food=0.99,
             needs_guidance=0.01,
             latency_ms=1.0,
+            model="glide",
+            input_tokens=700,
         )
 
     async def _run() -> None:

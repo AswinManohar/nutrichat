@@ -50,7 +50,10 @@ class RouteDecision(BaseModel):
     def routing_record(self) -> dict[str, float | str | bool] | None:
         """Values stored in coaching_response.parsed_query["routing"].
 
-        None when Jev gave no answer, so there is nothing to compare with
+        ``needs_guidance_jev`` keeps its name from when Jev was the judge, so
+        the series stays in one key; ``judge_model`` says who answered.
+
+        None when the judge gave no answer, so there is nothing to compare with
         Gemini's needs_guidance (spec Story 5, scenario 4).
         """
         if self.judgment is None:
@@ -62,6 +65,7 @@ class RouteDecision(BaseModel):
             "reports_food": round(self.judgment.reports_food, 4),
             "needs_guidance_jev": round(self.judgment.needs_guidance, 4),
             "offer_to_log": self.offer_to_log,
+            "judge_model": self.judgment.model,
         }
 
 
@@ -114,9 +118,9 @@ async def _route(
 ) -> RouteDecision:
     """Decide which handler a fresh message goes to.
 
-    Jev's judgment is the single routing path. A judgment at or above
-    ``typesafe.intent_min_probability`` is acted on directly; below it, or
-    when Jev gave no answer, the Gemini classifier decides. No path spends a
+    The GLiDE judgment is the single routing path. A judgment at or above
+    ``glide.intent_min_probability`` is acted on directly; below it, or
+    when GLiDE gave no answer, the Gemini classifier decides. No path spends a
     usage credit or looks at the user's balance; credits are spent only by
     the handler that does the requested work.
 
@@ -130,7 +134,7 @@ async def _route(
         The route, which path decided it, and whether a coaching reply should
         end with the offer to log.
     """
-    cfg = _TUNABLES.typesafe
+    cfg = _TUNABLES.glide
     with logfire.span("route_message") as span:
         if judgment_task is None:
             judgment, failure = None, "not_requested"
@@ -169,6 +173,8 @@ async def _route(
             span.set_attribute("reports_food", judgment.reports_food)
             span.set_attribute("needs_guidance_jev", judgment.needs_guidance)
             span.set_attribute("judgment_ms", judgment.latency_ms)
+            span.set_attribute("judge_model", judgment.model)
+            span.set_attribute("judgment_input_tokens", judgment.input_tokens)
     return decision
 
 
@@ -185,7 +191,7 @@ async def handle_message(
 
     A paused meal-logging graph always takes priority (never reclassify
     mid-confirmation). An attached image always means meal logging.
-    Otherwise the message is routed by ``_route``. The Jev judgment is
+    Otherwise the message is routed by ``_route``. The GLiDE judgment is
     started before the checkpoint read so the two overlap, and it is
     cancelled unread when the turn turns out to be a card reply.
 
@@ -594,9 +600,9 @@ async def _handle_coaching(
         user_input: User's nutrition question.
         conversation_id: Thread id from the request, stored with the reply.
         offer_to_log: The message also reported food, so the reply ends with
-            ``typesafe.log_offer_text``. Never added to the upgrade message.
-        routing: Jev's routing record for this turn, stored beside Gemini's
-            parse as ``parsed_query["routing"]``; None when Jev gave no answer.
+            ``glide.log_offer_text``. Never added to the upgrade message.
+        routing: GLiDE's routing record for this turn, stored beside Gemini's
+            parse as ``parsed_query["routing"]``; None when GLiDE gave no answer.
 
     Returns:
         Dict with status, message, paused=False, items=[] — same shape as
@@ -618,9 +624,7 @@ async def _handle_coaching(
             # untouched; saved and remembered with the offer included.
             result = result.model_copy(
                 update={
-                    "message": (
-                        f"{result.message}\n\n{_TUNABLES.typesafe.log_offer_text}"
-                    )
+                    "message": (f"{result.message}\n\n{_TUNABLES.glide.log_offer_text}")
                 }
             )
         span_ctx = trace.get_current_span().get_span_context()
