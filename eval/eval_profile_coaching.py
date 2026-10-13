@@ -61,10 +61,15 @@ _ASKS = [
     "give me a simple one-day meal plan that meets my goals",
 ]
 
-# "peanut-free", "no peanuts", "without peanuts", "avoid peanuts" are fine.
-_NEGATED = (
-    r"(?:\b(?:no|not|without|avoid(?:ing|s)?|skip(?:ping)?|free of)\s+"
-    r"(?:any\s+)?{w}\w*|\b{w}\w*[- ]free)"
+# A reply may NAME an excluded food while ruling it out ("no peanuts",
+# "since you're allergic to peanuts", "I cannot suggest snacks containing
+# peanuts", "peanut-free"). It is a violation only when a clause mentions the
+# food with no such cue before it. Clauses, not sentences, so "you're
+# allergic to peanuts, so have a peanut bar" is still caught.
+_CLAUSE_BREAK = re.compile(r"[.!?\n,;:()\u2014]|\b(?:so|but|and)\b")
+_RULED_OUT = re.compile(
+    r"\b(?:no|not|non|never|without|cannot|can't|don't|won't|instead|"
+    r"clear|away|avoid\w*|skip\w*|exclud\w*|allerg\w*|dislike\w*|hate\w*)\b"
 )
 
 
@@ -144,12 +149,15 @@ def _context(facts: list[MemoryFact], chips: list[str]) -> tuple[str, dict]:
 
 
 def _violations(reply: str, forbidden: list[str]) -> list[str]:
-    text = reply.lower()
+    """Excluded foods the reply offers, as opposed to merely rules out."""
     hits = []
     for word in forbidden:
-        cleaned = re.sub(_NEGATED.format(w=re.escape(word)), " ", text)
-        if re.search(rf"\b{re.escape(word)}", cleaned):
-            hits.append(word)
+        food = re.compile(rf"\b{re.escape(word)}\w*(?![- ]free)(?!\s+allerg)")
+        for clause in _CLAUSE_BREAK.split(reply.lower()):
+            found = food.search(clause)
+            if found and not _RULED_OUT.search(clause[: found.start()]):
+                hits.append(word)
+                break
     return hits
 
 
