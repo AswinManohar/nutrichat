@@ -6,8 +6,8 @@
 Replaces [jev-routing-request.md](../../001-jev-intent-routing/contracts/jev-routing-request.md).
 The user-facing API is unchanged.
 
-Taken from Fastino's docs on 2026-10-13 and **not yet confirmed by a live
-response**. Plan step 1 confirms it and corrects this file.
+Confirmed by a live response on 2026-10-13: the request below is accepted as
+written, and the response `model` is `glide_v2` (the docs say `glide`).
 
 ## Request
 

@@ -222,10 +222,12 @@ memory:
   # Save decision (agent/memory_judge.py). The curator model drafts
   # candidate changes; GLiDE scores each one and only those at or above
   # save_min_probability are written. The score is stored as the fact's
-  # confidence. NOT yet measured: 0.6 is a starting point. Set it from the
-  # score distribution on eval/eval_profile_curator.py before widening the
-  # rollout, and favour recall: a missed allergy is silent, while a wrong
-  # fact is visible to the user and one tap to remove.
+  # confidence. Probe 2026-10-13 on eval/cases/memory_judge.jsonl (32
+  # hand-written message/candidate pairs): every candidate to keep scored
+  # >= 0.84 and every one to drop <= 0.09, so 0.6 sits in a wide gap. The
+  # cases are synthetic; re-check on real turns, and favour recall: a
+  # missed allergy is silent, while a wrong fact is visible to the user
+  # and one tap to remove.
   save_min_probability: 0.6
 
   # What happens to a candidate GLiDE could not score (no FASTINO_API_KEY,
@@ -364,18 +366,23 @@ glide:
   # Certainty behind the chosen handler (0.5-1.0) at or above which the
   # judgment's route is acted on directly. Below it, the Gemini classifier
   # gives a second opinion. Both misroutes are recoverable (a card the user
-  # cancels, a text reply), so a moderate bar. CARRIED OVER FROM JEV, not yet
-  # measured on GLiDE: set from eval/probe_glide.py --scores, not by feel.
+  # cancels, a text reply), so a moderate bar. Probe 2026-10-13 on the 94
+  # routing cases, GLiDE alone: 94/94 routed correctly, 92 scored >= 0.94
+  # and 2 fell below 0.75 (lowest 0.67). Tune on eval/probe_glide.py
+  # --scores and the eval gate, not by feel.
   intent_min_probability: 0.75
 
   # P(message also reports food) at or above which a coaching reply ends with
-  # log_offer_text ("I had pizza, was that bad?"). Also carried over from Jev.
+  # log_offer_text ("I had pizza, was that bad?"). Probe 2026-10-13: mixed
+  # messages 0.99-1.00, pure questions and small talk <= 0.02.
   log_offer_min_probability: 0.7
   log_offer_text: "Want me to log that? Send me what you had and I'll add it."
 
   # Per-request wait for a routing judgment, no retries. Past it, Gemini
-  # decides. Routing is in front of every fresh message, so fail fast. Check
-  # against the container latency probe (eval/probe_glide.py).
+  # decides. Routing is in front of every fresh message, so fail fast.
+  # Measured 2026-10-13 from the dev machine: p50 360 ms, p95 615 ms at
+  # concurrency 1 and p50 389 ms, p95 610 ms at 10; none of 150 requests
+  # passed 0.8 s. Re-check from the Railway container (eval/probe_glide.py).
   request_timeout_s: 0.8
 
   # Wait for the startup warm-up request, which may hit a model that is

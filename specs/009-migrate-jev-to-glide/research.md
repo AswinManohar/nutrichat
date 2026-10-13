@@ -7,9 +7,27 @@ TypeSafe"), `https://docs.fastino.ai/openapi.json`, the installed
 `fastino-glide` skill, and the current code (`src/backend/agent/system_one.py`,
 `orchestrator.py`, `eval/gate.py`, `eval/probe_jev_latency.py`).
 
-**Nothing here was confirmed against the live API.** The live probe was
-attempted during planning and blocked by the session's permission layer, so
-every "docs say" below is a claim to verify in step 1 of the plan.
+## Measured 2026-10-13 (dev machine, `eval/probe_glide.py`)
+
+| Check | Result |
+|---|---|
+| Request accepted as written | Yes. HTTP 200 with the nested `intent` criteria; model `fastino/GLiDE`; response `model` is `glide_v2` |
+| Input tokens per routing request | 621 (median), about $0.09 per 1,000 messages |
+| Routing, GLiDE alone, 94 cases | 94/94 correct; 2 below the 0.75 bar (lowest 0.67), so 98% decided without Gemini |
+| `reports_food` | all 41 labelled cases right at 0.7; yes >= 0.99, no <= 0.02 |
+| Memory judge, 32 cases | 32/32 at 0.6; keep >= 0.84, drop <= 0.09 |
+| Latency, concurrency 1 / 5 / 10 (50 each) | p50 360 / 405 / 389 ms; p95 615 / 584 / 610 ms; max 691 ms; 0 of 150 over 0.8 s |
+
+Jev from the same machine was p95 346 ms sequential and about 800 ms at 10
+concurrent: GLiDE is slower for a single request and steadier under load. p50
+is above the 300 ms go bar and below the 500 ms no-go, so the container
+measurement decides.
+
+**Not run**: the end-to-end routing gate (`eval/gate.py`). It stopped on the
+Gemini spend cap (HTTP 429, issue #59), which the two unsure cases need. Cold
+start after idle and latency from the Railway container are also unmeasured.
+
+The sections below were written from the docs before these measurements.
 
 ## R1. Is it a drop-in replacement?
 
