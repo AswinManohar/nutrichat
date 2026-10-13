@@ -38,8 +38,8 @@ async def save_coaching_response(
         routing: GLiDE's routing record for this turn (path, certainty,
             raw_choice, reports_food, needs_guidance_jev, offer_to_log,
             judge_model). Stored as ``parsed_query["routing"]`` beside
-            Gemini's ``needs_guidance`` so the two can be compared; omitted when None. No schema change:
-            parsed_query is free-form JSONB.
+            Gemini's ``needs_guidance`` so the two can be compared; omitted
+            when None. No schema change: parsed_query is free-form JSONB.
 
     Returns:
         The new row's id as a string, or None if the write failed.
