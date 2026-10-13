@@ -27,14 +27,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -74,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.android.R
 import app.mealsy.android.design.components.ChatBubble
 import app.mealsy.android.design.components.ChatBubbleAuthor
+import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.FilterChipPill
 import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.MarkdownText
@@ -98,21 +99,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Bottom clearance the composer reserves at rest so the floating nav pill +
- * FAB (drawn as a `Box` overlay by `AppNav`) never covers it (#37) — the same
- * 120dp every other bottom-nav-showing screen reserves via
- * `Modifier.mealsyScreenPadding()`. Not applied while the IME is visible: the
- * pill hides itself then (see `AppNav`) and `Modifier.imePadding()` already
- * puts the composer directly above the keyboard.
- */
-private const val NAV_PILL_CLEARANCE = 120
-
-/**
  * The chat screen: header, inline transcript (including the confirmation
  * card as a first-class transcript entry), and input bar.
  *
- * Home, Trends, and My Meals are reached via `AppNav`'s [app.mealsy.android.design.components.BottomNavPill],
- * not from this screen. The today totals/goals header that used to live here
+ * Laid out like a full-screen Claude conversation: `AppNav` hides the bottom
+ * nav pill here, and the header's back button returns to Home. The today totals/goals header that used to live here
  * (`TodayHeader`) was retired — Home owns that display now and refreshes
  * itself via `TodayRefreshSignal` on `ON_RESUME`, so this screen no longer
  * needs its own refresh hook for it.
@@ -122,11 +113,12 @@ private const val NAV_PILL_CLEARANCE = 120
  *   [InkToast] confirms the shortcut for 2 seconds — both fire exactly once
  *   per screen instance (see [rememberSaveable] guard below), so a
  *   recomposition or configuration change doesn't replay them.
+ * @param onBack Invoked by the header's back button; returns to Home.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(
     quickLog: Boolean = false,
+    onBack: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val messages by viewModel.messages.collectAsStateWithLifecycle()
@@ -237,16 +229,12 @@ fun ChatScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(colors.canvas)) {
-        // #37 (blocker): the pill/FAB overlay (`AppNav.MealsyBottomBar`) hides
-        // itself while the IME is visible, so `imePadding()` here is enough to
-        // put the composer directly above the keyboard with nothing covering
-        // it. At rest (IME closed) the pill is still drawn as a `Box` overlay
-        // on top of this screen, so the composer needs its own bottom
-        // clearance to sit above it — the same 120dp every other
-        // bottom-nav-showing screen reserves via `mealsyScreenPadding()`.
-        val imeVisible = WindowInsets.isImeVisible
+        // No bottom nav pill on this screen, so the composer only clears the
+        // keyboard (`imePadding()`) or, at rest, the system navigation bar.
+        // `imePadding()` consumes the overlapping inset, so the composer's
+        // `navigationBarsPadding()` adds nothing while the keyboard is open.
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
-            ChatHeader()
+            ChatHeader(onBack = onBack)
 
             if (messages.isEmpty() && !sending) {
                 EmptyState(
@@ -344,12 +332,12 @@ fun ChatScreen(
                         input = ""
                     }
                 },
-                modifier = Modifier.padding(bottom = if (imeVisible) 0.dp else NAV_PILL_CLEARANCE.dp),
+                modifier = Modifier.navigationBarsPadding(),
             )
         }
 
         Column(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 90.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 128.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             InkToast(text = stringResource(R.string.chat_quick_log_opened), visible = showQuickLogToast)
@@ -405,41 +393,41 @@ private fun formatTimestamp(epochMillis: Long): String {
 }
 
 /**
- * The chat header: Olli + "Coach" title/subtitle, then a hairline divider.
+ * The chat header, Claude-style: a back button on the left, Olli + "Coach"
+ * centred, and an equal-width spacer on the right so the title stays centred.
+ * No divider — the transcript scrolls straight up under it.
  */
 @Composable
-private fun ChatHeader() {
+private fun ChatHeader(onBack: () -> Unit) {
     val colors = MealsyTheme.colors
-    Column {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircleIconButton(
+            icon = MealsyIcons.ChevronLeft,
+            contentDescription = stringResource(R.string.chat_back_description),
+            onClick = onBack,
+            size = 40.dp,
+        )
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 60.dp, bottom = 14.dp),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Olli(size = OlliSize.Header, bob = true)
-            Spacer(modifier = Modifier.padding(start = 10.dp))
-            Column {
-                Text(
-                    text = stringResource(R.string.chat_coach_title),
-                    style = MealsyType.body.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                    color = colors.ink,
-                )
-                Text(
-                    text = stringResource(R.string.chat_coach_subtitle),
-                    style = MealsyType.label.copy(fontSize = 12.sp),
-                    color = colors.muted,
-                )
-            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.chat_coach_title),
+                style = MealsyType.body.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                color = colors.ink,
+            )
         }
-        androidx.compose.foundation.layout.Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(colors.hairline),
-        )
+        Spacer(modifier = Modifier.width(40.dp))
     }
 }
 
@@ -547,7 +535,7 @@ internal fun ChatMessageRow(
 
             is ChatMsg.Coach ->
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    CoachMarkdownBubble(text = msg.text, tags = msg.tags, timestamp = timestamp)
+                    CoachReply(text = msg.text, tags = msg.tags, timestamp = timestamp)
                     if (msg.responseId != null) {
                         Row(
                             modifier = Modifier.padding(start = 4.dp, top = 2.dp),
@@ -673,9 +661,9 @@ internal fun ChatMessageRow(
                             }
                         }
                         is CardState.Logged ->
-                            ChatBubble(
+                            CoachReply(
                                 text = stringResource(R.string.chat_card_logged, state.label, state.kcal),
-                                author = ChatBubbleAuthor.Coach,
+                                tags = emptyList(),
                                 timestamp = timestamp,
                             )
                         is CardState.NotLogged ->
@@ -733,45 +721,27 @@ private fun HighlightOnChange(
 }
 
 /**
- * Renders a coach bubble whose body is Markdown. [ChatBubble] only accepts a
- * plain [String] body, and extending it to accept an arbitrary composable
- * slot would widen a shared `:core:ui` component's contract for a single
- * caller — instead this local composable duplicates just the coach-side
- * visual spec (surface color, `18/18/18/6` corners, 82% max width, 11dp/14dp
- * padding) and swaps in [MarkdownText] for the body.
+ * Renders a coach reply the way Claude renders its own: Markdown body as
+ * plain full-width text on the canvas, no bubble, so long answers read like
+ * a document rather than a chat balloon. Only the user's messages keep a
+ * bubble.
  */
 @Composable
-private fun CoachMarkdownBubble(
+private fun CoachReply(
     text: String,
     tags: List<MacroTag>,
     timestamp: String?,
 ) {
     val colors = MealsyTheme.colors
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth(0.82f)
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 18.dp,
-                            bottomEnd = 18.dp,
-                            bottomStart = 6.dp,
-                        ),
-                    )
-                    .background(colors.surface)
-                    .padding(vertical = 11.dp, horizontal = 14.dp),
-        ) {
-            MarkdownText(markdown = text, color = colors.ink)
-            if (tags.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    tags.forEach { tag ->
-                        TagChip(text = tag.text, tone = tag.tone.toTagTone())
-                    }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        MarkdownText(markdown = text, color = colors.ink)
+        if (tags.isNotEmpty()) {
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                tags.forEach { tag ->
+                    TagChip(text = tag.text, tone = tag.tone.toTagTone())
                 }
             }
         }

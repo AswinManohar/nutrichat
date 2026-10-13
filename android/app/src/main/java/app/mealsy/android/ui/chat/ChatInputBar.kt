@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -63,7 +64,6 @@ import androidx.compose.ui.unit.sp
 import app.mealsy.android.R
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.LocalReducedMotion
-import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.design.theme.mealsyTween
@@ -84,11 +84,12 @@ data class VoiceUiState(
 )
 
 /**
- * The chat composer, per the "Mealsy Chat Bar" design: attach button, a pill
- * with the text field and camera, and a single primary button that is an olive
- * mic when idle and an ink send arrow otherwise. A picked photo previews above
- * the bar; while recording, the pill shows a timer and waveform and the attach
- * button becomes delete.
+ * The chat composer, laid out like Claude's: one rounded box holding a
+ * multi-line text field, with a row of controls underneath — attach and
+ * camera on the left, and a single primary button on the right that is an
+ * olive mic when idle and an ink send arrow otherwise. A picked photo
+ * previews above the box; while recording, the text area shows a timer and
+ * waveform and the attach button becomes delete.
  */
 @Composable
 internal fun ChatInputBar(
@@ -108,9 +109,14 @@ internal fun ChatInputBar(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester = remember { FocusRequester() },
 ) {
+    val colors = MealsyTheme.colors
     val mode = composerMode(input, attachment != null, voice.recording, voice.available)
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp).alpha(if (enabled) 1f else DISABLED_ALPHA),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+                .alpha(if (enabled) 1f else DISABLED_ALPHA),
     ) {
         if (notice != null && !voice.recording) {
             Text(
@@ -122,27 +128,35 @@ internal fun ChatInputBar(
         }
         if (attachment != null && !voice.recording) {
             AttachmentPreview(bitmap = attachment, enabled = enabled, onRemove = onRemoveAttachment)
+            Spacer(modifier = Modifier.height(8.dp))
         }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ComposerBox(
+            input = input,
+            onInputChange = onInputChange,
+            enabled = enabled,
+            voice = voice,
+            focusRequester = focusRequester,
+            onSend = onSend,
         ) {
             if (voice.recording) {
                 DeleteButton(enabled = enabled, onClick = onDiscardRecording)
             } else {
                 AttachButton(enabled = enabled, onClick = onAttachClick)
+                CircleButton(
+                    description = stringResource(R.string.chat_camera_description),
+                    enabled = enabled,
+                    onClick = onCameraClick,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        imageVector = ChatBarIcons.Camera,
+                        contentDescription = null,
+                        tint = colors.muted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
-            Pill(
-                input = input,
-                onInputChange = onInputChange,
-                enabled = enabled,
-                voice = voice,
-                focusRequester = focusRequester,
-                onCameraClick = onCameraClick,
-                onSend = onSend,
-                modifier = Modifier.weight(1f),
-            )
+            Spacer(modifier = Modifier.weight(1f))
             PrimaryButton(
                 mode = mode,
                 enabled = enabled,
@@ -184,7 +198,7 @@ private fun AttachButton(
         description = stringResource(R.string.chat_attach_description),
         enabled = enabled,
         onClick = onClick,
-        modifier = Modifier.size(44.dp).border(1.dp, colors.hairline, CircleShape),
+        modifier = Modifier.size(40.dp).border(1.dp, colors.hairline, CircleShape),
     ) {
         Icon(imageVector = MealsyIcons.Plus, contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
     }
@@ -200,7 +214,7 @@ private fun DeleteButton(
         description = stringResource(R.string.chat_discard_recording_description),
         enabled = enabled,
         onClick = onClick,
-        modifier = Modifier.size(44.dp).border(1.dp, colors.terracotta, CircleShape),
+        modifier = Modifier.size(40.dp).border(1.dp, colors.terracotta, CircleShape),
     ) {
         Icon(imageVector = MealsyIcons.Trash, contentDescription = null, tint = colors.terracotta, modifier = Modifier.size(18.dp))
     }
@@ -230,7 +244,7 @@ private fun PrimaryButton(
     Box(
         modifier =
             Modifier
-                .size(48.dp)
+                .size(40.dp)
                 .clip(CircleShape)
                 .background(background)
                 .alpha(if (mode == ComposerMode.MicUnavailable) DISABLED_ALPHA else 1f)
@@ -253,73 +267,85 @@ private fun PrimaryButton(
     }
 }
 
+/** Corner radius of the composer box — rounder than a card, squarer than a pill. */
+private val COMPOSER_RADIUS = 24.dp
+
+/** Lines the text field grows to before it scrolls internally. */
+private const val COMPOSER_MAX_LINES = 6
+
+/**
+ * The composer box: a multi-line text field (or the recording timer and
+ * waveform) above a row of [controls]. The border darkens to ink while the
+ * field is focused, holds text, or a recording is running.
+ */
 @Composable
-private fun Pill(
+private fun ComposerBox(
     input: String,
     onInputChange: (String) -> Unit,
     enabled: Boolean,
     voice: VoiceUiState,
     focusRequester: FocusRequester,
-    onCameraClick: () -> Unit,
     onSend: () -> Unit,
-    modifier: Modifier = Modifier,
+    controls: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
 ) {
     val colors = MealsyTheme.colors
     var focused by remember { mutableStateOf(false) }
     val active = focused || input.isNotEmpty() || voice.recording
-    val borderColor by animateColorAsState(if (active) colors.ink else colors.hairline, mealsyTween(150), label = "pillBorder")
-    Row(
+    val borderColor by animateColorAsState(if (active) colors.ink else colors.hairline, mealsyTween(150), label = "boxBorder")
+    val shape = RoundedCornerShape(COMPOSER_RADIUS)
+    Column(
         modifier =
-            modifier
-                .heightIn(min = 48.dp)
-                .clip(MealsyShapes.pill)
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
                 .background(colors.surface)
-                .border(BorderStroke(1.dp, borderColor), MealsyShapes.pill)
-                .padding(start = 18.dp, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .border(BorderStroke(1.dp, borderColor), shape)
+                .padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
     ) {
-        if (voice.recording) {
-            RecordingContent(voice)
-        } else {
-            BasicTextField(
-                value = input,
-                onValueChange = onInputChange,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { focused = it.isFocused },
-                enabled = enabled,
-                singleLine = true,
-                textStyle = MealsyType.button.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal, color = colors.ink),
-                cursorBrush = SolidColor(colors.ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() }),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (input.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.chat_input_placeholder),
-                                style = MealsyType.button.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal),
-                                color = colors.inactive,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (voice.recording) {
+                RecordingContent(voice)
+            } else {
+                BasicTextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { focused = it.isFocused },
+                    enabled = enabled,
+                    maxLines = COMPOSER_MAX_LINES,
+                    textStyle = MealsyType.button.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal, color = colors.ink),
+                    cursorBrush = SolidColor(colors.ink),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (input.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.chat_input_placeholder),
+                                    style = MealsyType.button.copy(fontSize = 15.sp, fontWeight = FontWeight.Normal),
+                                    color = colors.inactive,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            inner()
                         }
-                        inner()
-                    }
-                },
-            )
-            CircleButton(
-                description = stringResource(R.string.chat_camera_description),
-                enabled = enabled,
-                onClick = onCameraClick,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(imageVector = ChatBarIcons.Camera, contentDescription = null, tint = colors.muted, modifier = Modifier.size(19.dp))
+                    },
+                )
             }
         }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            content = controls,
+        )
     }
 }
 

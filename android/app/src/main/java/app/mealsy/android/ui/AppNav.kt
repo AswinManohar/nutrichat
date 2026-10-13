@@ -522,7 +522,18 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             popExitTransition = { fadeOut(tween(tabMs)) },
                         ) { chatEntry ->
                             val quickLog = chatEntry.arguments?.getBoolean(ARG_QUICK_LOG) ?: false
-                            ChatScreen(quickLog = quickLog)
+                            ChatScreen(
+                                quickLog = quickLog,
+                                // Tab and FAB navigation both pop to ROUTE_HOME first, so
+                                // home is normally right below chat. Navigate explicitly
+                                // when it isn't (e.g. a restored stack) so back never
+                                // strands the user on an empty stack.
+                                onBack = {
+                                    if (!navController.popBackStack(ROUTE_HOME, inclusive = false)) {
+                                        navController.navigate(ROUTE_HOME) { launchSingleTop = true }
+                                    }
+                                },
+                            )
                         }
                         composable(
                             ROUTE_TRENDS,
@@ -586,8 +597,10 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                     // Chat (and any future screen with a text field) would
                     // otherwise sit directly underneath it once both are lifted
                     // above the keyboard.
+                    // Chat is a full-screen conversation with its own back button
+                    // (like Claude's), so it hides the pill too.
                     val imeVisible = WindowInsets.isImeVisible
-                    if (activeTab != null && !imeVisible) {
+                    if (activeTab != null && activeTab != ROUTE_CHAT && !imeVisible) {
                         MealsyBottomBar(
                             selectedRoute = activeTab,
                             onSelect = { route ->
