@@ -72,9 +72,15 @@ refetch on miss), HS256 via `SUPABASE_JWT_SECRET`, audience `authenticated`.
 1. If the thread has a **paused graph** (interrupted after `present`), resume it — the
    message is a confirmation / correction / cancel. Resumes cost no quota.
 2. Else if there is an image → meal logging.
-3. Else `_classify_intent`: keyword prefilter (strong query signals → coaching,
-   log signals → log_meal, weak query signals → coaching), then LLM tiebreak
-   (`_IntentResult`, 200 output tokens).
+3. Else `_route`: one Fastino GLiDE request (`agent/system_one.py`, started
+   concurrently with state load) returns P(log_meal), P(the message also
+   reports food) and P(needs guidance) for the message text. At or above
+   `glide.intent_min_probability` the judgment's route is used directly. Below
+   it, or when GLiDE gives no answer within `glide.request_timeout_s` (no key,
+   timeout, error), the Gemini classifier decides (`_IntentResult`, 200 output
+   tokens). There are no keyword lists. Measured 2026-10-13: 100% on the 94
+   routing cases with 97.7% decided by GLiDE alone; p50 242 ms and p95 456 ms
+   from the Railway web container.
 4. `quota.consume_llm_credit` per fresh turn; over quota → upgrade message.
 5. Every turn with user text fire-and-forgets `extract_and_store_facts.delay(...)`
    (kombu errors swallowed); card button presses and photo-only turns skip it.
@@ -197,10 +203,24 @@ capped, so prompt size does not grow with history. A coaching turn is still two
 model calls; only an explicit remember/forget adds a third. Meal-logging turns
 do not read the profile.
 
-**Evals.** `eval/eval_profile_curator.py` (curator prompt) and
-`eval/eval_profile_coaching.py` (restrictions respected, no spurious tool
-calls, memory requests call the right tool). Both use live Gemini and no
-database.
+**Background cost.** Per turn: one Flash-Lite curator call, then one GLiDE
+request per drafted candidate (none on most turns), then one short
+transaction. No embedding calls. Rows per user are capped at
+`profile_max_facts` live facts plus `profile_max_tombstones` tombstones.
+
+**Evals.** Four, all live and without a database:
+
+| Eval | Cases | Result on GLiDE + `gemini-3.1-flash-lite`, 2026-10-13 |
+|---|---|---|
+| `eval/eval_profile_curator.py`: curator drafts | 19 | 19/19 in 8 of 8 runs |
+| `eval/probe_glide.py --scores` on `eval/cases/memory_judge.jsonl`: save decision | 32 | 32/32 at 0.6; keep >= 0.84, drop <= 0.09 |
+| `eval/eval_profile_coaching.py`: restrictions respected | 12 | 12/12 in 8 of 8 runs |
+| `eval/eval_profile_coaching.py`: memory requests call the right tool, no spurious calls | 6 | 6/6 in 8 of 8 runs |
+
+Limits of these evals: the cases are few and hand-written; each stage is tested
+alone, so nothing follows one message from draft to score to storage to a later
+reply; the weekly job has no eval; coaching cases use profiles of one or two
+facts. Turn latency with the profile on has not been measured in production.
 
 ### 4.6 LLM config
 
@@ -308,7 +328,7 @@ Frontend: `VITE_API_URL VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_APP_URL`.
 2. **Local USDA first.** Bundled SQLite FTS5 replaces the unreliable FDC API; cache + LLM estimate are the tail.
 3. **Postgres is truth, Redis is a hint.** Today's totals are always computed from `meal_log` (`get_today_totals`); Redis holds no copy of them.
 4. **One image, three roles.** `PROC` switch keeps deploys simple; Telegram in prod rides the web process.
-5. **Keyword prefilter before LLM intent.** Cheap, deterministic routing for obvious cases; the LLM only breaks ties.
+5. **Calibrated judgments before generation.** Routing and the memory save decision are fixed questions answered by GLiDE with probabilities; thresholds live in tunables and are set from eval scores. Gemini is the fallback for routing and the scribe for memory, never the decider.
 6. **Two agent frameworks on purpose.** LangGraph for the stateful, interruptible logging flow; Pydantic AI for coaching, which keeps its own short Redis conversation memory instead of sharing the LangGraph checkpoint (pedagogical comparison).
 
 ## 13. Known gaps
