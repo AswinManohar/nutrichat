@@ -111,6 +111,11 @@ private class FakeMealsyApi(
 
     override suspend fun saveMeal(body: SaveMealRequest): SavedMealDto = notImplemented()
 
+    override suspend fun updateMyMeal(
+        id: String,
+        body: app.mealsy.data.api.UpdateMealRequest,
+    ): app.mealsy.data.api.MyMealDetailDto = notImplemented()
+
     override suspend fun logMyMeal(
         id: String,
         body: LogMyMealRequest,

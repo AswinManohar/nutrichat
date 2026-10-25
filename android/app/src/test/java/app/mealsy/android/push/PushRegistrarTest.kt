@@ -62,6 +62,11 @@ private class FakeMealsyApi : MealsyApi {
 
     override suspend fun saveMeal(body: SaveMealRequest) = error("not used")
 
+    override suspend fun updateMyMeal(
+        id: String,
+        body: app.mealsy.data.api.UpdateMealRequest,
+    ): app.mealsy.data.api.MyMealDetailDto = error("not used")
+
     override suspend fun logMyMeal(
         id: String,
         body: LogMyMealRequest,

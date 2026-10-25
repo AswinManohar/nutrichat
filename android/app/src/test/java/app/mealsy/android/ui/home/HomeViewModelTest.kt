@@ -108,6 +108,11 @@ private class FakeMealsyApi(
     ): List<MealLogSummaryDto> = notImplemented()
 
     override suspend fun mealLog(id: String): MealLogDetailDto = notImplemented()
+    override suspend fun updateMyMeal(
+        id: String,
+        body: app.mealsy.data.api.UpdateMealRequest,
+    ): app.mealsy.data.api.MyMealDetailDto = notImplemented()
+
 
     override suspend fun deleteMealLog(id: String): Unit = notImplemented()
 

@@ -98,6 +98,11 @@ private class UnsupportedMealsyApi : app.mealsy.data.api.MealsyApi {
 
     override suspend fun saveMeal(body: app.mealsy.data.api.SaveMealRequest) = error("unused")
 
+    override suspend fun updateMyMeal(
+        id: String,
+        body: app.mealsy.data.api.UpdateMealRequest,
+    ): app.mealsy.data.api.MyMealDetailDto = error("unused")
+
     override suspend fun logMyMeal(
         id: String,
         body: app.mealsy.data.api.LogMyMealRequest,
