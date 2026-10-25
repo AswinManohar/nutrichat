@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import app.mealsy.android.data.TodayRepository
 import app.mealsy.android.design.components.TagTone
 import app.mealsy.data.api.TodayResponse
+import app.mealsy.data.repo.DayPoint
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
+import app.mealsy.data.repo.TrendsRepository
 import app.mealsy.domain.Goals
 import app.mealsy.domain.ProteinFood
 import app.mealsy.domain.ProteinGapDayPart
@@ -25,6 +27,7 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.text.NumberFormat
 import java.time.Clock
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -40,6 +43,12 @@ private const val AFTERNOON_END_HOUR = 17
 
 /** Logcat tag for [HomeViewModel]'s non-network load failures. */
 private const val TAG = "HomeViewModel"
+
+/** Days in Home's "This week" grid, ending today. */
+private const val WEEK_DAYS = 7
+
+/** A week-grid macro below this share of its goal renders as a dashed "under goal" cell. */
+private const val WEEK_LOW_FRACTION = 0.7
 
 /**
  * A resolved coach-note variant for Home's [app.mealsy.android.design.components.CoachNote].
@@ -97,6 +106,108 @@ sealed interface HomeKcalState {
     data object NoTarget : HomeKcalState
 }
 
+/**
+ * One macro cell in Home's "This week" grid.
+ *
+ * @param grams The day's total, rounded.
+ * @param low `true` when [grams] is under [WEEK_LOW_FRACTION] of the user's goal for this macro —
+ *   renders as the dashed outline. Always `false` for a macro with no goal (carbs, or mindful mode).
+ */
+data class HomeWeekCell(val grams: Int, val low: Boolean)
+
+/**
+ * One column (day) in Home's "This week" grid.
+ *
+ * @param weekday The short localized weekday ("Tue"); [HomeScreen] shows "Today" instead when [isToday].
+ * @param kcal The day's formatted kcal total, or `null` when nothing was logged that day — the
+ *   column then renders empty dashed cells.
+ * @param kcalThousands The same total in thousands to one decimal ("2.0"), shown instead of [kcal]
+ *   when a large font scale makes the full number overflow its column.
+ */
+data class HomeWeekDay(
+    val weekday: String,
+    val isToday: Boolean,
+    val kcal: String?,
+    val kcalThousands: String? = null,
+    val protein: HomeWeekCell?,
+    val fiber: HomeWeekCell?,
+    val carbs: HomeWeekCell?,
+)
+
+/**
+ * Home's "This week" grid: the last [WEEK_DAYS] days, oldest first, ending today.
+ *
+ * @param startLabel The first day, formatted ("Sep 10"), for the "Sep 10 – today" range label.
+ * @param showsGoalLegend Whether any cell can be judged against a goal, so the
+ *   "Under 70% of goal" legend entry is meaningful.
+ */
+data class HomeWeek(
+    val startLabel: String,
+    val days: List<HomeWeekDay>,
+    val showsGoalLegend: Boolean,
+)
+
+/**
+ * Builds [HomeWeek] from `GET /meals/trends` points. The backend omits days with
+ * no meals, so every day in the window is filled in here (as the Trends screen's
+ * `buildTrendsDayBars` does) to keep weekday columns aligned.
+ *
+ * @param days The trends points for the window; dates are ISO `yyyy-MM-dd`.
+ * @param goals The active goal, or `null` when the user has none.
+ * @param mindful Mindful tracking mode: no cell is judged against a goal.
+ * @param today The last day of the window.
+ * @param locale Formats weekdays, the range start and kcal totals.
+ */
+internal fun buildHomeWeek(
+    days: List<DayPoint>,
+    goals: Goals?,
+    mindful: Boolean,
+    today: LocalDate,
+    locale: Locale = Locale.getDefault(),
+): HomeWeek {
+    val byDate =
+        days.mapNotNull { point ->
+            runCatching { LocalDate.parse(point.date) }.getOrNull()?.let { it to point }
+        }.toMap()
+    val proteinGoal = goals?.proteinGoal.takeUnless { mindful }
+    val fiberGoal = goals?.fiberGoal.takeUnless { mindful }
+    val kcalFormat = NumberFormat.getIntegerInstance(locale)
+    val thousandsFormat =
+        NumberFormat.getNumberInstance(locale).apply {
+            minimumFractionDigits = 1
+            maximumFractionDigits = 1
+        }
+    val weekdayFormat = DateTimeFormatter.ofPattern("EEE", locale)
+    val start = today.minusDays((WEEK_DAYS - 1).toLong())
+    return HomeWeek(
+        startLabel = DateTimeFormatter.ofPattern("MMM d", locale).format(start),
+        days =
+            (0 until WEEK_DAYS).map { offset ->
+                val date = start.plusDays(offset.toLong())
+                val point = byDate[date]
+                HomeWeekDay(
+                    weekday = weekdayFormat.format(date),
+                    isToday = date == today,
+                    kcal = point?.let { kcalFormat.format(it.kcal.roundToInt()) },
+                    kcalThousands = point?.let { thousandsFormat.format(it.kcal / 1000) },
+                    protein = point?.let { weekCell(it.proteinG, proteinGoal) },
+                    fiber = point?.let { weekCell(it.fiberG, fiberGoal) },
+                    carbs = point?.let { weekCell(it.carbsG, goal = null) },
+                )
+            },
+        showsGoalLegend = (proteinGoal ?: 0.0) > 0.0 || (fiberGoal ?: 0.0) > 0.0,
+    )
+}
+
+private fun weekCell(
+    grams: Double,
+    goal: Double?,
+): HomeWeekCell =
+    HomeWeekCell(
+        grams = grams.roundToInt(),
+        low = goal != null && goal > 0.0 && grams / goal < WEEK_LOW_FRACTION,
+    )
+
 /** The fixed, always-present meal types shown on Home, in display order with their pastel tones. */
 private val MEAL_ROW_ORDER: List<Pair<String, TagTone>> =
     listOf(
@@ -128,12 +239,14 @@ data class HomeUiState(
     val fatValue: String = "",
     val meals: List<HomeMealRow> = emptyList(),
     val coachNote: HomeCoachNote? = null,
+    val week: HomeWeek? = null,
+    val weekUnavailable: Boolean = false,
 )
 
 /**
  * Loads and formats the Home dashboard: today's totals, the active goal,
- * and the cached profile, then derives the status pill, macro tiles, meal
- * rows and coach note from them.
+ * the cached profile and the last week's trends, then derives the status
+ * pill, macro tiles, meal rows, coach note and week grid from them.
  *
  * [clock] is injected (rather than reading `System.currentTimeMillis()`
  * directly) so tests can pin the day part deterministically; production
@@ -146,6 +259,7 @@ class HomeViewModel
         private val todayRepository: TodayRepository,
         private val profileStore: ProfileStore,
         private val todayRefreshSignal: TodayRefreshSignal,
+        private val trendsRepository: TrendsRepository,
         private val clock: Clock,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HomeUiState())
@@ -185,13 +299,14 @@ class HomeViewModel
                 // calling the API/GoalsRepository directly) so a redundant concurrent
                 // load — e.g. this init load racing HomeScreen's synthetic ON_RESUME —
                 // joins the same in-flight request instead of duplicating it.
-                val (snapshot, profile) =
+                val (snapshot, profile, weekDays) =
                     coroutineScope {
                         val snapshotDeferred = async { todayRepository.get() }
                         val profileDeferred = async { profileStore.get() }
-                        snapshotDeferred.await() to profileDeferred.await()
+                        val weekDeferred = async { loadWeekDays() }
+                        Triple(snapshotDeferred.await(), profileDeferred.await(), weekDeferred.await())
                     }
-                _uiState.value = buildState(snapshot.today, snapshot.goals, profile?.firstName)
+                _uiState.value = buildState(snapshot.today, snapshot.goals, profile?.firstName, weekDays)
             } catch (exc: CancellationException) {
                 throw exc
             } catch (exc: IOException) {
@@ -204,10 +319,25 @@ class HomeViewModel
             }
         }
 
+        /**
+         * The week grid's trends points, or `null` when the fetch fails. A failure here
+         * leaves the rest of Home usable: the grid shows its own error text instead.
+         */
+        private suspend fun loadWeekDays(): List<DayPoint>? =
+            try {
+                trendsRepository.trends(WEEK_DAYS).days
+            } catch (exc: CancellationException) {
+                throw exc
+            } catch (exc: Exception) {
+                Log.w(TAG, "week trends failed: ${exc::class.simpleName}: ${exc.message}")
+                null
+            }
+
         private fun buildState(
             today: TodayResponse,
             goals: Goals?,
             firstName: String?,
+            weekDays: List<DayPoint>?,
         ): HomeUiState {
             val mindful = goals == null || goals.trackingMode == "mindful" || goals.kcalGoal == null
             val kcalGoal = goals?.kcalGoal
@@ -286,6 +416,8 @@ class HomeViewModel
                 fatValue = "${today.fatG.roundToInt()}g",
                 meals = meals,
                 coachNote = coachNote,
+                week = weekDays?.let { buildHomeWeek(it, goals, mindful, LocalDate.now(clock)) },
+                weekUnavailable = weekDays == null,
             )
         }
 

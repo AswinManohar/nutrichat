@@ -63,8 +63,8 @@ import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.domain.ProteinFood
 
 /**
- * The Home dashboard: today's status pill, macro tiles, meal list and
- * coach note.
+ * The Home dashboard: today's status pill, macro tiles, meal list, coach
+ * note and the "This week" macro grid.
  *
  * Refreshes silently on `ON_RESUME` (e.g. returning here after logging a
  * meal from chat or My Meals) via [HomeViewModel.refresh], mirroring
@@ -326,6 +326,10 @@ private fun HomeLoaded(
         state.coachNote?.let { note ->
             CoachNote(text = coachNoteText(note))
         }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        HomeWeekSection(week = state.week, unavailable = state.weekUnavailable)
     }
 }
 

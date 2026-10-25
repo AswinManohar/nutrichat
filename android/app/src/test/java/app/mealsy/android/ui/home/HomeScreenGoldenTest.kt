@@ -1,9 +1,14 @@
 package app.mealsy.android.ui.home
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import app.mealsy.android.design.components.TagTone
+import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.ui.AppScreenshotTestBase
 import org.junit.Test
 
@@ -165,4 +170,69 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
 
     @Test
     fun homeError_dark() = captureMealsy("Home_error", true) { render(HomeUiState(loading = false, error = true)) }
+
+    // --- This week grid -------------------------------------------------------
+
+    private fun cell(
+        grams: Int,
+        low: Boolean = false,
+    ) = HomeWeekCell(grams, low)
+
+    private fun weekDay(
+        weekday: String,
+        kcal: String?,
+        protein: Int,
+        fiber: Int,
+        carbs: Int,
+        lowProtein: Boolean = false,
+        lowFiber: Boolean = false,
+        isToday: Boolean = false,
+    ) = HomeWeekDay(
+        weekday = weekday,
+        isToday = isToday,
+        kcal = kcal,
+        kcalThousands = kcal?.let { "%.1f".format(it.replace(",", "").toInt() / 1000.0) },
+        protein = kcal?.let { cell(protein, lowProtein) },
+        fiber = kcal?.let { cell(fiber, lowFiber) },
+        carbs = kcal?.let { cell(carbs) },
+    )
+
+    /** The design mock's week: one low-protein day, low fiber on two, one day with nothing logged. */
+    private val designWeek =
+        HomeWeek(
+            startLabel = "Sep 10",
+            days =
+                listOf(
+                    weekDay("Thu", "1,980", 118, 31, 214),
+                    weekDay("Fri", "2,150", 104, 22, 246),
+                    weekDay("Sat", "1,820", 72, 26, 198, lowProtein = true),
+                    weekDay("Sun", "2,310", 96, 18, 268, lowFiber = true),
+                    weekDay("Mon", null, 0, 0, 0),
+                    weekDay("Tue", "1,760", 88, 28, 190),
+                    weekDay("Wed", "1,440", 86, 19, 152, lowFiber = true, isToday = true),
+                ),
+            showsGoalLegend = true,
+        )
+
+    @Composable
+    private fun renderWeek(
+        week: HomeWeek?,
+        unavailable: Boolean = false,
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(MealsyTheme.colors.canvas).padding(20.dp)) {
+            HomeWeekSection(week = week, unavailable = unavailable)
+        }
+    }
+
+    @Test
+    fun homeWeek_light() = captureMealsy("Home_week", false) { renderWeek(designWeek) }
+
+    @Test
+    fun homeWeek_dark() = captureMealsy("Home_week", true) { renderWeek(designWeek) }
+
+    @Test
+    fun homeWeek_light_fontScale130() = captureMealsy("Home_week", false, 1.3f) { renderWeek(designWeek) }
+
+    @Test
+    fun homeWeekUnavailable_light() = captureMealsy("Home_week_unavailable", false) { renderWeek(null, unavailable = true) }
 }

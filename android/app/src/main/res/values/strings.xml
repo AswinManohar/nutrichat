@@ -175,6 +175,23 @@
     <string name="home_state_over">%1$s over</string>
     <string name="home_state_no_target">no target</string>
     <string name="home_meal_row_open_label">Open %1$s meals</string>
+    <string name="home_this_week">This week</string>
+    <string name="home_week_range">%1$s – today</string>
+    <string name="home_week_today">Today</string>
+    <string name="home_week_no_kcal">–</string>
+    <string name="home_week_kcal_compact">%1$sk</string>
+    <string name="home_week_cell_protein">%1$dP</string>
+    <string name="home_week_cell_fiber">%1$dF</string>
+    <string name="home_week_cell_carbs">%1$dC</string>
+    <string name="home_week_legend_fiber">Fiber</string>
+    <string name="home_week_legend_low">Under 70% of goal</string>
+    <string name="home_week_unavailable">Could not load this week. Pull down to try again.</string>
+    <string name="home_week_day_a11y">%1$s: %2$s kcal, %3$s, %4$s, %5$s</string>
+    <string name="home_week_day_empty_a11y">%1$s: nothing logged</string>
+    <string name="home_week_a11y_protein">%1$d grams protein</string>
+    <string name="home_week_a11y_fiber">%1$d grams fiber</string>
+    <string name="home_week_a11y_carbs">%1$d grams carbs</string>
+    <string name="home_week_a11y_under_goal">%1$s, under goal</string>
 
     <!-- Home dashboard: coach notes -->
     <!-- Single-food protein-gap suggestions: only shown when the gap is small

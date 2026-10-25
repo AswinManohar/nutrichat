@@ -22,10 +22,13 @@ import app.mealsy.data.api.RegisterDeviceRequest
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.SavedMealDto
 import app.mealsy.data.api.TodayResponse
+import app.mealsy.data.repo.DayPoint
 import app.mealsy.data.repo.GoalsRepository
 import app.mealsy.data.repo.Profile
 import app.mealsy.data.repo.ProfileStore
 import app.mealsy.data.repo.TodayRefreshSignal
+import app.mealsy.data.repo.TrendsRepository
+import app.mealsy.domain.Goals
 import app.mealsy.domain.ProteinFood
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,13 +52,17 @@ import org.junit.Test
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 
 /** A [MealsyApi] fake that only implements what [HomeViewModel] and [GoalsRepository] use. */
 private class FakeMealsyApi(
     var todayResponse: TodayResponse,
     var goalsResponse: GoalsResponse?,
     var throwOnToday: Boolean = false,
+    var trendsResponse: List<DayTrendDto> = emptyList(),
+    var throwOnTrends: Boolean = false,
 ) : MealsyApi {
     override suspend fun logTurn(body: LogTurnRequest): LogTurnResponse = notImplemented()
 
@@ -85,7 +92,13 @@ private class FakeMealsyApi(
 
     override suspend fun appMeta(): AppMetaResponse = notImplemented()
 
-    override suspend fun trends(days: Int): List<DayTrendDto> = notImplemented()
+    var lastTrendsDays: Int? = null
+
+    override suspend fun trends(days: Int): List<DayTrendDto> {
+        lastTrendsDays = days
+        if (throwOnTrends) throw IOException("offline")
+        return trendsResponse
+    }
 
     override suspend fun categories(days: Int): List<CategoryStatDto> = notImplemented()
 
@@ -94,6 +107,11 @@ private class FakeMealsyApi(
     override suspend fun myMeal(id: String): MyMealDetailDto = notImplemented()
 
     override suspend fun saveMeal(body: SaveMealRequest): SavedMealDto = notImplemented()
+
+    override suspend fun updateMyMeal(
+        id: String,
+        body: app.mealsy.data.api.UpdateMealRequest,
+    ): app.mealsy.data.api.MyMealDetailDto = notImplemented()
 
     override suspend fun logMyMeal(
         id: String,
@@ -108,11 +126,6 @@ private class FakeMealsyApi(
     ): List<MealLogSummaryDto> = notImplemented()
 
     override suspend fun mealLog(id: String): MealLogDetailDto = notImplemented()
-    override suspend fun updateMyMeal(
-        id: String,
-        body: app.mealsy.data.api.UpdateMealRequest,
-    ): app.mealsy.data.api.MyMealDetailDto = notImplemented()
-
 
     override suspend fun deleteMealLog(id: String): Unit = notImplemented()
 
@@ -198,6 +211,18 @@ private fun todayRepository(api: FakeMealsyApi): TodayRepository =
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
 
+private fun trendDto(
+    date: String,
+    kcal: Double,
+) = DayTrendDto(date = date, kcal = kcal, proteinG = 90.0, carbsG = 200.0, fiberG = 25.0, nMeals = 3, junkMeals = 0)
+
+private fun dayPoint(
+    date: String,
+    proteinG: Double,
+    fiberG: Double,
+    carbsG: Double,
+) = DayPoint(date = date, kcal = 1500.0, proteinG = proteinG, carbsG = carbsG, fiberG = fiberG, nMeals = 3, junkMeals = 0)
+
 /** Clock fixed at a given local hour on an arbitrary date, in UTC. */
 private fun clockAtHour(
     hour: Int,
@@ -222,13 +247,16 @@ class HomeViewModelTest {
         profile: Profile = Profile(firstName = "Alex"),
         clock: Clock = clockAtHour(13),
         throwOnToday: Boolean = false,
+        trends: List<DayTrendDto> = emptyList(),
+        throwOnTrends: Boolean = false,
     ): Pair<HomeViewModel, FakeMealsyApi> {
-        val api = FakeMealsyApi(todayResponse, goals, throwOnToday)
+        val api = FakeMealsyApi(todayResponse, goals, throwOnToday, trends, throwOnTrends)
         val vm =
             HomeViewModel(
                 todayRepository = todayRepository(api),
                 profileStore = FakeProfileStore(profile),
                 todayRefreshSignal = TodayRefreshSignal(),
+                trendsRepository = TrendsRepository(api),
                 clock = clock,
             )
         return vm to api
@@ -518,6 +546,7 @@ class HomeViewModelTest {
                     todayRepository = todayRepository(api),
                     profileStore = FakeProfileStore(Profile(firstName = "Alex")),
                     todayRefreshSignal = signal,
+                    trendsRepository = TrendsRepository(api),
                     clock = clockAtHour(13),
                 )
             assertFalse(vm.uiState.value.loading)
@@ -544,6 +573,7 @@ class HomeViewModelTest {
                 todayRepository = todayRepository(api),
                 profileStore = FakeProfileStore(Profile(firstName = "Alex")),
                 todayRefreshSignal = TodayRefreshSignal(),
+                trendsRepository = TrendsRepository(api),
                 clock = clockAtHour(13),
             )
         assertTrue(vm.uiState.value.error)
@@ -551,5 +581,75 @@ class HomeViewModelTest {
         vm.retry()
         assertFalse(vm.uiState.value.error)
         assertFalse(vm.uiState.value.loading)
+    }
+
+    // --- This week grid -----------------------------------------------------
+
+    @Test
+    fun week_requestsSevenDaysAndFillsGapsEndingToday() {
+        // clockAtHour pins 2026-09-16 (a Wednesday); only two days have meals.
+        val (vm, api) =
+            buildViewModel(
+                trends =
+                    listOf(
+                        trendDto("2026-09-11", kcal = 1980.0),
+                        trendDto("2026-09-16", kcal = 1440.0),
+                    ),
+            )
+        val week = vm.uiState.value.week!!
+        assertEquals(7, api.lastTrendsDays)
+        assertEquals("Sep 10", week.startLabel)
+        assertEquals(listOf(null, "1,980", null, null, null, null, "1,440"), week.days.map { it.kcal })
+        assertEquals("2.0", week.days[1].kcalThousands)
+        assertTrue(week.days.last().isToday)
+        assertFalse(week.days.first().isToday)
+        assertNull(week.days.first().protein)
+        assertFalse(vm.uiState.value.weekUnavailable)
+    }
+
+    @Test
+    fun week_failureKeepsRestOfHomeAndFlagsUnavailable() {
+        val (vm, _) = buildViewModel(throwOnTrends = true)
+        val state = vm.uiState.value
+        assertFalse(state.error)
+        assertEquals("1,340", state.eatenKcal)
+        assertNull(state.week)
+        assertTrue(state.weekUnavailable)
+    }
+
+    @Test
+    fun buildHomeWeek_marksMacrosUnderSeventyPercentOfGoal() {
+        val goals = Goals(trackingMode = "goals", kcalGoal = 2000.0, proteinGoal = 110.0, fiberGoal = 30.0)
+        val week =
+            buildHomeWeek(
+                days = listOf(dayPoint("2026-09-16", proteinG = 76.0, fiberG = 21.0, carbsG = 10.0)),
+                goals = goals,
+                mindful = false,
+                today = LocalDate.parse("2026-09-16"),
+                locale = Locale.US,
+            )
+        val today = week.days.last()
+        // 76/110 = 0.69 is low; 21/30 = 0.70 is not; carbs have no goal, so never low.
+        assertEquals(HomeWeekCell(grams = 76, low = true), today.protein)
+        assertEquals(HomeWeekCell(grams = 21, low = false), today.fiber)
+        assertEquals(HomeWeekCell(grams = 10, low = false), today.carbs)
+        assertEquals("Wed", today.weekday)
+        assertTrue(week.showsGoalLegend)
+    }
+
+    @Test
+    fun buildHomeWeek_mindfulNeverJudgesAgainstGoals() {
+        val goals = Goals(trackingMode = "mindful", kcalGoal = null, proteinGoal = 110.0, fiberGoal = 30.0)
+        val week =
+            buildHomeWeek(
+                days = listOf(dayPoint("2026-09-16", proteinG = 5.0, fiberG = 1.0, carbsG = 10.0)),
+                goals = goals,
+                mindful = true,
+                today = LocalDate.parse("2026-09-16"),
+                locale = Locale.US,
+            )
+        assertFalse(week.days.last().protein!!.low)
+        assertFalse(week.days.last().fiber!!.low)
+        assertFalse(week.showsGoalLegend)
     }
 }
