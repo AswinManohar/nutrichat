@@ -59,27 +59,10 @@ bash scripts/run-local.sh
 
 ## Architecture
 
-```
- Web (React)  ─┐
- Android      ─┼─ JWT ─▶  FastAPI ──▶ Orchestrator
- Telegram     ─┘                        │
-                                        ├─ paused thread? ─▶ resume logging graph
-                                        │
-                                        └─ GLiDE router (Gemini safety net)
-                                              │                 │
-                                         log_meal           coaching
-                                              ▼                 ▼
-                              LangGraph logging graph     Pydantic AI coaching agent
-                              extract (Gemini Flash-Lite) history + guideline RAG
-                              → USDA resolve                    │
-                                (SQLite → FDC API → LLM)        │
-                              → interrupt: confirm/correct      │
-                              → write meal_log                  │
-                                              ▼                 ▼
-                        Postgres 16 + pgvector (Supabase) · Redis totals cache
-                                              ▲
-                        Celery beat: daily/weekly summaries, check-ups, digests
-```
+![Mealsy architecture: clients call FastAPI, the orchestrator routes to the LangGraph logging graph or the coaching agent, both backed by Postgres and Redis](docs/assets/architecture.svg)
+
+Editable source: [docs/assets/architecture.excalidraw](docs/assets/architecture.excalidraw)
+(open it at [excalidraw.com](https://excalidraw.com)).
 
 ### Reliability
 
