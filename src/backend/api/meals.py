@@ -456,6 +456,7 @@ class DayTrend(BaseModel):
     kcal: float
     protein_g: float
     carbs_g: float
+    fat_g: float
     fiber_g: float
     n_meals: int
     junk_meals: int
@@ -499,7 +500,7 @@ async def get_trends(
     days: int = Query(default=91, ge=1, le=366),
     user_id: str = Depends(get_current_user_id),
 ) -> list[DayTrend]:
-    """Per-day kcal/protein/fiber/junk aggregates for the last `days` days.
+    """Per-day kcal/protein/carbs/fat/fiber/junk aggregates for the last `days` days.
 
     Aggregates meal_log directly (uses ix_meal_log_user_logged_at); fine at
     personal scale and always includes today's partial day. Days with no
@@ -514,6 +515,7 @@ async def get_trends(
                 "COALESCE(SUM(kcal), 0) AS kcal, "
                 "COALESCE(SUM(protein_g), 0) AS protein_g, "
                 "COALESCE(SUM(carbs_g), 0) AS carbs_g, "
+                "COALESCE(SUM(fat_g), 0) AS fat_g, "
                 "COALESCE(SUM(fiber_g), 0) AS fiber_g, "
                 "COUNT(*) AS n_meals, "
                 "COUNT(*) FILTER (WHERE (flags->>'has_junk')::boolean) AS junk_meals "
@@ -530,6 +532,7 @@ async def get_trends(
                 kcal=float(row.kcal),
                 protein_g=float(row.protein_g),
                 carbs_g=float(row.carbs_g),
+                fat_g=float(row.fat_g),
                 fiber_g=float(row.fiber_g),
                 n_meals=int(row.n_meals),
                 junk_meals=int(row.junk_meals),

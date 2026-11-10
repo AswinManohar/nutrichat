@@ -264,11 +264,14 @@ Response: list of
   "kcal": 1800.0,
   "protein_g": 95.0,
   "carbs_g": 200.0,
+  "fat_g": 65.0,
   "fiber_g": 20.0,
   "n_meals": 3,
   "junk_meals": 1
 }
 ```
+
+`fat_g` was added for the Journey macros chart; older servers omit it.
 
 ## `GET /meals/categories?days=30`
 
