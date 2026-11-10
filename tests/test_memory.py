@@ -219,6 +219,28 @@ def test_old_tombstones_are_purged_beyond_the_limit() -> None:
     assert sorted(r.fact for r in plan.deleted) == ["t2", "t3"]
 
 
+def test_removed_restrictions_are_never_purged() -> None:
+    # A purged marker lets the curator learn the fact again; for a
+    # restriction that would bring back a hard constraint the user dropped.
+    rows = [
+        _row("Allergic to shellfish", "restriction", age_days=30, deleted=True),
+        *(_row(f"t{i}", age_days=i + 1, deleted=True) for i in range(3)),
+    ]
+    limits = ProfileLimits(max_facts=40, max_chars=1500, max_tombstones=2)
+    plan = _plan(
+        rows, [AddFact(fact="Likes dal", kind="like")], "curator", limits=limits
+    )
+
+    assert [r.fact for r in plan.deleted] == ["t2"]
+    relearn = _plan(
+        rows,
+        [AddFact(fact="Allergic to shellfish", kind="restriction")],
+        "curator",
+        limits=limits,
+    )
+    assert not relearn.results[0].applied
+
+
 def test_weekly_job_only_touches_its_own_facts() -> None:
     rows = [
         _row("From chat", source="inferred_from_chat"),
@@ -276,6 +298,25 @@ def test_curator_add_is_rejected_when_nothing_can_be_evicted() -> None:
     assert not plan.results[0].applied
     assert plan.added == [] and plan.evicted == [] and plan.deleted == []
     assert len(rows) == 2
+
+
+def test_curator_restriction_is_saved_even_when_nothing_can_be_evicted() -> None:
+    # Refusing it would drop a new allergy silently; over the cap is safer.
+    rows = [
+        _row("Peanut allergy", "restriction", "stated"),
+        _row("Stated like", "like", "stated"),
+    ]
+    limits = ProfileLimits(max_facts=2, max_chars=1500, max_tombstones=50)
+    plan = _plan(
+        rows,
+        [AddFact(fact="Allergic to shellfish", kind="restriction")],
+        "curator",
+        limits=limits,
+    )
+
+    assert plan.results[0].applied
+    assert [r.fact for r in plan.added] == ["Allergic to shellfish"]
+    assert plan.evicted == []
 
 
 def test_explicit_remember_succeeds_even_when_full() -> None:

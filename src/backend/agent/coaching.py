@@ -22,7 +22,12 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.usage import UsageLimits
 from redis.exceptions import RedisError
 
-from backend.agent.context import build_context, build_system_prompt
+from backend.agent.context import (
+    build_context,
+    build_restrictions_prompt,
+    build_system_prompt,
+    load_restrictions,
+)
 from backend.agent.cost import record_run_cost
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
 from backend.agent.memory import profile_active
@@ -466,21 +471,41 @@ async def generate_response(
     return result.output
 
 
-async def _safe_context_prompt(user_id: str, message: str) -> str:
-    """Build the per-user context block, degrading to "" on any failure.
+class RestrictionsUnavailableError(Exception):
+    """The user's diet settings and restrictions could not be loaded.
+
+    The coach must not answer without them (issue #70), so the turn fails.
+    """
+
+
+async def _context_prompt(user_id: str, message: str) -> str:
+    """Build the per-user context block, falling back to restrictions only.
 
     build_context fans out to Postgres, Redis and the Gemini embeddings API.
-    The context is an enrichment: a failure there must not take down a
-    coaching turn that would otherwise answer fine from fetch_data alone,
-    hence the broad catch.
+    Most of the context is an enrichment, so a failure there must not take
+    down a coaching turn that could answer from fetch_data alone, hence the
+    broad catch. The binding part (diet settings, conditions, hard
+    restrictions) is then reloaded from Postgres alone. That second read
+    runs only on the failure path, so a normal turn pays nothing for it.
+
+    Raises:
+        RestrictionsUnavailableError: when the restrictions cannot be loaded
+            either. Answering without them could suggest a food the user
+            must not eat.
     """
     try:
         return build_system_prompt(await build_context(user_id, message))
     except Exception as exc:  # noqa: BLE001 — see docstring
         logger.warning(
-            "build_context failed for %s, coaching without it: %s", user_id, exc
+            "build_context failed for %s, coaching with restrictions only: %s",
+            user_id,
+            exc,
         )
-        return ""
+    try:
+        return build_restrictions_prompt(await load_restrictions(user_id))
+    except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
+        logger.error("loading restrictions failed for %s: %s", user_id, exc)
+        raise RestrictionsUnavailableError(user_id) from exc
 
 
 async def _user_conditions(user_id: str) -> list[str]:
@@ -532,7 +557,7 @@ class CoachingAgent:
         # depend on each other, so overlap them.
         parsed, context_prompt = await asyncio.gather(
             parse_query(message, history=history),
-            _safe_context_prompt(user_id, message),
+            _context_prompt(user_id, message),
         )
         # Data fetch and guideline retrieval are independent too.
         data, retrieved = await asyncio.gather(
@@ -574,6 +599,7 @@ __all__ = [
     "CoachingAgent",
     "CoachingResult",
     "QueryParsed",
+    "RestrictionsUnavailableError",
     "extract_citations",
     "fetch_data",
     "format_passages",

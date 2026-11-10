@@ -12,6 +12,7 @@ from backend.agent import coaching
 from backend.agent.coaching import (
     CoachingAgent,
     QueryParsed,
+    RestrictionsUnavailableError,
     _resolve_date_range,
     fetch_data,
     generate_response,
@@ -573,14 +574,27 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
     assert "vegetarian" in kwargs["context_prompt"]
 
 
-async def test_handle_answers_without_context_when_build_context_fails():
+async def test_handle_keeps_restrictions_when_build_context_fails():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"])
+    restrictions = ContextBundle(
+        today_totals=TodayTotals(),
+        goals=GoalSummary(
+            dietary_prefs={"vegetarian": True},
+            conditions=["diabetes"],
+            streak_days=0,
+        ),
+    )
 
     with (
         patch(
             "backend.agent.coaching.build_context",
             new_callable=AsyncMock,
             side_effect=RuntimeError("embedding API down"),
+        ),
+        patch(
+            "backend.agent.coaching.load_restrictions",
+            new_callable=AsyncMock,
+            return_value=restrictions,
         ),
         patch(
             "backend.agent.coaching.parse_query",
@@ -601,4 +615,35 @@ async def test_handle_answers_without_context_when_build_context_fails():
         reply = await CoachingAgent().handle("user-1", "how many calories today?")
 
     assert reply.message == "1,240 kcal today."
-    assert gen_mock.await_args.kwargs["context_prompt"] == ""
+    prompt = gen_mock.await_args.kwargs["context_prompt"]
+    assert "Diet settings (binding): vegetarian" in prompt
+    assert "Declared health conditions: diabetes." in prompt
+    # The fallback carries no totals, so it cannot state stale numbers.
+    assert "Today so far" not in prompt
+
+
+async def test_handle_fails_when_restrictions_cannot_be_loaded():
+    with (
+        patch(
+            "backend.agent.coaching.build_context",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("embedding API down"),
+        ),
+        patch(
+            "backend.agent.coaching.load_restrictions",
+            new_callable=AsyncMock,
+            side_effect=OSError("postgres down"),
+        ),
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
+        ),
+        patch(
+            "backend.agent.coaching.generate_response", new_callable=AsyncMock
+        ) as gen_mock,
+        pytest.raises(RestrictionsUnavailableError),
+    ):
+        await CoachingAgent().handle("user-1", "what should I eat for dinner?")
+
+    gen_mock.assert_not_awaited()

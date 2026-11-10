@@ -34,6 +34,7 @@ from backend.agent.memory import (
     AddFact,
     MemoryOp,
     ProfileState,
+    RemoveFact,
     ReplaceFact,
     SetDietChip,
 )
@@ -167,12 +168,27 @@ async def _no_answer() -> None:
     return None
 
 
+def _keep_unjudged(op: MemoryOp, *, save_unjudged: bool) -> bool:
+    """Whether to save an op GLiDE could not score.
+
+    A new restriction is always saved: a missed allergy is silent, while a
+    wrong one is visible to the user and one tap to remove. A removal or a
+    replacement is always held, since unscored it could erase a fact the
+    user relies on. Anything else follows ``memory.save_unjudged``.
+    """
+    if isinstance(op, AddFact) and op.kind == "restriction":
+        return True
+    if isinstance(op, RemoveFact | ReplaceFact):
+        return False
+    return save_unjudged
+
+
 def select_ops(ops: list[MemoryOp], scores: list[float | None]) -> list[MemoryOp]:
     """Keep the ops GLiDE scored at or above the threshold.
 
     The whole save decision: a comparison per op, no model call. A kept
     add or replacement carries GLiDE's probability as its confidence. An op
-    GLiDE could not score is kept only when ``memory.save_unjudged`` is on.
+    GLiDE could not score is decided by :func:`_keep_unjudged`.
 
     Args:
         ops: Candidate operations from the curator.
@@ -185,9 +201,10 @@ def select_ops(ops: list[MemoryOp], scores: list[float | None]) -> list[MemoryOp
     kept: list[MemoryOp] = []
     for op, score in zip(ops, scores, strict=True):
         if score is None:
-            if cfg.save_unjudged:
+            keep_unjudged = _keep_unjudged(op, save_unjudged=cfg.save_unjudged)
+            if keep_unjudged:
                 kept.append(op)
-            logger.info("memory op %s unjudged, kept=%s", op.op, cfg.save_unjudged)
+            logger.info("memory op %s unjudged, kept=%s", op.op, keep_unjudged)
             continue
         keep = score >= cfg.save_min_probability
         logger.info("memory op %s scored %.2f, kept=%s", op.op, score, keep)

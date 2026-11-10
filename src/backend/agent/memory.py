@@ -11,7 +11,8 @@ one place:
 * A fact the user removed is kept as a tombstone and is not learned again
   until the user states it again.
 * The profile is capped. On overflow the oldest inferred soft fact is
-  evicted; restrictions and facts the user stated are never evicted.
+  evicted; restrictions and facts the user stated are never evicted. A new
+  restriction is saved even when nothing can be evicted.
 """
 
 from __future__ import annotations
@@ -472,15 +473,23 @@ def plan_ops(
             )
             rows.append(new_row)
             plan.added.append(new_row)
-        if not make_room(new_row) and actor != "user":
-            drop(new_row)
-            reject(op, "profile is full; merge or replace existing facts first")
+        if not make_room(new_row):
+            if actor != "user" and op.kind != "restriction":
+                drop(new_row)
+                reject(op, "profile is full; merge or replace existing facts first")
+                continue
+            # Refusing a restriction would drop an allergy silently, so it
+            # is kept over the cap; the user's own additions are too.
+            accept(op, "saved over the cap")
             continue
         accept(op)
 
+    # Markers of removed restrictions are kept indefinitely: purging one
+    # would let the curator bring back a hard constraint the user dropped.
+    # They are few, so this does not grow the table in practice.
     epoch = datetime.min.replace(tzinfo=UTC)
     tombstones = sorted(
-        (r for r in rows if r.deleted_at is not None),
+        (r for r in rows if r.deleted_at is not None and r.category != "restriction"),
         key=lambda r: r.deleted_at or epoch,
         reverse=True,
     )
@@ -609,6 +618,13 @@ def label_facts(facts: list[MemoryFact]) -> list[tuple[str, MemoryFact]]:
     return [(f"m{i}", fact) for i, fact in enumerate(facts, start=1)]
 
 
+def render_diet_settings(diet_chips: list[str]) -> str:
+    """The binding diet-settings line, shared by the profile and default paths."""
+    return "Diet settings (binding): " + ", ".join(
+        chip.replace("_", " ") for chip in diet_chips
+    )
+
+
 def render_profile_block(
     facts: list[MemoryFact],
     diet_chips: list[str],
@@ -635,10 +651,7 @@ def render_profile_block(
     budget = max_chars or _TUNABLES.memory.profile_max_chars
     lines: list[str] = []
     if diet_chips:
-        lines.append(
-            "- Diet settings (binding): "
-            + ", ".join(chip.replace("_", " ") for chip in diet_chips)
-        )
+        lines.append("- " + render_diet_settings(diet_chips))
     restrictions = [f.fact for f in facts if f.kind == "restriction"]
     if restrictions:
         lines.append(f"- {_KIND_HEADINGS['restriction']}: " + "; ".join(restrictions))
@@ -694,5 +707,6 @@ __all__ = [
     "load_state",
     "plan_ops",
     "profile_active",
+    "render_diet_settings",
     "render_profile_block",
 ]
