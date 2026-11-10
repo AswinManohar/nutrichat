@@ -1,7 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from backend.agent.memory import MemoryFact, RemoveFact, ReplaceFact
-from backend.scripts.backfill_memory_profile import Decision, plan_backfill
+from backend.db.models import UserMemory
+from backend.scripts import backfill_memory_profile as backfill
+from backend.scripts.backfill_memory_profile import (
+    BackupRow,
+    Decision,
+    main,
+    plan_backfill,
+)
 
 
 def _legacy(*facts: str) -> list[MemoryFact]:
@@ -82,3 +94,75 @@ def test_plan_backfill_never_drops_or_softens_an_allergy() -> None:
             id="id-allergic to peanuts", fact="Allergic to peanuts", kind="restriction"
         ),
     ]
+
+
+def test_plan_backfill_keeps_the_original_when_a_rewrite_changes_meaning() -> None:
+    # Seen on a real profile (2026-11-10): the rewrite lost the comparison.
+    legacy = _legacy(
+        "prefers tuna salad over standard or green goddess dressings",
+        "prefers almond flour over regular flour",
+        "has a milk allergy",
+    )
+    ops = plan_backfill(
+        [
+            Decision(
+                ref="m1",
+                action="keep",
+                kind="like",
+                fact="Prefers tuna salad dressings",
+            ),
+            Decision(
+                ref="m2",
+                action="keep",
+                kind="like",
+                fact="Prefers almond flour over regular flour",
+            ),
+            Decision(
+                ref="m3", action="keep", kind="restriction", fact="Allergic to milk"
+            ),
+        ],
+        legacy,
+    )
+
+    assert [op.fact for op in ops] == [
+        "prefers tuna salad over standard or green goddess dressings",
+        "Prefers almond flour over regular flour",
+        # "allergy" is not in the rewrite, so the original wording stays.
+        "has a milk allergy",
+    ]
+
+
+def test_apply_without_backup_is_refused() -> None:
+    with pytest.raises(SystemExit):
+        main(["--apply"])
+
+
+async def test_backup_rows_writes_every_row_as_jsonl(tmp_path) -> None:
+    now = datetime(2026, 11, 10, tzinfo=UTC)
+    row = UserMemory(
+        id="id-1",
+        user_id="u1",
+        fact="has a milk allergy",
+        embedding=[0.5, 0.25],
+        category="preference",
+        confidence=0.8,
+        source="inferred_from_chat",
+        deleted_at=None,
+        updated_at=now,
+    )
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [row]
+    session = AsyncMock()
+    session.execute.return_value = result
+    factory = MagicMock()
+    factory.return_value.__aenter__.return_value = session
+    path = tmp_path / "backup.jsonl"
+
+    with patch.object(backfill, "get_session", return_value=factory):
+        n = await backfill._backup_rows("u1", path)
+
+    assert n == 1
+    restored = BackupRow.model_validate_json(path.read_text().strip())
+    assert restored.fact == "has a milk allergy"
+    assert restored.embedding == [0.5, 0.25]
+    assert restored.updated_at == now
