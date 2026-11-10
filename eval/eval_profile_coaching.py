@@ -5,13 +5,21 @@ Two gates, both required at 100% before the profile is enabled for users:
 1. Restrictions. For profiles with an allergy, a diet setting, a religious
    rule or a dislike, every snack / dinner / meal-plan suggestion must avoid
    the excluded foods, and the coach must make NO memory tool call (a
-   spurious call would add a model round trip to an ordinary turn).
+   spurious call would add a model round trip to an ordinary turn). Run on
+   three prompt paths (issue #70):
+   - profile: the curated profile is on;
+   - default: the profile is off, as for every user today, and the data
+     payload carries no goals (the parser did not ask for them), so the diet
+     setting can only come from the prompt;
+   - fallback: build_context fails and the coach falls back to the
+     restrictions-only prompt (real load_restrictions over a fake session).
+     Dislikes are not part of that prompt, so only restrictions are scored.
 2. Memory requests. Explicit remember / forget / diet-change messages must
    call the right tool.
 
 The response agent is called directly with a hand-built context, and the
-memory tools' database write is replaced by a recorder, so nothing is read
-from or written to Postgres.
+database reads and the memory tools' writes are replaced by a recorder, so
+nothing is read from or written to Postgres.
 
     PYTHONPATH=src python eval/eval_profile_coaching.py [--runs N]
 
@@ -27,11 +35,12 @@ import re
 import sys
 import uuid
 from dataclasses import dataclass, field
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.agent.coaching import generate_response
+from backend.agent.coaching import _context_prompt, generate_response
 from backend.agent.context import ContextBundle, GoalSummary, build_system_prompt
 from backend.agent.memory import ApplyOutcome, MemoryFact, MemoryOp, OpResult
+from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
 
 _TOTALS = TodayTotals(kcal=1300, protein_g=60, fiber_g=12, n_meals=2)
@@ -96,9 +105,38 @@ PROFILES = [
         [_fact("Does not eat pork for religious reasons", "restriction")],
     ),
     Profile(
+        "no nuts setting",
+        [
+            "peanut",
+            "almond",
+            "cashew",
+            "walnut",
+            "pecan",
+            "pistachio",
+            "hazelnut",
+            "macadamia",
+        ],
+        chips=["no_nuts"],
+    ),
+    Profile(
         "dislikes mushrooms", ["mushroom"], [_fact("Dislikes mushrooms", "dislike")]
     ),
 ]
+
+_PATHS = ("profile", "default", "fallback")
+
+
+def _cases_for(path: str) -> list[tuple[Profile, bool]]:
+    """(profile, profile_on) pairs scored on one prompt path."""
+    chip_only = [p for p in PROFILES if p.chips and not p.facts]
+    if path == "profile":
+        return [(p, True) for p in PROFILES]
+    if path == "default":
+        return [(p, False) for p in chip_only]
+    with_restriction = [
+        p for p in PROFILES if p.chips or any(f.kind == "restriction" for f in p.facts)
+    ]
+    return [(p, True) for p in with_restriction] + [(p, False) for p in chip_only]
 
 
 @dataclass
@@ -148,6 +186,21 @@ def _context(facts: list[MemoryFact], chips: list[str]) -> tuple[str, dict]:
     return build_system_prompt(ctx), data
 
 
+def _default_context(chips: list[str]) -> tuple[str, dict]:
+    """Profile off, no goals in the data: the prompt is the only source."""
+    ctx = ContextBundle(
+        today_totals=_TOTALS,
+        goals=GoalSummary(
+            dietary_prefs={chip: True for chip in chips}, streak_days=3, **_GOALS
+        ),
+    )
+    data = {
+        "today_totals": _TOTALS.model_dump(),
+        "period": {"days": 1, "label": "today"},
+    }
+    return build_system_prompt(ctx), data
+
+
 def _violations(reply: str, forbidden: list[str]) -> list[str]:
     """Excluded foods the reply offers, as opposed to merely rules out."""
     hits = []
@@ -171,6 +224,19 @@ class _Recorder:
     def __init__(self) -> None:
         self.profiles: dict[str, list[MemoryFact]] = {}
         self.attempted: dict[str, list[MemoryOp]] = {}
+        self.goals: dict[str, UserGoal] = {}
+        self.profile_on: set[str] = set()
+
+    def is_profile_on(self, user_id: str) -> bool:
+        return user_id in self.profile_on
+
+    def session_factory(self) -> MagicMock:
+        """A get_session() stand-in whose get(UserGoal, id) reads self.goals."""
+        session = MagicMock()
+        session.get = AsyncMock(side_effect=lambda _model, uid: self.goals.get(uid))
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+        return MagicMock(return_value=session)
 
     async def apply_ops(
         self, user_id: str, ops: list[MemoryOp], actor: str
@@ -183,12 +249,34 @@ class _Recorder:
 
 
 async def _ask(
-    recorder: _Recorder, message: str, facts: list[MemoryFact], chips: list[str]
+    recorder: _Recorder,
+    message: str,
+    facts: list[MemoryFact],
+    chips: list[str],
+    *,
+    path: str = "profile",
+    profile_on: bool = True,
 ) -> tuple[str, list[MemoryOp]]:
     """Run one coaching reply; return it with the ops the tools tried to apply."""
     user_id = str(uuid.uuid4())
     recorder.profiles[user_id] = facts
-    context_prompt, data = _context(facts, chips)
+    if profile_on:
+        recorder.profile_on.add(user_id)
+    if path == "profile":
+        context_prompt, data = _context(facts, chips)
+    elif path == "default":
+        context_prompt, data = _default_context(chips)
+    else:
+        recorder.goals[user_id] = UserGoal(
+            user_id=user_id,
+            dietary_prefs={chip: True for chip in chips},
+            conditions=[],
+            streak_days=3,
+            **_GOALS,
+        )
+        context_prompt = await _context_prompt(user_id, message)
+        # fetch_data does not go through build_context, so it still answers.
+        data = _default_context(chips)[1]
     reply = await generate_response(
         message, data, context_prompt=context_prompt, user_id=user_id
     )
@@ -202,7 +290,14 @@ def _op_text(op: MemoryOp) -> str:
 async def _run_once() -> int:
     recorder = _Recorder()
     with (
-        patch("backend.agent.coaching.profile_active", return_value=True),
+        patch("backend.agent.coaching.profile_active", recorder.is_profile_on),
+        patch("backend.agent.context.profile_active", recorder.is_profile_on),
+        patch(
+            "backend.agent.coaching.build_context",
+            AsyncMock(side_effect=RuntimeError("simulated context failure")),
+        ),
+        patch("backend.agent.context.get_session", recorder.session_factory),
+        patch("backend.agent.context.load_profile", recorder.load_profile),
         patch("backend.agent.memory_tools.apply_ops", recorder.apply_ops),
         patch("backend.agent.memory_tools.load_profile", recorder.load_profile),
     ):
@@ -212,26 +307,36 @@ async def _run_once() -> int:
 async def _score(recorder: _Recorder) -> int:
     failures = 0
 
-    restriction_cases = [(p, ask) for p in PROFILES for ask in _ASKS]
+    restriction_cases = [
+        (path, profile, on, ask)
+        for path in _PATHS
+        for profile, on in _cases_for(path)
+        for ask in _ASKS
+    ]
     results = await asyncio.gather(
-        *(_ask(recorder, ask, p.facts, p.chips) for p, ask in restriction_cases)
+        *(
+            _ask(recorder, ask, p.facts, p.chips, path=path, profile_on=on)
+            for path, p, on, ask in restriction_cases
+        )
     )
-    for (profile, ask), (reply, attempted) in zip(
+    path_failures = dict.fromkeys(_PATHS, 0)
+    for (path, profile, on, ask), (reply, attempted) in zip(
         restriction_cases, results, strict=True
     ):
         hits = _violations(reply, profile.forbidden)
         if hits or attempted:
             failures += 1
-            print(f"  FAIL [{profile.name}] {ask!r}")
+            path_failures[path] += 1
+            state = "profile on" if on else "profile off"
+            print(f"  FAIL [{path}, {state}] [{profile.name}] {ask!r}")
             if hits:
                 print(f"       suggested: {', '.join(hits)}")
             if attempted:
                 print(f"       spurious tool call: {[_op_text(o) for o in attempted]}")
             print("       " + reply.replace("\n", "\n       "))
-    print(
-        f"restrictions: {len(restriction_cases) - failures}/"
-        f"{len(restriction_cases)} passed"
-    )
+    for path in _PATHS:
+        total = sum(1 for c in restriction_cases if c[0] == path)
+        print(f"restrictions [{path}]: {total - path_failures[path]}/{total} passed")
 
     memory_failures = 0
     results = await asyncio.gather(
