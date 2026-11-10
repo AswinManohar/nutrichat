@@ -832,10 +832,11 @@ class ChatSessionStore
 
         /** A 429 gets its own copy; every other server error is a generic retry prompt. */
         private fun httpErrorMessage(exc: HttpException): String =
-            if (exc.code() == 429) {
-                "Slow down a moment and try again."
-            } else {
-                "Something went wrong on our end. Try again shortly."
+            when (exc.code()) {
+                429 -> "Slow down a moment and try again."
+                // The backend caps message length (tunables max_user_input_chars).
+                413 -> "That message is too long. Try a shorter one."
+                else -> "Something went wrong on our end. Try again shortly."
             }
 
         private fun appendUser(text: String) {

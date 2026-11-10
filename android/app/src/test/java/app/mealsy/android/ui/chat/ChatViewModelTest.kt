@@ -683,6 +683,21 @@ class ChatViewModelTest {
         }
 
     @Test
+    fun `413 error appends a too-long message and does not mark offline`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(413))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+
+            viewModel.send("two eggs").join()
+
+            assertFalse(viewModel.offline.value)
+            val messages = viewModel.messages.value
+            assertTrue(messages.any { it is ChatMsg.Coach && it.text.contains("too long") })
+        }
+
+    @Test
     fun `cancel keeps the card in place when the network call fails`() =
         runBlocking {
             enqueueEmptyStartup()
