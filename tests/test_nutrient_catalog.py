@@ -134,7 +134,9 @@ def test_micronutrient_tabs_reject_bad_keys(
 ) -> None:
     from backend.config import MicronutrientTab, MicronutrientViewConfig, get_tunables
 
-    view = MicronutrientViewConfig(tabs=[MicronutrientTab(id="t", name="T", keys=keys)])
+    view = MicronutrientViewConfig(
+        tabs=[MicronutrientTab(id="t", name="T", keys=keys)], summary_keys=keys[:1]
+    )
     tunables = get_tunables().model_copy(update={"micronutrient_view": view})
     monkeypatch.setattr(catalog, "get_tunables", lambda: tunables)
     catalog.micronutrient_tabs.cache_clear()
