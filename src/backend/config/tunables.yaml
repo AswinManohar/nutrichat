@@ -288,6 +288,8 @@ micronutrient_view:
     - id: minerals
       name: Minerals
       keys: [iron, zinc, selenium, iodine]
+  # Journey's micronutrient summary (a few rows linking to the full screen).
+  summary_keys: [vitamin_c, vitamin_d, iron, magnesium, potassium, sodium]
 
 features:
   # Off on feat/android-app (#57): a composite dish arrives as ONE item with the

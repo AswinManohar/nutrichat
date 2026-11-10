@@ -114,6 +114,24 @@ def micronutrient_tabs() -> list[dict[str, Any]]:
     return [tab.model_dump() for tab in tabs]
 
 
+@lru_cache(maxsize=1)
+def micronutrient_summary() -> list[str]:
+    """Journey's short micronutrient list, checked against the tabs.
+
+    Raises:
+        ValueError: If a summary key is in no tab (so it would have no daily
+            value check) or is listed twice.
+    """
+    in_tabs = {k for tab in micronutrient_tabs() for k in tab["keys"]}
+    keys = get_tunables().micronutrient_view.summary_keys
+    for key in keys:
+        if key not in in_tabs:
+            raise ValueError(f"micronutrient_view.summary_keys: {key!r} is in no tab")
+    if len(set(keys)) != len(keys):
+        raise ValueError("micronutrient_view.summary_keys: duplicate key")
+    return list(keys)
+
+
 def public_view() -> dict[str, Any]:
     """Catalogue as served to clients (GET /meta/nutrients).
 
@@ -126,6 +144,7 @@ def public_view() -> dict[str, Any]:
         "version": catalog.version,
         "groups": [g.model_dump() for g in catalog.groups],
         "micronutrient_tabs": micronutrient_tabs(),
+        "micronutrient_summary": micronutrient_summary(),
         "nutrients": [
             n.model_dump(by_alias=True, exclude=hidden) for n in catalog.nutrients
         ],

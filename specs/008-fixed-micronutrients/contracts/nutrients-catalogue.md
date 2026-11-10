@@ -25,6 +25,7 @@ Clients MUST NOT hard-code the list. Field meanings are defined in
     {"id": "vitamins", "name": "Vitamins", "keys": ["vitamin_a", "vitamin_c"]},
     {"id": "minerals", "name": "Minerals", "keys": ["iron", "zinc"]}
   ],
+  "micronutrient_summary": ["vitamin_c", "vitamin_d", "iron", "sodium"],
   "nutrients": [
     {
       "key": "sodium",
@@ -63,5 +64,8 @@ Clients MUST NOT hard-code the list. Field meanings are defined in
   in which tab and order. It holds keys only; names, units, daily values and
   direction come from `nutrients`. Every key is active and has a
   `daily_value`, and no key is in two tabs (checked at startup).
+- `micronutrient_summary` is the short list on the Android Journey screen,
+  in order (tunables `micronutrient_view.summary_keys`). Every key is in one
+  of the tabs.
 - The response lists all 48 entries (spec FR-001). Retired entries are still
   listed, with `"status": "retired"`.

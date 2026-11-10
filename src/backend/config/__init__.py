@@ -133,6 +133,9 @@ class MicronutrientViewConfig(BaseModel):
     """
 
     tabs: list[MicronutrientTab] = Field(min_length=1)
+    # The short list on the Journey screen, in order; each key must also be
+    # in a tab (the "All micronutrients" link opens the full screen).
+    summary_keys: list[str] = Field(min_length=1)
 
     model_config = ConfigDict(extra="forbid")
 

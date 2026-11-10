@@ -143,3 +143,21 @@ def test_micronutrient_tabs_reject_bad_keys(
             catalog.micronutrient_tabs()
     finally:
         catalog.micronutrient_tabs.cache_clear()
+
+
+def test_micronutrient_summary_rejects_a_key_outside_the_tabs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.config import get_tunables
+
+    view = get_tunables().micronutrient_view.model_copy(
+        update={"summary_keys": ["zinc", "water"]}
+    )
+    tunables = get_tunables().model_copy(update={"micronutrient_view": view})
+    monkeypatch.setattr(catalog, "get_tunables", lambda: tunables)
+    catalog.micronutrient_summary.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="is in no tab"):
+            catalog.micronutrient_summary()
+    finally:
+        catalog.micronutrient_summary.cache_clear()

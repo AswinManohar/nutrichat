@@ -40,3 +40,11 @@ def test_catalogue_serves_micronutrient_tabs(app_factory) -> None:
         for key in tab["keys"]:
             assert by_key[key]["status"] == "active"
             assert by_key[key]["daily_value"] is not None
+
+
+def test_catalogue_serves_the_journey_summary_keys(app_factory) -> None:
+    client = TestClient(app_factory(meta.router, user_id=None))
+    body = client.get("/meta/nutrients").json()
+    in_tabs = {k for tab in body["micronutrient_tabs"] for k in tab["keys"]}
+    assert body["micronutrient_summary"]
+    assert set(body["micronutrient_summary"]) <= in_tabs
