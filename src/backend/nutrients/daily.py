@@ -76,6 +76,30 @@ def _active_defs() -> dict[str, NutrientDef]:
     return {n.key: n for n in get_catalog().nutrients if n.status == "active"}
 
 
+def resolve_range(
+    date_from: date | None, date_to: date | None, days: int | None, today: date
+) -> tuple[date, date]:
+    """Turn the request's range parameters into an inclusive date range.
+
+    Either both ``from`` and ``to`` are given, or ``days`` alone: the last
+    ``days`` nutrition days ending at ``today``. Clients use ``days`` so they
+    never have to know the server's nutrition-day rule (reset hour, timezone).
+
+    Raises:
+        ValueError: If neither form, or both, are given, or ``days`` < 1.
+    """
+    explicit = date_from is not None or date_to is not None
+    if days is not None:
+        if explicit:
+            raise ValueError("give either 'days' or 'from'/'to', not both")
+        if days < 1:
+            raise ValueError("'days' must be at least 1")
+        return today - timedelta(days=days - 1), today
+    if date_from is None or date_to is None:
+        raise ValueError("give 'from' and 'to', or 'days'")
+    return date_from, date_to
+
+
 def validate_request(
     date_from: date, date_to: date, keys: list[str] | None
 ) -> list[str]:
@@ -252,5 +276,6 @@ __all__ = [
     "MealContribution",
     "get_daily_micros",
     "range_totals",
+    "resolve_range",
     "validate_request",
 ]

@@ -178,6 +178,8 @@ async def test_endpoint_contract(app_factory) -> None:
             "/nutrients/daily",
             params={"from": "2026-09-01", "to": "2026-09-01", "keys": "nope"},
         )
+        by_days = await c.get("/nutrients/daily", params={"days": 7})
+        no_range = await c.get("/nutrients/daily")
     assert ok.status_code == 200, ok.text
     body = ok.json()
     assert body["from"] == "2026-09-01"
@@ -191,6 +193,9 @@ async def test_endpoint_contract(app_factory) -> None:
     }
     assert too_long.status_code == 422
     assert bad_key.status_code == 422
+    assert by_days.status_code == 200, by_days.text
+    assert len(by_days.json()["days"]) == 7
+    assert no_range.status_code == 422
 
 
 async def test_90_days_all_keys_under_one_second() -> None:

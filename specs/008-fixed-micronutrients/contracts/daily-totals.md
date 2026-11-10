@@ -12,8 +12,9 @@ service function, `get_daily_micros`, internally (SC-006).
 
 | Name | Type | Rule |
 |---|---|---|
-| from | date (YYYY-MM-DD) | Required. Nutrition day, inclusive |
-| to | date | Required. `to − from` must be at most 364 days, otherwise 422 |
+| from | date (YYYY-MM-DD) | Required unless `days` is given. Nutrition day, inclusive |
+| to | date | Required with `from`. `to − from` must be at most 364 days, otherwise 422 |
+| days | int ≥ 1 | Instead of `from`/`to`: the last `days` nutrition days ending today (server's nutrition day), so clients never compute day boundaries. Giving both forms, or neither, is 422 |
 | keys | comma-separated catalogue keys | Optional. Defaults to all active keys. An unknown key returns 422 |
 | meals | bool | Optional, default false. True adds per-meal contributions |
 
