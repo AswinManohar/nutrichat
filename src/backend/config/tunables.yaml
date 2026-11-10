@@ -55,6 +55,25 @@ token_limits:
   # exempt — it keeps thinking on for answer quality.
   extraction_thinking_budget: 0
 
+  # Longest chat message the API accepts (POST /meals/log, user_input);
+  # longer ones get HTTP 413. The text goes into both coaching model calls
+  # and into the stored history, so this is what bounds it. Production
+  # 2026-10-02..13 (17 coaching turns): longest question 58 chars.
+  # Used in: api/meals.py
+  max_user_input_chars: 2000
+
+  # Worst-case input budget for one coaching response call: system prompt
+  # with a full profile, history at its caps, five guideline passages, the
+  # data payload and a message at max_user_input_chars. Not enforced at
+  # runtime: every part has its own cap, and
+  # tests/test_context_budget.py fails if those caps add up to more than
+  # this. Raise it only on purpose, with the cost per turn in mind.
+  # Worst case measured 2026-11-10: ~11.6k tokens = static instructions
+  # (coaching_response_system.md + profile rules) ~4.3k, passages ~2.3k,
+  # history ~2.4k, data ~1.1k, context block ~0.9k, message ~0.5k. A
+  # typical turn (short history, no passages) is about 5.5k.
+  coaching_max_input_tokens: 12000
+
 usda:
   # ── How food matching works (read before tuning) ────────────────────────
   # For each food the user names, usda_lookup_batch:
@@ -269,6 +288,13 @@ memory:
   # A day: a follow-up the next morning shouldn't inherit last night's
   # thread, and stale context is worse than none.
   coaching_history_ttl_s: 43200
+
+  # Each history message is cut to this many characters when it is stored,
+  # so the history block has a fixed worst case (turns x 2 x this). Longer
+  # replies (meal plans) keep their opening, which is what a follow-up
+  # usually refers to. Production 2026-10-02..13: longest reply 610 chars.
+  # Used in: db/redis_client.py append_coaching_turns
+  coaching_history_max_chars: 800
 
 junk:
   # Per-100g nutrient-density heuristic used by log_meal to flag junk

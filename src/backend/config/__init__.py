@@ -32,6 +32,8 @@ class ModelsConfig(BaseModel):
 class TokenLimitsConfig(BaseModel):
     intent_classifier_max_output: int = Field(gt=0)
     extraction_thinking_budget: int = Field(ge=0)
+    max_user_input_chars: int = Field(gt=0)
+    coaching_max_input_tokens: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +85,7 @@ class MemoryConfig(BaseModel):
     weekly_habits_max_facts: int = Field(gt=0)
     coaching_history_turns: int = Field(gt=0)
     coaching_history_ttl_s: int = Field(gt=0)
+    coaching_history_max_chars: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 

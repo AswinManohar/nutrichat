@@ -22,6 +22,7 @@ from backend.agent.tools.meals import (
 from backend.agent.tools.meals import log_meal as persist_meal
 from backend.api.my_meals import _scaled_result
 from backend.auth.supabase import get_current_user_id
+from backend.config import get_tunables
 from backend.core.nutrition_day import (
     NUTRITION_DATE_SQL,
     nutrition_today,
@@ -42,6 +43,8 @@ router = APIRouter(prefix="/meals", tags=["meals"])
 # the lifetime credit quota (backend.quota): the quota caps spend, this
 # caps how fast a single user can burn it / hammer the LLM.
 CHAT_RATE_LIMIT = 20
+
+_MAX_USER_INPUT_CHARS = get_tunables().token_limits.max_user_input_chars
 
 
 async def _get_today_by_type(
@@ -125,6 +128,13 @@ async def log_meal(
     read or resume another user's paused conversation, even if they
     guess or reuse someone else's conversation_id.
     """
+    if len(req.user_input) > _MAX_USER_INPUT_CHARS:
+        # 413 rather than a 422 from Field(max_length): the client shows a
+        # "too long" message for this status, and 422 means a client bug.
+        raise HTTPException(
+            status_code=413,
+            detail=f"Message too long (max {_MAX_USER_INPUT_CHARS} characters).",
+        )
     thread_id = f"{user_id}:{req.conversation_id or 'default'}"
     checkpointer = request.app.state.checkpointer
 

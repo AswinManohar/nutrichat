@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _TUNABLES = get_tunables()
 _COACHING_HISTORY_TURNS = _TUNABLES.memory.coaching_history_turns
 _COACHING_HISTORY_TTL_S = _TUNABLES.memory.coaching_history_ttl_s
+_COACHING_HISTORY_MAX_CHARS = _TUNABLES.memory.coaching_history_max_chars
 _STAPLES_CACHE_TTL_S = _TUNABLES.memory.staples_cache_ttl_s
 
 # Global connection pool
@@ -122,6 +123,19 @@ def _coaching_history_key(user_id: str) -> str:
     return f"coach_history:{user_id}"
 
 
+def _compact(turn: CoachingTurn) -> CoachingTurn:
+    """Cut a history message to ``memory.coaching_history_max_chars``.
+
+    Applied on write and again on read, so the history block stays bounded
+    even for entries stored before the cap existed (they expire within the
+    key's TTL).
+    """
+    if len(turn.content) <= _COACHING_HISTORY_MAX_CHARS:
+        return turn
+    cut = turn.content[: _COACHING_HISTORY_MAX_CHARS - 1].rstrip()
+    return turn.model_copy(update={"content": cut + "\u2026"})
+
+
 async def append_coaching_turns(user_id: str, turns: list[CoachingTurn]) -> None:
     """Append turns to the user's coaching history, keeping only the newest.
 
@@ -141,7 +155,7 @@ async def append_coaching_turns(user_id: str, turns: list[CoachingTurn]) -> None
     try:
         client = get_redis()
         async with client.pipeline(transaction=True) as pipe:
-            pipe.rpush(key, *(t.model_dump_json() for t in turns))
+            pipe.rpush(key, *(_compact(t).model_dump_json() for t in turns))
             pipe.ltrim(key, -keep, -1)
             pipe.expire(key, _COACHING_HISTORY_TTL_S)
             await pipe.execute()
@@ -171,7 +185,7 @@ async def get_coaching_history(user_id: str) -> list[CoachingTurn]:
     turns: list[CoachingTurn] = []
     for raw in raw_items:
         try:
-            turns.append(CoachingTurn.model_validate_json(raw))
+            turns.append(_compact(CoachingTurn.model_validate_json(raw)))
         except ValidationError:
             logger.warning("skipping malformed coaching history entry for %s", user_id)
     return turns

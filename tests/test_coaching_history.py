@@ -120,6 +120,33 @@ async def test_append_caps_history_to_configured_turns(fake_redis):
     assert history[-1].content == f"a{cap + 2}"
 
 
+async def test_append_cuts_long_messages_to_the_cap(fake_redis):
+    cap = redis_client._COACHING_HISTORY_MAX_CHARS
+    await append_coaching_turns(
+        "user-1",
+        [
+            CoachingTurn(role="user", content="short"),
+            CoachingTurn(role="assistant", content="meal plan " * 500),
+        ],
+    )
+
+    history = await get_coaching_history("user-1")
+
+    assert history[0].content == "short"
+    assert len(history[1].content) == cap
+    assert history[1].content.endswith("\u2026")
+
+
+async def test_get_cuts_entries_stored_before_the_cap(fake_redis):
+    # Entries written before the cap existed are still bounded on read.
+    long = CoachingTurn(role="assistant", content="x" * 5000)
+    fake_redis.lists["coach_history:user-1"] = [long.model_dump_json()]
+
+    history = await get_coaching_history("user-1")
+
+    assert len(history[0].content) == redis_client._COACHING_HISTORY_MAX_CHARS
+
+
 async def test_append_sets_ttl_on_history_key(fake_redis):
     await append_coaching_turns("user-1", [CoachingTurn(role="user", content="hi")])
 
