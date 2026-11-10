@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from backend.config import NutrientCatalog, NutrientDef, get_catalog
+from backend.config import NutrientCatalog, NutrientDef, get_catalog, get_tunables
 
 
 def _active(catalog: NutrientCatalog) -> list[NutrientDef]:
@@ -88,16 +88,44 @@ def resolve_key(name_or_key: str) -> str | None:
     return key_for_usda_name(candidate)
 
 
+@lru_cache(maxsize=1)
+def micronutrient_tabs() -> list[dict[str, Any]]:
+    """The Micronutrients screen's tabs, checked against the catalogue.
+
+    Returns:
+        ``[{"id", "name", "keys"}]`` in display order.
+
+    Raises:
+        ValueError: If a key is not an active catalogue key, has no daily
+            value (the screen charts "% of daily value"), or appears twice.
+    """
+    active = {n.key: n for n in _active(get_catalog())}
+    tabs = get_tunables().micronutrient_view.tabs
+    seen: set[str] = set()
+    for tab in tabs:
+        for key in tab.keys:
+            if key not in active:
+                raise ValueError(f"micronutrient_view: {key!r} is not active")
+            if active[key].daily_value is None:
+                raise ValueError(f"micronutrient_view: {key!r} has no daily value")
+            if key in seen:
+                raise ValueError(f"micronutrient_view: {key!r} is in two tabs")
+            seen.add(key)
+    return [tab.model_dump() for tab in tabs]
+
+
 def public_view() -> dict[str, Any]:
     """Catalogue as served to clients (GET /meta/nutrients).
 
-    Drops server-only fields (usda_names, max_per_100g, column).
+    Drops server-only fields (usda_names, max_per_100g, column) and adds the
+    Micronutrients screen's tabs (``micronutrient_tabs``).
     """
     catalog = get_catalog()
     hidden = {"usda_names", "max_per_100g", "column"}
     return {
         "version": catalog.version,
         "groups": [g.model_dump() for g in catalog.groups],
+        "micronutrient_tabs": micronutrient_tabs(),
         "nutrients": [
             n.model_dump(by_alias=True, exclude=hidden) for n in catalog.nutrients
         ],

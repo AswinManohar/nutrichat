@@ -115,6 +115,28 @@ class NutrientCheckupConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class MicronutrientTab(BaseModel):
+    """One tab of the Android Micronutrients screen: a name and its keys."""
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    name: str = Field(min_length=1)
+    keys: list[str] = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MicronutrientViewConfig(BaseModel):
+    """Which nutrients the Micronutrients screen shows, grouped into tabs.
+
+    Only the selection lives here; names, units, daily values and direction
+    come from the nutrient catalogue (spec 008).
+    """
+
+    tabs: list[MicronutrientTab] = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RoutingConfig(BaseModel):
     """Keyword lists for replies to a pending meal card (tools/meals.py)."""
 
@@ -183,6 +205,7 @@ class Tunables(BaseModel):
     summaries: SummariesConfig
     day: DayConfig
     nutrient_checkup: NutrientCheckupConfig
+    micronutrient_view: MicronutrientViewConfig
     routing: RoutingConfig
     typesafe: TypeSafeConfig
     prompts: PromptsConfig

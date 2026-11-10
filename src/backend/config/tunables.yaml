@@ -270,6 +270,25 @@ nutrient_checkup:
   # flip the arrow.
   flat_threshold_pct: 0.05
 
+micronutrient_view:
+  # The Android Micronutrients screen (Trends -> Micronutrients): which
+  # nutrients it charts, grouped into tabs. Only the selection lives here;
+  # names, units, daily values and limit/target come from the catalogue
+  # (config/nutrients.yaml). Every key must be an active catalogue key with a
+  # daily value, since the chart is "% of daily value".
+  # Served by GET /meta/nutrients as `micronutrient_tabs`; checked by
+  # nutrients/catalog.py micronutrient_tabs().
+  tabs:
+    - id: electrolytes
+      name: Electrolytes
+      keys: [sodium, potassium, calcium, magnesium, phosphorus]
+    - id: vitamins
+      name: Vitamins
+      keys: [vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k, vitamin_b12, folate]
+    - id: minerals
+      name: Minerals
+      keys: [iron, zinc, selenium, iodine]
+
 features:
   # Off on feat/android-app (#57): a composite dish arrives as ONE item with the
   # extractor's gram estimate; the user opts in via "Break into ingredients".

@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
-from backend.nutrients.catalog import public_view
+from backend.nutrients.catalog import micronutrient_tabs, public_view
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -33,6 +33,10 @@ async def app_version() -> AppVersionResponse:
             os.environ.get("ANDROID_LATEST_VERSION_CODE", "1")
         ),
     )
+
+
+# Fail at startup, not on the first request, if a tab names a bad key.
+micronutrient_tabs()
 
 
 @router.get("/nutrients")

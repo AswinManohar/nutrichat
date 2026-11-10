@@ -19,6 +19,12 @@ Clients MUST NOT hard-code the list. Field meanings are defined in
     {"id": "vitamins", "name": "Vitamins",            "order": 4},
     {"id": "minerals", "name": "Minerals",            "order": 5}
   ],
+  "micronutrient_tabs": [
+    {"id": "electrolytes", "name": "Electrolytes",
+     "keys": ["sodium", "potassium", "calcium", "magnesium", "phosphorus"]},
+    {"id": "vitamins", "name": "Vitamins", "keys": ["vitamin_a", "vitamin_c"]},
+    {"id": "minerals", "name": "Minerals", "keys": ["iron", "zinc"]}
+  ],
   "nutrients": [
     {
       "key": "sodium",
@@ -52,5 +58,10 @@ Clients MUST NOT hard-code the list. Field meanings are defined in
   change (FR-016).
 - Server-only fields (`usda_names`, `max_per_100g`, `column`) are **not**
   exposed.
+- `micronutrient_tabs` is the Android Micronutrients screen's selection
+  (tunables `micronutrient_view`, shortened above): which nutrients it charts,
+  in which tab and order. It holds keys only; names, units, daily values and
+  direction come from `nutrients`. Every key is active and has a
+  `daily_value`, and no key is in two tabs (checked at startup).
 - The response lists all 48 entries (spec FR-001). Retired entries are still
   listed, with `"status": "retired"`.

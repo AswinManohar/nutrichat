@@ -119,3 +119,27 @@ def test_rejects_bad_enums(field: str, value: str) -> None:
     _entry(raw, "iron")[field] = value
     with pytest.raises(ValidationError):
         NutrientCatalog.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    ("keys", "message"),
+    [
+        (["sodium", "not_a_key"], "is not active"),
+        (["water"], "has no daily value"),
+        (["iron", "iron"], "is in two tabs"),
+    ],
+)
+def test_micronutrient_tabs_reject_bad_keys(
+    monkeypatch: pytest.MonkeyPatch, keys: list[str], message: str
+) -> None:
+    from backend.config import MicronutrientTab, MicronutrientViewConfig, get_tunables
+
+    view = MicronutrientViewConfig(tabs=[MicronutrientTab(id="t", name="T", keys=keys)])
+    tunables = get_tunables().model_copy(update={"micronutrient_view": view})
+    monkeypatch.setattr(catalog, "get_tunables", lambda: tunables)
+    catalog.micronutrient_tabs.cache_clear()
+    try:
+        with pytest.raises(ValueError, match=message):
+            catalog.micronutrient_tabs()
+    finally:
+        catalog.micronutrient_tabs.cache_clear()

@@ -28,3 +28,15 @@ def test_catalogue_endpoint_is_public_cacheable_and_complete(app_factory) -> Non
         assert {"key", "name", "unit", "group", "order", "direction"} <= n.keys()
     salt = next(n for n in body["nutrients"] if n["key"] == "salt")
     assert salt["derived"] == {"from": "sodium", "factor": 0.0025}
+
+
+def test_catalogue_serves_micronutrient_tabs(app_factory) -> None:
+    client = TestClient(app_factory(meta.router, user_id=None))
+    body = client.get("/meta/nutrients").json()
+    tabs = body["micronutrient_tabs"]
+    assert [t["id"] for t in tabs] == ["electrolytes", "vitamins", "minerals"]
+    by_key = {n["key"]: n for n in body["nutrients"]}
+    for tab in tabs:
+        for key in tab["keys"]:
+            assert by_key[key]["status"] == "active"
+            assert by_key[key]["daily_value"] is not None
