@@ -235,7 +235,9 @@ memory:
 
   # What happens to a candidate GLiDE could not score (no FASTINO_API_KEY,
   # timeout, error). true = save it on the curator's word, as before the
-  # judge existed; false = drop it.
+  # judge existed; false = drop it. Applies only to soft adds and diet
+  # settings: an unscored new restriction is always saved, and an unscored
+  # removal or replacement is always held (agent/memory_judge.py).
   save_unjudged: true
 
   # Per-request wait for a memory judgment. Background work, so far more

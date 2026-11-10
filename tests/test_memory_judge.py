@@ -71,20 +71,51 @@ def test_select_ops_stores_the_score_as_confidence_on_a_replacement() -> None:
     assert select_ops([op], [0.81]) == [op.model_copy(update={"confidence": 0.81})]
 
 
-@pytest.mark.parametrize(("save_unjudged", "n_kept"), [(True, 1), (False, 0)])
-def test_select_ops_unjudged_follows_the_tunable(
-    save_unjudged: bool, n_kept: int
-) -> None:
-    op = AddFact(fact="Allergic to peanuts", kind="restriction")
+def _select_unjudged(ops, *, save_unjudged: bool):
     cfg = memory_judge._TUNABLES.memory.model_copy(
         update={"save_unjudged": save_unjudged}
     )
-
     with patch.object(memory_judge._TUNABLES, "memory", cfg):
-        kept = select_ops([op], [None])
+        return select_ops(ops, [None] * len(ops))
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        AddFact(fact="Likes salad", kind="like"),
+        SetDietChip(chip="vegetarian", on=True),
+    ],
+)
+@pytest.mark.parametrize(("save_unjudged", "n_kept"), [(True, 1), (False, 0)])
+def test_select_ops_unjudged_soft_ops_follow_the_tunable(
+    op, save_unjudged: bool, n_kept: int
+) -> None:
+    kept = _select_unjudged([op], save_unjudged=save_unjudged)
 
     assert len(kept) == n_kept
-    assert all(k.confidence is None for k in kept)
+    assert all(getattr(k, "confidence", None) is None for k in kept)
+
+
+@pytest.mark.parametrize("save_unjudged", [True, False])
+def test_select_ops_unjudged_restriction_add_is_always_saved(
+    save_unjudged: bool,
+) -> None:
+    # A missed allergy is silent; a wrong one is visible and removable.
+    op = AddFact(fact="Allergic to peanuts", kind="restriction")
+
+    assert _select_unjudged([op], save_unjudged=save_unjudged) == [op]
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        RemoveFact(id="id-b"),
+        ReplaceFact(id="id-b", fact="Avoids chicken", kind="dislike"),
+    ],
+)
+def test_select_ops_unjudged_remove_or_replace_is_held(op) -> None:
+    # Unscored, these could erase a fact the user relies on.
+    assert _select_unjudged([op], save_unjudged=True) == []
 
 
 # --- judge_ops: one GLiDE question per candidate ------------------------------
