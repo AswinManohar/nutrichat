@@ -53,6 +53,7 @@ class AppShellGoldenTest : AppScreenshotTestBase() {
                 state = partialState(),
                 onOpenSettings = {},
                 onOpenMealType = {},
+                onOpenSavedMeals = {},
                 onRetry = {},
                 modifier = Modifier.fillMaxSize(),
             )

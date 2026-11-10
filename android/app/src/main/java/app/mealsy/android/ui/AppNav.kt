@@ -459,6 +459,25 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 val tabMs = if (reducedMotion) 0 else TAB_TRANSITION_MS
                 val pushEasing = FastOutSlowInEasing
 
+                // popUpTo ROUTE_HOME (not the graph's start destination, which is
+                // the onboarding welcome route — removed from the stack on
+                // sign-in/onboarding-complete via `inclusive = true`, making a
+                // start-destination popUpTo a no-op here) so ROUTE_HOME is the
+                // tab-root: switching tabs saves/restores each tab's state instead
+                // of stacking indefinitely, and back from any tab returns to home.
+                // Shared by the bottom bar and in-screen links to a tab (Home's
+                // "Saved meals" row) so both land on the tab the same way.
+                val navigateToTab: (String) -> Unit = { route ->
+                    navController.navigate(route) {
+                        popUpTo(ROUTE_HOME) {
+                            saveState = true
+                            inclusive = false
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(
                         navController = navController,
@@ -507,6 +526,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             HomeScreen(
                                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                                 onOpenMealType = { mealType -> navController.navigate(mealTypeRoute(mealType)) },
+                                onOpenSavedMeals = { navigateToTab(ROUTE_MY_MEALS) },
                             )
                         }
                         composable(
@@ -608,23 +628,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                     if (activeTab != null && activeTab != ROUTE_CHAT && !imeVisible) {
                         MealsyBottomBar(
                             selectedRoute = activeTab,
-                            onSelect = { route ->
-                                // popUpTo ROUTE_HOME (not the graph's start destination,
-                                // which is the onboarding welcome route — removed from the
-                                // stack on sign-in/onboarding-complete via `inclusive =
-                                // true`, making a start-destination popUpTo a no-op here)
-                                // so ROUTE_HOME is the tab-root: switching tabs saves/
-                                // restores each tab's state instead of stacking
-                                // indefinitely, and back from any tab returns to home.
-                                navController.navigate(route) {
-                                    popUpTo(ROUTE_HOME) {
-                                        saveState = true
-                                        inclusive = false
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onSelect = navigateToTab,
                             onFabClick = {
                                 // popUpTo(ROUTE_HOME) (inclusive = false) removes any existing
                                 // chat entry — including one from a prior FAB tap or the chat

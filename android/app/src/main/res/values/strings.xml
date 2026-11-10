@@ -177,6 +177,8 @@
     <string name="home_state_over_compact">%1$s over</string>
     <string name="home_state_no_target">no target</string>
     <string name="home_meal_row_open_label">Open %1$s meals</string>
+    <string name="home_saved_meals">Saved meals</string>
+    <string name="home_saved_meals_open_label">Open saved meals</string>
     <string name="home_this_week">This week</string>
     <string name="home_week_range">%1$s – today</string>
     <string name="home_week_today">Today</string>

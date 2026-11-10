@@ -46,6 +46,7 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
             state = state,
             onOpenSettings = {},
             onOpenMealType = {},
+            onOpenSavedMeals = {},
             onRetry = {},
             modifier = Modifier.fillMaxSize(),
         )

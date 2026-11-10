@@ -77,12 +77,14 @@ import app.mealsy.domain.ProteinFood
  * @param onOpenSettings Navigates to the Settings screen (the header's gear button).
  * @param onOpenMealType Navigates to a meal-type's detail, given its wire key
  *   ("breakfast"|"lunch"|"dinner"|"snack").
+ * @param onOpenSavedMeals Opens the My Meals tab (saved meals).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenSavedMeals: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,6 +108,7 @@ fun HomeScreen(
             state = state,
             onOpenSettings = onOpenSettings,
             onOpenMealType = onOpenMealType,
+            onOpenSavedMeals = onOpenSavedMeals,
             onRetry = viewModel::retry,
             modifier = Modifier.fillMaxSize(),
         )
@@ -122,13 +125,14 @@ internal fun HomeContent(
     state: HomeUiState,
     onOpenSettings: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenSavedMeals: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
         state.loading -> HomeSkeleton(modifier = modifier)
         state.error -> ErrorState(message = stringResource(R.string.home_error), onRetry = onRetry, modifier = modifier)
-        else -> HomeLoaded(state, onOpenSettings, onOpenMealType, modifier)
+        else -> HomeLoaded(state, onOpenSettings, onOpenMealType, onOpenSavedMeals, modifier)
     }
 }
 
@@ -229,6 +233,7 @@ private fun HomeLoaded(
     state: HomeUiState,
     onOpenSettings: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenSavedMeals: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -236,6 +241,7 @@ private fun HomeLoaded(
         HomeBody(
             state = state,
             onOpenMealType = onOpenMealType,
+            onOpenSavedMeals = onOpenSavedMeals,
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
         )
     }
@@ -284,6 +290,7 @@ private fun HomeHeader(
 private fun HomeBody(
     state: HomeUiState,
     onOpenMealType: (String) -> Unit,
+    onOpenSavedMeals: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // mealsyScreenPadding's gutters and bottom-nav clearance; the status-bar inset is the header's.
@@ -368,6 +375,17 @@ private fun HomeBody(
                 )
                 if (index != state.meals.lastIndex) InsetDivider()
             }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        ListContainer {
+            val savedMeals = stringResource(R.string.home_saved_meals)
+            ListRow(
+                label = savedMeals,
+                onClick = onOpenSavedMeals,
+                onClickLabel = stringResource(R.string.home_saved_meals_open_label),
+            )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
