@@ -7,10 +7,12 @@ one-off, a duplicate or not about food.
 
 Usage:
     PYTHONPATH=src uv run python -m backend.scripts.backfill_memory_profile \\
-        [--user-id UUID] [--apply]
+        [--user-id UUID] [--apply --backup FILE]
 
 Without ``--apply`` it is a dry run: it prints what it would do and writes
-nothing. Changes go through agent/memory.py apply_ops as the curator, so
+nothing. With ``--apply`` it first appends each user's rows to the
+``--backup`` JSONL file, since the curator's removals are hard deletes.
+Changes go through agent/memory.py apply_ops as the curator, so
 the usual rules hold (duplicates merge, the cap applies). Idempotent: a
 second run finds no ``preference`` rows left for the users it processed.
 """
@@ -21,6 +23,8 @@ import argparse
 import asyncio
 import re
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -65,6 +69,11 @@ When facts repeat, keep the strictest one: an allergy over an intolerance,
 an intolerance over "avoids", and keep the word "allergic" or "allergy" in
 the rewrite ("Allergic to milk", not "Avoids dairy").
 
+A rewrite must keep the meaning: keep every food it names and any
+comparison ("Prefers tuna salad over green goddess dressing", not "Prefers
+tuna salad dressings"). If you cannot shorten it without changing the
+meaning, return the original wording.
+
 Return one decision for every handle. Do not invent facts.
 """
 
@@ -73,6 +82,16 @@ Return one decision for every handle. Do not invent facts.
 # is harmless and visible; a lost one is silent.
 _SAFETY_TERMS = re.compile(
     r"\b(allerg\w*|intoleran\w*|anaphyla\w*|celiac|coeliac)\b", re.IGNORECASE
+)
+
+# A rewrite may only shorten a fact, never drop what it is about: every
+# word of four or more letters in the original must survive, apart from
+# these fillers. Otherwise the original wording is kept (a dry run turned
+# "prefers tuna salad over ... dressings" into "Prefers tuna salad
+# dressings"). Comparison words are not fillers, since they carry meaning.
+_WORD = re.compile(r"[a-z]{4,}")
+_FILLER_WORDS = frozenset(
+    {"also", "always", "generally", "really", "usually", "very", "with"}
 )
 
 
@@ -107,8 +126,10 @@ def plan_backfill(
 
     Returns:
         Replace ops for kept facts and remove ops for dropped ones. A fact
-        naming an allergy or intolerance always becomes a restriction, in
-        its original wording unless the rewrite still names it.
+        naming an allergy or intolerance always becomes a restriction. A
+        rewrite is used only when it keeps the original's meaning words
+        (and, for a restriction, still names the allergy); otherwise the
+        original wording is kept.
     """
     by_handle = {handle: fact for handle, fact in label_facts(legacy)}
     ops: list[MemoryOp] = []
@@ -119,9 +140,13 @@ def plan_backfill(
         if fact is None or handle in seen:
             continue
         seen.add(handle)
+        rewrite = (decision.fact or "").strip()[:MAX_FACT_CHARS]
         if _SAFETY_TERMS.search(fact.fact):
-            rewrite = (decision.fact or "").strip()[:MAX_FACT_CHARS]
-            keep_rewrite = decision.action == "keep" and _SAFETY_TERMS.search(rewrite)
+            keep_rewrite = (
+                decision.action == "keep"
+                and _SAFETY_TERMS.search(rewrite) is not None
+                and _keeps_meaning(fact.fact, rewrite)
+            )
             ops.append(
                 ReplaceFact(
                     id=fact.id,
@@ -132,11 +157,20 @@ def plan_backfill(
         elif decision.action == "drop":
             ops.append(RemoveFact(id=fact.id))
         elif decision.kind is not None:
-            text = (decision.fact or fact.fact).strip()[:MAX_FACT_CHARS]
-            ops.append(
-                ReplaceFact(id=fact.id, fact=text or fact.fact, kind=decision.kind)
-            )
+            text = rewrite if _keeps_meaning(fact.fact, rewrite) else fact.fact
+            ops.append(ReplaceFact(id=fact.id, fact=text, kind=decision.kind))
     return ops
+
+
+def _keeps_meaning(original: str, rewrite: str) -> bool:
+    """Whether ``rewrite`` keeps every meaning word of ``original``."""
+    if not rewrite:
+        return False
+    kept = set(_WORD.findall(rewrite.lower()))
+    return all(
+        word in kept or word in _FILLER_WORDS
+        for word in _WORD.findall(original.lower())
+    )
 
 
 async def _users_with_legacy_rows() -> list[str]:
@@ -150,7 +184,66 @@ async def _users_with_legacy_rows() -> list[str]:
         return [str(user_id) for user_id in (await session.execute(stmt)).scalars()]
 
 
-async def _backfill_user(user_id: str, *, apply: bool) -> None:
+class BackupRow(BaseModel):
+    """One ``user_memory`` row as it was before the backfill touched it."""
+
+    id: str
+    user_id: str
+    fact: str
+    embedding: list[float] | None
+    category: str
+    confidence: float
+    source: str
+    deleted_at: datetime | None
+    updated_at: datetime
+
+    model_config = ConfigDict(extra="forbid")
+
+
+async def _backup_rows(user_id: str, path: Path) -> int:
+    """Append every ``user_memory`` row of one user to a JSONL backup.
+
+    The curator's removals are hard deletes, so this file is the only way
+    to restore a fact the backfill dropped by mistake. A deliberate
+    one-off snapshot, not a second source of truth.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        path: Backup file, appended to.
+
+    Returns:
+        The number of rows written.
+    """
+    session_factory = get_session()
+    async with session_factory() as session:
+        stmt = select(UserMemory).where(UserMemory.user_id == user_id)
+        rows = list((await session.execute(stmt)).scalars().all())
+    lines = [
+        BackupRow(
+            id=str(r.id),
+            user_id=str(r.user_id),
+            fact=r.fact,
+            embedding=None if r.embedding is None else [float(x) for x in r.embedding],
+            category=r.category,
+            confidence=r.confidence,
+            source=r.source,
+            deleted_at=r.deleted_at,
+            updated_at=r.updated_at,
+        ).model_dump_json()
+        for r in rows
+    ]
+
+    def _append() -> None:
+        with path.open("a", encoding="utf-8") as fh:
+            fh.writelines(line + "\n" for line in lines)
+
+    await asyncio.to_thread(_append)
+    return len(lines)
+
+
+async def _backfill_user(
+    user_id: str, *, apply: bool, backup: Path | None = None
+) -> None:
     legacy = [f for f in await load_profile(user_id) if f.kind == LEGACY_KIND]
     if not legacy:
         return
@@ -169,20 +262,24 @@ async def _backfill_user(user_id: str, *, apply: bool) -> None:
         else:
             print(f"  {op.kind:<11}{before!r} -> {op.fact!r}")
     if apply and ops:
+        if backup is None:
+            raise ValueError("--apply needs a backup file")
+        n_saved = await _backup_rows(user_id, backup)
+        print(f"  backed up {n_saved} rows to {backup}")
         outcome = await apply_ops(user_id, ops, "curator")
         for result in outcome.results:
             if not result.applied:
                 print(f"  not applied ({result.reason}): {result.op.id}")
 
 
-async def _run(user_id: str | None, *, apply: bool) -> None:
+async def _run(user_id: str | None, *, apply: bool, backup: Path | None) -> None:
     try:
         users = [user_id] if user_id else await _users_with_legacy_rows()
         print(f"{'APPLY' if apply else 'DRY RUN'}: {len(users)} user(s)")
         # Sequential on purpose: a one-off job, and it keeps the LLM call
         # rate low.
         for uid in users:
-            await _backfill_user(uid, apply=apply)
+            await _backfill_user(uid, apply=apply, backup=backup)
     finally:
         await dispose_engine()
 
@@ -192,8 +289,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Re-type legacy user_memory rows.")
     parser.add_argument("--user-id", help="Only this user (default: all).")
     parser.add_argument("--apply", action="store_true", help="Write the changes.")
+    parser.add_argument(
+        "--backup",
+        type=Path,
+        help="JSONL file each user's rows are saved to before changes "
+        "(required with --apply; it holds user data, keep it out of git).",
+    )
     args = parser.parse_args(argv)
-    asyncio.run(_run(args.user_id, apply=args.apply))
+    if args.apply and args.backup is None:
+        parser.error("--apply requires --backup FILE")
+    asyncio.run(_run(args.user_id, apply=args.apply, backup=args.backup))
     return 0
 
 
