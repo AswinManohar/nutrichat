@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
 
-from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
 from backend.config import get_tunables
@@ -11,7 +10,6 @@ from backend.core.nutrition_day import (
     nutrition_today,
     sql_day_params,
 )
-from backend.db.models import MealLog
 from backend.db.session import get_session
 
 _TUNABLES = get_tunables()
@@ -498,68 +496,6 @@ async def get_staple_foods(
     return ordered
 
 
-async def get_history(
-    user_id: str,
-    query_embedding: list[float] | None = None,
-    meal_type: str | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    top_k: int = 3,
-) -> list[dict]:
-    """Hybrid retrieval of past meals: pgvector ANN + SQL filters.
-
-    When `query_embedding` is given, results are ordered by cosine
-    similarity to it. Otherwise falls back to pure recency ordering
-    (PRD §10.2: "Falls back to pure SQL if no semantic query provided").
-
-    Args:
-        user_id: Supabase Auth UUID.
-        query_embedding: Optional 768-dim embedding of a semantic query
-            (e.g. "salmon dinner").
-        meal_type: Optional filter, e.g. "breakfast".
-        date_from: Optional start of date range (inclusive).
-        date_to: Optional end of date range (inclusive).
-        top_k: Maximum number of meals to return.
-
-    Returns:
-        List of dicts with meal_id, logged_at, meal_type, kcal, protein_g,
-        carbs_g, fat_g, fiber_g, entities — most relevant/recent first.
-    """
-    async with get_session()() as session:
-        stmt = select(MealLog).where(MealLog.user_id == user_id)
-
-        if meal_type is not None:
-            stmt = stmt.where(MealLog.meal_type == meal_type)
-        if date_from is not None:
-            stmt = stmt.where(MealLog.logged_at >= date_from)
-        if date_to is not None:
-            stmt = stmt.where(MealLog.logged_at <= date_to)
-
-        if query_embedding is not None:
-            stmt = stmt.order_by(MealLog.embedding.cosine_distance(query_embedding))
-        else:
-            stmt = stmt.order_by(MealLog.logged_at.desc())
-
-        stmt = stmt.limit(top_k)
-
-        rows = (await session.execute(stmt)).scalars().all()
-
-    return [
-        {
-            "meal_id": row.meal_id,
-            "logged_at": row.logged_at,
-            "meal_type": row.meal_type,
-            "kcal": row.kcal,
-            "protein_g": row.protein_g,
-            "carbs_g": row.carbs_g,
-            "fat_g": row.fat_g,
-            "fiber_g": row.fiber_g,
-            "entities": row.entities,
-        }
-        for row in rows
-    ]
-
-
 async def get_category_breakdown(user_id: str, days: int) -> list[dict]:
     """Aggregate logged meals by category over the last `days` days.
 
@@ -622,7 +558,6 @@ async def get_category_breakdown(user_id: str, days: int) -> list[dict]:
 __all__ = [
     "get_category_breakdown",
     "get_food_breakdown_for_range",
-    "get_history",
     "get_macros_for_range",
     "get_micronutrients_for_range",
     "get_nutrient_checkup_aggregates",

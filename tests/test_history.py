@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,14 +8,12 @@ import pytest
 from backend.agent.tools.history import (
     get_category_breakdown,
     get_food_breakdown_for_range,
-    get_history,
     get_macros_for_range,
     get_micronutrients_for_range,
     get_nutrient_checkup_aggregates,
     summarize_nutrient_checkup,
 )
 from backend.core.nutrition_day import NUTRITION_DATE_SQL, sql_day_params
-from backend.db.models import MealLog
 
 
 def _mock_session_factory(session: MagicMock) -> MagicMock:
@@ -205,74 +203,6 @@ async def test_get_food_breakdown_for_range_returns_expected_shape():
         assert "deleted_at IS NULL" in stmt
         assert call[0][1]["day_tz"] == sql_day_params()["day_tz"]
         assert call[0][1]["day_reset_h"] == sql_day_params()["day_reset_h"]
-
-
-async def test_get_history_falls_back_to_recency_without_embedding():
-    meal = MealLog(
-        meal_id="m1",
-        user_id="user-1",
-        logged_at=datetime(2026, 6, 11, 8, 0),
-        meal_type="breakfast",
-        kcal=640,
-        protein_g=17,
-        carbs_g=21,
-        fat_g=15,
-        fiber_g=2,
-        entities=[],
-    )
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalars.return_value.all.return_value = [meal]
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
-
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
-        results = await get_history("user-1")
-
-    assert len(results) == 1
-    assert results[0]["meal_id"] == "m1"
-    # No embedding -> ordered by recency, not ANN.
-    stmt = session.execute.call_args[0][0]
-    assert "ORDER BY meal_log.logged_at DESC" in str(stmt)
-
-
-async def test_get_history_uses_ann_with_embedding():
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalars.return_value.all.return_value = []
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
-
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
-        await get_history("user-1", query_embedding=[0.1] * 768)
-
-    stmt = session.execute.call_args[0][0]
-    assert "<=>" in str(stmt)
-
-
-async def test_get_history_applies_meal_type_and_date_filters():
-    session = MagicMock()
-    exec_result = MagicMock()
-    exec_result.scalars.return_value.all.return_value = []
-    session.execute = AsyncMock(return_value=exec_result)
-    factory = _mock_session_factory(session)
-
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
-        await get_history(
-            "user-1",
-            meal_type="breakfast",
-            date_from=date(2026, 6, 1),
-            date_to=date(2026, 6, 7),
-        )
-
-    stmt = str(session.execute.call_args[0][0])
-    assert "meal_type" in stmt
-    assert "logged_at" in stmt
-
-
-# ---------------------------------------------------------------------------
-# get_nutrient_checkup_aggregates
-# ---------------------------------------------------------------------------
 
 
 def _macros(protein_g: float, fiber_g: float) -> dict[str, float]:

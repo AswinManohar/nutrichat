@@ -70,7 +70,7 @@ nutrichat/
 │   │       ├── decompose.py    # recipe -> ingredients
 │   │       ├── replace_ingredient.py
 │   │       ├── saved_meals.py
-│   │       └── history.py      # get_history hybrid search
+│   │       └── history.py      # range aggregates, staples, check-up (patterns only)
 │   ├── api/                    # FastAPI routers: meals, goals, my_meals, foods,
 │   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
