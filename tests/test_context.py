@@ -8,7 +8,9 @@ from backend.agent.context import (
     GoalSummary,
     WeeklyPattern,
     build_context,
+    build_restrictions_prompt,
     build_system_prompt,
+    load_restrictions,
 )
 from backend.agent.memory import MemoryFact
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
@@ -253,9 +255,7 @@ async def test_build_context_legacy_path_does_not_touch_profile():
         ),
         patch("backend.agent.context.get_session", return_value=session_factory),
         patch("backend.agent.context.load_profile", new_callable=AsyncMock) as load,
-        patch(
-            "backend.agent.context.fetch_staples", new_callable=AsyncMock
-        ) as staples,
+        patch("backend.agent.context.fetch_staples", new_callable=AsyncMock) as staples,
     ):
         ctx = await build_context("user-1")
 
@@ -303,3 +303,79 @@ def test_build_system_prompt_legacy_path_unchanged():
 
     assert "Known preferences: prefers oat milk." in prompt
     assert "Peanut allergy" not in prompt
+
+
+def test_build_system_prompt_default_path_renders_diet_settings_and_conditions():
+    # Issue #70: with the profile off, diet settings were never in the prompt.
+    ctx = ContextBundle(
+        today_totals=TodayTotals(),
+        goals=GoalSummary(
+            dietary_prefs={"vegetarian": True, "no_nuts": True, "keto": False},
+            conditions=["diabetes"],
+            streak_days=0,
+        ),
+    )
+
+    prompt = build_system_prompt(ctx)
+
+    assert "Diet settings (binding): no nuts, vegetarian" in prompt
+    assert "keto" not in prompt
+    assert "Declared health conditions: diabetes." in prompt
+
+
+def test_build_system_prompt_profile_path_renders_conditions():
+    ctx = ContextBundle(
+        today_totals=TodayTotals(),
+        goals=GoalSummary(dietary_prefs={}, conditions=["ckd"], streak_days=0),
+        profile_active=True,
+    )
+
+    assert "Declared health conditions: ckd." in build_system_prompt(ctx)
+
+
+async def test_load_restrictions_reads_goal_row_only_on_default_path():
+    goal = UserGoal(
+        user_id="user-1",
+        kcal_goal=2000.0,
+        protein_goal=120.0,
+        fiber_goal=30.0,
+        dietary_prefs={"vegan": True},
+        conditions=["hypertension"],
+        streak_days=2,
+    )
+    load = AsyncMock()
+    with (
+        patch(
+            "backend.agent.context.get_session", return_value=_mock_session(goal=goal)
+        ),
+        patch("backend.agent.context.profile_active", return_value=False),
+        patch("backend.agent.context.load_profile", load),
+    ):
+        ctx = await load_restrictions("user-1")
+
+    load.assert_not_awaited()
+    prompt = build_restrictions_prompt(ctx)
+    assert "Diet settings (binding): vegan" in prompt
+    assert "Declared health conditions: hypertension." in prompt
+    assert "Goals: 2000 kcal, 120g protein, 30g fiber." in prompt
+    assert "Hard constraints:" in prompt
+    assert "Today so far" not in prompt
+
+
+async def test_load_restrictions_keeps_only_restriction_facts_on_profile_path():
+    load = AsyncMock(
+        return_value=[
+            _fact("Peanut allergy", "restriction"),
+            _fact("Mushrooms", "dislike"),
+        ]
+    )
+    with (
+        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch("backend.agent.context.profile_active", return_value=True),
+        patch("backend.agent.context.load_profile", load),
+    ):
+        ctx = await load_restrictions("user-1")
+
+    prompt = build_restrictions_prompt(ctx)
+    assert "- Never suggest (hard restrictions): Peanut allergy" in prompt
+    assert "Mushrooms" not in prompt

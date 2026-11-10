@@ -14,6 +14,7 @@ from backend.agent.memory import (
     active_chips,
     load_profile,
     profile_active,
+    render_diet_settings,
     render_profile_block,
 )
 from backend.agent.tools.history import get_staple_foods
@@ -52,6 +53,7 @@ class GoalSummary(BaseModel):
     protein_goal: float | None = None
     fiber_goal: float | None = None
     dietary_prefs: dict
+    conditions: list[str] = []
     streak_days: int
     active_alerts: list[SafetyAlert] = []
 
@@ -137,6 +139,55 @@ async def fetch_staples(user_id: str) -> dict[str, list[str]]:
     return staples
 
 
+def _goal_summary(goal_row: UserGoal | None) -> GoalSummary | None:
+    """The coach's view of a ``user_goal`` row (None when the user has none)."""
+    if goal_row is None:
+        return None
+    return GoalSummary(
+        tracking_mode=goal_row.tracking_mode or "goals",
+        kcal_goal=goal_row.kcal_goal,
+        protein_goal=goal_row.protein_goal,
+        fiber_goal=goal_row.fiber_goal,
+        dietary_prefs=goal_row.dietary_prefs,
+        conditions=list(goal_row.conditions or []),
+        streak_days=goal_row.streak_days,
+    )
+
+
+async def load_restrictions(user_id: str) -> ContextBundle:
+    """Load only what binds the coach's suggestions.
+
+    Used when :func:`build_context` fails, so that a Redis or embeddings
+    outage cannot strip diet settings, conditions or hard restrictions from
+    the prompt. Postgres only: the ``user_goal`` row, plus the profile's
+    restriction facts for users on the profile path. Today's totals are left
+    at their zero default and are not rendered by
+    :func:`build_restrictions_prompt`.
+
+    Args:
+        user_id: Supabase Auth UUID.
+
+    Returns:
+        A ContextBundle with ``goals`` and, on the profile path, the
+        restriction facts as ``profile``.
+    """
+    session_factory = get_session()
+    async with session_factory() as session:
+        goals = _goal_summary(await session.get(UserGoal, user_id))
+    use_profile = profile_active(user_id)
+    facts = (
+        [f for f in await load_profile(user_id) if f.kind == "restriction"]
+        if use_profile
+        else []
+    )
+    return ContextBundle(
+        today_totals=TodayTotals(),
+        goals=goals,
+        profile_active=use_profile,
+        profile=facts,
+    )
+
+
 async def build_context(user_id: str, user_message: str | None = None) -> ContextBundle:
     """Assemble the context bundle for build_system_prompt().
 
@@ -158,19 +209,7 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
 
     session_factory = get_session()
     async with session_factory() as session:
-        goal_row = await session.get(UserGoal, user_id)
-        goals = (
-            GoalSummary(
-                tracking_mode=goal_row.tracking_mode or "goals",
-                kcal_goal=goal_row.kcal_goal,
-                protein_goal=goal_row.protein_goal,
-                fiber_goal=goal_row.fiber_goal,
-                dietary_prefs=goal_row.dietary_prefs,
-                streak_days=goal_row.streak_days,
-            )
-            if goal_row
-            else None
-        )
+        goals = _goal_summary(await session.get(UserGoal, user_id))
 
         weekly_stmt = (
             select(WeeklySummary)
@@ -250,19 +289,9 @@ def build_system_prompt(ctx: ContextBundle) -> str:
         f"Today so far: {totals.kcal:.0f} kcal, {totals.protein_g:.0f}g protein, "
         f"{totals.fiber_g:.0f}g fiber, across {totals.n_meals} meal(s)."
     )
-    if (
-        ctx.goals
-        and ctx.goals.tracking_mode == "goals"
-        and ctx.goals.kcal_goal is not None
-        and ctx.goals.protein_goal is not None
-        and ctx.goals.fiber_goal is not None
-    ):
-        today_block += (
-            f" Goals: {ctx.goals.kcal_goal:.0f} kcal, "
-            f"{ctx.goals.protein_goal:.0f}g protein, "
-            f"{ctx.goals.fiber_goal:.0f}g fiber. "
-            f"Current streak: {ctx.goals.streak_days} day(s)."
-        )
+    goals_line = _goals_line(ctx.goals)
+    if goals_line:
+        today_block += f" {goals_line} Current streak: {ctx.goals.streak_days} day(s)."
     blocks.append(today_block)
 
     # Mindful mode: no goals, but surface any safety breaches.
@@ -291,16 +320,7 @@ def build_system_prompt(ctx: ContextBundle) -> str:
             weekly_block += f" Frequently missed: {', '.join(wp.missed_meals)}."
         blocks.append(weekly_block)
 
-    if ctx.profile_active:
-        profile_block = render_profile_block(
-            ctx.profile,
-            active_chips(ctx.goals.dietary_prefs if ctx.goals else None),
-            ctx.staples,
-        )
-        if profile_block:
-            blocks.append(profile_block)
-    elif ctx.preferences:
-        blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
+    blocks.extend(_restriction_blocks(ctx))
 
     accountability_rules = [
         "Accountability rules:",
@@ -322,11 +342,74 @@ def build_system_prompt(ctx: ContextBundle) -> str:
     return "\n\n".join(blocks)
 
 
+def _goals_line(goals: GoalSummary | None) -> str | None:
+    """The daily targets sentence, or None in mindful mode or with no targets."""
+    if (
+        goals
+        and goals.tracking_mode == "goals"
+        and goals.kcal_goal is not None
+        and goals.protein_goal is not None
+        and goals.fiber_goal is not None
+    ):
+        return (
+            f"Goals: {goals.kcal_goal:.0f} kcal, {goals.protein_goal:.0f}g protein, "
+            f"{goals.fiber_goal:.0f}g fiber."
+        )
+    return None
+
+
+def _restriction_blocks(ctx: ContextBundle) -> list[str]:
+    """Diet settings, conditions and preferences for the coaching prompt.
+
+    Diet settings are rendered on both paths: inside the profile block for
+    profile users, as their own line otherwise (issue #70).
+    """
+    blocks: list[str] = []
+    chips = active_chips(ctx.goals.dietary_prefs if ctx.goals else None)
+    if ctx.profile_active:
+        profile_block = render_profile_block(ctx.profile, chips, ctx.staples)
+        if profile_block:
+            blocks.append(profile_block)
+    else:
+        if chips:
+            blocks.append(render_diet_settings(chips))
+        if ctx.preferences:
+            blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
+    if ctx.goals and ctx.goals.conditions:
+        blocks.append(
+            "Declared health conditions: " + ", ".join(ctx.goals.conditions) + "."
+        )
+    return blocks
+
+
+def build_restrictions_prompt(ctx: ContextBundle) -> str:
+    """Build the fallback coaching prompt from the ``user_goal`` row alone.
+
+    Used when the full context could not be built: role, daily targets,
+    restrictions and hard constraints. Leaves out today's totals and the
+    weekly pattern, because a bundle from :func:`load_restrictions` does not
+    carry them. The targets are kept because without them the coach, asked
+    about "my protein goal", tends to call the memory tools to record one.
+
+    Args:
+        ctx: Context bundle from load_restrictions().
+
+    Returns:
+        The assembled system prompt string.
+    """
+    goals_line = _goals_line(ctx.goals)
+    blocks = [_ROLE_AND_TONE, *([goals_line] if goals_line else [])]
+    blocks += [*_restriction_blocks(ctx), _HARD_CONSTRAINTS]
+    return "\n\n".join(blocks)
+
+
 __all__ = [
     "ContextBundle",
     "GoalSummary",
     "WeeklyPattern",
     "build_context",
+    "build_restrictions_prompt",
     "build_system_prompt",
     "fetch_staples",
+    "load_restrictions",
 ]
