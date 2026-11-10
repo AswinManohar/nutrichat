@@ -12,12 +12,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -228,20 +231,41 @@ private fun HomeLoaded(
     onOpenMealType: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier =
-            modifier
-                .verticalScroll(rememberScrollState())
-                .mealsyScreenPadding(),
-    ) {
-        Row(verticalAlignment = Alignment.Top) {
+    Column(modifier = modifier) {
+        HomeHeader(state = state, onOpenSettings = onOpenSettings)
+        HomeBody(
+            state = state,
+            onOpenMealType = onOpenMealType,
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+        )
+    }
+}
+
+/**
+ * The date eyebrow, greeting and settings button, pinned above the scrolling
+ * body with a `divider` hairline under it so content scrolls beneath it.
+ */
+@Composable
+private fun HomeHeader(
+    state: HomeUiState,
+    onOpenSettings: () -> Unit,
+) {
+    val colors = MealsyTheme.colors
+    Column(modifier = Modifier.fillMaxWidth().background(colors.canvas)) {
+        Row(
+            modifier =
+                Modifier
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Eyebrow(text = state.dateLabel)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = greetingFor(state.dayPart, state.firstName),
                     style = MealsyType.display,
-                    color = MealsyTheme.colors.ink,
+                    color = colors.ink,
                     modifier = Modifier.widthIn(max = 260.dp),
                 )
             }
@@ -251,23 +275,48 @@ private fun HomeLoaded(
                 onClick = onOpenSettings,
             )
         }
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
+    }
+}
 
-        Spacer(modifier = Modifier.height(44.dp))
+/** Everything below the pinned header: status pill, macro tiles, meals, coach note, week grid. */
+@Composable
+private fun HomeBody(
+    state: HomeUiState,
+    onOpenMealType: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // mealsyScreenPadding's gutters and bottom-nav clearance; the status-bar inset is the header's.
+    Column(modifier = modifier.padding(start = 20.dp, end = 20.dp, bottom = 120.dp)) {
+        // Leaves room for Olli, who stands on the pill and overhangs its top edge.
+        Spacer(modifier = Modifier.height(48.dp))
 
-        val eatenLabel = stringResource(R.string.home_eaten_label, state.eatenKcal)
         val stateLabel = kcalStateText(state.kcalState)
-        if (state.mindful) {
-            StatusPillAwareness(eatenLabel = eatenLabel, stateLabel = stateLabel)
+        val goalKcal =
+            when (val kcal = state.kcalState) {
+                is HomeKcalState.OnTrack -> kcal.goalKcal
+                is HomeKcalState.Over -> kcal.goalKcal
+                HomeKcalState.NoTarget -> null
+            }
+        if (state.mindful || goalKcal == null) {
+            StatusPillAwareness(
+                eatenLabel = stringResource(R.string.home_eaten_label, state.eatenKcal),
+                stateLabel = stateLabel,
+            )
         } else {
             StatusPill(
-                eatenLabel = eatenLabel,
+                eatenLabel = stringResource(R.string.home_eaten_of_goal, state.eatenKcal, goalKcal),
                 stateLabel = stateLabel,
+                compactStateLabel =
+                    (state.kcalState as? HomeKcalState.Over)?.let {
+                        stringResource(R.string.home_state_over_compact, it.kcal)
+                    },
                 eatenFraction = state.eatenFraction,
                 mascot = { Olli(size = OlliSize.Bite) },
             )
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -363,7 +412,7 @@ private fun greetingFor(
 @Composable
 private fun kcalStateText(state: HomeKcalState): String =
     when (state) {
-        is HomeKcalState.Left -> stringResource(R.string.home_state_left, state.kcal)
+        is HomeKcalState.OnTrack -> stringResource(R.string.home_state_on_track)
         is HomeKcalState.Over -> stringResource(R.string.home_state_over, state.kcal)
         HomeKcalState.NoTarget -> stringResource(R.string.home_state_no_target)
     }

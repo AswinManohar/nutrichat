@@ -6,8 +6,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +34,8 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -57,6 +61,9 @@ import kotlin.math.roundToInt
  *
  * @param eatenLabel Text at the pill's start, e.g. "1,340 kcal eaten".
  * @param stateLabel Text at the pill's end, e.g. "560 left".
+ * @param compactStateLabel A shorter [stateLabel] shown when the full one does not
+ *   fit beside [eatenLabel], e.g. "240 over" for "240 over — fine occasionally".
+ *   `null` ellipsizes [stateLabel] instead. TalkBack always reads [stateLabel].
  * @param eatenFraction Fraction of the daily budget eaten so far, coerced
  *   into `0f..1f`. The olive block's width is the *remaining* fraction.
  * @param mascot Optional slot for Olli (owned by `design.mascot`), rendered
@@ -70,6 +77,7 @@ fun StatusPill(
     stateLabel: String,
     eatenFraction: Float,
     modifier: Modifier = Modifier,
+    compactStateLabel: String? = null,
     mascot: @Composable (() -> Unit)? = null,
     animate: Boolean = true,
 ) {
@@ -91,6 +99,9 @@ fun StatusPill(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val oliveWidthDp = maxWidth * remainingFraction
         val biteXDp = maxWidth - oliveWidthDp
+        // Capped at 92% of the pill, as in the design, so at a full day Olli
+        // stands on the pill's end instead of hanging off it.
+        val mascotXDp = minOf(biteXDp, maxWidth * MASCOT_MAX_FRACTION)
 
         Box(
             modifier =
@@ -153,7 +164,7 @@ fun StatusPill(
                                 clipRect(right = biteXDp.toPx()) { this@drawWithContent.drawContent() }
                             },
                 ) {
-                    StatusPillLabels(eatenLabel, stateLabel, textColor = colors.oliveTrackValue)
+                    StatusPillLabels(eatenLabel, stateLabel, compactStateLabel, textColor = colors.oliveTrackValue)
                 }
                 Box(
                     modifier =
@@ -163,7 +174,7 @@ fun StatusPill(
                                 clipRect(left = biteXDp.toPx()) { this@drawWithContent.drawContent() }
                             },
                 ) {
-                    StatusPillLabels(eatenLabel, stateLabel, textColor = colors.oliveText)
+                    StatusPillLabels(eatenLabel, stateLabel, compactStateLabel, textColor = colors.oliveText)
                 }
             }
 
@@ -177,7 +188,7 @@ fun StatusPill(
                         Modifier
                             .align(Alignment.CenterStart)
                             .offset {
-                                val biteXPx = biteXDp.toPx()
+                                val biteXPx = mascotXDp.toPx()
                                 val mascotPx = mascotSize.toPx()
                                 IntOffset(
                                     x = (biteXPx - mascotPx * 0.55f).roundToInt(),
@@ -192,35 +203,47 @@ fun StatusPill(
     }
 }
 
+private const val MASCOT_MAX_FRACTION = 0.92f
+
 /**
  * [StatusPill]'s two labels ("eaten" at the start, "state" at the end), both
  * rendered in a single [textColor]. Called twice by [StatusPill] — once per
  * clip region — to build the dual-color label described there.
  */
 @Composable
-private fun BoxScope.StatusPillLabels(
+private fun StatusPillLabels(
     eatenLabel: String,
     stateLabel: String,
+    compactStateLabel: String?,
     textColor: Color,
 ) {
-    Text(
-        text = eatenLabel,
-        style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
-        color = textColor,
-        modifier =
-            Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 18.dp),
-    )
-    Text(
-        text = stateLabel,
-        style = MealsyType.body,
-        color = textColor,
-        modifier =
-            Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 18.dp),
-    )
+    var compact by remember(stateLabel, compactStateLabel) { mutableStateOf(false) }
+    // A Row, not two aligned Texts in a Box: a long state label ("240 over — fine
+    // occasionally") at a large font scale would otherwise draw over the eaten
+    // label. The eaten number stays whole; the state label gives way with an ellipsis.
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = eatenLabel,
+            style = MealsyType.body.copy(fontWeight = FontWeight.Medium),
+            color = textColor,
+            maxLines = 1,
+            softWrap = false,
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = if (compact && compactStateLabel != null) compactStateLabel else stateLabel,
+            style = MealsyType.body,
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            onTextLayout = { if (it.hasVisualOverflow && compactStateLabel != null) compact = true },
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 /**

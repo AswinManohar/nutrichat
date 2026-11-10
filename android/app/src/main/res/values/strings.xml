@@ -171,8 +171,10 @@
     <string name="home_loading">Loading today…</string>
     <string name="home_error">Could not load today. Check your connection.</string>
     <string name="home_eaten_label">%1$s kcal eaten</string>
-    <string name="home_state_left">%1$s left</string>
-    <string name="home_state_over">%1$s over</string>
+    <string name="home_eaten_of_goal">%1$s / %2$s kcal</string>
+    <string name="home_state_on_track">on track</string>
+    <string name="home_state_over">%1$s over — fine occasionally</string>
+    <string name="home_state_over_compact">%1$s over</string>
     <string name="home_state_no_target">no target</string>
     <string name="home_meal_row_open_label">Open %1$s meals</string>
     <string name="home_this_week">This week</string>

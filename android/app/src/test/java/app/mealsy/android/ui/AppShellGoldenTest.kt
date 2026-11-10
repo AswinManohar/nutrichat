@@ -37,7 +37,7 @@ class AppShellGoldenTest : AppScreenshotTestBase() {
             firstName = "Alex",
             mindful = false,
             eatenKcal = "1,340",
-            kcalState = HomeKcalState.Left("560"),
+            kcalState = HomeKcalState.OnTrack(goalKcal = "1,900"),
             eatenFraction = 1340f / 1900f,
             proteinValue = "86g",
             carbsValue = "152g",

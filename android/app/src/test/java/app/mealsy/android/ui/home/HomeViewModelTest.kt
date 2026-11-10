@@ -349,15 +349,21 @@ class HomeViewModelTest {
     // --- State label wording ------------------------------------------------
 
     @Test
-    fun kcalState_leftWording() {
+    fun kcalState_onTrackCarriesGoal() {
         val (vm, _) = buildViewModel(todayResponse = today(kcal = 1340.0), goals = goalsResponse(kcalGoal = 1900.0))
-        assertEquals(HomeKcalState.Left("560"), vm.uiState.value.kcalState)
+        assertEquals(HomeKcalState.OnTrack(goalKcal = "1,900"), vm.uiState.value.kcalState)
+    }
+
+    @Test
+    fun kcalState_onTrackAtExactlyGoal() {
+        val (vm, _) = buildViewModel(todayResponse = today(kcal = 1900.0), goals = goalsResponse(kcalGoal = 1900.0))
+        assertEquals(HomeKcalState.OnTrack(goalKcal = "1,900"), vm.uiState.value.kcalState)
     }
 
     @Test
     fun kcalState_overWording() {
         val (vm, _) = buildViewModel(todayResponse = today(kcal = 2020.0), goals = goalsResponse(kcalGoal = 1900.0))
-        assertEquals(HomeKcalState.Over("120"), vm.uiState.value.kcalState)
+        assertEquals(HomeKcalState.Over(kcal = "120", goalKcal = "1,900"), vm.uiState.value.kcalState)
     }
 
     // --- Mindful variant ------------------------------------------------------

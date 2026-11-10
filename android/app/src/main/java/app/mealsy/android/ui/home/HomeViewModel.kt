@@ -89,18 +89,17 @@ sealed interface HomeCoachNote {
 data class HomeMealRow(val mealType: String, val tone: TagTone, val count: Int?)
 
 /**
- * The resolved variant for Home's status pill "state" text (the pill's
- * trailing label, e.g. "560 left"), kept as semantic data — day-part-free,
- * unlike [HomeCoachNote], but still just a formatted-number wrapper rather
- * than resolved text — so [HomeScreen] owns the translatable copy in
- * `strings.xml` (mirrors [HomeCoachNote]).
+ * The resolved variant for Home's status pill: its leading "eaten / goal" label
+ * and trailing state text ("on track", "240 over — fine occasionally"), kept as
+ * semantic data — formatted numbers only, not resolved text — so [HomeScreen]
+ * owns the translatable copy in `strings.xml` (mirrors [HomeCoachNote]).
  */
 sealed interface HomeKcalState {
-    /** [kcal] calories remain under the daily calorie goal (already formatted, e.g. "560"). */
-    data class Left(val kcal: String) : HomeKcalState
+    /** At or under the daily calorie goal [goalKcal] (already formatted, e.g. "2,000"). */
+    data class OnTrack(val goalKcal: String) : HomeKcalState
 
-    /** The daily calorie goal has been exceeded by [kcal] calories (already formatted, absolute value). */
-    data class Over(val kcal: String) : HomeKcalState
+    /** The daily calorie goal [goalKcal] has been exceeded by [kcal] calories (both formatted, absolute values). */
+    data class Over(val kcal: String, val goalKcal: String) : HomeKcalState
 
     /** Mindful tracking mode (no numeric calorie target). */
     data object NoTarget : HomeKcalState
@@ -355,11 +354,12 @@ class HomeViewModel
                 if (mindful || kcalGoal == null) {
                     HomeKcalState.NoTarget
                 } else {
+                    val goalLabel = kcalFormat.format(kcalGoal.roundToInt())
                     val remaining = kcalGoal - today.kcal
                     if (remaining >= 0) {
-                        HomeKcalState.Left(kcalFormat.format(remaining.roundToInt()))
+                        HomeKcalState.OnTrack(goalKcal = goalLabel)
                     } else {
-                        HomeKcalState.Over(kcalFormat.format(-remaining.roundToInt()))
+                        HomeKcalState.Over(kcal = kcalFormat.format(-remaining.roundToInt()), goalKcal = goalLabel)
                     }
                 }
 
