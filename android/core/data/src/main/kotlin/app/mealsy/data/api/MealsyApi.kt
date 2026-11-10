@@ -90,6 +90,23 @@ interface MealsyApi {
         @Query("days") days: Int,
     ): List<CategoryStatDto>
 
+    /** The nutrient catalogue (public, cacheable); spec 008 contracts/nutrients-catalogue.md. */
+    @GET("meta/nutrients")
+    suspend fun nutrientCatalog(): NutrientCatalogDto
+
+    /**
+     * Per-day micronutrient totals for the last [days] nutrition days ending
+     * today (the server owns the day boundary), with per-food contributions
+     * when [meals] is true; spec 008 contracts/daily-totals.md. A null [keys]
+     * returns every active nutrient.
+     */
+    @GET("nutrients/daily")
+    suspend fun dailyNutrients(
+        @Query("days") days: Int,
+        @Query("keys") keys: String? = null,
+        @Query("meals") meals: Boolean = false,
+    ): DailyNutrientsDto
+
     @GET("my-meals")
     suspend fun myMeals(): List<SavedMealDto>
 

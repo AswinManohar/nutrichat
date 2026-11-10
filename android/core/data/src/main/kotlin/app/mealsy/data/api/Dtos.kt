@@ -749,3 +749,74 @@ data class CoachingFeedbackRequest(
     val rating: Int,
     val comment: String? = null,
 )
+
+// ---------------------------------------------------------------------------
+// GET /meta/nutrients, GET /nutrients/daily (spec 008)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tracked-nutrient catalogue, per
+ * `specs/008-fixed-micronutrients/contracts/nutrients-catalogue.md`. The only
+ * place the app learns nutrient names, units, daily values and which ones
+ * the Micronutrients screen shows ([micronutrientTabs]).
+ */
+@Serializable
+data class NutrientCatalogDto(
+    val version: Int,
+    val nutrients: List<NutrientDefDto>,
+    @SerialName("micronutrient_tabs") val micronutrientTabs: List<MicronutrientTabDto> = emptyList(),
+)
+
+/** One catalogue entry; `direction` is "limit", "target" or "none". */
+@Serializable
+data class NutrientDefDto(
+    val key: String,
+    val name: String,
+    val unit: String,
+    val direction: String,
+    @SerialName("daily_value") val dailyValue: Double? = null,
+    val status: String = "active",
+)
+
+/** One Micronutrients-screen tab: its name and the catalogue keys it charts, in order. */
+@Serializable
+data class MicronutrientTabDto(
+    val id: String,
+    val name: String,
+    val keys: List<String>,
+)
+
+/**
+ * Per-day micronutrient totals, per
+ * `specs/008-fixed-micronutrients/contracts/daily-totals.md`. Every day in
+ * the range is present; a day with `logged = false` means "no data", not 0.
+ */
+@Serializable
+data class DailyNutrientsDto(
+    val days: List<NutrientDayDto>,
+)
+
+@Serializable
+data class NutrientDayDto(
+    val date: String,
+    val logged: Boolean,
+    val values: Map<String, NutrientAmountDto> = emptyMap(),
+    val meals: List<NutrientMealDto> = emptyList(),
+)
+
+/** One nutrient's total; a key absent from `values` means every food was unknown for it. */
+@Serializable
+data class NutrientAmountDto(
+    val total: Double,
+)
+
+@Serializable
+data class NutrientMealDto(
+    val foods: List<NutrientFoodDto> = emptyList(),
+)
+
+@Serializable
+data class NutrientFoodDto(
+    @SerialName("food_name") val foodName: String,
+    val values: Map<String, NutrientAmountDto> = emptyMap(),
+)

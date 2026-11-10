@@ -22,8 +22,7 @@ class EditMealStateTest {
         fdcId = 1L,
     )
 
-    private fun state() =
-        EditMealState.from("m1", "Biryani", "2026-10-01T09:00:00+00:00", listOf(item("Rice"), item("Chicken")))
+    private fun state() = EditMealState.from("m1", "Biryani", "2026-10-01T09:00:00+00:00", listOf(item("Rice"), item("Chicken")))
 
     @Test
     fun `fresh state is clean and cannot save`() {

@@ -162,6 +162,14 @@ private class FakeMealsyApi(
         qtyG: Double,
     ) = error("not used")
 
+    override suspend fun nutrientCatalog(): app.mealsy.data.api.NutrientCatalogDto = error("not used")
+
+    override suspend fun dailyNutrients(
+        days: Int,
+        keys: String?,
+        meals: Boolean,
+    ): app.mealsy.data.api.DailyNutrientsDto = error("not used")
+
     override suspend fun deleteAccount() = error("not used")
 
     override suspend fun coachingFeedback(

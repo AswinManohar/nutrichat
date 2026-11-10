@@ -48,6 +48,7 @@ import app.mealsy.android.R
 import app.mealsy.android.design.components.Eyebrow
 import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.ListContainer
+import app.mealsy.android.design.components.ListRow
 import app.mealsy.android.design.components.MetricCard
 import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.SegmentedControl
@@ -82,7 +83,10 @@ import kotlin.math.roundToInt
  *   and drives refetches via [TrendsViewModel.setWindow]/[TrendsViewModel.retry].
  */
 @Composable
-fun TrendsScreen(viewModel: TrendsViewModel = hiltViewModel()) {
+fun TrendsScreen(
+    onOpenMicronutrients: () -> Unit,
+    viewModel: TrendsViewModel = hiltViewModel(),
+) {
     val window by viewModel.window.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -91,6 +95,7 @@ fun TrendsScreen(viewModel: TrendsViewModel = hiltViewModel()) {
         uiState = uiState,
         onSelectWindow = { viewModel.setWindow(it) },
         onRetry = viewModel::retry,
+        onOpenMicronutrients = onOpenMicronutrients,
         modifier = Modifier.fillMaxSize(),
     )
 }
@@ -109,6 +114,7 @@ internal fun TrendsContent(
     uiState: TrendsUiState,
     onSelectWindow: (TrendsWindow) -> Unit,
     onRetry: () -> Unit,
+    onOpenMicronutrients: () -> Unit,
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
@@ -130,7 +136,7 @@ internal fun TrendsContent(
                 onRetry = onRetry,
                 modifier = modifier,
             )
-        else -> TrendsBody(window, uiState, onSelectWindow, today, modifier)
+        else -> TrendsBody(window, uiState, onSelectWindow, onOpenMicronutrients, today, modifier)
     }
 }
 
@@ -139,6 +145,7 @@ private fun TrendsBody(
     window: TrendsWindow,
     uiState: TrendsUiState,
     onSelectWindow: (TrendsWindow) -> Unit,
+    onOpenMicronutrients: () -> Unit,
     today: LocalDate,
     modifier: Modifier = Modifier,
 ) {
@@ -175,7 +182,7 @@ private fun TrendsBody(
 
         when (uiState) {
             TrendsUiState.Empty -> TrendsEmptyState()
-            is TrendsUiState.Loaded -> TrendsLoadedContent(window, uiState, today)
+            is TrendsUiState.Loaded -> TrendsLoadedContent(window, uiState, today, onOpenMicronutrients)
             else -> Unit
         }
     }
@@ -202,6 +209,7 @@ private fun TrendsLoadedContent(
     window: TrendsWindow,
     state: TrendsUiState.Loaded,
     today: LocalDate,
+    onOpenMicronutrients: () -> Unit,
 ) {
     val bars = buildTrendsDayBars(window, state.trends.days, today)
     val labels = trendsDayLabels(window, bars)
@@ -218,7 +226,7 @@ private fun TrendsLoadedContent(
         )
 
     Column(modifier = Modifier.alpha(contentAlpha)) {
-        TrendsLoadedBody(window, state, bars, labels)
+        TrendsLoadedBody(window, state, bars, labels, onOpenMicronutrients)
     }
 }
 
@@ -228,6 +236,7 @@ private fun TrendsLoadedBody(
     state: TrendsUiState.Loaded,
     bars: List<TrendsDayBar>,
     labels: List<String>,
+    onOpenMicronutrients: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -298,6 +307,21 @@ private fun TrendsLoadedBody(
             CategoryRow(slice)
             if (index != state.categories.lastIndex) InsetDivider()
         }
+    }
+
+    Spacer(modifier = Modifier.height(28.dp))
+
+    Eyebrow(text = stringResource(R.string.trends_nutrients_section))
+    Spacer(modifier = Modifier.height(12.dp))
+
+    ListContainer {
+        val label = stringResource(R.string.trends_open_micronutrients)
+        ListRow(
+            label = label,
+            onClick = onOpenMicronutrients,
+            onClickLabel = label,
+            trailingText = stringResource(R.string.trends_open_micronutrients_detail),
+        )
     }
 }
 

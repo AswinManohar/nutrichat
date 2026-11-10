@@ -119,6 +119,14 @@ private class UnsupportedMealsyApi : app.mealsy.data.api.MealsyApi {
 
     override suspend fun deleteMealLog(id: String) = error("unused")
 
+    override suspend fun nutrientCatalog(): app.mealsy.data.api.NutrientCatalogDto = error("unused")
+
+    override suspend fun dailyNutrients(
+        days: Int,
+        keys: String?,
+        meals: Boolean,
+    ): app.mealsy.data.api.DailyNutrientsDto = error("unused")
+
     override suspend fun deleteAccount() = error("unused")
 
     override suspend fun coachingFeedback(

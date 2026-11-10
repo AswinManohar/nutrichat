@@ -46,6 +46,7 @@ import app.mealsy.android.ui.home.HomeScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.android.ui.mealdetail.MealDetailScreen
 import app.mealsy.android.ui.meals.MealTypeListScreen
+import app.mealsy.android.ui.micronutrients.MicronutrientsScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
@@ -86,6 +87,7 @@ private const val ROUTE_ONBOARDING_PATTERN = "$ROUTE_ONBOARDING?$ARG_START_STEP=
 private const val ROUTE_TRENDS = "trends"
 private const val ROUTE_MY_MEALS = "my-meals"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_MICRONUTRIENTS = "micronutrients"
 private const val ROUTE_MEAL_TYPE = "meals"
 private const val ARG_MEAL_TYPE = "mealType"
 private const val ROUTE_MEAL_TYPE_PATTERN = "$ROUTE_MEAL_TYPE/{$ARG_MEAL_TYPE}"
@@ -541,7 +543,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             exitTransition = { fadeOut(tween(tabMs)) },
                             popEnterTransition = { fadeIn(tween(tabMs)) },
                             popExitTransition = { fadeOut(tween(tabMs)) },
-                        ) { TrendsScreen() }
+                        ) { TrendsScreen(onOpenMicronutrients = { navController.navigate(ROUTE_MICRONUTRIENTS) }) }
                         composable(
                             ROUTE_MY_MEALS,
                             enterTransition = { fadeIn(tween(tabMs)) },
@@ -560,6 +562,9 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         }
                         composable(ROUTE_SETTINGS) {
                             SettingsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(ROUTE_MICRONUTRIENTS) {
+                            MicronutrientsScreen(onBack = { navController.popBackStack() })
                         }
                         composable(
                             ROUTE_MEAL_TYPE_PATTERN,

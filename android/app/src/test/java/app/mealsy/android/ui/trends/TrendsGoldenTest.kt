@@ -26,6 +26,7 @@ class TrendsGoldenTest : AppScreenshotTestBase() {
             uiState = uiState,
             onSelectWindow = {},
             onRetry = {},
+            onOpenMicronutrients = {},
             modifier = Modifier.fillMaxSize(),
             today = FIXED_TODAY,
         )

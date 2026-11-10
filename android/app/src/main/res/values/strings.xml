@@ -388,4 +388,58 @@
     <string name="update_required_body">This version of Mealsy is no longer supported. Update to continue.</string>
     <string name="update_required_cta">Update on Play Store</string>
 
+    <!-- Trends entry to Micronutrients -->
+    <string name="trends_nutrients_section">Nutrients</string>
+    <string name="trends_open_micronutrients">Micronutrients</string>
+    <string name="trends_open_micronutrients_detail">Vitamins, minerals</string>
+
+    <!-- Micronutrients screen -->
+    <string name="micros_eyebrow">Trends</string>
+    <string name="micros_title">Micronutrients</string>
+    <string name="micros_back">Back to Trends</string>
+    <string name="micros_range_today">Today</string>
+    <string name="micros_range_week">7 days</string>
+    <string name="micros_range_month">30 days</string>
+    <string name="micros_loading">Loading micronutrients…</string>
+    <string name="micros_error">Couldn\'t load micronutrients.</string>
+    <string name="micros_empty_today">Nothing logged today yet. Log a meal to see your micronutrients.</string>
+    <string name="micros_empty_range">Nothing logged in this period. Log a meal to see your micronutrients.</string>
+    <string name="micros_hero_count">%1$d of %2$d nutrients</string>
+    <string name="micros_hero_state" formatted="false">past 50% DV</string>
+    <string name="micros_hero_a11y">%1$d of %2$d nutrients are past half their daily value</string>
+    <string name="micros_limit">limit</string>
+    <string name="micros_pct">%1$d%%</string>
+    <string name="micros_pct_over">%1$d%% ›</string>
+    <string name="micros_no_data">no data</string>
+    <string name="micros_row_a11y">%1$s, %2$d%% of daily value</string>
+    <string name="micros_row_limit_a11y">%1$s, %2$d%% of daily limit</string>
+    <string name="micros_row_no_data_a11y">%1$s, no data</string>
+    <string name="micros_row_open">show amounts and sources</string>
+    <string name="micros_amount_value">%1$s %3$s of %2$s %3$s daily value</string>
+    <string name="micros_amount_limit">%1$s %3$s of %2$s %3$s · daily limit</string>
+    <string name="micros_amount_average">Daily average: %1$s</string>
+    <string name="micros_sources_one">From %1$s.</string>
+    <string name="micros_sources_two">From %1$s and %2$s.</string>
+    <string name="micros_sources_none">No single food stood out.</string>
+    <string name="micros_hint">Tap a nutrient for amounts and sources.</string>
+    <string name="micros_axis_a11y" formatted="false">Each bar is a percent of the daily value, from 0 to 100%.</string>
+    <string name="micros_coach_low">%1$s is at %2$d%% of your daily value. %3$s</string>
+    <string name="micros_coach_all_good">Everything here is past half your daily value. Keep the mix you have going.</string>
+    <string name="micros_tip_potassium">A baked potato or a handful of dried apricots would lift potassium.</string>
+    <string name="micros_tip_calcium">A glass of milk or some tofu would help calcium.</string>
+    <string name="micros_tip_magnesium">Pumpkin seeds or a handful of spinach would lift magnesium.</string>
+    <string name="micros_tip_phosphorus">Lentils, oats or dairy would lift phosphorus.</string>
+    <string name="micros_tip_vitamin_a">Carrots, sweet potato or spinach would lift vitamin A.</string>
+    <string name="micros_tip_vitamin_c">An orange or some bell pepper would lift vitamin C.</string>
+    <string name="micros_tip_vitamin_d">Fortified milk or yogurt, eggs or salmon would raise vitamin D.</string>
+    <string name="micros_tip_vitamin_e">A small handful of almonds or sunflower seeds would help vitamin E.</string>
+    <string name="micros_tip_vitamin_k">Leafy greens like spinach or kale would lift vitamin K.</string>
+    <string name="micros_tip_vitamin_b12">Eggs, dairy or a fortified cereal would lift B12.</string>
+    <string name="micros_tip_folate">Chickpeas or asparagus would lift folate.</string>
+    <string name="micros_tip_iron">Lentils, beans or spinach would lift iron.</string>
+    <string name="micros_tip_zinc">Pumpkin seeds, chickpeas or oats would lift zinc.</string>
+    <string name="micros_tip_selenium">A Brazil nut or a couple of eggs would lift selenium.</string>
+    <string name="micros_tip_iodine">Iodized salt when cooking, or some dairy, would raise iodine.</string>
+    <string name="micros_tip_generic">Foods rich in %1$s would help.</string>
+
 </resources>
