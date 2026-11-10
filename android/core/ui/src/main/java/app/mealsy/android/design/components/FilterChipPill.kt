@@ -10,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,12 +49,16 @@ fun FilterChipPill(
     )
 
     Surface(
+        // Clip before toggleable: the press ripple is drawn by toggleable, outside
+        // the Surface's own shape clip, so without this it flashes as a rectangle.
         modifier =
-            modifier.toggleable(
-                value = selected,
-                role = Role.Checkbox,
-                onValueChange = { onClick() },
-            ),
+            modifier
+                .clip(MealsyShapes.pill)
+                .toggleable(
+                    value = selected,
+                    role = Role.Checkbox,
+                    onValueChange = { onClick() },
+                ),
         shape = MealsyShapes.pill,
         color = backgroundColor,
         border = if (selected) null else BorderStroke(1.dp, colors.hairline),
