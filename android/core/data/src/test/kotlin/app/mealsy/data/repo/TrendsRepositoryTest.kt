@@ -66,6 +66,7 @@ class TrendsRepositoryTest {
             "kcal": 1800.0,
             "protein_g": 95.0,
             "carbs_g": 200.0,
+            "fat_g": 62.0,
             "fiber_g": 20.0,
             "n_meals": 3,
             "junk_meals": 1
@@ -82,24 +83,6 @@ class TrendsRepositoryTest {
         ]
         """.trimIndent()
 
-    private val categoriesGoldenJson =
-        """
-        [
-          {
-            "meal_type": "breakfast",
-            "n_meals": 12,
-            "days_logged": 10,
-            "avg_kcal": 420.5,
-            "avg_protein_g": 22.1,
-            "avg_carbs_g": 45.0,
-            "avg_fat_g": 15.2,
-            "avg_fiber_g": 5.0,
-            "total_kcal": 5046.0,
-            "share_kcal_pct": 28.4
-          }
-        ]
-        """.trimIndent()
-
     @Test
     fun `trends maps the backend's day array`() =
         runBlocking {
@@ -112,6 +95,9 @@ class TrendsRepositoryTest {
             assertEquals(1800.0, result.days[0].kcal, 0.0)
             assertEquals(95.0, result.days[0].proteinG, 0.0)
             assertEquals(200.0, result.days[0].carbsG, 0.0)
+            assertEquals(62.0, result.days[0].fatG, 0.0)
+            // The second row has no fat_g, as from a server before Journey: 0, not an error.
+            assertEquals(0.0, result.days[1].fatG, 0.0)
             assertEquals(1, result.days[0].junkMeals)
             assertEquals(4, result.days[1].nMeals)
         }
@@ -127,32 +113,6 @@ class TrendsRepositoryTest {
             assertEquals("GET", request.method)
             assertTrue(request.path?.contains("days=7") == true)
             assertTrue(request.path?.startsWith("/meals/trends") == true)
-        }
-
-    @Test
-    fun `categories maps the backend's category array`() =
-        runBlocking {
-            server.enqueue(MockResponse().setResponseCode(200).setBody(categoriesGoldenJson))
-
-            val result = buildRepository().categories(30)
-
-            assertEquals(1, result.size)
-            assertEquals("breakfast", result[0].mealType)
-            assertEquals(12, result[0].nMeals)
-            assertEquals(420.5, result[0].avgKcal, 0.0)
-            assertEquals(28.4, result[0].shareKcalPct, 0.0)
-        }
-
-    @Test
-    fun `categories records the days query param`() =
-        runBlocking {
-            server.enqueue(MockResponse().setResponseCode(200).setBody(categoriesGoldenJson))
-
-            buildRepository().categories(30)
-
-            val request = server.takeRequest()
-            assertTrue(request.path?.contains("days=30") == true)
-            assertTrue(request.path?.startsWith("/meals/categories") == true)
         }
 
     @Test

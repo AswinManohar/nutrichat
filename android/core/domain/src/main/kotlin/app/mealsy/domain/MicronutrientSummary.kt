@@ -2,7 +2,7 @@ package app.mealsy.domain
 
 import kotlin.math.roundToInt
 
-/** The window the Micronutrients screen averages over, in nutrition days ending today. */
+/** The Micronutrients screen's ranges, in nutrition days ending today. */
 enum class MicroRange(val days: Int) { Today(1), Week(7), Month(30) }
 
 /**
@@ -52,12 +52,15 @@ data class MicroTabSummary(val tab: MicroTab, val rows: List<MicroRow>)
 /**
  * The whole screen's numbers for one range.
  *
+ * @param highlights Journey's short list ([buildMicroSummary]'s `highlightKeys`),
+ *   in that order; keys in no tab are skipped.
  * @param heroCount Non-limit nutrients, across every tab, at or past
  *   [HERO_THRESHOLD_PCT] of their daily value.
  * @param heroTotal Non-limit nutrients that had any data.
  */
 data class MicroSummary(
     val tabs: List<MicroTabSummary>,
+    val highlights: List<MicroRow>,
     val daysLogged: Int,
     val heroCount: Int,
     val heroTotal: Int,
@@ -80,6 +83,7 @@ const val TOP_FOODS: Int = 2
 fun buildMicroSummary(
     tabs: List<MicroTab>,
     days: List<MicroDay>,
+    highlightKeys: List<String> = emptyList(),
 ): MicroSummary? {
     val logged = days.filter { it.logged }
     if (logged.isEmpty()) return null
@@ -88,9 +92,12 @@ fun buildMicroSummary(
         tabs.map { tab ->
             MicroTabSummary(tab = tab, rows = tab.nutrients.map { microRow(it, logged) })
         }
-    val targets = summaries.flatMap { it.rows }.filter { !it.nutrient.isLimit && it.pct != null }
+    val rows = summaries.flatMap { it.rows }
+    val byKey = rows.associateBy { it.nutrient.key }
+    val targets = rows.filter { !it.nutrient.isLimit && it.pct != null }
     return MicroSummary(
         tabs = summaries,
+        highlights = highlightKeys.mapNotNull { byKey[it] },
         daysLogged = logged.size,
         heroCount = targets.count { (it.pct ?: 0) >= HERO_THRESHOLD_PCT },
         heroTotal = targets.size,

@@ -92,7 +92,7 @@ class MicronutrientsViewModel
             return viewModelScope.launch {
                 val content =
                     try {
-                        repository.summary(range)?.let { MicronutrientsContent.Loaded(it) }
+                        repository.summary(range.days)?.let { MicronutrientsContent.Loaded(it) }
                             ?: MicronutrientsContent.Empty
                     } catch (exc: CancellationException) {
                         throw exc

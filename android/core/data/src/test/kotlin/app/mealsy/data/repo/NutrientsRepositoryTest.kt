@@ -1,7 +1,6 @@
 package app.mealsy.data.repo
 
 import app.mealsy.data.api.MealsyApi
-import app.mealsy.domain.MicroRange
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -31,6 +30,7 @@ class NutrientsRepositoryTest {
            {"id": "electrolytes", "name": "Electrolytes", "keys": ["sodium", "potassium"]},
            {"id": "minerals", "name": "Minerals", "keys": ["iron", "retired_key"]}
          ],
+         "micronutrient_summary": ["iron", "sodium", "retired_key"],
          "nutrients": [
            {"key": "sodium", "name": "Sodium", "unit": "mg", "group": "other", "order": 4,
             "direction": "limit", "daily_value": 2300, "usda_only": false, "derived": null, "status": "active"},
@@ -98,7 +98,7 @@ class NutrientsRepositoryTest {
     @Test
     fun summary_asksForTheRangeInDaysWithFoods_andMapsTheCatalogueTabs() =
         runBlocking {
-            val summary = repository().summary(MicroRange.Week)!!
+            val summary = repository().summary(7)!!
 
             assertEquals(listOf("/nutrients/daily?days=7&meals=true"), requests.filter { it.startsWith("/nutrients") })
             assertEquals(listOf("electrolytes", "minerals"), summary.tabs.map { it.tab.id })
@@ -110,14 +110,16 @@ class NutrientsRepositoryTest {
             // Potassium had no value on the logged day: no data, not 0%.
             assertNull(summary.tabs[0].rows.first { it.nutrient.key == "potassium" }.pct)
             assertEquals(1, summary.daysLogged)
+            // Journey's list keeps the server's order and skips keys in no tab.
+            assertEquals(listOf("iron", "sodium"), summary.highlights.map { it.nutrient.key })
         }
 
     @Test
     fun catalogue_isFetchedOncePerRepository() =
         runBlocking {
             val repo = repository()
-            repo.summary(MicroRange.Today)
-            repo.summary(MicroRange.Month)
+            repo.summary(1)
+            repo.summary(30)
             assertEquals(1, requests.count { it.startsWith("/meta/nutrients") })
             assertEquals(2, requests.count { it.startsWith("/nutrients/daily") })
         }

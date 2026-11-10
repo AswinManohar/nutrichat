@@ -511,6 +511,8 @@ data class DayTrendDto(
     val kcal: Double,
     @SerialName("protein_g") val proteinG: Double,
     @SerialName("carbs_g") val carbsG: Double,
+    // Older servers omit it (added for Journey's macros chart).
+    @SerialName("fat_g") val fatG: Double = 0.0,
     @SerialName("fiber_g") val fiberG: Double,
     @SerialName("n_meals") val nMeals: Int,
     @SerialName("junk_meals") val junkMeals: Int,
@@ -765,6 +767,8 @@ data class NutrientCatalogDto(
     val version: Int,
     val nutrients: List<NutrientDefDto>,
     @SerialName("micronutrient_tabs") val micronutrientTabs: List<MicronutrientTabDto> = emptyList(),
+    /** Journey's short list, in order; every key is also in a tab. */
+    @SerialName("micronutrient_summary") val micronutrientSummary: List<String> = emptyList(),
 )
 
 /** One catalogue entry; `direction` is "limit", "target" or "none". */

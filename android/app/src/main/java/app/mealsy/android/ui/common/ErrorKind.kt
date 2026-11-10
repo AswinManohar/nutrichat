@@ -18,7 +18,7 @@ package app.mealsy.android.ui.common
  *   "Something went wrong loading your meals." vs. "...this meal."), so
  *   each screen supplies its own string resource for it (e.g.
  *   `R.string.meal_detail_error_load_failed`,
- *   `R.string.trends_error_load_failed`) rather than this sealed interface
+ *   `R.string.journey_error`) rather than this sealed interface
  *   trying to enumerate one kind per screen.
  *
  * Screens with their own domain-specific errors (e.g. login's email

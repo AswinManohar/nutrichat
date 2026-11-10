@@ -43,6 +43,7 @@ import app.mealsy.android.push.PushRegistrar
 import app.mealsy.android.ui.chat.ChatScreen
 import app.mealsy.android.ui.gate.UpdateRequiredScreen
 import app.mealsy.android.ui.home.HomeScreen
+import app.mealsy.android.ui.journey.JourneyScreen
 import app.mealsy.android.ui.login.LoginScreen
 import app.mealsy.android.ui.mealdetail.MealDetailScreen
 import app.mealsy.android.ui.meals.MealTypeListScreen
@@ -51,7 +52,6 @@ import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
 import app.mealsy.android.ui.settings.SettingsScreen
-import app.mealsy.android.ui.trends.TrendsScreen
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.auth.SessionManager
 import app.mealsy.data.auth.SessionState
@@ -563,7 +563,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             exitTransition = { fadeOut(tween(tabMs)) },
                             popEnterTransition = { fadeIn(tween(tabMs)) },
                             popExitTransition = { fadeOut(tween(tabMs)) },
-                        ) { TrendsScreen(onOpenMicronutrients = { navController.navigate(ROUTE_MICRONUTRIENTS) }) }
+                        ) { JourneyScreen(onOpenMicronutrients = { navController.navigate(ROUTE_MICRONUTRIENTS) }) }
                         composable(
                             ROUTE_MY_MEALS,
                             enterTransition = { fadeIn(tween(tabMs)) },

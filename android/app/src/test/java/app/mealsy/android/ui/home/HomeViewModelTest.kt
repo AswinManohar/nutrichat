@@ -229,7 +229,7 @@ private fun dayPoint(
     proteinG: Double,
     fiberG: Double,
     carbsG: Double,
-) = DayPoint(date = date, kcal = 1500.0, proteinG = proteinG, carbsG = carbsG, fiberG = fiberG, nMeals = 3, junkMeals = 0)
+) = DayPoint(date = date, kcal = 1500.0, proteinG = proteinG, carbsG = carbsG, fatG = 0.0, fiberG = fiberG, nMeals = 3, junkMeals = 0)
 
 /** Clock fixed at a given local hour on an arbitrary date, in UTC. */
 private fun clockAtHour(

@@ -7,7 +7,7 @@
     <!-- Bottom navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_chat">Chat</string>
-    <string name="nav_trends">Trends</string>
+    <string name="nav_trends">Journey</string>
     <string name="nav_my_meals">My Meals</string>
     <string name="nav_fab_quick_log">Quick log a meal</string>
 
@@ -298,26 +298,6 @@
     <string name="customize_sheet_stepper_description">%1$s grams</string>
 
     <!-- Trends screen -->
-    <string name="trends_eyebrow">Trends</string>
-    <string name="trends_title_week">Your week</string>
-    <string name="trends_title_month">Your month</string>
-    <string name="trends_segment_week">Week</string>
-    <string name="trends_segment_month">Month</string>
-    <string name="trends_metric_avg_kcal">Avg kcal</string>
-    <string name="trends_metric_avg_protein">Avg protein</string>
-    <string name="trends_metric_days_logged">Days logged</string>
-    <string name="trends_days_logged_value">%1$d of %2$d</string>
-    <string name="trends_kcal_chart_desc">Calories, %1$d days, average %2$s</string>
-    <string name="trends_protein_chart_desc">Protein, %1$d days, average %2$dg</string>
-    <string name="trends_chart_calories">Calories</string>
-    <string name="trends_chart_protein">Protein</string>
-    <string name="trends_by_category">By category</string>
-    <string name="trends_category_avg">avg %1$s kcal · %2$d×</string>
-    <string name="trends_category_share_desc">%1$s, %2$d percent of total kcal</string>
-    <string name="trends_empty_message">Log a few meals to see trends.</string>
-    <string name="trends_loading">Loading trends…</string>
-    <string name="trends_error_load_failed">Something went wrong loading trends.</string>
-    <string name="trends_target_label">Target</string>
 
     <!-- Settings screen -->
     <string name="settings_eyebrow">Settings</string>
@@ -390,15 +370,11 @@
     <string name="update_required_body">This version of Mealsy is no longer supported. Update to continue.</string>
     <string name="update_required_cta">Update on Play Store</string>
 
-    <!-- Trends entry to Micronutrients -->
-    <string name="trends_nutrients_section">Nutrients</string>
-    <string name="trends_open_micronutrients">Micronutrients</string>
-    <string name="trends_open_micronutrients_detail">Vitamins, minerals</string>
 
     <!-- Micronutrients screen -->
-    <string name="micros_eyebrow">Trends</string>
+    <string name="micros_eyebrow">Journey</string>
     <string name="micros_title">Micronutrients</string>
-    <string name="micros_back">Back to Trends</string>
+    <string name="micros_back">Back to Journey</string>
     <string name="micros_range_today">Today</string>
     <string name="micros_range_week">7 days</string>
     <string name="micros_range_month">30 days</string>
@@ -443,5 +419,41 @@
     <string name="micros_tip_selenium">A Brazil nut or a couple of eggs would lift selenium.</string>
     <string name="micros_tip_iodine">Iodized salt when cooking, or some dairy, would raise iodine.</string>
     <string name="micros_tip_generic">Foods rich in %1$s would help.</string>
+
+    <!-- Journey (the Trends tab) -->
+    <string name="journey_eyebrow">Journey</string>
+    <string name="journey_title">Your progress</string>
+    <string name="journey_range_week">7 days</string>
+    <string name="journey_range_month">30 days</string>
+    <string name="journey_range_quarter">90 days</string>
+    <string name="journey_loading">Loading your progress…</string>
+    <string name="journey_error">Couldn\'t load your progress.</string>
+    <string name="journey_coming_soon">Coming soon</string>
+    <string name="journey_hero_placeholder">Weight goal progress</string>
+    <string name="journey_weight">Weight</string>
+    <string name="journey_weight_placeholder">Weight tracking is on its way. Your trend against your goal will show here.</string>
+    <string name="journey_glucose">Glucose</string>
+    <string name="journey_glucose_placeholder">Glucose is on its way. You\'ll see how each meal moves your levels here.</string>
+    <string name="journey_macros">Macros</string>
+    <string name="journey_macros_hint_week">kcal per day</string>
+    <string name="journey_macros_hint_month">weekly avg kcal</string>
+    <string name="journey_macros_hint_quarter">monthly avg kcal</string>
+    <string name="journey_macros_empty">Nothing logged in this period yet.</string>
+    <string name="journey_macros_chart_a11y">Calories by %1$s, split into protein, carbs and fat.</string>
+    <string name="journey_macros_unit_week">day</string>
+    <string name="journey_macros_unit_month">week</string>
+    <string name="journey_macros_unit_quarter">month</string>
+    <string name="journey_protein">Protein</string>
+    <string name="journey_carbs">Carbs</string>
+    <string name="journey_fat">Fat</string>
+    <string name="journey_avg_of">%1$dg avg of %2$dg</string>
+    <string name="journey_avg">%1$dg avg</string>
+    <string name="journey_micros">Micronutrients</string>
+    <string name="journey_micros_hint" formatted="false">avg % daily value</string>
+    <string name="journey_micros_unavailable">Micronutrients aren\'t available yet.</string>
+    <string name="journey_micros_all">All micronutrients</string>
+    <string name="journey_coach_protein">You averaged %1$dg of protein a day, %2$dg under your %3$dg goal. Adding a protein to each meal closes most of it.</string>
+    <string name="journey_coach_low">%1$s averaged %2$d%% of its daily value. %3$s</string>
+    <string name="journey_coach_steady">Your meals are keeping a steady mix. Keep logging to see longer trends.</string>
 
 </resources>

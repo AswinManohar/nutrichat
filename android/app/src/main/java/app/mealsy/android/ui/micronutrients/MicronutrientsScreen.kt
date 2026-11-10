@@ -571,31 +571,10 @@ private fun NutrientDetail(
 private fun coachText(tab: MicroTabSummary): String {
     val low = lowestTarget(tab) ?: return stringResource(R.string.micros_coach_all_good)
     val tip =
-        tipRes(low.nutrient.key)?.let { stringResource(it) }
+        microTipRes(low.nutrient.key)?.let { stringResource(it) }
             ?: stringResource(R.string.micros_tip_generic, low.nutrient.name.lowercase())
     return stringResource(R.string.micros_coach_low, low.nutrient.name, low.pct ?: 0, tip)
 }
-
-/** A reviewed food tip per charted nutrient; a key the server adds later falls back to the generic tip. */
-private fun tipRes(key: String): Int? =
-    when (key) {
-        "potassium" -> R.string.micros_tip_potassium
-        "calcium" -> R.string.micros_tip_calcium
-        "magnesium" -> R.string.micros_tip_magnesium
-        "phosphorus" -> R.string.micros_tip_phosphorus
-        "vitamin_a" -> R.string.micros_tip_vitamin_a
-        "vitamin_c" -> R.string.micros_tip_vitamin_c
-        "vitamin_d" -> R.string.micros_tip_vitamin_d
-        "vitamin_e" -> R.string.micros_tip_vitamin_e
-        "vitamin_k" -> R.string.micros_tip_vitamin_k
-        "vitamin_b12" -> R.string.micros_tip_vitamin_b12
-        "folate" -> R.string.micros_tip_folate
-        "iron" -> R.string.micros_tip_iron
-        "zinc" -> R.string.micros_tip_zinc
-        "selenium" -> R.string.micros_tip_selenium
-        "iodine" -> R.string.micros_tip_iodine
-        else -> null
-    }
 
 /** 1,426 for amounts of 100 or more, else one decimal at most (2.4, 0.9, 18). */
 internal fun formatAmount(value: Double): String =

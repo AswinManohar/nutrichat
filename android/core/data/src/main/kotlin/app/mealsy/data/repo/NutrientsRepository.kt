@@ -6,7 +6,6 @@ import app.mealsy.data.api.NutrientCatalogDto
 import app.mealsy.domain.MicroDay
 import app.mealsy.domain.MicroFood
 import app.mealsy.domain.MicroNutrient
-import app.mealsy.domain.MicroRange
 import app.mealsy.domain.MicroSummary
 import app.mealsy.domain.MicroTab
 import app.mealsy.domain.buildMicroSummary
@@ -36,16 +35,17 @@ class NutrientsRepository
         private var catalog: NutrientCatalogDto? = null
 
         /**
-         * The summary for [range], or null when nothing was logged in it.
+         * The summary for the last [days] nutrition days, or null when nothing
+         * was logged in them.
          *
          * @throws Exception Whatever the API call throws (network, HTTP); the
          *   caller maps it to an error state.
          */
-        suspend fun summary(range: MicroRange): MicroSummary? =
+        suspend fun summary(days: Int): MicroSummary? =
             coroutineScope {
-                val days = async { api.dailyNutrients(days = range.days, meals = true) }
-                val tabs = tabsFrom(cachedCatalog())
-                buildMicroSummary(tabs, days.await().toMicroDays())
+                val totals = async { api.dailyNutrients(days = days, meals = true) }
+                val catalog = cachedCatalog()
+                buildMicroSummary(tabsFrom(catalog), totals.await().toMicroDays(), catalog.micronutrientSummary)
             }
 
         private suspend fun cachedCatalog(): NutrientCatalogDto =
