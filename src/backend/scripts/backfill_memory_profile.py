@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 from typing import Literal
 
@@ -55,12 +56,24 @@ For every fact, decide:
     like: a food, cuisine or flavour they enjoy.
     habit: a recurring pattern in when or how they eat.
     context: stable circumstances (cooks for a family, no oven, budget).
-- drop: it describes a single meal or day, a temporary state, a medical
-  diagnosis, a calorie or macro target, something not about food, or it
-  repeats another fact in the list (keep one, drop the rest).
+- drop: it describes a single meal or day, a temporary state, a calorie
+  or macro target, something not about food, or it repeats another fact in
+  the list (keep one, drop the rest).
+
+An allergy or intolerance is always a restriction, never something to drop.
+When facts repeat, keep the strictest one: an allergy over an intolerance,
+an intolerance over "avoids", and keep the word "allergic" or "allergy" in
+the rewrite ("Allergic to milk", not "Avoids dairy").
 
 Return one decision for every handle. Do not invent facts.
 """
+
+# Safety net under the model's decisions: a fact naming an allergy or
+# intolerance is never dropped or softened. A duplicate allergy left behind
+# is harmless and visible; a lost one is silent.
+_SAFETY_TERMS = re.compile(
+    r"\b(allerg\w*|intoleran\w*|anaphyla\w*|celiac|coeliac)\b", re.IGNORECASE
+)
 
 
 class Decision(BaseModel):
@@ -93,7 +106,9 @@ def plan_backfill(
             shown to the model (handles m1..mN).
 
     Returns:
-        Replace ops for kept facts and remove ops for dropped ones.
+        Replace ops for kept facts and remove ops for dropped ones. A fact
+        naming an allergy or intolerance always becomes a restriction, in
+        its original wording unless the rewrite still names it.
     """
     by_handle = {handle: fact for handle, fact in label_facts(legacy)}
     ops: list[MemoryOp] = []
@@ -104,7 +119,17 @@ def plan_backfill(
         if fact is None or handle in seen:
             continue
         seen.add(handle)
-        if decision.action == "drop":
+        if _SAFETY_TERMS.search(fact.fact):
+            rewrite = (decision.fact or "").strip()[:MAX_FACT_CHARS]
+            keep_rewrite = decision.action == "keep" and _SAFETY_TERMS.search(rewrite)
+            ops.append(
+                ReplaceFact(
+                    id=fact.id,
+                    fact=rewrite if keep_rewrite else fact.fact,
+                    kind="restriction",
+                )
+            )
+        elif decision.action == "drop":
             ops.append(RemoveFact(id=fact.id))
         elif decision.kind is not None:
             text = (decision.fact or fact.fact).strip()[:MAX_FACT_CHARS]
