@@ -1,0 +1,3 @@
+# Design mockups are self-contained HTML exports (embedded fonts and images).
+# Keep them out of GitHub's language stats so the repo reads as Kotlin/Python.
+android/design-handoff/** linguist-documentation
