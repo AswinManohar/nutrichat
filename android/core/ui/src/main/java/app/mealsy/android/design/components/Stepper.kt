@@ -1,11 +1,6 @@
 package app.mealsy.android.design.components
 
 import android.content.res.Configuration
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -165,18 +160,11 @@ fun Stepper(
                     onCancel = { editing = false },
                 )
             } else {
-                val slideDurationMs = app.mealsy.android.design.theme.motionDurationMs(120)
-                AnimatedContent(
-                    targetState = value,
-                    transitionSpec = {
-                        val duration = slideDurationMs
-                        val direction = if (targetState > initialState) 1 else -1
-                        (
-                            slideInVertically(tween(duration)) { direction * it } togetherWith
-                                slideOutVertically(tween(duration)) { -direction * it }
-                        )
-                    },
-                    label = "stepper-value",
+                // The value changes in one frame. It used to slide old-out/new-in,
+                // but inside a one-line clip both numbers showed cut in half for
+                // the whole slide, which read as a flicker on every tap (and the
+                // handoff spec has no motion here).
+                Box(
                     modifier =
                         Modifier
                             .widthIn(min = 44.dp)
@@ -184,9 +172,10 @@ fun Stepper(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                             ) { editing = true },
-                ) { animatedValue ->
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        text = valueLabel(animatedValue),
+                        text = valueLabel(value),
                         style =
                             MealsyType.badge.copy(
                                 fontSize =
