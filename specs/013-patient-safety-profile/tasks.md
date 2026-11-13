@@ -46,8 +46,8 @@ synthetic inference set that later phases are measured against.
 - [ ] T003 [P] Write `eval/cases/hard_fact_seeds.jsonl`: at least 10 hand-written seed messages per hard type (allergy, diagnosis, medication, physical_limitation, nutrient_limit) per stratum (clear first person, hedged, third person, past state, hypothetical, question, negation, correction, buried in a meal log), each `{message, expected: [{type, value}] | [], stratum}`
 - [ ] T004 Write `eval/gen_hard_fact_cases.py`: reads seeds, asks Gemini (`FLASH_LITE_MODEL`) for 5 paraphrases per seed keeping the label, writes `eval/cases/hard_fact_inference.draft.jsonl` with a deterministic 80/20 `split` field (`tune` / `holdout`, hash of the seed id); never overwrites the reviewed file
 - [ ] T005 Generate the draft, review every item by hand, and commit the reviewed set as `eval/cases/hard_fact_inference.jsonl` (target about 600 messages) plus `eval/cases/hard_fact_scripts.jsonl` (40 multi-turn scripts with expected profiles after each session)
-- [ ] T006 [P] Write `eval/cases/reply_guard.jsonl`: coaching replies with a patient's confirmed entries and the expected verdict, covering direct allergen names, derived ingredients ("peanut oil", "whey"), dish names ("satay", "pesto"), warnings that must pass ("skip the peanuts"), food exclusions, diet settings and medication `avoid_terms`
-- [ ] T007 [P] Write `eval/cases/red_flags.jsonl`: every phrase per rule in `red_flags.yaml`, the paraphrases the dietitians mark as expected matches, and at least 300 ordinary messages drawn from `eval/cases/intent_routing.jsonl` and `eval/test_set_200.jsonl` as negatives
+- [x] T006 [P] Write `eval/cases/reply_guard.jsonl`: coaching replies with a patient's confirmed entries and the expected verdict, covering direct allergen names, derived ingredients ("peanut oil", "whey"), dish names ("satay", "pesto"), warnings that must pass ("skip the peanuts"), food exclusions, diet settings and medication `avoid_terms`
+- [x] T007 [P] Write `eval/cases/red_flags.jsonl`: every phrase per rule in `red_flags.yaml`, the paraphrases the dietitians mark as expected matches, and at least 300 ordinary messages drawn from `eval/cases/intent_routing.jsonl` and `eval/test_set_200.jsonl` as negatives
 
 - [x] T096 File one GitHub tracking issue for spec 013 listing PR 0, PR N, PRs 1-7 with their task ranges and gates; link it from `plan.md` (constitution: plans filed as issues)
 
@@ -247,7 +247,7 @@ Profile. No Explore tab, no Units row (issue #88).
 
 - [ ] T091 Migration `2026112x_020_drop_goal_condition_columns.py` dropping `user_goal.conditions`, `user_goal.dietary_prefs` and `user_memory.embedding` with its ivfflat index, deleting `user_memory` rows with `category='restriction'` and `deleted_at IS NULL` and dropping `restriction` from `ck_user_memory_category`, released one version after PR 1 (PR 7); remove the ORM attributes from `src/backend/db/models.py`
 - [ ] T092 [P] Final docs pass: confirm `.claude/CLAUDE.md` and `docs/architecture.md` match the shipped system (each PR already updated them in its own docs task, Principle "same change")
-- [ ] T093 [P] Check log hygiene (FR-040c): no name or email in spans, `check_failure`, escalations or webhook payloads; message text only in Logfire spans already allowed and in `red_flag_escalation.message`
+- [x] T093 [P] Check log hygiene (FR-040c): no name or email in spans, `check_failure`, escalations or webhook payloads; message text only in Logfire spans already allowed and in `red_flag_escalation.message`
 - [ ] T094 Run the full quickstart.md end to end on the throwaway DB and the Pixel 9; run `scripts/prod-checks.sh`; fix findings
 - [ ] T095 Dietitian review of all `config/clinical/*.yaml` values (replace every `PENDING DIETITIAN REVIEW`) before PR 2 ships to production
 
