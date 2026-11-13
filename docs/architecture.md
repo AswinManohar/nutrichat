@@ -313,6 +313,19 @@ Cost per turn: a recipe turn is one structured Flash-Lite call per attempt
 instead of the response call; a prose turn for a patient with food constraints
 adds a few milliseconds of local lookups and, on some turns, one GLiDE request.
 
+**Red-flag screen (PR 3).** `handle_message` screens every text message with
+`safety/red_flags.py` before anything else: before the GLiDE routing task, the
+checkpoint read and any model call. Rules are regexes in
+`config/clinical/red_flags.yaml`, written by the dietitians; a match anywhere
+in the message returns that rule's fixed response with `"kind": "safety"`,
+stores a `red_flag_escalation` row, and enqueues `notify_escalation` (Celery),
+which posts ids, the rule and a review link to `SAFETY_WEBHOOK_URL`, never the
+message text, with retries at 5 s, 15 s, 45 s, 2 min and 5 min. The message is
+not added to coaching history and no fact extraction is queued. A paused meal
+card is left untouched. If the rule file cannot be read, every message gets the
+fixed fallback text and no model is called until it loads again. Cost on an
+ordinary turn: one `stat` and a few regex searches.
+
 ### 4.8 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction tier

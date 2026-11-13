@@ -115,6 +115,8 @@ nutrichat/
 GOOGLE_API_KEY=          # Gemini 3.1 Flash-Lite + embeddings
 ANTHROPIC_API_KEY=       # reserved; not used by current code
 FASTINO_API_KEY=         # GLiDE judgments (routing, memory); unset = Gemini routes everything
+SAFETY_WEBHOOK_URL=      # red-flag escalations (Slack-compatible); unset = stored + error logged
+SAFETY_REVIEW_BASE_URL=  # base URL for the review link in escalation notices
 DATABASE_URL=            # postgresql://...
 REDIS_URL=               # redis://...
 SUPABASE_URL=            # https://xxx.supabase.co
