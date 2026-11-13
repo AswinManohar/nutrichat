@@ -1,0 +1,10 @@
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+levels: ["liquid", "puree", "minced_moist", "soft_bite_sized", "regular"]
+limitations:
+  swallowing: { default_max: "minced_moist" }
+  chewing: { default_max: "soft_bite_sized" }
+crunchy_or_dry_blocked_for: ["swallowing", "chewing"]
+crunchy_terms: ["nuts", "crackers", "toast", "chips", "raw carrot", "granola", "popcorn", "crisp"]

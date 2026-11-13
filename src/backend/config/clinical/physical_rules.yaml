@@ -1,0 +1,9 @@
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+grip:
+  blocked_equipment: ["cast-iron pan", "stand mixer", "mandoline", "pressure cooker", "rolling pin"]
+  blocked_step_terms: ["knead", "grate", "mince by hand", "whisk vigorously", "julienne"]
+standing_time:
+  compare: active_minutes

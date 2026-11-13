@@ -1,0 +1,25 @@
+# EXAMPLE rules and wording, pending dietitian review. The responses are
+# deliberately conservative and must be replaced by approved text.
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+fallback_unavailable_text: "I can't reply right now. If this is urgent, contact your care team or emergency services."
+rules:
+  - id: stopped_insulin
+    label: "Stopped insulin"
+    patterns:
+      - '\b(stopp?ed|quit|not taking|skipp(ing|ed))\b.{0,40}\binsulin\b'
+      - '\binsulin\b.{0,30}\b(stopped|quit)\b'
+    response: "Stopping insulin can be dangerous. Please contact your doctor or diabetes team today. If you feel very unwell, drowsy, or are vomiting, seek emergency care now."
+  - id: self_harm
+    label: "Self-harm"
+    patterns:
+      - '\b(kill myself|end my life|hurt myself|harm myself|want to die)\b'
+    response: "I'm sorry you're feeling this way. You deserve support right now. Please contact your local emergency number or a crisis line, or reach out to someone you trust. If you are in immediate danger, call emergency services."
+  - id: severe_hypoglycemia
+    label: "Signs of severe low blood sugar"
+    patterns:
+      - '\b(blood sugar|glucose)\b.{0,30}\b(very low|dangerously low|passing out|passed out)\b'
+      - '\b(confused|shaking|sweating)\b.{0,40}\b(low blood sugar|hypo)\b'
+    response: "These can be signs of dangerously low blood sugar. If you can swallow safely, take fast-acting sugar such as juice or glucose tablets now, and contact your care team or emergency services. If you feel faint, are confused, or cannot swallow, call emergency services immediately."

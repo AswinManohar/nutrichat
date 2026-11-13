@@ -1,0 +1,26 @@
+# Values are placeholders; the reviewing dietitian sets them before release.
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+drugs:
+  warfarin:
+    names: ["warfarin", "coumadin", "jantoven"]
+    rules:
+      - kind: nutrient_ceiling
+        nutrient: vitamin_k
+        amount: 90
+        unit: mcg
+        reason: "vitamin K changes how warfarin works"
+  maoi:
+    names: ["phenelzine", "tranylcypromine", "isocarboxazid", "selegiline"]
+    rules:
+      - kind: avoid_terms
+        terms: ["aged cheese", "parmesan", "blue cheese", "soy sauce", "miso", "salami", "sauerkraut", "tap beer"]
+        reason: "tyramine-rich foods can raise blood pressure with MAOIs"
+  simvastatin:
+    names: ["simvastatin", "zocor"]
+    rules:
+      - kind: avoid_terms
+        terms: ["grapefruit", "pomelo"]
+        reason: "grapefruit raises statin levels"

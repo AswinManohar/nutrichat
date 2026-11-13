@@ -1,0 +1,11 @@
+# Lists which limits a condition should have. No numeric default exists in
+# this file by design (FR-033).
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+conditions:
+  ckd: { label: "chronic kidney disease", expects_limits: ["potassium", "phosphorus", "protein", "sodium", "fluid"] }
+  hypertension: { label: "high blood pressure", expects_limits: ["sodium"] }
+  diabetes: { label: "diabetes", expects_limits: ["carbohydrate"] }
+  prediabetes: { label: "prediabetes", expects_limits: [] }

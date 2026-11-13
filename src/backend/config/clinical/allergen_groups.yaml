@@ -1,0 +1,43 @@
+# Placeholder values pending dietitian review. Matching: case-folded,
+# word-boundary, longest term wins (specs/013 research R8).
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+groups:
+  peanut:
+    label: "peanut"
+    terms: ["peanut", "peanuts", "groundnut", "peanut oil", "peanut butter", "arachis oil", "satay"]
+    exclude_terms: []
+  tree_nut:
+    label: "tree nuts"
+    terms: ["almond", "cashew", "walnut", "pecan", "pistachio", "hazelnut", "macadamia", "praline", "marzipan"]
+    exclude_terms: ["nutmeg", "butternut", "water chestnut"]
+  milk:
+    label: "milk"
+    terms: ["milk", "cheese", "butter", "ghee", "paneer", "yogurt", "curd", "whey", "casein", "cream"]
+    exclude_terms: ["cocoa butter", "coconut milk", "almond milk", "oat milk", "soy milk"]
+  egg:
+    label: "egg"
+    terms: ["egg", "eggs", "mayonnaise", "albumin", "meringue"]
+    exclude_terms: ["eggplant"]
+  fish:
+    label: "fish"
+    terms: ["fish", "salmon", "tuna", "cod", "anchovy", "sardine", "trout", "haddock"]
+    exclude_terms: []
+  shellfish:
+    label: "shellfish"
+    terms: ["shellfish", "shrimp", "prawn", "crab", "lobster", "mussel", "oyster", "clam", "scallop"]
+    exclude_terms: []
+  soy:
+    label: "soy"
+    terms: ["soy", "soya", "tofu", "tempeh", "edamame", "miso", "soy sauce"]
+    exclude_terms: []
+  wheat_gluten:
+    label: "wheat and gluten"
+    terms: ["wheat", "gluten", "barley", "rye", "semolina", "couscous", "seitan"]
+    exclude_terms: []
+  sesame:
+    label: "sesame"
+    terms: ["sesame", "tahini", "hummus"]
+    exclude_terms: []
