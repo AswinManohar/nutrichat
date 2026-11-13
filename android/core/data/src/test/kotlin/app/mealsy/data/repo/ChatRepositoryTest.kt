@@ -109,6 +109,65 @@ class ChatRepositoryTest {
     private fun clientRequestIdOf(body: String): String? = Regex("\"client_request_id\":\"([^\"]+)\"").find(body)?.groupValues?.get(1)
 
     @Test
+    fun `sendTurn carries recipe, recommendation id and the Kept paragraph`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """
+                    {"status":"done","message":"A bowl.\n\n1. Cook.\n\nKept this soft because of your chewing difficulty.",
+                     "paused":false,"recommendation_id":"rec-1",
+                     "recipe":{"name":"Oat bowl","intro":"Warm.","ingredients":[{"name":"oats","qty_g":40}],
+                       "texture":"soft_bite_sized","crunchy_or_dry":false,"steps":["Cook."],
+                       "active_minutes":5,"total_minutes":10,"equipment":[],"servings":1}}
+                    """.trimIndent(),
+                ),
+            )
+
+            val reply = buildRepository().sendTurn("dinner idea") as TurnResult.Reply
+
+            assertEquals("rec-1", reply.recommendationId)
+            assertEquals("Oat bowl", reply.recipe?.name)
+            assertEquals(40.0, reply.recipe?.ingredients?.single()?.qtyG ?: 0.0, 0.0)
+            assertEquals("Kept this soft because of your chewing difficulty.", reply.constraintNote)
+        }
+
+    @Test
+    fun `sendTurn carries a safety kind and older replies parse without new fields`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"status":"done","message":"Call emergency services now.","paused":false,"kind":"safety"}""",
+                ),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"done","message":"Hello","paused":false}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"remaining":3}"""))
+            val repository = buildRepository()
+
+            val safety = repository.sendTurn("chest pain") as TurnResult.Reply
+            val plain = repository.sendTurn("hi") as TurnResult.Reply
+
+            assertEquals("safety", safety.kind)
+            assertEquals(null, plain.kind)
+            assertEquals(null, plain.recipe)
+        }
+
+    @Test
+    fun `submitMealFeedback posts status and keeps the reason only on rejection`() =
+        runBlocking {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"recommendation_id":"rec-1","status":"rejected"}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"recommendation_id":"rec-1","status":"accepted"}"""))
+            val repository = buildRepository()
+
+            repository.submitMealFeedback("rec-1", accepted = false, reason = " too salty ")
+            repository.submitMealFeedback("rec-1", accepted = true, reason = "ignored")
+
+            val rejected = server.takeRequest()
+            assertEquals("/profile/meals/rec-1/feedback", rejected.path)
+            assertEquals("""{"status":"rejected","reason":"too salty"}""", rejected.body.readUtf8())
+            assertEquals("""{"status":"accepted"}""", server.takeRequest().body.readUtf8())
+        }
+
+    @Test
     fun `sendTurn maps paused response to Card`() =
         runBlocking {
             server.enqueue(

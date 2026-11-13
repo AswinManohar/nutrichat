@@ -2,6 +2,7 @@ package app.mealsy.android.ui.chat
 
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
+import app.mealsy.data.api.RecipeDto
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.PastelTone
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -50,6 +51,11 @@ sealed interface ChatMsg {
         val tags: List<MacroTag> = emptyList(),
         val responseId: String? = null,
         val feedback: Int? = null,
+        val recipe: RecipeDto? = null,
+        val recommendationId: String? = null,
+        val constraintNote: String? = null,
+        val recipeChoice: RecipeChoice = RecipeChoice.None,
+        val isSafety: Boolean = false,
     ) : ChatMsg
 
     data class UpgradeNotice(
@@ -65,6 +71,9 @@ sealed interface ChatMsg {
         val state: CardState,
     ) : ChatMsg
 }
+
+/** The patient's answer to a recipe card; [Sending] disables the buttons while the request is in flight. */
+enum class RecipeChoice { None, Sending, Accepted, Rejected }
 
 /** The lifecycle state of an inline [ChatMsg.Card], ported from `mealStore.ts`'s `stampResolvedCard`. */
 sealed interface CardState {
@@ -192,4 +201,11 @@ class ChatViewModel
             messageId: String,
             rating: Int,
         ): Job? = session.submitFeedback(messageId, rating)
+
+        /** Sends accept/reject feedback for the recipe on [messageId]; [reason] only applies to a rejection. */
+        fun submitRecipeFeedback(
+            messageId: String,
+            accepted: Boolean,
+            reason: String? = null,
+        ): Job? = session.submitRecipeFeedback(messageId, accepted, reason)
     }

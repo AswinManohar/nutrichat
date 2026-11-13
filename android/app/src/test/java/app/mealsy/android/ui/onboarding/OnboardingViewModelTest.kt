@@ -185,6 +185,11 @@ private class FakeMealsyApi(
         id: String,
         body: app.mealsy.data.api.RetireRequest,
     ): app.mealsy.data.api.HardEntryDto = error("unused")
+
+    override suspend fun mealFeedback(
+        id: String,
+        body: app.mealsy.data.api.MealFeedbackRequest,
+    ) = error("unused")
 }
 
 /** In-memory [ProfileStore] fake that records call order alongside [CallOrderLog]. */

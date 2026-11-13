@@ -6,7 +6,9 @@ import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.LogItemsRequest
 import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
+import app.mealsy.data.api.MealFeedbackRequest
 import app.mealsy.data.api.MealsyApi
+import app.mealsy.data.api.RecipeDto
 import app.mealsy.data.api.toCard
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardItem
@@ -40,7 +42,14 @@ sealed interface TurnResult {
      *   branch. UI that gates a feedback affordance on it simply doesn't
      *   render when it's absent; no client-side fallback is needed.
      */
-    data class Reply(val message: String, val responseId: String? = null) : TurnResult
+    data class Reply(
+        val message: String,
+        val responseId: String? = null,
+        val recipe: RecipeDto? = null,
+        val recommendationId: String? = null,
+        val kind: String? = null,
+        val constraintNote: String? = null,
+    ) : TurnResult
 
     data class Card(val card: ConfirmationCard) : TurnResult
 
@@ -93,7 +102,11 @@ private val URL_PATTERN =
         """(https?://\S+)|(\b[a-zA-Z0-9-]+\.[a-zA-Z]{2,6}(?:/[\w\-./?%&=]*)?\b)""",
     )
 
-private fun stripUrls(text: String): String = text.replace(URL_PATTERN, "").replace(Regex("\\s{2,}"), " ").trim()
+private fun stripUrls(text: String): String = text.replace(URL_PATTERN, "").replace(Regex("[ \\t]{2,}"), " ").trim()
+
+/** The recipe reply's closing "Kept ..." paragraph, or null when the message has none. */
+private fun constraintNote(message: String): String? =
+    message.trim().split(Regex("\\n\\s*\\n")).lastOrNull()?.trim()?.takeIf { it.startsWith("Kept") }
 
 /**
  * Drives the `POST /meals/log` confirmation flow: sending turns, recovering
@@ -248,6 +261,16 @@ class ChatRepository
             api.coachingFeedback(responseId, CoachingFeedbackRequest(rating = rating, comment = comment))
         }
 
+        /** Records whether the patient [accepted] a shown recipe; [reason] is kept only on a rejection. */
+        suspend fun submitMealFeedback(
+            recommendationId: String,
+            accepted: Boolean,
+            reason: String? = null,
+        ) {
+            val status = if (accepted) "accepted" else "rejected"
+            api.mealFeedback(recommendationId, MealFeedbackRequest(status, reason?.trim()?.takeIf { it.isNotEmpty() && !accepted }))
+        }
+
         suspend fun confirmCard(card: ConfirmationCard): LogOutcome {
             val existing = pendingConfirmation
             val clientRequestId =
@@ -345,13 +368,20 @@ class ChatRepository
                 pendingConfirmation = null
                 return TurnResult.Card(card)
             }
-            if (!response.paused && response.items.isEmpty()) {
+            if (!response.paused && response.items.isEmpty() && response.recipe == null && response.kind == null) {
                 val quota = runCatching { api.quota() }.getOrNull()
                 if (quota != null && quota.remaining <= 0) {
                     return TurnResult.UpgradeRequired(UPGRADE_SAFE_MESSAGE)
                 }
             }
-            return TurnResult.Reply(stripUrls(response.message), response.responseId)
+            return TurnResult.Reply(
+                message = stripUrls(response.message),
+                responseId = response.responseId,
+                recipe = response.recipe,
+                recommendationId = response.recommendationId,
+                kind = response.kind,
+                constraintNote = if (response.recipe != null) constraintNote(response.message) else null,
+            )
         }
     }
 

@@ -39,6 +39,17 @@
     <string name="chat_photo_description">Photo you sent</string>
     <string name="chat_thumb_up_description">Helpful</string>
     <string name="chat_thumb_down_description">Not helpful</string>
+    <string name="chat_recipe_ingredients">Ingredients</string>
+    <string name="chat_recipe_steps">Steps</string>
+    <string name="chat_recipe_ingredient_line">%1$s · %2$s g</string>
+    <string name="chat_recipe_time">%1$d min hands-on · %2$d min total</string>
+    <string name="chat_recipe_accept">Sounds good</string>
+    <string name="chat_recipe_reject">Not for me</string>
+    <string name="chat_recipe_reason_placeholder">Why not? (optional)</string>
+    <string name="chat_recipe_reason_send">Send</string>
+    <string name="chat_recipe_accepted">You said: sounds good</string>
+    <string name="chat_recipe_rejected">You said: not for me</string>
+    <string name="chat_safety_icon_description">Safety message</string>
     <string name="chat_card_logged">Logged: %1$s · %2$d kcal</string>
     <string name="chat_card_not_logged">Not logged</string>
     <string name="chat_card_discarded">Discarded — nothing logged.</string>

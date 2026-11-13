@@ -118,6 +118,11 @@ private class FakeMealsyApi : MealsyApi {
         body: app.mealsy.data.api.RetireRequest,
     ): app.mealsy.data.api.HardEntryDto = error("unused")
 
+    override suspend fun mealFeedback(
+        id: String,
+        body: app.mealsy.data.api.MealFeedbackRequest,
+    ) = error("unused")
+
     override suspend fun registerDevice(body: RegisterDeviceRequest) {
         if (registerDeviceShouldThrow) throw RuntimeException("network down")
         registeredTokens += body.token

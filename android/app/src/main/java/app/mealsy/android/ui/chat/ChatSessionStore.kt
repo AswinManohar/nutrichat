@@ -350,7 +350,7 @@ class ChatSessionStore
         /** Dispatches a [TurnResult] from `send`/`sendPhoto` into the transcript. */
         private fun handleTurnResult(result: TurnResult) {
             when (result) {
-                is TurnResult.Reply -> appendCoach(result.message)
+                is TurnResult.Reply -> appendReply(result)
                 is TurnResult.Card -> appendCard(result.card)
                 is TurnResult.UpgradeRequired -> appendUpgradeNotice(result.message)
             }
@@ -820,6 +820,45 @@ class ChatSessionStore
             }
         }
 
+        /**
+         * Sends accept/reject feedback for the recipe on [messageId]. The choice shows
+         * as sending while in flight, and reverts with a toast when the request fails.
+         */
+        fun submitRecipeFeedback(
+            messageId: String,
+            accepted: Boolean,
+            reason: String? = null,
+        ): Job? {
+            val msg = _messages.value.firstOrNull { it.id == messageId } as? ChatMsg.Coach ?: return null
+            val recommendationId = msg.recommendationId ?: return null
+            if (msg.recipeChoice != RecipeChoice.None) return null
+            setRecipeChoice(messageId, RecipeChoice.Sending)
+            return sessionScope.launch {
+                try {
+                    repository.submitMealFeedback(recommendationId, accepted, reason)
+                    setRecipeChoice(messageId, if (accepted) RecipeChoice.Accepted else RecipeChoice.Rejected)
+                } catch (exc: CancellationException) {
+                    throw exc
+                } catch (exc: IOException) {
+                    setRecipeChoice(messageId, RecipeChoice.None)
+                    _toasts.tryEmit("Couldn't save your answer. Check your connection and try again.")
+                } catch (exc: HttpException) {
+                    setRecipeChoice(messageId, RecipeChoice.None)
+                    _toasts.tryEmit("Couldn't save your answer. Try again.")
+                }
+            }
+        }
+
+        private fun setRecipeChoice(
+            messageId: String,
+            choice: RecipeChoice,
+        ) {
+            _messages.value =
+                _messages.value.map { msg ->
+                    if (msg is ChatMsg.Coach && msg.id == messageId) msg.copy(recipeChoice = choice) else msg
+                }
+        }
+
         private fun setCoachFeedback(
             messageId: String,
             feedback: Int?,
@@ -847,6 +886,22 @@ class ChatSessionStore
             tags: List<MacroTag> = emptyList(),
         ) {
             _messages.value = _messages.value + ChatMsg.Coach(newId(), clock.millis(), text, tags = tags)
+        }
+
+        /** Appends a coach reply, keeping a recipe or a safety flag so the screen can style it. */
+        private fun appendReply(reply: TurnResult.Reply) {
+            _messages.value =
+                _messages.value +
+                ChatMsg.Coach(
+                    id = newId(),
+                    timestampMillis = clock.millis(),
+                    text = reply.message,
+                    responseId = reply.responseId,
+                    recipe = reply.recipe,
+                    recommendationId = reply.recommendationId,
+                    constraintNote = reply.constraintNote,
+                    isSafety = reply.kind == "safety",
+                )
         }
 
         private fun appendUpgradeNotice(text: String) {

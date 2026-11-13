@@ -178,6 +178,13 @@ interface MealsyApi {
         @Path("id") id: String,
     ): HardEntryDto
 
+    /** Records whether the patient accepted or rejected a recipe shown in chat. */
+    @POST("profile/meals/{id}/feedback")
+    suspend fun mealFeedback(
+        @Path("id") id: String,
+        @Body body: MealFeedbackRequest,
+    )
+
     @POST("profile/entries/{id}/retire")
     suspend fun retireProfileEntry(
         @Path("id") id: String,

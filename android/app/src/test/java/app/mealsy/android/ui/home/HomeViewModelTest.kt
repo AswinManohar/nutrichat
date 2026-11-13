@@ -164,6 +164,11 @@ private class FakeMealsyApi(
         body: app.mealsy.data.api.RetireRequest,
     ): app.mealsy.data.api.HardEntryDto = error("unused")
 
+    override suspend fun mealFeedback(
+        id: String,
+        body: app.mealsy.data.api.MealFeedbackRequest,
+    ) = error("unused")
+
     private fun <T> notImplemented(): T = throw UnsupportedOperationException("not used by HomeViewModel tests")
 }
 

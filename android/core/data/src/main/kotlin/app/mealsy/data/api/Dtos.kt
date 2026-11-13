@@ -53,6 +53,40 @@ data class LogTurnResponse(
     // that only covers *extra* keys, not a *missing* one, so the default is
     // what actually protects this field.
     @SerialName("response_id") val responseId: String? = null,
+    /** A checked recipe, present only on a recipe reply (spec 013); `message` holds its rendered text. */
+    val recipe: RecipeDto? = null,
+    @SerialName("recommendation_id") val recommendationId: String? = null,
+    /** `"safety"` on a red-flag reply; absent on every other turn. */
+    val kind: String? = null,
+)
+
+/** One recipe ingredient: a plain food name and grams as eaten. */
+@Serializable
+data class IngredientDto(
+    val name: String,
+    @SerialName("qty_g") val qtyG: Double = 0.0,
+)
+
+/** A recipe as the backend returns it on a recipe reply (`safety/recipe.py`). */
+@Serializable
+data class RecipeDto(
+    val name: String,
+    val intro: String = "",
+    val ingredients: List<IngredientDto> = emptyList(),
+    val texture: String = "regular",
+    @SerialName("crunchy_or_dry") val crunchyOrDry: Boolean = false,
+    val steps: List<String> = emptyList(),
+    @SerialName("active_minutes") val activeMinutes: Int = 0,
+    @SerialName("total_minutes") val totalMinutes: Int = 0,
+    val equipment: List<String> = emptyList(),
+    val servings: Int = 1,
+)
+
+/** Body of `POST /profile/meals/{recommendation_id}/feedback`; [status] is `accepted` or `rejected`. */
+@Serializable
+data class MealFeedbackRequest(
+    val status: String,
+    val reason: String? = null,
 )
 
 /**

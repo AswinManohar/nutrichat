@@ -272,6 +272,7 @@ fun ChatScreen(
                             onCancel = viewModel::cancel,
                             onSaveAsMyMeal = viewModel::onSaveAsMyMeal,
                             onFeedback = viewModel::submitFeedback,
+                            onRecipeFeedback = viewModel::submitRecipeFeedback,
                             // #49: no LazyColumn in the app used
                             // `animateItem()`, so a removal/undo/merge made
                             // every row below it pop to its new position
@@ -506,6 +507,7 @@ internal fun ChatMessageRow(
     onSaveAsMyMeal: (String) -> Unit,
     onFeedback: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
+    onRecipeFeedback: (String, Boolean, String?) -> Unit = { _, _, _ -> },
 ) {
     val colors = MealsyTheme.colors
     Box(modifier = modifier) {
@@ -535,8 +537,19 @@ internal fun ChatMessageRow(
 
             is ChatMsg.Coach ->
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    CoachReply(text = msg.text, tags = msg.tags, timestamp = timestamp)
-                    if (msg.responseId != null) {
+                    when {
+                        msg.isSafety -> SafetyBubble(text = msg.text, timestamp = timestamp)
+                        msg.recipe != null ->
+                            RecipeCardView(
+                                recipe = msg.recipe,
+                                constraintNote = msg.constraintNote,
+                                choice = msg.recipeChoice,
+                                onFeedback = { accepted, reason -> onRecipeFeedback(msg.id, accepted, reason) },
+                                timestamp = timestamp,
+                            )
+                        else -> CoachReply(text = msg.text, tags = msg.tags, timestamp = timestamp)
+                    }
+                    if (msg.responseId != null && !msg.isSafety) {
                         Row(
                             modifier = Modifier.padding(start = 4.dp, top = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),

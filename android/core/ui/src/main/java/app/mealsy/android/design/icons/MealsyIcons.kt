@@ -425,6 +425,20 @@ object MealsyIcons {
                     ),
             ).also { _camera = it }
 
+    private var _shield: ImageVector? = null
+
+    /**
+     * Safety-message marker (a shield with a check). Not in the handoff
+     * bundle; drawn on the 24-grid in the same stroke style, and left out of
+     * [all] so the icon-grid golden stays as recorded.
+     */
+    val Shield: ImageVector
+        get() =
+            _shield ?: strokedIcon(
+                name = "Shield",
+                pathData = arrayOf("M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z", "M9 12l2 2 4-4"),
+            ).also { _shield = it }
+
     private var _squiggle: ImageVector? = null
 
     /**

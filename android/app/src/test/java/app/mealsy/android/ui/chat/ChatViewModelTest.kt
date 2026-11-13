@@ -654,6 +654,88 @@ class ChatViewModelTest {
             assertTrue(toasts.any { it == "You already have a meal with that name." })
         }
 
+    private fun recipeReplyBody(): String =
+        """
+        {"status":"done","message":"Oat bowl.\n\nKept this soft.","paused":false,"recommendation_id":"rec-1",
+         "recipe":{"name":"Oat bowl","intro":"Warm.","ingredients":[{"name":"oats","qty_g":40}],
+         "steps":["Cook."],"active_minutes":5,"total_minutes":10}}
+        """.trimIndent()
+
+    private suspend fun viewModelWithRecipe(): Pair<ChatViewModel, String> {
+        enqueueEmptyStartup()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(recipeReplyBody()))
+        val viewModel = buildViewModel()
+        viewModel.readyJob.join()
+        viewModel.send("dinner idea").join()
+        val coach = viewModel.messages.value.filterIsInstance<ChatMsg.Coach>().single()
+        assertEquals("Oat bowl", coach.recipe?.name)
+        assertEquals("Kept this soft.", coach.constraintNote)
+        return viewModel to coach.id
+    }
+
+    private fun recipeChoice(viewModel: ChatViewModel) = viewModel.messages.value.filterIsInstance<ChatMsg.Coach>().single().recipeChoice
+
+    @Test
+    fun `accepting a recipe sends accepted and records the choice`() =
+        runBlocking {
+            val (viewModel, id) = viewModelWithRecipe()
+            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+
+            viewModel.submitRecipeFeedback(id, accepted = true)?.join()
+
+            assertEquals(RecipeChoice.Accepted, recipeChoice(viewModel))
+            assertTrue(drainBodies().last().contains("\"accepted\""))
+            // A second tap is ignored once answered.
+            assertNull(viewModel.submitRecipeFeedback(id, accepted = false))
+        }
+
+    @Test
+    fun `rejecting a recipe sends the reason`() =
+        runBlocking {
+            val (viewModel, id) = viewModelWithRecipe()
+            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+
+            viewModel.submitRecipeFeedback(id, accepted = false, reason = "too salty")?.join()
+
+            assertEquals(RecipeChoice.Rejected, recipeChoice(viewModel))
+            val body = drainBodies().last()
+            assertTrue(body.contains("\"rejected\"") && body.contains("too salty"))
+        }
+
+    @Test
+    fun `a failed recipe feedback request re-enables the buttons`() =
+        runBlocking {
+            val (viewModel, id) = viewModelWithRecipe()
+            server.enqueue(MockResponse().setResponseCode(500))
+
+            viewModel.submitRecipeFeedback(id, accepted = true)?.join()
+
+            assertEquals(RecipeChoice.None, recipeChoice(viewModel))
+        }
+
+    @Test
+    fun `a safety reply is flagged and leaves the waiting meal card active`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(PAUSED_CARD_BODY))
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"status":"done","message":"Call emergency services.","paused":false,"kind":"safety"}""",
+                ),
+            )
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("two eggs").join()
+
+            viewModel.send("my chest hurts").join()
+
+            assertTrue(viewModel.messages.value.filterIsInstance<ChatMsg.Coach>().last().isSafety)
+            assertTrue(activeCardOf(viewModel)?.state is CardState.Active)
+        }
+
+    private fun drainBodies(): List<String> =
+        generateSequence { server.takeRequest(100, java.util.concurrent.TimeUnit.MILLISECONDS) }.map { it.body.readUtf8() }.toList()
+
     @Test
     fun `submitFeedback is a no-op when the message has no responseId`() =
         runBlocking {
