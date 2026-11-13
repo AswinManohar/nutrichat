@@ -200,7 +200,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [x] T077 [US4] Implement `eval/eval_hard_fact_inference.py` (precision and recall per type and band, soft-preference precision and recall, reliability curve, Brier score, threshold sweep on `tune`, report on `holdout`) and add the script set to `eval/eval_safety_profile.py`
 - [ ] T078 [US4] Run the sweep, set `hard_accept_min_probability` and `hard_ask_min_probability` in `tunables.yaml` with the measured numbers in the comment, run on `holdout`, record SC-002 and SC-004 results (accept-band precision ≥ 98%) in the PR
 - [ ] T102 [US4] Run `PYTHONPATH=src python eval/eval_memory_pipeline.py --runs 3` and `eval/eval_profile_curator.py --runs 3` against their baselines after the curator prompt rewrite in T073; record in the PR (Principle V)
-- [ ] T103 [US4] Docs for PR 4: inference bands and readbacks in `docs/architecture.md`, eval commands in `.claude/CLAUDE.md`
+- [x] T103 [US4] Docs for PR 4: inference bands and readbacks in `docs/architecture.md`, eval commands in `.claude/CLAUDE.md`
 - [x] T079 [US4] Android: render the optional `readback` with Yes / No chips that send the reply in `ui/chat/ReadbackChips.kt`; the "noted" mention links to the entry in Care profile; goldens light and dark; on-device check
 
 **Checkpoint**: PR 4.
@@ -237,7 +237,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [x] T089 [US6] Implement `src/backend/api/review.py` (`GET /admin/review/items`, `GET /admin/review/escalations/{id}`, `POST /admin/review/items/{id}/decision`, `POST /admin/review/patients/{patient_id}/entries`) using `safety.profile` with actor `reviewer:<user id>`; register in `src/backend/main.py`
 - [x] T090 [US6] Create `plan_sample` review items for a configurable share of recommendations (`safety.plan_sample_rate` in tunables) in `src/backend/agent/suggest.py`; extend `src/backend/guidelines/export_feedback.py` to export plan-sample rejections with comments
 
-- [ ] T104 [US6] Docs for PR 6: `REVIEWER_USER_IDS` and the admin API in `.claude/CLAUDE.md` and `docs/architecture.md`
+- [x] T104 [US6] Docs for PR 6: `REVIEWER_USER_IDS` and the admin API in `.claude/CLAUDE.md` and `docs/architecture.md`
 
 **Checkpoint**: PR 6.
 
