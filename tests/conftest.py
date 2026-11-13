@@ -176,3 +176,27 @@ async def db_user() -> AsyncIterator[str]:
             await session.execute(delete(UserGoal).where(UserGoal.user_id == user_id))
             await session.commit()
         await dispose_engine()
+
+
+@pytest.fixture(autouse=True)
+def no_turn_database_reads():
+    """Keep the per-turn hard-fact reads off the database.
+
+    handle_message reads the hard profile on every text turn to spot an answer
+    to a readback, and a coaching turn extracts hard facts for every user.
+    Tests of other behaviour must not open the shared engine from their own
+    event loop. Tests that care patch ``_load_entries`` / ``extract_turn``
+    again.
+    """
+    from unittest.mock import patch
+
+    from backend.agent.memory_curator import TurnExtraction
+
+    with (
+        patch("backend.agent.orchestrator._load_entries", AsyncMock(return_value=[])),
+        patch(
+            "backend.agent.coaching.extract_turn",
+            AsyncMock(return_value=TurnExtraction()),
+        ),
+    ):
+        yield

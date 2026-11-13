@@ -121,8 +121,15 @@ response is derived from the profile.
 `/chat` responses gain an optional field:
 
 ```json
-{"readback": {"entry_id": "uuid", "text": "I'll note that you're allergic to shellfish. Is that right?"}}
+{"readback": {"entry_id": "uuid", "kind": "add", "text": "I'll note this on your profile: Shellfish allergy. Is that right?"}}
 ```
+
+`kind` is `add` (a pending entry awaits confirmation) or `retire` (a confirmed
+entry awaits confirmation to stop applying). The field names the latest
+question asked in the reply; when several entries are asked in one turn, one
+short reply ("yes" / "no") answers all of them. The answer is an ordinary chat
+message; the server reads it before routing (research R13), so the client sends
+"Yes" or "No" as text.
 
 Released clients ignore it (the text is also in `message`). A recipe reply
 carries `recommendation_id` so the app can send feedback.

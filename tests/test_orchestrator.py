@@ -253,7 +253,9 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
             "user-1", "how many calories today?", "thread-1", None
         )
 
-    handle_mock.assert_awaited_once_with("user-1", "how many calories today?")
+    handle_mock.assert_awaited_once_with(
+        "user-1", "how many calories today?", "thread-1"
+    )
     graph.ainvoke.assert_not_called()
     assert result == {
         "status": "success",
@@ -545,7 +547,9 @@ async def test_coaching_turn_passes_routing_record_to_store():
         await handle_message("user-1", "should I eat less sugar?", "thread-1", None)
 
     # Retrieval is still driven only by Gemini's parse inside the agent.
-    handle_mock.assert_awaited_once_with("user-1", "should I eat less sugar?")
+    handle_mock.assert_awaited_once_with(
+        "user-1", "should I eat less sugar?", "thread-1"
+    )
     assert save_mock.await_args.kwargs["routing"] == {
         "path": "judgment",
         "certainty": 0.99,

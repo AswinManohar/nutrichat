@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from datetime import datetime
 from typing import Any, Literal
 
 import logfire
@@ -12,17 +13,22 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
+from backend.agent import readback
 from backend.agent.coaching import CoachingAgent, RestrictionsUnavailableError
 from backend.agent.coaching_store import link_recommendation, save_coaching_response
 from backend.agent.graph import build_graph
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
+from backend.agent.memory import profile_active
+from backend.agent.memory_curator import TurnExtraction, extract_turn
 from backend.agent.system_one import RoutingJudgment, judge_message
 from backend.agent.tools.usda import NULLABLE_MACROS
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import UPGRADE_MSG, consume_llm_credit
+from backend.safety import profile
 from backend.safety.escalation import record_escalation
 from backend.safety.red_flags import RedFlagsUnavailable, fallback_text, screen
+from backend.safety.tables import TablesUnavailable, load_tables
 from backend.workers.tasks import extract_and_store_facts
 
 logger = logging.getLogger(__name__)
@@ -232,40 +238,79 @@ async def handle_message(
             if not image_b64 and user_input.strip()
             else None
         )
+        # A patient may be answering a hard-fact readback (spec 013 US4). The
+        # profile read overlaps the checkpoint read and the judgment.
+        entries_task = (
+            asyncio.create_task(_load_entries(user_id))
+            if judgment_task is not None and action is None
+            else None
+        )
         try:
             current_state = await graph.aget_state(config)
+            entries = await entries_task if entries_task is not None else []
         except BaseException:
             await _discard(judgment_task)
+            await _discard(entries_task)
             raise
         is_paused = bool(current_state.next)
 
-        decision: RouteDecision | None = None
-        if is_paused or image_b64:
-            await _discard(judgment_task)
-        else:
-            decision = await _route(user_input, judgment_task)
-        is_coaching = decision is not None and decision.intent == "coaching"
-        if is_coaching:
-            result = await _handle_coaching(
-                user_id,
-                user_input,
-                conversation_id=thread_id,
-                offer_to_log=decision.offer_to_log,
-                routing=decision.routing_record(),
-            )
-        else:
-            result = await _handle_meal_logging(
-                graph,
-                config,
-                user_input,
-                user_id,
-                image_b64,
-                is_paused,
-                meal_type,
-                action,
-            )
+        awaiting = readback.awaiting_reply(entries, thread_id)
+        answer = readback.reply_kind(user_input) if awaiting else "other"
+        readback_takes = (
+            answer != "other"
+            and not image_b64
+            and (not is_paused or _readback_is_newer(current_state, awaiting))
+        )
 
-        span.set_attribute("intent", "coaching" if is_coaching else "log_meal")
+        extraction: TurnExtraction | None = None
+        if readback_takes and answer == "correction":
+            # "No, it's prawns": only a reply that states the same kind of
+            # fact again is a correction; "no carb ideas please" is not.
+            extraction = await _read_correction(user_id, user_input, awaiting)
+            readback_takes = extraction is not None
+
+        decision: RouteDecision | None = None
+        is_coaching = False
+        reply_handled = False
+        if readback_takes:
+            await _discard(judgment_task)
+            result = await _answer_readback(
+                user_id, thread_id, awaiting, answer, current_state, extraction
+            )
+            reply_handled = True
+        else:
+            if is_paused or image_b64:
+                await _discard(judgment_task)
+            else:
+                decision = await _route(user_input, judgment_task)
+            is_coaching = decision is not None and decision.intent == "coaching"
+            if is_coaching:
+                result = await _handle_coaching(
+                    user_id,
+                    user_input,
+                    conversation_id=thread_id,
+                    offer_to_log=decision.offer_to_log,
+                    routing=decision.routing_record(),
+                )
+            else:
+                result = await _handle_meal_logging(
+                    graph,
+                    config,
+                    user_input,
+                    user_id,
+                    image_b64,
+                    is_paused,
+                    meal_type,
+                    action,
+                )
+                if awaiting and is_paused and answer != "other":
+                    # The card took this reply; say the question is still open.
+                    result = _note_waiting_readback(result, awaiting)
+
+        span.set_attribute(
+            "intent",
+            "readback" if reply_handled else "coaching" if is_coaching else "log_meal",
+        )
         span.set_attribute("paused", result["paused"])
 
     # Short-term coaching memory: both intents, so the coach knows what was
@@ -274,9 +319,143 @@ async def handle_message(
     # Preference memory (PRD F6): fire-and-forget after the reply. Card
     # button presses and photo-only turns carry no statement to learn from,
     # so they skip the task (and its LLM call) entirely.
-    if action is None and user_input.strip():
+    # A coaching turn that extracted facts in the turn, and a readback answer
+    # (which read its own correction), need no second pass.
+    facts_extracted = bool(result.pop("facts_extracted", False)) or reply_handled
+    if action is None and user_input.strip() and not facts_extracted:
         _enqueue_fact_extraction(user_id, user_input, result["message"])
     return result
+
+
+async def _load_entries(user_id: str) -> list[profile.HardEntry]:
+    """The patient's live hard entries; empty (and logged) when unreadable.
+
+    Only used to spot a readback answer: if the read fails the message is
+    routed as a normal turn, and the coaching path fails closed on its own.
+    """
+    try:
+        return await profile.load_hard_profile(user_id)
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("could not read the hard profile for %s: %s", user_id, exc)
+        return []
+
+
+def _readback_is_newer(state: Any, awaiting: list[profile.HardEntry]) -> bool:
+    """Whether the readback was asked after the paused meal card was made.
+
+    Whichever was asked last takes the reply. A checkpoint without a readable
+    timestamp keeps the card, which is the behaviour before readbacks existed.
+    """
+    created = getattr(state, "created_at", None)
+    asked = awaiting[0].readback_asked_at
+    try:
+        card_at = datetime.fromisoformat(created) if created else None
+    except (TypeError, ValueError):
+        card_at = None
+    return card_at is not None and asked is not None and asked > card_at
+
+
+def _question_text(awaiting: list[profile.HardEntry]) -> str:
+    """The readback sentences for ``awaiting``; empty when tables are down."""
+    try:
+        tables = load_tables()
+    except TablesUnavailable as exc:
+        logger.error("clinical tables unavailable, readback text dropped: %s", exc)
+        return ""
+    return " ".join(readback.sentence(e, tables) for e in awaiting)
+
+
+def _note_waiting_readback(
+    result: dict[str, Any], awaiting: list[profile.HardEntry]
+) -> dict[str, Any]:
+    """Append "still waiting for your answer on this: ..." to a card reply."""
+    question = _question_text(awaiting)
+    if not question:
+        return result
+    note = _TUNABLES.memory.readback_still_waiting_text.format(question=question)
+    return {**result, "message": f"{result['message']}\n\n{note}"}
+
+
+async def _answer_readback(
+    user_id: str,
+    thread_id: str,
+    awaiting: list[profile.HardEntry],
+    answer: str,
+    state: Any,
+    extraction: TurnExtraction | None,
+) -> dict[str, Any]:
+    """Apply a yes / no / correction to the readback asked last.
+
+    A yes or a plain no is one database write and no model call. A correction
+    ("no, it's prawns") arrives with the extraction of its new fact already
+    written; the reply asks about it. The reply names the open meal card.
+    """
+    with logfire.span("readback_reply", answer=answer):
+        text = await readback.apply_reply(user_id, awaiting, answer)
+        response: dict[str, Any] = {
+            "status": "success",
+            "message": text,
+            "paused": False,
+            "items": [],
+        }
+        if extraction is not None and extraction.changed_hard:
+            response = await _read_back_new(user_id, thread_id, response)
+    if state.next:
+        values = state.values
+        response["message"] = (
+            f"{response['message']}\n\n{_TUNABLES.memory.card_waiting_text}"
+        )
+        response["paused"] = True
+        response["items"] = _serialize_items(values.get("usda_results", []))
+        response["saved_meal"] = _saved_meal_payload(values)
+    return response
+
+
+async def _read_correction(
+    user_id: str, user_input: str, awaiting: list[profile.HardEntry]
+) -> TurnExtraction | None:
+    """Whether a "no ..." message corrects what was asked, and what it states.
+
+    A no to a retirement request is always an answer (the entry keeps
+    binding). Otherwise the message is read for hard facts, and it counts as
+    a correction only when one of them has the same type as an entry asked
+    about. The facts are written either way (they are the patient's words).
+
+    Returns:
+        The extraction when it is a correction; None when the message is
+        something else and should be routed normally.
+    """
+    if all(e.state == "confirmed" for e in awaiting):
+        return TurnExtraction()
+    try:
+        extraction = await extract_turn(
+            user_id, user_input, soft=profile_active(user_id)
+        )
+    except Exception as exc:  # noqa: BLE001 — route the message normally instead
+        logger.error("could not read the correction for %s: %s", user_id, exc)
+        return None
+    asked_types = {e.type for e in awaiting if e.state == "pending"}
+    stated = [*extraction.asked, *extraction.accepted]
+    return extraction if any(e.type in asked_types for e in stated) else None
+
+
+async def _read_back_new(
+    user_id: str, thread_id: str, response: dict[str, Any]
+) -> dict[str, Any]:
+    """Ask about the facts a correction just wrote; log and skip on failure."""
+    try:
+        entries = await profile.load_hard_profile(user_id)
+        planned = readback.plan_readback(entries, thread_id, load_tables())
+        await readback.commit_readback(user_id, planned, thread_id)
+    except Exception as exc:  # noqa: BLE001 — the denial itself already happened
+        logger.error("could not read back the correction for %s: %s", user_id, exc)
+        return response
+    if planned.empty:
+        return response
+    response["message"] = f"{response['message']}\n\n{planned.text}"
+    if planned.readback is not None:
+        response["readback"] = planned.readback.model_dump()
+    return response
 
 
 def _safety_result(message: str) -> dict[str, Any]:
@@ -675,7 +854,7 @@ async def _handle_coaching(
         }
     with logfire.span("coaching") as span:
         try:
-            result = await _coaching_agent.handle(user_id, user_input)
+            result = await _coaching_agent.handle(user_id, user_input, conversation_id)
         except RestrictionsUnavailableError:
             # Never answer without the patient's binding profile (FR-007).
             span.set_attribute("profile_unavailable", True)
@@ -685,7 +864,7 @@ async def _handle_coaching(
                 "paused": False,
                 "items": [],
             }
-        if offer_to_log:
+        if offer_to_log and result.readback is None:
             # Appended after citations were extracted, so [n] parsing is
             # untouched; saved and remembered with the offer included.
             result = result.model_copy(
@@ -722,4 +901,8 @@ async def _handle_coaching(
     if result.recipe is not None:
         response["recipe"] = result.recipe.model_dump(mode="json")
         response["recommendation_id"] = result.recommendation_id
+    if result.readback is not None:
+        response["readback"] = result.readback.model_dump()
+    if result.facts_extracted:
+        response["facts_extracted"] = True
     return response

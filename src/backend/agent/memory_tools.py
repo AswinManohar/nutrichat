@@ -11,6 +11,7 @@ only requests its retirement. The tool's reply tells the model to ask.
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import Literal, Protocol
 
 from pydantic_ai import RunContext
@@ -38,9 +39,20 @@ logger = logging.getLogger(__name__)
 RememberKind = Literal["restriction", FactKind]
 
 _CONFIRM_NOTE = (
-    "It does not apply until the user confirms: read it back and ask them to "
-    "confirm (or confirm it in their profile)."
+    "It does not apply until the user confirms. The app asks them to confirm "
+    "at the end of your reply: do not ask yourself."
 )
+
+# A coaching turn sets a list here before the reply is generated; a tool that
+# adds a pending hard entry appends to it, so the turn can read it back from
+# the template (agent/coaching.py) instead of leaving it for the next turn.
+hard_writes: ContextVar[list[bool] | None] = ContextVar("hard_writes", default=None)
+
+
+def _note_hard_write() -> None:
+    writes = hard_writes.get()
+    if writes is not None:
+        writes.append(True)
 
 
 class _HasUserId(Protocol):
@@ -70,6 +82,7 @@ async def remember_fact(user_id: str, fact: str, kind: RememberKind) -> str:
     if kind == "restriction":
         applied, reason = await _apply_one(user_id, AddRestriction(fact=text))
         if applied:
+            _note_hard_write()
             return f'Recorded as pending: "{text}". {_CONFIRM_NOTE}'
         return f"Nothing saved: {reason}."
     applied, reason = await _apply_one(user_id, AddFact(fact=text, kind=kind))
@@ -138,10 +151,11 @@ async def forget_fact(user_id: str, fact: str) -> str:
         await profile.request_retirement(user_id, fact_id)
     except profile.ProfileError as exc:
         return f"Nothing removed: {exc}."
+    _note_hard_write()
     return (
         f'Removal of "{text}" is {PENDING_REMOVAL}: it stays in effect until '
-        "then. Ask the user to confirm they want it removed (or to remove it in "
-        "their profile)."
+        "then. The app asks the user to confirm at the end of your reply: do "
+        "not ask yourself."
     )
 
 
@@ -166,10 +180,12 @@ async def set_diet_setting(user_id: str, setting: str, on: bool) -> str:
     if reason == "no change":
         return f"The {chip} diet setting was already {'on' if on else 'off'}."
     if on:
+        _note_hard_write()
         return f"The {chip} diet setting is {PENDING_ADD}. {_CONFIRM_NOTE}"
+    _note_hard_write()
     return (
         f"Switching the {chip} diet setting off is {PENDING_REMOVAL}: it stays on "
-        "until then. Ask the user to confirm."
+        "until then. The app asks the user to confirm at the end of your reply."
     )
 
 
@@ -223,6 +239,7 @@ async def set_diet(ctx: RunContext[_HasUserId], setting: str, on: bool) -> str:
 
 __all__ = [
     "forget_fact",
+    "hard_writes",
     "memory_toolset",
     "remember_fact",
     "set_diet_setting",

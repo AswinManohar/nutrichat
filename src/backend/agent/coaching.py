@@ -32,7 +32,9 @@ from backend.agent.context import (
 from backend.agent.cost import record_run_cost
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
 from backend.agent.memory import profile_active
-from backend.agent.memory_tools import memory_toolset
+from backend.agent.memory_curator import TurnExtraction, extract_turn
+from backend.agent.memory_tools import hard_writes, memory_toolset
+from backend.agent.readback import Plan, Readback, commit_readback, plan_readback
 from backend.agent.reply_judge import guard as guard_reply_text
 from backend.agent.suggest import suggest_meal
 from backend.agent.tools.history import (
@@ -56,6 +58,7 @@ from backend.safety.profile import (
     active_diet_settings,
     declared_conditions,
     load_hard_profile,
+    render_block,
     version_of,
 )
 from backend.safety.recipe import Recipe
@@ -118,6 +121,12 @@ class CoachingResult(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     recipe: Recipe | None = None
     recommendation_id: str | None = None
+    # The question asked at the end of the reply, when a hard fact needs
+    # confirming (spec 013 US4).
+    readback: Readback | None = None
+    # True when this turn's fact extraction ran in the turn, so the Celery
+    # curator must not run it again.
+    facts_extracted: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -633,9 +642,58 @@ async def _profile_and_context(
     return entries, await _context_prompt(user_id, message, entries)
 
 
+async def _replan(
+    user_id: str,
+    entries: list[HardEntry],
+    conversation_id: str | None,
+    fallback: Plan,
+) -> Plan:
+    """Plan the notices again from a fresh read after a memory tool wrote."""
+    try:
+        fresh = await load_hard_profile(user_id)
+    except Exception as exc:  # noqa: BLE001 — the reply is already written
+        logger.error("could not re-read the hard profile for %s: %s", user_id, exc)
+        return fallback
+    return _plan_notices(fresh, conversation_id)
+
+
+def _plan_notices(entries: list[HardEntry], conversation_id: str | None) -> Plan:
+    """Questions and mentions for this reply; none when the tables are down."""
+    if conversation_id is None:
+        return Plan()
+    try:
+        return plan_readback(entries, conversation_id, load_tables())
+    except TablesUnavailable as exc:
+        logger.error("clinical tables unavailable, no readback this turn: %s", exc)
+        return Plan()
+
+
 async def _none() -> list[RetrievedChunk]:
     """Awaitable empty result, so gather() has a uniform shape."""
     return []
+
+
+async def _extract_facts(user_id: str, message: str) -> TurnExtraction | None:
+    """Extract hard and soft facts from the patient's message, inside the turn.
+
+    Hard facts are read for every user; soft preferences only for users on the
+    curated profile (a cheaper, hard-only call for the rest). A failure is
+    logged and returns None: the turn goes on without new facts and the
+    orchestrator still queues the Celery curator for it.
+    """
+    try:
+        return await extract_turn(user_id, message, soft=profile_active(user_id))
+    except Exception as exc:  # noqa: BLE001 — extraction must never fail the turn
+        logger.error("in-turn fact extraction failed for %s: %s", user_id, exc)
+        return None
+
+
+def _bind(entries: list[HardEntry], extraction: TurnExtraction) -> list[HardEntry]:
+    """The turn's entries with what extraction just wrote: new ones added,
+    entries with a fresh retirement request replaced."""
+    written = [*extraction.accepted, *extraction.asked, *extraction.retirements]
+    ids = {e.id for e in written}
+    return [*(e for e in entries if e.id not in ids), *written]
 
 
 class CoachingAgent:
@@ -649,12 +707,21 @@ class CoachingAgent:
     gets the per-user context block from agent/context.py.
     """
 
-    async def handle(self, user_id: str, message: str) -> CoachingResult:
+    async def handle(
+        self, user_id: str, message: str, conversation_id: str | None = None
+    ) -> CoachingResult:
         """Answer a nutrition question grounded in the user's logged data.
+
+        Hard facts the patient states in ``message`` are extracted in the
+        turn, concurrently with the query parse. A fact accepted as inferred
+        binds this reply; one that needs confirming is read back at the end of
+        the reply, and a meal request waits for the answer (spec 013 US4).
 
         Args:
             user_id: Supabase Auth UUID.
             message: User's nutrition question.
+            conversation_id: The chat thread, to ask each readback once per
+                conversation. None asks none.
 
         Returns:
             CoachingResult whose message is the reply (or a graceful
@@ -663,20 +730,54 @@ class CoachingAgent:
             and resolved citations for persistence.
         """
         history = await get_coaching_history(user_id)
-        # Independent I/O: the parse call and the profile + context fan-out
-        # don't depend on each other, so overlap them.
-        parsed, (entries, context_prompt) = await asyncio.gather(
+        # Independent I/O: the parse call, the profile + context fan-out and
+        # the fact extraction don't depend on each other, so overlap them.
+        parsed, (entries, context_prompt), extraction = await asyncio.gather(
             parse_query(message, history=history),
             _profile_and_context(user_id, message),
+            _extract_facts(user_id, message),
         )
+        if extraction is not None:
+            entries = _bind(entries, extraction)
+            if extraction.accepted:
+                # The context was built before the fact existed; the model
+                # must see it as binding too.
+                context_prompt = "\n\n".join(
+                    [context_prompt, render_block(extraction.accepted, load_tables())]
+                )
+        planned = _plan_notices(entries, conversation_id)
+        extracted = extraction is not None
+
+        async def finish(result: CoachingResult) -> CoachingResult:
+            """Append the readback and mentions, and record them."""
+            if planned.empty or conversation_id is None:
+                return result.model_copy(update={"facts_extracted": extracted})
+            await commit_readback(user_id, planned, conversation_id)
+            return result.model_copy(
+                update={
+                    "message": f"{result.message}\n\n{planned.text}",
+                    "readback": planned.readback,
+                    "facts_extracted": extracted,
+                }
+            )
+
+        if parsed.suggests_meal and planned.asks:
+            # A fact the recipe must respect is not confirmed yet: ask first.
+            return await finish(
+                CoachingResult(
+                    message=_TUNABLES.memory.recipe_withheld_text, parsed=parsed
+                )
+            )
         if parsed.suggests_meal:
             # A meal request is answered by a recipe that passed the check.
             suggestion = await suggest_meal(user_id, message, history, entries)
-            return CoachingResult(
-                message=suggestion.message,
-                parsed=parsed,
-                recipe=suggestion.recipe,
-                recommendation_id=suggestion.recommendation_id,
+            return await finish(
+                CoachingResult(
+                    message=suggestion.message,
+                    parsed=parsed,
+                    recipe=suggestion.recipe,
+                    recommendation_id=suggestion.recommendation_id,
+                )
             )
         # Data fetch and guideline retrieval are independent too.
         data, retrieved = await asyncio.gather(
@@ -694,25 +795,38 @@ class CoachingAgent:
         # absence of logged data.
         if micro_nutrients and not data.get("micronutrients") and not retrieved:
             names = ", ".join(_humanize_nutrient_name(n) for n in micro_nutrients)
-            return CoachingResult(
-                message=f"I don't have data on {names} for that period.",
-                parsed=parsed,
+            return await finish(
+                CoachingResult(
+                    message=f"I don't have data on {names} for that period.",
+                    parsed=parsed,
+                )
             )
 
-        text = await generate_response(
-            message,
-            data,
-            context_prompt=context_prompt,
-            history=history,
-            passages=retrieved,
-            user_id=user_id,
-            entries=entries,
-        )
-        return CoachingResult(
-            message=text,
-            parsed=parsed,
-            retrieved=list(retrieved),
-            citations=extract_citations(text, retrieved),
+        tool_writes = hard_writes.set([])
+        try:
+            text = await generate_response(
+                message,
+                data,
+                context_prompt=context_prompt,
+                history=history,
+                passages=retrieved,
+                user_id=user_id,
+                entries=entries,
+            )
+        finally:
+            wrote_hard = bool(hard_writes.get())
+            hard_writes.reset(tool_writes)
+        if wrote_hard:
+            # The coach's remember / set_diet tool added a pending entry after
+            # the entries were read: read it back from the template, once.
+            planned = await _replan(user_id, entries, conversation_id, planned)
+        return await finish(
+            CoachingResult(
+                message=text,
+                parsed=parsed,
+                retrieved=list(retrieved),
+                citations=extract_citations(text, retrieved),
+            )
         )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+import asyncio
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +21,8 @@ from backend.agent.coaching import (
     parse_query,
 )
 from backend.agent.context import ContextBundle, GoalSummary
+from backend.agent.memory_curator import TurnExtraction
+from backend.agent.memory_tools import hard_writes
 from backend.agent.suggest import SuggestionResult
 from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
@@ -846,3 +849,345 @@ async def test_the_reply_is_replaced_when_the_guard_cannot_run():
         text = await generate_response("lunch?", {}, entries=_peanut_allergy())
 
     assert text == get_tunables().safety.reply_guard_fallback_text
+
+
+# ---------------------------------------------------------------------------
+# Spec 013 US4: hard facts stated in the turn
+# ---------------------------------------------------------------------------
+
+THREAD = "user-1:conv-1"
+SHELLFISH = profile.AllergyValue(allergen_group="shellfish")
+
+
+def _inferred(state: str, **update):
+    entry = hard_entry(SHELLFISH, state, source="inferred")
+    if state == "confirmed":
+        update.setdefault("confirmed_by", "inference")
+    return entry.model_copy(update=update)
+
+
+def _extraction(**kwargs) -> TurnExtraction:
+    return TurnExtraction(**kwargs)
+
+
+def _meal_patches(extraction: TurnExtraction | None):
+    suggestion = SuggestionResult(
+        message="Rice bowl ...",
+        recipe=make_recipe("rice"),
+        recommendation_id="rec-1",
+        attempts=1,
+    )
+    return (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", suggests_meal=True),
+        ),
+        patch(
+            "backend.agent.coaching._extract_facts",
+            new_callable=AsyncMock,
+            return_value=extraction,
+        ),
+        patch(
+            "backend.agent.coaching.suggest_meal",
+            new_callable=AsyncMock,
+            return_value=suggestion,
+        ),
+        patch("backend.agent.readback.profile.mark_readback", new_callable=AsyncMock),
+        patch("backend.agent.readback.profile.mark_mentioned", new_callable=AsyncMock),
+    )
+
+
+async def test_a_recipe_is_withheld_when_a_new_fact_needs_confirming(hard_entries):
+    pending = _inferred("pending")
+    parse, extract, suggest, asked, _ = _meal_patches(_extraction(asked=[pending]))
+
+    with parse, extract, suggest as suggest_mock, asked as asked_mock, _:
+        result = await CoachingAgent().handle(
+            "user-1", "I'm allergic to shellfish, what's for dinner?", THREAD
+        )
+
+    suggest_mock.assert_not_awaited()
+    assert result.recipe is None and result.recommendation_id is None
+    assert result.message == (
+        "Before I suggest a meal, I need to check one thing.\n\n"
+        "I'll note this on your profile: Shellfish allergy. Is that right?"
+    )
+    assert result.readback is not None and result.readback.entry_id == pending.id
+    assert result.facts_extracted is True
+    asked_mock.assert_awaited_once_with("user-1", [pending.id], THREAD)
+
+
+async def test_an_unanswered_pending_fact_from_an_earlier_session_is_asked_first(
+    hard_entries,
+):
+    old = _inferred("pending", readback_asked_at=None, conversation_id="user-1:old")
+    hard_entries.append(old)
+    parse, extract, suggest, asked, _ = _meal_patches(_extraction())
+
+    with parse, extract, suggest as suggest_mock, asked as asked_mock, _:
+        result = await CoachingAgent().handle("user-1", "dinner idea?", THREAD)
+
+    suggest_mock.assert_not_awaited()
+    assert result.readback is not None and result.readback.entry_id == old.id
+    asked_mock.assert_awaited_once_with("user-1", [old.id], THREAD)
+
+
+async def test_a_fact_already_asked_in_this_conversation_does_not_block_a_recipe(
+    hard_entries,
+):
+    hard_entries.append(
+        _inferred(
+            "pending", conversation_id=THREAD, readback_asked_at=datetime.now(UTC)
+        )
+    )
+    parse, extract, suggest, asked, _ = _meal_patches(_extraction())
+
+    with parse, extract, suggest as suggest_mock, asked as asked_mock, _:
+        result = await CoachingAgent().handle("user-1", "dinner idea?", THREAD)
+
+    suggest_mock.assert_awaited_once()
+    assert result.recipe is not None and result.readback is None
+    asked_mock.assert_not_awaited()
+
+
+async def test_an_accepted_fact_binds_the_same_turn_and_is_mentioned_once(
+    hard_entries,
+):
+    accepted = _inferred("confirmed")
+    parse, extract, suggest, _, mentioned = _meal_patches(
+        _extraction(accepted=[accepted])
+    )
+
+    with parse, extract, suggest as suggest_mock, _, mentioned as mentioned_mock:
+        result = await CoachingAgent().handle(
+            "user-1", "I'm allergic to shellfish", THREAD
+        )
+
+    assert accepted in suggest_mock.await_args.args[3]
+    assert result.recipe is not None
+    assert result.message.endswith(
+        "I've noted this on your profile: Shellfish allergy. Tell me if that's wrong."
+    )
+    assert result.readback is None
+    mentioned_mock.assert_awaited_once_with("user-1", accepted.id)
+
+
+async def test_an_accepted_fact_is_in_the_reply_prompt_and_guard(hard_entries):
+    accepted = _inferred("confirmed")
+    parsed = QueryParsed(time_range="today", nutrients=["kcal"])
+
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching._extract_facts",
+            new_callable=AsyncMock,
+            return_value=_extraction(accepted=[accepted]),
+        ),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ) as gen_mock,
+        patch("backend.agent.readback.profile.mark_mentioned", new_callable=AsyncMock),
+    ):
+        await CoachingAgent().handle("user-1", "I'm allergic to shellfish", THREAD)
+
+    assert "Shellfish allergy" in gen_mock.await_args.kwargs["context_prompt"]
+    assert accepted in gen_mock.await_args.kwargs["entries"]
+
+
+async def test_no_conversation_id_asks_nothing(hard_entries):
+    pending = _inferred("pending")
+    parse, extract, suggest, asked, _ = _meal_patches(_extraction(asked=[pending]))
+
+    with parse, extract, suggest as suggest_mock, asked as asked_mock, _:
+        result = await CoachingAgent().handle("user-1", "dinner idea?")
+
+    suggest_mock.assert_awaited_once()
+    asked_mock.assert_not_awaited()
+    assert result.message == "Rice bowl ..."
+
+
+async def test_fact_extraction_runs_alongside_the_query_parse(hard_entries):
+    started = asyncio.Event()
+
+    async def parse(*args, **kwargs):
+        # Only finishes once extraction has started: sequential code hangs.
+        await asyncio.wait_for(started.wait(), timeout=2)
+        return QueryParsed(time_range="today", nutrients=["kcal"])
+
+    async def extract(user_id, message, **kwargs):
+        started.set()
+        return TurnExtraction()
+
+    with (
+        patch("backend.agent.coaching.parse_query", parse),
+        patch("backend.agent.coaching.profile_active", return_value=True),
+        patch("backend.agent.coaching.extract_turn", extract),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ),
+    ):
+        result = await CoachingAgent().handle("user-1", "how are my macros?", THREAD)
+
+    assert result.facts_extracted is True
+
+
+async def test_users_off_the_curated_profile_get_the_hard_only_extraction(
+    hard_entries,
+):
+    with (
+        patch("backend.agent.coaching.profile_active", return_value=False),
+        patch(
+            "backend.agent.coaching.extract_turn",
+            new_callable=AsyncMock,
+            return_value=TurnExtraction(),
+        ) as extract_mock,
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
+        ),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ),
+    ):
+        result = await CoachingAgent().handle("user-1", "how are my macros?", THREAD)
+
+    extract_mock.assert_awaited_once_with("user-1", "how are my macros?", soft=False)
+    assert result.facts_extracted is True
+
+
+async def test_a_pending_fact_the_remember_tool_adds_is_read_back_from_the_template(
+    hard_entries,
+):
+    pending = _inferred("pending", created_by="patient")
+
+    async def reply(*args, **kwargs):
+        # What memory_tools does when it adds a pending hard entry.
+        hard_writes.get().append(True)
+        return "Noted, I'll remember that."
+
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
+        ),
+        patch(
+            "backend.agent.coaching._extract_facts",
+            new_callable=AsyncMock,
+            return_value=TurnExtraction(),
+        ),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch("backend.agent.coaching.generate_response", reply),
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=[pending],
+        ),
+        patch(
+            "backend.agent.readback.profile.mark_readback", new_callable=AsyncMock
+        ) as asked,
+    ):
+        result = await CoachingAgent().handle(
+            "user-1", "please remember I'm allergic to shellfish", THREAD
+        )
+
+    assert result.message.startswith("Noted, I'll remember that.")
+    assert result.message.endswith("Shellfish allergy. Is that right?")
+    assert result.readback is not None and result.readback.entry_id == pending.id
+    asked.assert_awaited_once_with("user-1", [pending.id], THREAD)
+
+
+async def test_a_turn_without_a_tool_write_does_not_reread_the_profile(hard_entries):
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
+        ),
+        patch(
+            "backend.agent.coaching._extract_facts",
+            new_callable=AsyncMock,
+            return_value=TurnExtraction(),
+        ),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ),
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as load_mock,
+    ):
+        await CoachingAgent().handle("user-1", "how are my macros?", THREAD)
+
+    load_mock.assert_awaited_once()  # the turn's own read, not a second one
+
+
+async def test_a_failed_extraction_does_not_fail_the_turn_and_leaves_celery_to_retry(
+    hard_entries,
+):
+    with (
+        patch("backend.agent.coaching.profile_active", return_value=True),
+        patch(
+            "backend.agent.coaching.extract_turn",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("gemini 429"),
+        ),
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
+        ),
+        patch(
+            "backend.agent.coaching.fetch_data",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ),
+    ):
+        result = await CoachingAgent().handle("user-1", "how are my macros?", THREAD)
+
+    assert result.message == "ok"
+    assert result.facts_extracted is False
