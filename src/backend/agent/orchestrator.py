@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.coaching import CoachingAgent
+from backend.agent.coaching import CoachingAgent, RestrictionsUnavailableError
 from backend.agent.coaching_store import save_coaching_response
 from backend.agent.graph import build_graph
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
@@ -607,7 +607,9 @@ async def _handle_coaching(
     Returns:
         Dict with status, message, paused=False, items=[] — same shape as
         meal logging so web and Telegram channels stay uniform — plus
-        response_id when the reply was persisted.
+        response_id when the reply was persisted. When the hard profile
+        cannot be loaded the message is ``safety.profile_unavailable_text``
+        and nothing is persisted.
     """
     granted = await consume_llm_credit(user_id)
     if not granted:
@@ -618,7 +620,17 @@ async def _handle_coaching(
             "items": [],
         }
     with logfire.span("coaching") as span:
-        result = await _coaching_agent.handle(user_id, user_input)
+        try:
+            result = await _coaching_agent.handle(user_id, user_input)
+        except RestrictionsUnavailableError:
+            # Never answer without the patient's binding profile (FR-007).
+            span.set_attribute("profile_unavailable", True)
+            return {
+                "status": "success",
+                "message": _TUNABLES.safety.profile_unavailable_text,
+                "paused": False,
+                "items": [],
+            }
         if offer_to_log:
             # Appended after citations were extracted, so [n] parsing is
             # untouched; saved and remembered with the offer included.

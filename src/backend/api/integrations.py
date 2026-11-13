@@ -19,6 +19,7 @@ from sqlalchemy import text as sa_text
 from backend.auth.integration import get_integration_user
 from backend.db.models import UserGoal
 from backend.db.session import get_session
+from backend.safety.profile import active_diet_settings, load_hard_profile
 
 router = APIRouter(
     prefix="/v1/integrations",
@@ -342,7 +343,9 @@ async def get_goals(user_id: str = Depends(get_integration_user)) -> Integration
             kcal_goal=goal.kcal_goal,
             protein_goal=goal.protein_goal,
             fiber_goal=goal.fiber_goal,
-            dietary_prefs=goal.dietary_prefs,
+            dietary_prefs={
+                s: True for s in active_diet_settings(await load_hard_profile(user_id))
+            },
             streak_days=goal.streak_days,
         )
 

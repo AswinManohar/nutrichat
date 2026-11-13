@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.agent.context import (
     ContextBundle,
@@ -15,6 +18,20 @@ from backend.agent.context import (
 from backend.agent.memory import MemoryFact
 from backend.db.models import UserGoal, UserMemory, WeeklySummary
 from backend.db.redis_client import TodayTotals
+from backend.safety import profile
+from backend.safety.profile import HardEntry
+from tests.profile_helpers import hard_entry
+
+
+@pytest.fixture(autouse=True)
+def hard_entries() -> Iterator[list[HardEntry]]:
+    """The user's live hard profile; empty unless a test fills it."""
+    entries: list[HardEntry] = []
+    with patch(
+        "backend.agent.context.hard_profile.load_hard_profile",
+        AsyncMock(return_value=entries),
+    ):
+        yield entries
 
 
 def _mock_session(*, goal=None, weekly=None, memories=None):
@@ -64,7 +81,6 @@ async def test_build_context_populates_goals_and_weekly():
         kcal_goal=2000.0,
         protein_goal=150.0,
         fiber_goal=30.0,
-        dietary_prefs={"vegetarian": True},
         streak_days=5,
     )
     weekly = WeeklySummary(
@@ -92,7 +108,6 @@ async def test_build_context_populates_goals_and_weekly():
         kcal_goal=2000.0,
         protein_goal=150.0,
         fiber_goal=30.0,
-        dietary_prefs={"vegetarian": True},
         streak_days=5,
     )
     assert ctx.weekly_pattern == WeeklyPattern(
@@ -171,7 +186,6 @@ def test_build_system_prompt_stays_within_token_budget():
             kcal_goal=2000,
             protein_goal=150,
             fiber_goal=30,
-            dietary_prefs={},
             streak_days=3,
         ),
         weekly_pattern=WeeklyPattern(
@@ -195,7 +209,6 @@ def test_build_system_prompt_flags_low_protein():
             kcal_goal=2000,
             protein_goal=150,
             fiber_goal=30,
-            dietary_prefs={},
             streak_days=0,
         ),
     )
@@ -210,7 +223,7 @@ def _fact(text: str, kind: str) -> MemoryFact:
 
 async def test_build_context_profile_path_loads_whole_profile_without_embedding():
     session_factory = _mock_session()
-    facts = [_fact("Peanut allergy", "restriction")]
+    facts = [_fact("Mushrooms", "dislike")]
     embed = AsyncMock()
 
     with (
@@ -264,12 +277,12 @@ async def test_build_context_legacy_path_does_not_touch_profile():
     assert ctx.profile_active is False
 
 
-def test_build_system_prompt_renders_profile_with_diet_settings():
+def test_build_system_prompt_renders_hard_block_then_soft_profile():
     ctx = ContextBundle(
         today_totals=TodayTotals(),
-        goals=GoalSummary(dietary_prefs={"vegetarian": True}, streak_days=0),
+        hard_block="Patient safety profile (confirmed by the patient):\n- X",
         profile_active=True,
-        profile=[_fact("Peanut allergy", "restriction"), _fact("Mushrooms", "dislike")],
+        profile=[_fact("Mushrooms", "dislike")],
         staples={"breakfast": ["Oats"]},
         # Ignored on the profile path.
         preferences=["legacy fact"],
@@ -277,13 +290,13 @@ def test_build_system_prompt_renders_profile_with_diet_settings():
 
     prompt = build_system_prompt(ctx)
 
-    assert "- Diet settings (binding): vegetarian" in prompt
-    assert "- Never suggest (hard restrictions): Peanut allergy" in prompt
+    assert "Patient safety profile" in prompt
     assert "- Dislikes (avoid): Mushrooms" in prompt
     assert "breakfast: Oats" in prompt
     assert "legacy fact" not in prompt
-    # Profile sits before the accountability rules and hard constraints.
-    assert prompt.index("Peanut allergy") < prompt.index("Accountability rules:")
+    # Hard block first, both before the accountability rules.
+    assert prompt.index("Patient safety profile") < prompt.index("Mushrooms")
+    assert prompt.index("Mushrooms") < prompt.index("Accountability rules:")
 
 
 def test_build_system_prompt_empty_profile_adds_no_block():
@@ -296,59 +309,116 @@ def test_build_system_prompt_legacy_path_unchanged():
     ctx = ContextBundle(
         today_totals=TodayTotals(),
         preferences=["prefers oat milk"],
-        profile=[_fact("Peanut allergy", "restriction")],
+        profile=[_fact("Mushrooms", "dislike")],
     )
 
     prompt = build_system_prompt(ctx)
 
     assert "Known preferences: prefers oat milk." in prompt
-    assert "Peanut allergy" not in prompt
+    assert "Mushrooms" not in prompt
 
 
-def test_build_system_prompt_default_path_renders_diet_settings_and_conditions():
-    # Issue #70: with the profile off, diet settings were never in the prompt.
-    ctx = ContextBundle(
-        today_totals=TodayTotals(),
-        goals=GoalSummary(
-            dietary_prefs={"vegetarian": True, "no_nuts": True, "keto": False},
-            conditions=["diabetes"],
-            streak_days=0,
+async def test_hard_block_is_built_for_users_off_the_profile_flag(hard_entries):
+    # FR-004: the binding profile does not depend on memory.profile_enabled.
+    hard_entries += [
+        hard_entry(profile.AllergyValue(allergen_group="peanut")),
+        hard_entry(profile.DietSettingValue(setting="vegetarian")),
+        hard_entry(profile.DietSettingValue(setting="no_nuts")),
+        hard_entry(profile.DiagnosisValue(condition="diabetes")),
+    ]
+    with (
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
         ),
-    )
+        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch("backend.agent.context.profile_active", return_value=False),
+    ):
+        ctx = await build_context("user-1")
 
     prompt = build_system_prompt(ctx)
-
+    assert "Allergies (never serve, including derived ingredients): Peanut allergy" in (
+        prompt
+    )
     assert "Diet settings (binding): no nuts, vegetarian" in prompt
-    assert "keto" not in prompt
     assert "Declared health conditions: diabetes." in prompt
 
 
-def test_build_system_prompt_profile_path_renders_conditions():
-    ctx = ContextBundle(
-        today_totals=TodayTotals(),
-        goals=GoalSummary(dietary_prefs={}, conditions=["ckd"], streak_days=0),
-        profile_active=True,
+async def test_pending_entries_are_listed_as_not_applied(hard_entries):
+    hard_entries += [hard_entry(profile.DietSettingValue(setting="vegan"), "pending")]
+    with (
+        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
+        ),
+    ):
+        prompt = build_system_prompt(await build_context("user-1"))
+
+    assert "Awaiting confirmation, do not apply until the patient confirms: Vegan" in (
+        prompt
     )
+    assert "Diet settings (binding)" not in prompt
 
-    assert "Declared health conditions: ckd." in build_system_prompt(ctx)
+
+async def test_build_context_fails_when_the_hard_profile_cannot_load():
+    with (
+        patch(
+            "backend.agent.context.hard_profile.load_hard_profile",
+            AsyncMock(side_effect=OSError("postgres down")),
+        ),
+        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
+        ),
+        pytest.raises(OSError),
+    ):
+        await build_context("user-1")
 
 
-async def test_load_restrictions_reads_goal_row_only_on_default_path():
+async def test_build_context_fails_when_the_profile_is_too_large(hard_entries):
+    cap = 2
+    hard_entries += [
+        hard_entry(profile.FoodExclusionValue(terms=[f"food {i}"]))
+        for i in range(cap + 1)
+    ]
+    tunables = MagicMock()
+    tunables.safety.hard_profile_max_entries = cap
+    with (
+        patch("backend.safety.profile.get_tunables", return_value=tunables),
+        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch(
+            "backend.agent.context.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(),
+        ),
+        pytest.raises(profile.ProfileTooLarge),
+    ):
+        await build_context("user-1")
+
+
+async def test_load_restrictions_reads_goal_row_and_hard_profile(hard_entries):
     goal = UserGoal(
         user_id="user-1",
         kcal_goal=2000.0,
         protein_goal=120.0,
         fiber_goal=30.0,
-        dietary_prefs={"vegan": True},
-        conditions=["hypertension"],
         streak_days=2,
     )
+    hard_entries += [
+        hard_entry(profile.DietSettingValue(setting="vegan")),
+        hard_entry(profile.DiagnosisValue(condition="hypertension")),
+        hard_entry(profile.FoodExclusionValue(terms=["pork"])),
+    ]
     load = AsyncMock()
     with (
         patch(
             "backend.agent.context.get_session", return_value=_mock_session(goal=goal)
         ),
-        patch("backend.agent.context.profile_active", return_value=False),
         patch("backend.agent.context.load_profile", load),
     ):
         ctx = await load_restrictions("user-1")
@@ -356,26 +426,20 @@ async def test_load_restrictions_reads_goal_row_only_on_default_path():
     load.assert_not_awaited()
     prompt = build_restrictions_prompt(ctx)
     assert "Diet settings (binding): vegan" in prompt
-    assert "Declared health conditions: hypertension." in prompt
+    assert "Declared health conditions: high blood pressure." in prompt
+    assert "Never suggest (hard restrictions): No pork" in prompt
     assert "Goals: 2000 kcal, 120g protein, 30g fiber." in prompt
     assert "Hard constraints:" in prompt
     assert "Today so far" not in prompt
 
 
-async def test_load_restrictions_keeps_only_restriction_facts_on_profile_path():
-    load = AsyncMock(
-        return_value=[
-            _fact("Peanut allergy", "restriction"),
-            _fact("Mushrooms", "dislike"),
-        ]
-    )
+async def test_load_restrictions_fails_when_the_hard_profile_cannot_load():
     with (
         patch("backend.agent.context.get_session", return_value=_mock_session()),
-        patch("backend.agent.context.profile_active", return_value=True),
-        patch("backend.agent.context.load_profile", load),
+        patch(
+            "backend.agent.context.hard_profile.load_hard_profile",
+            AsyncMock(side_effect=OSError("postgres down")),
+        ),
+        pytest.raises(OSError),
     ):
-        ctx = await load_restrictions("user-1")
-
-    prompt = build_restrictions_prompt(ctx)
-    assert "- Never suggest (hard restrictions): Peanut allergy" in prompt
-    assert "Mushrooms" not in prompt
+        await load_restrictions("user-1")

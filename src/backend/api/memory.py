@@ -33,6 +33,7 @@ class FactOut(BaseModel):
     fact: str
     kind: str
     source: str
+    created_at: datetime | None = None
     updated_at: datetime | None = None
 
     model_config = ConfigDict(extra="forbid")

@@ -9,6 +9,7 @@ import pytest
 from backend.agent import memory_judge
 from backend.agent.memory import (
     AddFact,
+    AddRestriction,
     MemoryFact,
     ProfileState,
     RemoveFact,
@@ -51,7 +52,7 @@ def _answer(question: str, probability: float, status: int = 200) -> httpx.Respo
 
 def test_select_ops_keeps_only_ops_at_or_above_the_threshold() -> None:
     ops = [
-        AddFact(fact="Allergic to peanuts", kind="restriction"),
+        AddRestriction(fact="Allergic to peanuts"),
         AddFact(fact="Likes salad", kind="like"),
         SetDietChip(chip="vegetarian", on=True),
         RemoveFact(id="id-b"),
@@ -60,7 +61,7 @@ def test_select_ops_keeps_only_ops_at_or_above_the_threshold() -> None:
     kept = select_ops(ops, [0.97, 0.12, 0.6, 0.59])
 
     assert kept == [
-        AddFact(fact="Allergic to peanuts", kind="restriction", confidence=0.97),
+        AddRestriction(fact="Allergic to peanuts"),
         SetDietChip(chip="vegetarian", on=True),
     ]
 
@@ -101,7 +102,7 @@ def test_select_ops_unjudged_restriction_add_is_always_saved(
     save_unjudged: bool,
 ) -> None:
     # A missed allergy is silent; a wrong one is visible and removable.
-    op = AddFact(fact="Allergic to peanuts", kind="restriction")
+    op = AddRestriction(fact="Allergic to peanuts")
 
     assert _select_unjudged([op], save_unjudged=save_unjudged) == [op]
 

@@ -86,6 +86,7 @@ def test_get_memory_returns_facts_settings_and_staples(client: TestClient) -> No
                 "fact": "Allergic to peanuts",
                 "kind": "restriction",
                 "source": "stated",
+                "created_at": None,
                 "updated_at": None,
             }
         ],

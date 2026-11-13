@@ -47,6 +47,11 @@ from backend.db.redis_client import (
 )
 from backend.db.session import get_session
 from backend.guidelines.retrieval import RetrievedChunk, retrieve
+from backend.safety.profile import (
+    active_diet_settings,
+    declared_conditions,
+    load_hard_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -412,7 +417,12 @@ async def fetch_data(user_id: str, parsed: QueryParsed) -> dict:
                     "kcal_goal": goal.kcal_goal,
                     "protein_goal": goal.protein_goal,
                     "fiber_goal": goal.fiber_goal,
-                    "dietary_prefs": goal.dietary_prefs,
+                    "dietary_prefs": {
+                        setting: True
+                        for setting in active_diet_settings(
+                            await load_hard_profile(user_id)
+                        )
+                    },
                 }
 
     if parsed.include_foods:
@@ -472,9 +482,10 @@ async def generate_response(
 
 
 class RestrictionsUnavailableError(Exception):
-    """The user's diet settings and restrictions could not be loaded.
+    """The user's hard profile could not be loaded or rendered.
 
-    The coach must not answer without them (issue #70), so the turn fails.
+    The coach must not answer without it (issue #70, spec 013 FR-007), so the
+    turn fails and the orchestrator replies ``safety.profile_unavailable_text``.
     """
 
 
@@ -484,8 +495,8 @@ async def _context_prompt(user_id: str, message: str) -> str:
     build_context fans out to Postgres, Redis and the Gemini embeddings API.
     Most of the context is an enrichment, so a failure there must not take
     down a coaching turn that could answer from fetch_data alone, hence the
-    broad catch. The binding part (diet settings, conditions, hard
-    restrictions) is then reloaded from Postgres alone. That second read
+    broad catch. The binding part (the hard profile) is then reloaded from
+    Postgres alone. That second read
     runs only on the failure path, so a normal turn pays nothing for it.
 
     Raises:
@@ -509,11 +520,8 @@ async def _context_prompt(user_id: str, message: str) -> str:
 
 
 async def _user_conditions(user_id: str) -> list[str]:
-    """Read ``user_goal.conditions`` for retrieval filtering ([] if no row)."""
-    session_factory = get_session()
-    async with session_factory() as session:
-        goal = await session.get(UserGoal, user_id)
-        return list(goal.conditions or []) if goal is not None else []
+    """Confirmed diagnoses from the hard profile, for retrieval filtering."""
+    return declared_conditions(await load_hard_profile(user_id))
 
 
 async def _retrieve_for(user_id: str, message: str) -> list[RetrievedChunk]:

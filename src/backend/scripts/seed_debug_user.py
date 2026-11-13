@@ -220,8 +220,8 @@ async def main():
             print(f"Creating default user_goal for user {TARGET_USER_ID}...")
             await session.execute(
                 sa_text(
-                    "INSERT INTO user_goal (user_id, kcal_goal, protein_goal, fiber_goal, dietary_prefs, streak_days) "
-                    "VALUES (:user_id, 2000.0, 130.0, 25.0, '{}', 0)"
+                    "INSERT INTO user_goal (user_id, kcal_goal, protein_goal, fiber_goal, streak_days) "
+                    "VALUES (:user_id, 2000.0, 130.0, 25.0, 0)"
                 ),
                 {"user_id": TARGET_USER_ID}
             )

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.memory import MemoryFact, RemoveFact, ReplaceFact
+from backend.agent.memory import AddRestriction, MemoryFact, RemoveFact, ReplaceFact
 from backend.db.models import UserMemory
 from backend.scripts import backfill_memory_profile as backfill
 from backend.scripts.backfill_memory_profile import (
@@ -37,10 +37,9 @@ def test_plan_backfill_retypes_and_drops() -> None:
     assert ops == [
         ReplaceFact(id="id-prefers oat milk", fact="Prefers oat milk", kind="like"),
         RemoveFact(id="id-had pizza on friday"),
-        # No rewrite given: the original wording is kept.
-        ReplaceFact(
-            id="id-avoids red meat", fact="avoids red meat", kind="restriction"
-        ),
+        # A restriction is a pending hard-profile entry; no rewrite given, so
+        # the original wording is kept and the legacy row is left alone.
+        AddRestriction(fact="avoids red meat"),
     ]
 
 
@@ -61,7 +60,7 @@ def test_plan_backfill_ignores_unknown_duplicate_and_incomplete_decisions() -> N
 
 def test_plan_backfill_never_drops_or_softens_an_allergy() -> None:
     # The model treated both allergies as duplicates of "avoids dairy" on a
-    # real profile (2026-11-10 dry run); the guard keeps them as restrictions.
+    # real profile (2026-11-10 dry run); the guard proposes them as restrictions.
     legacy = _legacy(
         "has a milk allergy",
         "allergic to milk",
@@ -81,18 +80,10 @@ def test_plan_backfill_never_drops_or_softens_an_allergy() -> None:
     )
 
     assert ops == [
-        ReplaceFact(
-            id="id-has a milk allergy", fact="has a milk allergy", kind="restriction"
-        ),
-        ReplaceFact(
-            id="id-allergic to milk", fact="allergic to milk", kind="restriction"
-        ),
-        ReplaceFact(
-            id="id-Lactose intolerant", fact="Lactose intolerant", kind="restriction"
-        ),
-        ReplaceFact(
-            id="id-allergic to peanuts", fact="Allergic to peanuts", kind="restriction"
-        ),
+        AddRestriction(fact="has a milk allergy"),
+        AddRestriction(fact="allergic to milk"),
+        AddRestriction(fact="Lactose intolerant"),
+        AddRestriction(fact="Allergic to peanuts"),
     ]
 
 

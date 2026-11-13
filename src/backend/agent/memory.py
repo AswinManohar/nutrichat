@@ -6,17 +6,21 @@ curator, the weekly log-habits job, the coach's remember/forget tools and
 the /memory API) goes through :func:`apply_ops`, so the write rules live in
 one place:
 
-* The curator and the weekly job may tighten but never loosen: they cannot
-  change or remove a restriction, and cannot switch a diet setting off.
+* Hard facts (restrictions and diet settings) are not stored here: they are
+  entries of the hard profile (safety/profile.py). A write that adds one
+  creates a *pending* entry that binds only once the patient confirms it; a
+  write that would remove one only requests its retirement. The weekly job
+  cannot touch them and the curator cannot switch a diet setting off.
+  Legacy ``user_memory`` rows of kind ``restriction`` are ignored.
 * A fact the user removed is kept as a tombstone and is not learned again
   until the user states it again.
 * The profile is capped. On overflow the oldest inferred soft fact is
-  evicted; restrictions and facts the user stated are never evicted. A new
-  restriction is saved even when nothing can be evicted.
+  evicted; facts the user stated are never evicted.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -26,39 +30,26 @@ from typing import Annotated, Literal
 import logfire
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from backend.config import get_tunables
 from backend.db.models import UserGoal, UserMemory
 from backend.db.session import get_session
+from backend.safety import profile
+from backend.safety.matching import restriction_value
+from backend.safety.profile import DIET_CHIPS
+from backend.safety.tables import TablesUnavailable, load_tables
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
-FactKind = Literal["restriction", "dislike", "like", "habit", "context"]
+FactKind = Literal["dislike", "like", "habit", "context"]
 FactSource = Literal["stated", "inferred_from_chat", "inferred_from_logs"]
 Actor = Literal["user", "curator", "weekly"]
 
 # Kind on rows written before migration 018, until the backfill re-types them.
 LEGACY_KIND = "preference"
-
-# Diet settings the clients show as chips (union of the web and Android
-# lists). A chat statement that maps to one of these flips the chip in
-# user_goal.dietary_prefs instead of becoming a memory fact.
-DIET_CHIPS: frozenset[str] = frozenset(
-    {
-        "vegan",
-        "vegetarian",
-        "pescatarian",
-        "keto",
-        "paleo",
-        "gluten_free",
-        "dairy_free",
-        "no_nuts",
-        "low_carb",
-        "low_sodium",
-        "low_sugar",
-        "high_protein",
-    }
-)
 
 MAX_FACT_CHARS = 200
 
@@ -69,9 +60,8 @@ _SOURCE_FOR: dict[str, str] = {
 }
 # Kinds that may be evicted when the profile is full.
 _SOFT_KINDS = frozenset({"like", "habit", "context", LEGACY_KIND})
-_KIND_ORDER = ("restriction", "dislike", "like", "habit", "context", LEGACY_KIND)
+_KIND_ORDER = ("dislike", "like", "habit", "context", LEGACY_KIND)
 _KIND_HEADINGS: dict[str, str] = {
-    "restriction": "Never suggest (hard restrictions)",
     "dislike": "Dislikes (avoid)",
     "like": "Likes",
     "habit": "Habits",
@@ -88,6 +78,7 @@ class MemoryFact(BaseModel):
     fact: str
     kind: str
     source: str
+    created_at: datetime | None = None
     updated_at: datetime | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -138,7 +129,7 @@ class RemoveFact(BaseModel):
 
 
 class SetDietChip(BaseModel):
-    """Switch one diet setting in ``user_goal.dietary_prefs`` on or off."""
+    """Ask for one diet setting to be switched on or off (a hard-profile entry)."""
 
     op: Literal["set_diet_chip"] = "set_diet_chip"
     chip: str
@@ -147,9 +138,23 @@ class SetDietChip(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AddRestriction(BaseModel):
+    """Propose a hard restriction (an allergy or a food the user never eats)."""
+
+    op: Literal["add_restriction"] = "add_restriction"
+    fact: str = Field(min_length=1, max_length=MAX_FACT_CHARS)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 MemoryOp = Annotated[
-    AddFact | ReplaceFact | RemoveFact | SetDietChip, Field(discriminator="op")
+    AddFact | ReplaceFact | RemoveFact | SetDietChip | AddRestriction,
+    Field(discriminator="op"),
 ]
+HardOp = SetDietChip | AddRestriction
+
+PENDING_ADD = "awaiting the user's confirmation"
+PENDING_REMOVAL = "removal awaiting the user's confirmation"
 
 
 class OpResult(BaseModel):
@@ -213,7 +218,6 @@ class _Plan:
     added: list[UserMemory] = field(default_factory=list)
     deleted: list[UserMemory] = field(default_factory=list)
     evicted: list[str] = field(default_factory=list)
-    prefs: dict | None = None
 
 
 def profile_active(user_id: str) -> bool:
@@ -232,17 +236,13 @@ def normalize_fact(fact: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", fact.lower()).strip()
 
 
-def active_chips(prefs: dict | None) -> list[str]:
-    """Diet settings switched on in a ``dietary_prefs`` dict, sorted."""
-    return sorted(key for key, value in (prefs or {}).items() if value is True)
-
-
 def _to_fact(row: UserMemory) -> MemoryFact:
     return MemoryFact(
         id=row.id,
         fact=row.fact,
         kind=row.category,
         source=row.source,
+        created_at=row.created_at,
         updated_at=row.updated_at,
     )
 
@@ -261,7 +261,6 @@ def _sorted_facts(rows: list[UserMemory]) -> list[MemoryFact]:
 def plan_ops(
     user_id: str,
     rows: list[UserMemory],
-    prefs: dict,
     ops: list[MemoryOp],
     actor: Actor,
     *,
@@ -277,22 +276,20 @@ def plan_ops(
         user_id: Owner of the profile.
         rows: Every ``user_memory`` row of the user, tombstones included.
             Mutated: surviving rows are edited in place, new ones appended.
-        prefs: The user's ``dietary_prefs``. Not mutated.
         ops: Requested operations, applied in order.
         actor: Who is asking; decides what is allowed (see module docstring).
         now: Timestamp for new rows, edits and tombstones.
         limits: Profile caps.
 
     Returns:
-        Per-op results plus the rows to insert and delete, evicted fact
-        texts, and the new ``dietary_prefs`` when a diet setting changed.
+        Per-op results plus the rows to insert and delete, and evicted fact
+        texts.
     """
     plan = _Plan()
     source = _SOURCE_FOR[actor]
     default_confidence = (
         1.0 if actor == "user" else _TUNABLES.memory.new_fact_confidence
     )
-    new_prefs = dict(prefs)
 
     def live() -> list[UserMemory]:
         return [r for r in rows if r.deleted_at is None]
@@ -347,24 +344,6 @@ def plan_ops(
         plan.results.append(OpResult(op=op, applied=True, reason=reason))
 
     for op in ops:
-        if isinstance(op, SetDietChip):
-            if op.chip not in DIET_CHIPS:
-                reject(op, "unknown diet setting")
-            elif actor == "weekly":
-                reject(op, "the weekly job cannot change diet settings")
-            elif not op.on and actor != "user":
-                reject(op, "only the user can switch a diet setting off")
-            elif (new_prefs.get(op.chip) is True) == op.on:
-                accept(op, "no change")
-            else:
-                if op.on:
-                    new_prefs[op.chip] = True
-                else:
-                    new_prefs.pop(op.chip, None)
-                plan.prefs = dict(new_prefs)
-                accept(op)
-            continue
-
         if isinstance(op, RemoveFact):
             row = find_live(op.id)
             if row is None:
@@ -372,8 +351,6 @@ def plan_ops(
             elif actor == "user":
                 row.deleted_at = now  # tombstone: do not learn it again
                 accept(op)
-            elif row.category == "restriction":
-                reject(op, "only the user can remove a restriction")
             elif actor == "weekly" and row.source != "inferred_from_logs":
                 reject(op, "the weekly job can only remove its own facts")
             else:
@@ -389,18 +366,12 @@ def plan_ops(
         if not key:
             reject(op, "empty fact")
             continue
-        if actor == "weekly" and op.kind == "restriction":
-            reject(op, "the weekly job cannot write restrictions")
-            continue
 
         target: UserMemory | None = None
         if isinstance(op, ReplaceFact):
             target = find_live(op.id)
             if target is None:
                 reject(op, "unknown fact id")
-                continue
-            if actor != "user" and target.category == "restriction":
-                reject(op, "only the user can change a restriction")
                 continue
             if actor == "weekly" and target.source != "inferred_from_logs":
                 reject(op, "the weekly job can only change its own facts")
@@ -474,22 +445,18 @@ def plan_ops(
             rows.append(new_row)
             plan.added.append(new_row)
         if not make_room(new_row):
-            if actor != "user" and op.kind != "restriction":
+            if actor != "user":
                 drop(new_row)
                 reject(op, "profile is full; merge or replace existing facts first")
                 continue
-            # Refusing a restriction would drop an allergy silently, so it
-            # is kept over the cap; the user's own additions are too.
+            # The user's own additions are kept over the cap.
             accept(op, "saved over the cap")
             continue
         accept(op)
 
-    # Markers of removed restrictions are kept indefinitely: purging one
-    # would let the curator bring back a hard constraint the user dropped.
-    # They are few, so this does not grow the table in practice.
     epoch = datetime.min.replace(tzinfo=UTC)
     tombstones = sorted(
-        (r for r in rows if r.deleted_at is not None and r.category != "restriction"),
+        (r for r in rows if r.deleted_at is not None),
         key=lambda r: r.deleted_at or epoch,
         reverse=True,
     )
@@ -498,11 +465,121 @@ def plan_ops(
     return plan
 
 
-async def apply_ops(user_id: str, ops: list[MemoryOp], actor: Actor) -> ApplyOutcome:
-    """Apply profile operations for one user in a single transaction.
+def _rejected(op: MemoryOp, reason: str) -> OpResult:
+    return OpResult(op=op, applied=False, reason=reason)
 
-    Takes a per-user advisory lock, so concurrent batches for the same user
-    (two curator tasks, or a curator and a tool call) run one after another.
+
+async def _propose_entry(
+    user_id: str,
+    op: HardOp,
+    value: profile.EntryValue,
+    label: str | None,
+    actor: Actor,
+) -> OpResult:
+    """Add a pending hard entry unless an equal live one already exists."""
+    live = await profile.load_hard_profile(user_id)
+    twin = next((e for e in live if e.value == value), None)
+    if twin is not None:
+        reason = PENDING_ADD if twin.state == "pending" else "already on the profile"
+        return OpResult(op=op, applied=twin.state == "pending", reason=reason)
+    await profile.add_entry(
+        user_id,
+        value,
+        source="patient" if actor == "user" else "inferred",
+        state="pending",
+        created_by="patient" if actor == "user" else "curator",
+        label=label,
+    )
+    return OpResult(op=op, applied=True, reason=PENDING_ADD)
+
+
+async def _apply_hard_op(user_id: str, op: HardOp, actor: Actor) -> OpResult:
+    """Apply one hard op through the hard profile.
+
+    Adds become pending entries; removals only request retirement (or deny a
+    still-pending entry). Nothing here confirms or retires on its own.
+    """
+    if actor == "weekly":
+        return _rejected(op, "the weekly job cannot change the hard profile")
+    try:
+        if isinstance(op, AddRestriction):
+            value, label = restriction_value(_clean(op.fact), load_tables())
+            return await _propose_entry(user_id, op, value, label, actor)
+        if op.chip not in DIET_CHIPS:
+            return _rejected(op, "unknown diet setting")
+        value = profile.DietSettingValue(setting=op.chip)
+        if op.on:
+            return await _propose_entry(user_id, op, value, None, actor)
+        if actor != "user":
+            return _rejected(op, "only the user can switch a diet setting off")
+        existing = next(
+            (e for e in await profile.load_hard_profile(user_id) if e.value == value),
+            None,
+        )
+        if existing is None:
+            return OpResult(op=op, applied=True, reason="no change")
+        if existing.state == "pending":
+            await profile.deny(user_id, existing.id)
+            return OpResult(op=op, applied=True, reason="no change")
+        await profile.request_retirement(user_id, existing.id)
+        return OpResult(op=op, applied=True, reason=PENDING_REMOVAL)
+    except TablesUnavailable as exc:
+        logger.error("clinical tables unavailable, hard op dropped: %s", exc)
+        return _rejected(op, "the clinical tables are unavailable")
+    except profile.ProfileFull:
+        return _rejected(op, "the safety profile is full")
+    except IntegrityError:
+        return _rejected(op, "no user profile yet")
+
+
+async def _apply_soft_ops(
+    user_id: str, ops: list[MemoryOp], actor: Actor
+) -> tuple[list[OpResult], list[str]]:
+    """Apply soft-fact ops in one transaction under a per-user advisory lock."""
+    session_factory = get_session()
+    async with session_factory() as session:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"user_memory:{user_id}"},
+        )
+        goal = await session.get(UserGoal, user_id)
+        if goal is None:
+            return [_rejected(op, "no user profile yet") for op in ops], []
+        rows = list(
+            (
+                await session.execute(
+                    select(UserMemory).where(
+                        UserMemory.user_id == user_id,
+                        UserMemory.category != "restriction",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        plan = plan_ops(
+            user_id,
+            rows,
+            ops,
+            actor,
+            now=datetime.now(UTC),
+            limits=ProfileLimits.from_tunables(),
+        )
+        for row in plan.added:
+            session.add(row)
+        for row in plan.deleted:
+            await session.delete(row)
+        await session.commit()
+    return plan.results, plan.evicted
+
+
+async def apply_ops(user_id: str, ops: list[MemoryOp], actor: Actor) -> ApplyOutcome:
+    """Apply profile operations for one user.
+
+    Soft-fact ops run in a single transaction under a per-user advisory lock,
+    so concurrent batches for the same user (two curator tasks, or a curator
+    and a tool call) run one after another. Hard ops (diet settings and
+    restrictions) go through the hard profile as pending entries.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -512,52 +589,24 @@ async def apply_ops(user_id: str, ops: list[MemoryOp], actor: Actor) -> ApplyOut
             log-habits job.
 
     Returns:
-        Per-op results and the texts of any evicted facts. Every op is
-        rejected when the user has no ``user_goal`` row.
+        Per-op results, in the order requested, and the texts of any evicted
+        facts. Every op is rejected when the user has no ``user_goal`` row.
     """
     if not ops:
         return ApplyOutcome()
     with logfire.span("memory.apply_ops", actor=actor, n_ops=len(ops)) as span:
-        session_factory = get_session()
-        async with session_factory() as session:
-            await session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
-                {"key": f"user_memory:{user_id}"},
-            )
-            goal = await session.get(UserGoal, user_id)
-            if goal is None:
-                return ApplyOutcome(
-                    results=[
-                        OpResult(op=op, applied=False, reason="no user profile yet")
-                        for op in ops
-                    ]
-                )
-            rows = list(
-                (
-                    await session.execute(
-                        select(UserMemory).where(UserMemory.user_id == user_id)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            plan = plan_ops(
-                user_id,
-                rows,
-                goal.dietary_prefs or {},
-                ops,
-                actor,
-                now=datetime.now(UTC),
-                limits=ProfileLimits.from_tunables(),
-            )
-            for row in plan.added:
-                session.add(row)
-            for row in plan.deleted:
-                await session.delete(row)
-            if plan.prefs is not None:
-                goal.dietary_prefs = plan.prefs
-            await session.commit()
-        outcome = ApplyOutcome(results=plan.results, evicted=plan.evicted)
+        soft = [op for op in ops if not isinstance(op, SetDietChip | AddRestriction)]
+        soft_results, evicted = (
+            await _apply_soft_ops(user_id, soft, actor) if soft else ([], [])
+        )
+        soft_iter = iter(soft_results)
+        results: list[OpResult] = []
+        for op in ops:
+            if isinstance(op, SetDietChip | AddRestriction):
+                results.append(await _apply_hard_op(user_id, op, actor))
+            else:
+                results.append(next(soft_iter))
+        outcome = ApplyOutcome(results=results, evicted=evicted)
         span.set_attribute("n_applied", outcome.n_applied)
         span.set_attribute("n_evicted", len(outcome.evicted))
     return outcome
@@ -574,11 +623,13 @@ async def load_state(user_id: str) -> ProfileState:
     """
     session_factory = get_session()
     async with session_factory() as session:
-        goal = await session.get(UserGoal, user_id)
         rows = list(
             (
                 await session.execute(
-                    select(UserMemory).where(UserMemory.user_id == user_id)
+                    select(UserMemory).where(
+                        UserMemory.user_id == user_id,
+                        UserMemory.category != "restriction",
+                    )
                 )
             )
             .scalars()
@@ -587,12 +638,14 @@ async def load_state(user_id: str) -> ProfileState:
     return ProfileState(
         facts=_sorted_facts(rows),
         tombstones=[r.fact for r in rows if r.deleted_at is not None],
-        diet_chips=active_chips(goal.dietary_prefs if goal else None),
+        diet_chips=profile.active_diet_settings(
+            await profile.load_hard_profile(user_id)
+        ),
     )
 
 
 async def load_profile(user_id: str) -> list[MemoryFact]:
-    """Read the user's live facts: one indexed query, no embedding call.
+    """Read the user's live soft facts: one indexed query, no embedding call.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -603,7 +656,9 @@ async def load_profile(user_id: str) -> list[MemoryFact]:
     session_factory = get_session()
     async with session_factory() as session:
         stmt = select(UserMemory).where(
-            UserMemory.user_id == user_id, UserMemory.deleted_at.is_(None)
+            UserMemory.user_id == user_id,
+            UserMemory.deleted_at.is_(None),
+            UserMemory.category != "restriction",
         )
         rows = list((await session.execute(stmt)).scalars().all())
     return _sorted_facts(rows)
@@ -618,30 +673,21 @@ def label_facts(facts: list[MemoryFact]) -> list[tuple[str, MemoryFact]]:
     return [(f"m{i}", fact) for i, fact in enumerate(facts, start=1)]
 
 
-def render_diet_settings(diet_chips: list[str]) -> str:
-    """The binding diet-settings line, shared by the profile and default paths."""
-    return "Diet settings (binding): " + ", ".join(
-        chip.replace("_", " ") for chip in diet_chips
-    )
-
-
 def render_profile_block(
     facts: list[MemoryFact],
-    diet_chips: list[str],
     staples: dict[str, list[str]] | None = None,
     *,
     max_chars: int | None = None,
 ) -> str:
-    """Render the profile as the coach's prompt block.
+    """Render the soft profile as the coach's prompt block.
 
-    Diet settings and restrictions are always rendered in full. The softer
-    kinds are added while the block stays within ``max_chars``, so the
-    prompt is bounded even if the table is not. The staples line is bounded
-    by its producer (agent/tools/history.py get_staple_foods).
+    Kinds are added while the block stays within ``max_chars``, so the prompt
+    is bounded even if the table is not. The staples line is bounded by its
+    producer (agent/tools/history.py get_staple_foods). Hard facts are
+    rendered separately by ``safety.profile.render_block``.
 
     Args:
         facts: Live facts, as returned by :func:`load_profile`.
-        diet_chips: Diet settings switched on, as from :func:`active_chips`.
         staples: Foods the user logs often, by meal type (soft signal).
         max_chars: Budget for the block; defaults to ``profile_max_chars``.
 
@@ -650,14 +696,8 @@ def render_profile_block(
     """
     budget = max_chars or _TUNABLES.memory.profile_max_chars
     lines: list[str] = []
-    if diet_chips:
-        lines.append("- " + render_diet_settings(diet_chips))
-    restrictions = [f.fact for f in facts if f.kind == "restriction"]
-    if restrictions:
-        lines.append(f"- {_KIND_HEADINGS['restriction']}: " + "; ".join(restrictions))
-
-    used = sum(len(line) for line in lines)
-    for kind in _KIND_ORDER[1:]:
+    used = 0
+    for kind in _KIND_ORDER:
         kept: list[str] = []
         for fact in (f.fact for f in facts if f.kind == kind):
             if used + len(fact) > budget:
@@ -687,8 +727,11 @@ __all__ = [
     "DIET_CHIPS",
     "LEGACY_KIND",
     "MAX_FACT_CHARS",
+    "PENDING_ADD",
+    "PENDING_REMOVAL",
     "Actor",
     "AddFact",
+    "AddRestriction",
     "ApplyOutcome",
     "FactKind",
     "MemoryFact",
@@ -700,13 +743,11 @@ __all__ = [
     "RemoveFact",
     "ReplaceFact",
     "SetDietChip",
-    "active_chips",
     "apply_ops",
     "label_facts",
     "load_profile",
     "load_state",
     "plan_ops",
     "profile_active",
-    "render_diet_settings",
     "render_profile_block",
 ]

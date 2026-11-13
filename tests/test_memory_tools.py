@@ -16,7 +16,10 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from backend.agent import coaching
 from backend.agent.coaching import generate_response
 from backend.agent.memory import (
+    PENDING_ADD,
+    PENDING_REMOVAL,
     AddFact,
+    AddRestriction,
     ApplyOutcome,
     MemoryFact,
     OpResult,
@@ -24,6 +27,9 @@ from backend.agent.memory import (
     SetDietChip,
 )
 from backend.agent.memory_tools import forget_fact, remember_fact, set_diet_setting
+from backend.safety import profile
+from backend.safety.tables import load_tables
+from tests.profile_helpers import hard_entry
 
 USER = "user-1"
 
@@ -46,6 +52,10 @@ def _profile(*facts: str) -> AsyncMock:
             for f in facts
         ]
     )
+
+
+def _no_hard() -> AsyncMock:
+    return AsyncMock(return_value=[])
 
 
 # --- tool logic --------------------------------------------------------------
@@ -74,8 +84,9 @@ async def test_forget_fact_matches_by_substring() -> None:
     with (
         patch(
             "backend.agent.memory_tools.load_profile",
-            _profile("Dislikes mushrooms", "Allergic to peanuts"),
+            _profile("Dislikes mushrooms", "Likes dal"),
         ),
+        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
         patch("backend.agent.memory_tools.apply_ops", apply),
     ):
         message = await forget_fact(USER, "mushrooms")
@@ -93,6 +104,7 @@ async def test_forget_fact_prefers_an_exact_match_over_substrings() -> None:
             "backend.agent.memory_tools.load_profile",
             _profile("Dislikes fish", "Dislikes fish sauce"),
         ),
+        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
         patch("backend.agent.memory_tools.apply_ops", apply),
     ):
         await forget_fact(USER, "dislikes fish")
@@ -107,6 +119,7 @@ async def test_forget_fact_ambiguous_or_missing_changes_nothing() -> None:
             "backend.agent.memory_tools.load_profile",
             _profile("Dislikes fish", "Dislikes fish sauce"),
         ),
+        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
         patch("backend.agent.memory_tools.apply_ops", apply),
     ):
         ambiguous = await forget_fact(USER, "fish")
@@ -126,7 +139,8 @@ async def test_set_diet_setting_normalizes_the_key() -> None:
     apply.assert_awaited_once_with(
         USER, [SetDietChip(chip="gluten_free", on=True)], "user"
     )
-    assert message == "The gluten_free diet setting is now on."
+    assert message.startswith(f"The gluten_free diet setting is {PENDING_ADD}.")
+    assert "confirms" in message
 
 
 async def test_set_diet_setting_reports_unknown_and_unchanged() -> None:
@@ -139,6 +153,80 @@ async def test_set_diet_setting_reports_unknown_and_unchanged() -> None:
 
     assert unknown == "Nothing changed: unknown diet setting."
     assert unchanged == "The vegan diet setting was already off."
+
+
+async def test_remember_a_restriction_creates_a_pending_hard_entry() -> None:
+    apply = _apply(True, PENDING_ADD)
+    with patch("backend.agent.memory_tools.apply_ops", apply):
+        message = await remember_fact(USER, "Allergic to peanuts", "restriction")
+
+    apply.assert_awaited_once_with(
+        USER, [AddRestriction(fact="Allergic to peanuts")], "user"
+    )
+    assert message.startswith('Recorded as pending: "Allergic to peanuts".')
+    assert "does not apply until the user confirms" in message
+
+
+async def test_forget_a_confirmed_hard_fact_only_requests_retirement() -> None:
+    allergy = hard_entry(profile.AllergyValue(allergen_group="peanut"), entry_id="e1")
+    request = AsyncMock()
+    apply = _apply()
+    with (
+        patch("backend.agent.memory_tools.load_profile", _profile("Likes dal")),
+        patch(
+            "backend.agent.memory_tools.profile.load_hard_profile",
+            AsyncMock(return_value=[allergy]),
+        ),
+        patch("backend.agent.memory_tools.load_tables", load_tables),
+        patch("backend.agent.memory_tools.profile.request_retirement", request),
+        patch("backend.agent.memory_tools.apply_ops", apply),
+    ):
+        message = await forget_fact(USER, "peanut allergy")
+
+    request.assert_awaited_once_with(USER, "e1")
+    apply.assert_not_awaited()
+    assert PENDING_REMOVAL in message
+    assert "stays in effect" in message
+
+
+async def test_forget_a_pending_hard_fact_denies_it() -> None:
+    pending = hard_entry(
+        profile.DietSettingValue(setting="vegan"), "pending", entry_id="e1"
+    )
+    deny = AsyncMock()
+    with (
+        patch("backend.agent.memory_tools.load_profile", _profile()),
+        patch(
+            "backend.agent.memory_tools.profile.load_hard_profile",
+            AsyncMock(return_value=[pending]),
+        ),
+        patch("backend.agent.memory_tools.profile.deny", deny),
+    ):
+        message = await forget_fact(USER, "vegan")
+
+    deny.assert_awaited_once_with(USER, "e1")
+    assert message.startswith("Dropped the unconfirmed entry")
+
+
+async def test_set_diet_off_reports_the_pending_removal() -> None:
+    with patch("backend.agent.memory_tools.apply_ops", _apply(True, PENDING_REMOVAL)):
+        message = await set_diet_setting(USER, "vegan", False)
+
+    assert PENDING_REMOVAL in message
+    assert "stays on" in message
+
+
+async def test_forget_says_so_when_the_profile_cannot_be_read() -> None:
+    with (
+        patch("backend.agent.memory_tools.load_profile", _profile()),
+        patch(
+            "backend.agent.memory_tools.profile.load_hard_profile",
+            AsyncMock(side_effect=OSError("down")),
+        ),
+    ):
+        message = await forget_fact(USER, "peanuts")
+
+    assert message == "Nothing removed: the profile could not be read."
 
 
 # --- wiring into the response agent ------------------------------------------

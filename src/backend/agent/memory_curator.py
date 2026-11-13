@@ -26,8 +26,8 @@ from backend.agent.memory import (
     DIET_CHIPS,
     MAX_FACT_CHARS,
     AddFact,
+    AddRestriction,
     ApplyOutcome,
-    FactKind,
     MemoryOp,
     ProfileState,
     RemoveFact,
@@ -50,6 +50,11 @@ _LOG_HABITS_SYSTEM = _TUNABLES.prompts.log_habits_system
 _LOG_SOURCE = "inferred_from_logs"
 
 
+# "restriction" is a hard fact: it becomes a pending hard-profile entry, never
+# a user_memory row, until the curator rewrite (spec 013 T073).
+CuratorKind = Literal["restriction", "dislike", "like", "habit", "context"]
+
+
 class CuratorOp(BaseModel):
     """One operation proposed by the curator model.
 
@@ -63,7 +68,7 @@ class CuratorOp(BaseModel):
         default=None, description="Handle of an existing fact, e.g. m3"
     )
     fact: str | None = Field(default=None, description="Fact text for add/replace")
-    kind: FactKind | None = Field(default=None, description="Kind for add/replace")
+    kind: CuratorKind | None = Field(default=None, description="Kind for add/replace")
     chip: str | None = Field(default=None, description="Diet setting for set_diet")
 
     model_config = ConfigDict(extra="forbid")
@@ -126,9 +131,17 @@ def to_memory_ops(proposed: list[CuratorOp], state: ProfileState) -> list[Memory
     for item in proposed:
         fact = (item.fact or "").strip()[:MAX_FACT_CHARS]
         fact_id = by_handle.get((item.ref or "").strip().lower())
-        if item.action == "add" and fact and item.kind:
+        if item.action == "add" and fact and item.kind == "restriction":
+            ops.append(AddRestriction(fact=fact))
+        elif item.action == "add" and fact and item.kind:
             ops.append(AddFact(fact=fact, kind=item.kind))
-        elif item.action == "replace" and fact_id and fact and item.kind:
+        elif (
+            item.action == "replace"
+            and fact_id
+            and fact
+            and item.kind
+            and item.kind != "restriction"
+        ):
             ops.append(ReplaceFact(id=fact_id, fact=fact, kind=item.kind))
         elif item.action == "remove" and fact_id:
             ops.append(RemoveFact(id=fact_id))

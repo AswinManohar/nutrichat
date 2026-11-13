@@ -254,3 +254,32 @@ async def test_meal_logging_paused_resume_skips_quota():
         )
 
     mock_credit.assert_not_called()
+
+
+async def test_coaching_replies_with_the_unavailable_text_without_a_profile():
+    from backend.agent.coaching import RestrictionsUnavailableError
+    from backend.agent.orchestrator import _handle_coaching
+    from backend.config import get_tunables
+
+    save = AsyncMock()
+    with (
+        patch(
+            "backend.agent.orchestrator.consume_llm_credit",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch("backend.agent.orchestrator.save_coaching_response", new=save),
+    ):
+        mock_coaching.handle = AsyncMock(
+            side_effect=RestrictionsUnavailableError("user-1")
+        )
+        result = await _handle_coaching("user-1", "what should I eat for dinner?")
+
+    assert result == {
+        "status": "success",
+        "message": get_tunables().safety.profile_unavailable_text,
+        "paused": False,
+        "items": [],
+    }
+    # Nothing the coach never said is stored as a rateable reply.
+    save.assert_not_awaited()

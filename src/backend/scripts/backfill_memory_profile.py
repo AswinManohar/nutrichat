@@ -35,7 +35,7 @@ from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.agent.memory import (
     LEGACY_KIND,
     MAX_FACT_CHARS,
-    FactKind,
+    AddRestriction,
     MemoryFact,
     MemoryOp,
     RemoveFact,
@@ -100,7 +100,7 @@ class Decision(BaseModel):
 
     ref: str = Field(description="Handle of the fact, e.g. m3")
     action: Literal["keep", "drop"]
-    kind: FactKind | None = None
+    kind: Literal["restriction", "dislike", "like", "habit", "context"] | None = None
     fact: str | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -126,7 +126,8 @@ def plan_backfill(
 
     Returns:
         Replace ops for kept facts and remove ops for dropped ones. A fact
-        naming an allergy or intolerance always becomes a restriction. A
+        naming an allergy or intolerance is proposed as a pending restriction
+        and its legacy row is left untouched. A
         rewrite is used only when it keeps the original's meaning words
         (and, for a restriction, still names the allergy); otherwise the
         original wording is kept.
@@ -147,18 +148,18 @@ def plan_backfill(
                 and _SAFETY_TERMS.search(rewrite) is not None
                 and _keeps_meaning(fact.fact, rewrite)
             )
-            ops.append(
-                ReplaceFact(
-                    id=fact.id,
-                    fact=rewrite if keep_rewrite else fact.fact,
-                    kind="restriction",
-                )
-            )
+            # Restrictions are hard-profile entries now: propose one (pending
+            # until the user confirms) and leave the legacy row as it is.
+            ops.append(AddRestriction(fact=rewrite if keep_rewrite else fact.fact))
         elif decision.action == "drop":
             ops.append(RemoveFact(id=fact.id))
         elif decision.kind is not None:
             text = rewrite if _keeps_meaning(fact.fact, rewrite) else fact.fact
-            ops.append(ReplaceFact(id=fact.id, fact=text, kind=decision.kind))
+            ops.append(
+                AddRestriction(fact=text)
+                if decision.kind == "restriction"
+                else ReplaceFact(id=fact.id, fact=text, kind=decision.kind)
+            )
     return ops
 
 

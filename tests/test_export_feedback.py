@@ -123,7 +123,9 @@ def test_build_query_filters() -> None:
     assert "rating IS NOT NULL" not in sql_all
     assert "rating IS NOT NULL" in sql_rated
     assert "created_at >=" in sql_rated
-    assert "LEFT OUTER JOIN user_goal" in sql_all
+    # Conditions come from the confirmed diagnoses in the hard profile.
+    assert "profile_entry.entry_type" in sql_all
+    assert "user_goal" not in sql_all
 
 
 async def test_export_feedback_reads_rows_without_touching_guideline_chunk() -> None:

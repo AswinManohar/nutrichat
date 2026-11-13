@@ -19,20 +19,25 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import CoachingResponse, UserGoal
+from backend.db.models import CoachingResponse, ProfileEntry
 from backend.db.session import dispose_engine, get_session
 
 
 def build_query(*, rated_only: bool, since: date | None) -> Select:
     """Select (CoachingResponse, conditions) oldest first, with optional filters."""
-    stmt = (
-        select(CoachingResponse, UserGoal.conditions)
-        .outerjoin(UserGoal, UserGoal.user_id == CoachingResponse.user_id)
-        .order_by(CoachingResponse.created_at)
+    conditions = (
+        select(func.array_agg(ProfileEntry.value["condition"].as_string()))
+        .where(
+            ProfileEntry.user_id == CoachingResponse.user_id,
+            ProfileEntry.entry_type == "diagnosis",
+            ProfileEntry.state == "confirmed",
+        )
+        .scalar_subquery()
     )
+    stmt = select(CoachingResponse, conditions).order_by(CoachingResponse.created_at)
     if rated_only:
         stmt = stmt.where(CoachingResponse.rating.is_not(None))
     if since is not None:

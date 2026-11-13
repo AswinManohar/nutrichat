@@ -32,6 +32,7 @@ from backend.agent import glide
 from backend.agent.glide import GlideUnavailable, Questions, noul
 from backend.agent.memory import (
     AddFact,
+    AddRestriction,
     MemoryOp,
     ProfileState,
     RemoveFact,
@@ -102,7 +103,7 @@ _QUESTIONS: Questions = {
 
 def _candidate(op: MemoryOp, state: ProfileState) -> tuple[str, str] | None:
     """Return the question key and candidate text GLiDE is asked about."""
-    if isinstance(op, AddFact | ReplaceFact):
+    if isinstance(op, AddFact | ReplaceFact | AddRestriction):
         return _WORTH_REMEMBERING, op.fact
     if isinstance(op, SetDietChip):
         return _WORTH_REMEMBERING, f"Follows a {op.chip.replace('_', ' ')} diet"
@@ -171,12 +172,12 @@ async def _no_answer() -> None:
 def _keep_unjudged(op: MemoryOp, *, save_unjudged: bool) -> bool:
     """Whether to save an op GLiDE could not score.
 
-    A new restriction is always saved: a missed allergy is silent, while a
-    wrong one is visible to the user and one tap to remove. A removal or a
+    A new restriction is always proposed: a missed allergy is silent, while a
+    wrong one is only a pending entry the user can deny. A removal or a
     replacement is always held, since unscored it could erase a fact the
     user relies on. Anything else follows ``memory.save_unjudged``.
     """
-    if isinstance(op, AddFact) and op.kind == "restriction":
+    if isinstance(op, AddRestriction):
         return True
     if isinstance(op, RemoveFact | ReplaceFact):
         return False

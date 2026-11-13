@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agent.memory import (
     AddFact,
+    AddRestriction,
     ApplyOutcome,
     MemoryFact,
     ProfileState,
@@ -82,6 +83,18 @@ def test_to_memory_ops_maps_handles_to_ids() -> None:
         RemoveFact(id="id-b"),
         SetDietChip(chip="vegetarian", on=True),
     ]
+
+
+def test_to_memory_ops_maps_a_restriction_to_a_hard_op() -> None:
+    ops = to_memory_ops(
+        [
+            CuratorOp(action="add", fact="Allergic to peanuts", kind="restriction"),
+            CuratorOp(action="replace", ref="m2", fact="No meat", kind="restriction"),
+        ],
+        _state(),
+    )
+
+    assert ops == [AddRestriction(fact="Allergic to peanuts")]
 
 
 def test_to_memory_ops_drops_malformed_proposals() -> None:
@@ -168,7 +181,7 @@ async def test_curate_turn_saves_only_what_jev_scores_high_enough() -> None:
 
     apply.assert_awaited_once_with(
         "user-1",
-        [AddFact(fact="Allergic to peanuts", kind="restriction", confidence=0.97)],
+        [AddRestriction(fact="Allergic to peanuts")],
         "curator",
     )
 

@@ -22,11 +22,18 @@ from backend.agent.context import ContextBundle
 from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
 from backend.guidelines.retrieval import RetrievedChunk
+from backend.safety import profile
+from tests.profile_helpers import hard_entry
 
 
 @pytest.fixture(autouse=True)
 def _no_user_state():
     with (
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
         patch(
             "backend.agent.coaching.build_context",
             new_callable=AsyncMock,
@@ -155,8 +162,6 @@ async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None
         kcal_goal=2000.0,
         protein_goal=120.0,
         fiber_goal=30.0,
-        dietary_prefs={},
-        conditions=["prediabetes"],
         streak_days=0,
     )
     with (
@@ -173,6 +178,14 @@ async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None
         patch(
             "backend.agent.coaching.get_session",
             return_value=_mock_session_factory(goal),
+        ),
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=[
+                hard_entry(profile.DiagnosisValue(condition="prediabetes")),
+                hard_entry(profile.DiagnosisValue(condition="gout"), "pending"),
+            ],
         ),
         patch(
             "backend.agent.coaching.retrieve",

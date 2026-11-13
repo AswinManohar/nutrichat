@@ -11,10 +11,8 @@ from sqlalchemy import select
 from backend.agent.llm import EMBEDDING_DIM, EMBEDDING_MODEL
 from backend.agent.memory import (
     MemoryFact,
-    active_chips,
     load_profile,
     profile_active,
-    render_diet_settings,
     render_profile_block,
 )
 from backend.agent.tools.history import get_staple_foods
@@ -33,6 +31,8 @@ from backend.db.redis_client import (
     set_cached_staples,
 )
 from backend.db.session import get_session
+from backend.safety import profile as hard_profile
+from backend.safety.tables import load_tables
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,6 @@ class GoalSummary(BaseModel):
     kcal_goal: float | None = None
     protein_goal: float | None = None
     fiber_goal: float | None = None
-    dietary_prefs: dict
-    conditions: list[str] = []
     streak_days: int
     active_alerts: list[SafetyAlert] = []
 
@@ -84,6 +82,7 @@ class ContextBundle(BaseModel):
     today_totals: TodayTotals
     goals: GoalSummary | None = None
     weekly_pattern: WeeklyPattern | None = None
+    hard_block: str = ""
     preferences: list[str] = []
     profile_active: bool = False
     profile: list[MemoryFact] = []
@@ -148,43 +147,46 @@ def _goal_summary(goal_row: UserGoal | None) -> GoalSummary | None:
         kcal_goal=goal_row.kcal_goal,
         protein_goal=goal_row.protein_goal,
         fiber_goal=goal_row.fiber_goal,
-        dietary_prefs=goal_row.dietary_prefs,
-        conditions=list(goal_row.conditions or []),
         streak_days=goal_row.streak_days,
     )
+
+
+async def _hard_block(user_id: str) -> str:
+    """Render the user's hard profile for the prompt.
+
+    Raises:
+        Exception: Any failure to read or render it (including
+            ``ProfileTooLarge`` and unreadable clinical tables). The coach
+            must not answer without the binding profile.
+    """
+    entries = await hard_profile.load_hard_profile(user_id)
+    return hard_profile.render_block(entries, load_tables())
 
 
 async def load_restrictions(user_id: str) -> ContextBundle:
     """Load only what binds the coach's suggestions.
 
     Used when :func:`build_context` fails, so that a Redis or embeddings
-    outage cannot strip diet settings, conditions or hard restrictions from
-    the prompt. Postgres only: the ``user_goal`` row, plus the profile's
-    restriction facts for users on the profile path. Today's totals are left
-    at their zero default and are not rendered by
-    :func:`build_restrictions_prompt`.
+    outage cannot strip the hard profile from the prompt. Postgres only: the
+    ``user_goal`` row and the hard profile. Today's totals are left at their
+    zero default and are not rendered by :func:`build_restrictions_prompt`.
 
     Args:
         user_id: Supabase Auth UUID.
 
     Returns:
-        A ContextBundle with ``goals`` and, on the profile path, the
-        restriction facts as ``profile``.
+        A ContextBundle with ``goals`` and the rendered hard profile.
+
+    Raises:
+        Exception: When the hard profile cannot be loaded or rendered.
     """
     session_factory = get_session()
     async with session_factory() as session:
         goals = _goal_summary(await session.get(UserGoal, user_id))
-    use_profile = profile_active(user_id)
-    facts = (
-        [f for f in await load_profile(user_id) if f.kind == "restriction"]
-        if use_profile
-        else []
-    )
     return ContextBundle(
         today_totals=TodayTotals(),
         goals=goals,
-        profile_active=use_profile,
-        profile=facts,
+        hard_block=await _hard_block(user_id),
     )
 
 
@@ -205,7 +207,9 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
     Returns:
         A populated ContextBundle.
     """
-    today_totals = await get_today_totals(user_id)
+    today_totals, hard_block = await asyncio.gather(
+        get_today_totals(user_id), _hard_block(user_id)
+    )
 
     session_factory = get_session()
     async with session_factory() as session:
@@ -250,6 +254,7 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
         today_totals=today_totals,
         goals=goals,
         weekly_pattern=weekly_pattern,
+        hard_block=hard_block,
         preferences=preferences,
         profile_active=use_profile,
         profile=profile,
@@ -359,31 +364,23 @@ def _goals_line(goals: GoalSummary | None) -> str | None:
 
 
 def _restriction_blocks(ctx: ContextBundle) -> list[str]:
-    """Diet settings, conditions and preferences for the coaching prompt.
+    """The hard profile, then soft preferences, for the coaching prompt.
 
-    Diet settings are rendered on both paths: inside the profile block for
-    profile users, as their own line otherwise (issue #70).
+    The hard block is rendered for every user; soft facts only for users on
+    the curated profile, the legacy top-3 preferences otherwise.
     """
-    blocks: list[str] = []
-    chips = active_chips(ctx.goals.dietary_prefs if ctx.goals else None)
+    blocks: list[str] = [ctx.hard_block] if ctx.hard_block else []
     if ctx.profile_active:
-        profile_block = render_profile_block(ctx.profile, chips, ctx.staples)
+        profile_block = render_profile_block(ctx.profile, ctx.staples)
         if profile_block:
             blocks.append(profile_block)
-    else:
-        if chips:
-            blocks.append(render_diet_settings(chips))
-        if ctx.preferences:
-            blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
-    if ctx.goals and ctx.goals.conditions:
-        blocks.append(
-            "Declared health conditions: " + ", ".join(ctx.goals.conditions) + "."
-        )
+    elif ctx.preferences:
+        blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
     return blocks
 
 
 def build_restrictions_prompt(ctx: ContextBundle) -> str:
-    """Build the fallback coaching prompt from the ``user_goal`` row alone.
+    """Build the fallback coaching prompt from the goals row and hard profile.
 
     Used when the full context could not be built: role, daily targets,
     restrictions and hard constraints. Leaves out today's totals and the

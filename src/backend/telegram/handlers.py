@@ -28,6 +28,7 @@ from backend.agent.orchestrator import handle_message
 from backend.db.models import TelegramLink, UserGoal
 from backend.db.redis_client import get_redis, get_today_totals
 from backend.db.session import get_session
+from backend.safety.profile import active_diet_settings, load_hard_profile
 from backend.telegram.auth import cache_user_id, resolve_user_id
 from backend.telegram.session import (
     clear_edit_state,
@@ -320,7 +321,7 @@ async def cmd_goals(message: Message) -> None:
         )
         return
 
-    prefs = ", ".join(k for k, v in goal.dietary_prefs.items() if v) or "none"
+    prefs = ", ".join(active_diet_settings(await load_hard_profile(user_id))) or "none"
     await message.answer(
         "Your daily goals:\n"
         f"- Calories: {goal.kcal_goal:.0f} kcal\n"

@@ -347,13 +347,11 @@ async def seed_users() -> None:
             await session.execute(
                 sa_text(
                     "INSERT INTO user_goal "
-                    "(user_id, kcal_goal, protein_goal, fiber_goal, dietary_prefs) "
-                    "VALUES (:user_id, :kcal_goal, :protein_goal, :fiber_goal, "
-                    "CAST(:dietary_prefs AS jsonb))"
+                    "(user_id, kcal_goal, protein_goal, fiber_goal) "
+                    "VALUES (:user_id, :kcal_goal, :protein_goal, :fiber_goal)"
                 ),
                 {
                     "user_id": user_id,
-                    "dietary_prefs": json.dumps({}),
                     **goal,
                 },
             )

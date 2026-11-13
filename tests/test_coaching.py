@@ -21,13 +21,22 @@ from backend.agent.coaching import (
 from backend.agent.context import ContextBundle, GoalSummary
 from backend.db.models import UserGoal
 from backend.db.redis_client import CoachingTurn, TodayTotals
+from backend.safety import profile
+from tests.profile_helpers import hard_entry
 
 
 @pytest.fixture(autouse=True)
-def _no_user_state():
-    """Keep build_context (Postgres + embeddings) and the Redis history off
-    the real backends for every test; tests that care override these."""
+def hard_entries():
+    """Keep build_context (Postgres + embeddings), the Redis history and the
+    hard profile off the real backends for every test; tests that care
+    override these. Yields the live hard entries the tests may fill."""
+    entries: list = []
     with (
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=entries,
+        ),
         patch(
             "backend.agent.coaching.build_context",
             new_callable=AsyncMock,
@@ -39,7 +48,7 @@ def _no_user_state():
             return_value=[],
         ),
     ):
-        yield
+        yield entries
 
 
 _HISTORY = [
@@ -145,7 +154,7 @@ async def test_parse_query_micronutrient():
     assert parsed.nutrients == ["Vitamin B12, total"]
 
 
-async def test_fetch_data_today_macro_uses_redis():
+async def test_fetch_data_today_macro_uses_redis(hard_entries):
     parsed = QueryParsed(time_range="today", nutrients=["kcal"], include_goals=True)
     goal = UserGoal(
         user_id="user-1",
@@ -391,7 +400,7 @@ async def test_handle_with_data_calls_generate_response():
     assert response.message == "You've had 1,240 kcal today."
 
 
-async def test_handle_meal_plan_feeds_today_totals_and_goals():
+async def test_handle_meal_plan_feeds_today_totals_and_goals(hard_entries):
     """A "what can I eat to hit my goals" query must ground generate_response
     in BOTH today's totals and the daily goals (incl. dietary_prefs) so the
     model can compute REMAINING = goal - today and propose a recipe-card plan.
@@ -406,9 +415,9 @@ async def test_handle_meal_plan_feeds_today_totals_and_goals():
         kcal_goal=2000.0,
         protein_goal=120.0,
         fiber_goal=30.0,
-        dietary_prefs={"vegan": True},
         streak_days=0,
     )
+    hard_entries.append(hard_entry(profile.DietSettingValue(setting="vegan")))
 
     with (
         patch(
@@ -454,7 +463,6 @@ async def test_generate_response_puts_user_context_in_instructions():
             kcal_goal=2200,
             protein_goal=140,
             fiber_goal=30,
-            dietary_prefs={},
             streak_days=4,
         ),
         preferences=["dislikes mushrooms"],
@@ -578,10 +586,11 @@ async def test_handle_keeps_restrictions_when_build_context_fails():
     parsed = QueryParsed(time_range="today", nutrients=["kcal"])
     restrictions = ContextBundle(
         today_totals=TodayTotals(),
-        goals=GoalSummary(
-            dietary_prefs={"vegetarian": True},
-            conditions=["diabetes"],
-            streak_days=0,
+        goals=GoalSummary(streak_days=0),
+        hard_block=(
+            "Patient safety profile (confirmed by the patient):\n"
+            "- Diet settings (binding): vegetarian\n"
+            "- Declared health conditions: diabetes."
         ),
     )
 

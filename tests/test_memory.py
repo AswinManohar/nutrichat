@@ -6,14 +6,16 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from backend.agent.memory import (
+    PENDING_ADD,
+    PENDING_REMOVAL,
     AddFact,
+    AddRestriction,
     MemoryFact,
     MemoryOp,
     ProfileLimits,
     RemoveFact,
     ReplaceFact,
     SetDietChip,
-    active_chips,
     label_facts,
     plan_ops,
     render_profile_block,
@@ -45,8 +47,8 @@ def _row(
     )
 
 
-def _plan(rows, ops, actor, *, prefs=None, limits=LIMITS):
-    return plan_ops(USER, rows, prefs or {}, ops, actor, now=NOW, limits=limits)
+def _plan(rows, ops, actor, *, limits=LIMITS):
+    return plan_ops(USER, rows, ops, actor, now=NOW, limits=limits)
 
 
 def _live(rows) -> list[str]:
@@ -87,39 +89,7 @@ def test_user_restating_inferred_fact_marks_it_stated() -> None:
     assert plan.added == []
 
 
-def test_weekly_job_cannot_write_restrictions() -> None:
-    rows: list[UserMemory] = []
-    plan = _plan(rows, [AddFact(fact="Avoids pork", kind="restriction")], "weekly")
-
-    assert not plan.results[0].applied
-    assert rows == []
-
-
 # --- tighten-only ------------------------------------------------------------
-
-
-@pytest.mark.parametrize("actor", ["curator", "weekly"])
-def test_background_actors_cannot_remove_or_change_a_restriction(actor) -> None:
-    rows = [_row("Peanut allergy", "restriction", "stated")]
-    plan = _plan(
-        rows,
-        [
-            RemoveFact(id="id-Peanut allergy"),
-            ReplaceFact(id="id-Peanut allergy", fact="Fine with peanuts", kind="like"),
-        ],
-        actor,
-    )
-
-    assert [r.applied for r in plan.results] == [False, False]
-    assert _live(rows) == ["Peanut allergy"]
-    assert plan.deleted == []
-
-
-def test_curator_can_add_a_restriction() -> None:
-    rows: list[UserMemory] = []
-    plan = _plan(rows, [AddFact(fact="Peanut allergy", kind="restriction")], "curator")
-
-    assert plan.results[0].applied
 
 
 def test_curator_can_replace_a_contradicted_soft_fact() -> None:
@@ -134,38 +104,6 @@ def test_curator_can_replace_a_contradicted_soft_fact() -> None:
     assert (rows[0].fact, rows[0].category) == ("No longer eats meat", "habit")
     # A fact the user stated keeps that standing when the curator rewrites it.
     assert rows[0].source == "stated"
-
-
-def test_diet_chip_curator_can_switch_on_but_not_off() -> None:
-    on = _plan([], [SetDietChip(chip="vegetarian", on=True)], "curator")
-    off = _plan(
-        [],
-        [SetDietChip(chip="vegetarian", on=False)],
-        "curator",
-        prefs={"vegetarian": True},
-    )
-
-    assert on.results[0].applied and on.prefs == {"vegetarian": True}
-    assert not off.results[0].applied and off.prefs is None
-
-
-def test_diet_chip_user_can_switch_off_and_unknown_chip_is_rejected() -> None:
-    plan = _plan(
-        [],
-        [SetDietChip(chip="vegan", on=False), SetDietChip(chip="carnivore", on=True)],
-        "user",
-        prefs={"vegan": True, "high_protein": True},
-    )
-
-    assert [r.applied for r in plan.results] == [True, False]
-    assert plan.prefs == {"high_protein": True}
-
-
-def test_diet_chip_does_not_mutate_input_prefs() -> None:
-    prefs = {"vegan": True}
-    _plan([], [SetDietChip(chip="vegan", on=False)], "user", prefs=prefs)
-
-    assert prefs == {"vegan": True}
 
 
 # --- remove and tombstones ---------------------------------------------------
@@ -219,28 +157,6 @@ def test_old_tombstones_are_purged_beyond_the_limit() -> None:
     assert sorted(r.fact for r in plan.deleted) == ["t2", "t3"]
 
 
-def test_removed_restrictions_are_never_purged() -> None:
-    # A purged marker lets the curator learn the fact again; for a
-    # restriction that would bring back a hard constraint the user dropped.
-    rows = [
-        _row("Allergic to shellfish", "restriction", age_days=30, deleted=True),
-        *(_row(f"t{i}", age_days=i + 1, deleted=True) for i in range(3)),
-    ]
-    limits = ProfileLimits(max_facts=40, max_chars=1500, max_tombstones=2)
-    plan = _plan(
-        rows, [AddFact(fact="Likes dal", kind="like")], "curator", limits=limits
-    )
-
-    assert [r.fact for r in plan.deleted] == ["t2"]
-    relearn = _plan(
-        rows,
-        [AddFact(fact="Allergic to shellfish", kind="restriction")],
-        "curator",
-        limits=limits,
-    )
-    assert not relearn.results[0].applied
-
-
 def test_weekly_job_only_touches_its_own_facts() -> None:
     rows = [
         _row("From chat", source="inferred_from_chat"),
@@ -265,7 +181,7 @@ def test_unknown_id_is_rejected() -> None:
 
 def test_overflow_evicts_oldest_inferred_soft_fact_only() -> None:
     rows = [
-        _row("Peanut allergy", "restriction", "inferred_from_chat", age_days=90),
+        _row("Hates peanuts", "dislike", "inferred_from_chat", age_days=90),
         _row("Stated like", "like", "stated", age_days=80),
         _row("Old habit", "habit", age_days=70),
         _row("Newer habit", "habit", age_days=5),
@@ -278,16 +194,16 @@ def test_overflow_evicts_oldest_inferred_soft_fact_only() -> None:
     assert plan.results[0].applied
     assert plan.evicted == ["Old habit"]
     assert sorted(_live(rows)) == [
+        "Hates peanuts",
         "Likes dal",
         "Newer habit",
-        "Peanut allergy",
         "Stated like",
     ]
 
 
 def test_curator_add_is_rejected_when_nothing_can_be_evicted() -> None:
     rows = [
-        _row("Peanut allergy", "restriction", "stated"),
+        _row("Hates peanuts", "dislike", "stated"),
         _row("Stated like", "like", "stated"),
     ]
     limits = ProfileLimits(max_facts=2, max_chars=1500, max_tombstones=50)
@@ -300,28 +216,9 @@ def test_curator_add_is_rejected_when_nothing_can_be_evicted() -> None:
     assert len(rows) == 2
 
 
-def test_curator_restriction_is_saved_even_when_nothing_can_be_evicted() -> None:
-    # Refusing it would drop a new allergy silently; over the cap is safer.
-    rows = [
-        _row("Peanut allergy", "restriction", "stated"),
-        _row("Stated like", "like", "stated"),
-    ]
-    limits = ProfileLimits(max_facts=2, max_chars=1500, max_tombstones=50)
-    plan = _plan(
-        rows,
-        [AddFact(fact="Allergic to shellfish", kind="restriction")],
-        "curator",
-        limits=limits,
-    )
-
-    assert plan.results[0].applied
-    assert [r.fact for r in plan.added] == ["Allergic to shellfish"]
-    assert plan.evicted == []
-
-
 def test_explicit_remember_succeeds_even_when_full() -> None:
     rows = [
-        _row("Peanut allergy", "restriction", "stated"),
+        _row("Hates peanuts", "dislike", "stated"),
         _row("Stated like", "like", "stated"),
     ]
     limits = ProfileLimits(max_facts=2, max_chars=1500, max_tombstones=50)
@@ -398,51 +295,57 @@ def _fact(text: str, kind: str) -> MemoryFact:
 
 
 def test_render_empty_profile_is_empty_string() -> None:
-    assert render_profile_block([], [], None) == ""
+    assert render_profile_block([], None) == ""
 
 
-def test_render_puts_diet_and_restrictions_first() -> None:
+def test_render_orders_soft_kinds_and_adds_staples() -> None:
     block = render_profile_block(
         [
             _fact("Usually skips breakfast", "habit"),
-            _fact("Peanut allergy", "restriction"),
             _fact("Mushrooms", "dislike"),
         ],
-        ["gluten_free", "vegetarian"],
         {"breakfast": ["oats", "banana"], "dinner": []},
     )
     lines = block.splitlines()
 
-    assert lines[1] == "- Diet settings (binding): gluten free, vegetarian"
-    assert lines[2] == "- Never suggest (hard restrictions): Peanut allergy"
-    assert lines[3] == "- Dislikes (avoid): Mushrooms"
-    assert lines[4] == "- Habits: Usually skips breakfast"
-    assert lines[5].endswith("breakfast: oats, banana")
+    assert lines[1] == "- Dislikes (avoid): Mushrooms"
+    assert lines[2] == "- Habits: Usually skips breakfast"
+    assert lines[3].endswith("breakfast: oats, banana")
+    assert "Diet settings" not in block
 
 
-def test_render_keeps_every_restriction_and_truncates_soft_facts() -> None:
-    facts = [_fact(f"allergy {i} " + "r" * 40, "restriction") for i in range(5)]
-    facts += [_fact(f"like {i} " + "l" * 40, "like") for i in range(10)]
-    block = render_profile_block(facts, [], None, max_chars=350)
+def test_render_truncates_soft_facts_to_the_budget() -> None:
+    facts = [_fact(f"like {i} " + "l" * 40, "like") for i in range(10)]
+    block = render_profile_block(facts, None, max_chars=350)
 
-    assert all(f"allergy {i} " in block for i in range(5))
     assert "like 0 " in block
     assert "like 9 " not in block
 
 
-def test_label_facts_and_active_chips() -> None:
+def test_label_facts() -> None:
     facts = [_fact("a", "like"), _fact("b", "like")]
 
     assert [label for label, _ in label_facts(facts)] == ["m1", "m2"]
-    assert active_chips({"vegan": True, "keto": False, "x": "yes"}) == ["vegan"]
-    assert active_chips(None) == []
+
+
+def test_memory_op_union_parses_restriction() -> None:
+    op = TypeAdapter(MemoryOp).validate_python(
+        {"op": "add_restriction", "fact": "Peanut allergy"}
+    )
+
+    assert isinstance(op, AddRestriction)
+
+
+def test_restriction_is_no_longer_a_soft_kind() -> None:
+    with pytest.raises(ValidationError):
+        AddFact(fact="Peanut allergy", kind="restriction")
 
 
 # --- against Postgres --------------------------------------------------------
 
 
 async def test_apply_ops_round_trip_against_live_postgres() -> None:
-    """Requires DATABASE_URL with migration 018 applied."""
+    """Requires DATABASE_URL with migration 019 applied."""
     from tests.conftest import DATABASE_URL_PRESET
 
     if not DATABASE_URL_PRESET:
@@ -456,16 +359,26 @@ async def test_apply_ops_round_trip_against_live_postgres() -> None:
     from backend.agent.memory import apply_ops, load_profile, load_state
     from backend.db.models import UserGoal
     from backend.db.session import dispose_engine, get_session
+    from backend.safety import profile
 
     user_id = str(uuid.uuid4())
     session_factory = get_session()
     async with session_factory() as session:
-        session.add(UserGoal(user_id=user_id, dietary_prefs={"high_protein": True}))
+        session.add(UserGoal(user_id=user_id))
         await session.commit()
+    await profile.add_entry(
+        user_id,
+        profile.DietSettingValue(setting="high_protein"),
+        source="patient",
+        state="confirmed",
+        created_by="patient",
+    )
     try:
         # No user_goal row: nothing is written, nothing raises.
         orphan = await apply_ops(
-            str(uuid.uuid4()), [AddFact(fact="Likes dal", kind="like")], "curator"
+            str(uuid.uuid4()),
+            [AddFact(fact="Likes dal", kind="like"), AddRestriction(fact="No pork")],
+            "curator",
         )
         assert orphan.n_applied == 0
 
@@ -474,7 +387,7 @@ async def test_apply_ops_round_trip_against_live_postgres() -> None:
             apply_ops(
                 user_id,
                 [
-                    AddFact(fact="Peanut allergy", kind="restriction"),
+                    AddRestriction(fact="Peanut allergy"),
                     AddFact(fact="Likes spicy food", kind="like"),
                     SetDietChip(chip="vegetarian", on=True),
                 ],
@@ -485,41 +398,76 @@ async def test_apply_ops_round_trip_against_live_postgres() -> None:
             ),
         )
         assert first.n_applied == 3 and second.n_applied == 1
+        assert first.results[0].reason == PENDING_ADD
 
+        # Hard facts are pending entries: they do not bind and the soft
+        # profile does not carry them.
         state = await load_state(user_id)
-        assert [f.fact for f in state.facts] == [
-            "Peanut allergy",
-            "Hates mushrooms",
-            "Likes spicy food",
-        ]
-        assert state.diet_chips == ["high_protein", "vegetarian"]
-        spicy = next(f for f in state.facts if f.fact == "Likes spicy food")
-        allergy = next(f for f in state.facts if f.fact == "Peanut allergy")
+        assert [f.fact for f in state.facts] == ["Hates mushrooms", "Likes spicy food"]
+        assert state.diet_chips == ["high_protein"]
+        live = await profile.load_hard_profile(user_id)
+        pending = {
+            (e.type, e.source, e.created_by) for e in live if e.state == "pending"
+        }
+        assert pending == {
+            ("allergy", "inferred", "curator"),
+            ("diet_setting", "inferred", "curator"),
+        }
+        peanut = next(e for e in live if e.type == "allergy")
+        assert peanut.value == profile.AllergyValue(allergen_group="peanut")
 
-        # User deletes one fact; the curator can neither re-learn it nor
-        # loosen the restriction or the diet setting.
+        # Restating a pending hard fact adds nothing.
+        again = await apply_ops(user_id, [AddRestriction(fact="peanuts")], "curator")
+        assert again.results[0].reason == PENDING_ADD
+        assert len(await profile.load_hard_profile(user_id)) == len(live)
+
+        # The curator cannot re-learn a deleted soft fact or switch a diet
+        # setting off; the weekly job cannot touch the hard profile at all.
+        spicy = next(f for f in state.facts if f.fact == "Likes spicy food")
         await apply_ops(user_id, [RemoveFact(id=spicy.id)], "user")
         blocked = await apply_ops(
             user_id,
             [
                 AddFact(fact="likes spicy food", kind="like"),
-                RemoveFact(id=allergy.id),
-                SetDietChip(chip="vegetarian", on=False),
+                SetDietChip(chip="high_protein", on=False),
             ],
             "curator",
         )
         assert blocked.n_applied == 0
+        weekly = await apply_ops(user_id, [AddRestriction(fact="No pork")], "weekly")
+        assert weekly.n_applied == 0
 
-        state = await load_state(user_id)
-        assert state.tombstones == ["Likes spicy food"]
-        assert state.diet_chips == ["high_protein", "vegetarian"]
-        assert [f.fact for f in await load_profile(user_id)] == [
-            "Peanut allergy",
-            "Hates mushrooms",
-        ]
+        # The user asking to switch a confirmed diet setting off only requests
+        # retirement: it keeps binding.
+        off = await apply_ops(
+            user_id, [SetDietChip(chip="high_protein", on=False)], "user"
+        )
+        assert off.results[0].reason == PENDING_REMOVAL
+        assert (await load_state(user_id)).diet_chips == ["high_protein"]
+        requested = next(
+            e
+            for e in await profile.load_hard_profile(user_id)
+            if e.type == "diet_setting" and e.state == "confirmed"
+        )
+        assert requested.retire_requested_at is not None
+
+        # Legacy restriction rows are ignored everywhere.
+        async with session_factory() as session:
+            session.add(
+                UserMemory(
+                    user_id=user_id,
+                    fact="Old allergy",
+                    category="restriction",
+                    source="stated",
+                    confidence=1.0,
+                )
+            )
+            await session.commit()
+        assert [f.fact for f in await load_profile(user_id)] == ["Hates mushrooms"]
+        assert (await load_state(user_id)).tombstones == ["Likes spicy food"]
     finally:
         async with session_factory() as session:
-            # user_memory rows go with the user_goal row (ON DELETE CASCADE).
+            # user_memory and profile_entry rows go with the user_goal row.
             await session.execute(delete(UserGoal).where(UserGoal.user_id == user_id))
             await session.commit()
         await dispose_engine()
