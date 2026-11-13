@@ -105,6 +105,22 @@ class PhysicalRules(_Header):
     standing_time: StandingTimeRules
 
 
+class TermGroup(_Strict):
+    label: str
+    terms: list[str] = Field(min_length=1)
+    exclude_terms: list[str] = Field(default_factory=list)
+
+
+class DietRule(_Strict):
+    groups: list[str]
+    terms: list[str]
+
+
+class DietRules(_Header):
+    term_groups: dict[str, TermGroup]
+    settings: dict[str, DietRule]
+
+
 class ConditionLimit(_Strict):
     label: str
     expects_limits: list[str]
@@ -140,16 +156,27 @@ class ClinicalTables(_Strict):
 
     allergen_groups: AllergenGroups
     drug_food_interactions: DrugFoodInteractions
+    diet_rules: DietRules
     texture_rules: TextureRules
     physical_rules: PhysicalRules
     condition_limits: ConditionLimits
     red_flags: RedFlags
     hashes: dict[str, str]
 
+    @model_validator(mode="after")
+    def _diet_groups_known(self) -> ClinicalTables:
+        known = set(self.diet_rules.term_groups) | set(self.allergen_groups.groups)
+        for setting, rule in self.diet_rules.settings.items():
+            unknown = [g for g in rule.groups if g not in known]
+            if unknown:
+                raise ValueError(f"diet_rules {setting}: unknown groups {unknown}")
+        return self
+
 
 _MODELS: dict[str, type[_Header]] = {
     "allergen_groups": AllergenGroups,
     "drug_food_interactions": DrugFoodInteractions,
+    "diet_rules": DietRules,
     "texture_rules": TextureRules,
     "physical_rules": PhysicalRules,
     "condition_limits": ConditionLimits,

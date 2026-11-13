@@ -1,0 +1,50 @@
+# Which foods each diet setting rules out (specs/013 FR-014). Matching is the
+# same as allergen_groups.yaml: case-folded, word-boundary, applied to the
+# ingredient name and its USDA description.
+#
+# `groups` name a family below (term_groups) or a group in
+# allergen_groups.yaml; `terms` are extra words. Settings with no term rule
+# (low_sodium, low_sugar, low_carb, high_protein, keto, paleo) are
+# preferences about amounts and style: the recipe prompt follows them and the
+# check records them as applied, but it never fails a recipe on them. Set a
+# hard number with a nutrient limit instead.
+# Values are placeholders pending dietitian review.
+version: 1
+reviewed_by: "PENDING DIETITIAN REVIEW"
+reviewed_on: null
+
+term_groups:
+  meat:
+    label: "meat"
+    terms: ["beef", "pork", "lamb", "veal", "mutton", "venison", "bacon", "ham", "sausage", "salami", "pepperoni", "steak", "mince", "ground beef", "prosciutto"]
+    exclude_terms: []
+  poultry:
+    label: "poultry"
+    terms: ["chicken", "turkey", "duck", "goose", "poultry"]
+    exclude_terms: []
+
+settings:
+  vegan:
+    groups: ["meat", "poultry", "fish", "shellfish", "egg", "milk"]
+    terms: ["honey", "gelatin", "gelatine"]
+  vegetarian:
+    groups: ["meat", "poultry", "fish", "shellfish"]
+    terms: ["gelatin", "gelatine"]
+  pescatarian:
+    groups: ["meat", "poultry"]
+    terms: []
+  gluten_free:
+    groups: ["wheat_gluten"]
+    terms: []
+  dairy_free:
+    groups: ["milk"]
+    terms: []
+  no_nuts:
+    groups: ["peanut", "tree_nut"]
+    terms: []
+  low_sodium: { groups: [], terms: [] }
+  low_sugar: { groups: [], terms: [] }
+  low_carb: { groups: [], terms: [] }
+  high_protein: { groups: [], terms: [] }
+  keto: { groups: [], terms: [] }
+  paleo: { groups: [], terms: [] }

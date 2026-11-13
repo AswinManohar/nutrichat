@@ -68,6 +68,26 @@ The values above are placeholders to be set by the reviewing dietitian before
 PR 2 ships. A confirmed medication with no matching `names` produces a
 `unknown_medication` review item and a "no known rule" note.
 
+## diet_rules.yaml (FR-014)
+
+```yaml
+term_groups:                 # families not in allergen_groups.yaml
+  meat:    { label: "meat", terms: ["beef", "pork", "..."], exclude_terms: [] }
+  poultry: { label: "poultry", terms: ["chicken", "turkey", "..."], exclude_terms: [] }
+settings:                    # keys are the diet chips
+  vegan:       { groups: ["meat", "poultry", "fish", "shellfish", "egg", "milk"], terms: ["honey", "gelatin"] }
+  vegetarian:  { groups: ["meat", "poultry", "fish", "shellfish"], terms: ["gelatin"] }
+  pescatarian: { groups: ["meat", "poultry"], terms: [] }
+  gluten_free: { groups: ["wheat_gluten"], terms: [] }
+  dairy_free:  { groups: ["milk"], terms: [] }
+  no_nuts:     { groups: ["peanut", "tree_nut"], terms: [] }
+  low_sodium:  { groups: [], terms: [] }   # also low_sugar, low_carb, high_protein, keto, paleo
+```
+
+A group names a `term_groups` family or an `allergen_groups.yaml` group; a
+setting with no groups is a preference: recorded in `applied`, never a failure.
+An unknown group name makes the tables invalid.
+
 ## texture_rules.yaml
 
 ```yaml

@@ -27,6 +27,7 @@ def test_shipped_tables_load() -> None:
     assert set(tables.hashes) == {
         "allergen_groups",
         "drug_food_interactions",
+        "diet_rules",
         "texture_rules",
         "physical_rules",
         "condition_limits",

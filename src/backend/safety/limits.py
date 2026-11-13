@@ -13,23 +13,19 @@ from backend.core.nutrition_day import current_day_bounds
 from backend.db.models import MealLog
 from backend.db.session import get_session
 from backend.safety.profile import (
+    HardEntry,
     NutrientLimitValue,
     confirmed,
     limit_text,
     load_hard_profile,
 )
+from backend.safety.recipe import GRAMS_PER_UNIT, USDA_KEYS
 
 # Limit nutrient -> USDA nutrient key in an item's ``nutrients``, or the
 # top-level item field for the two macros.
 # Water is grams; treating 1 g as 1 ml is approximate, which the app shows.
-_USDA_KEYS = {
-    "sodium": "Sodium, Na",
-    "potassium": "Potassium, K",
-    "phosphorus": "Phosphorus, P",
-    "fluid": "Water",
-}
+_USDA_KEYS = {n: USDA_KEYS[n] for n in ("sodium", "potassium", "phosphorus", "fluid")}
 _ITEM_FIELDS = {"protein": "protein_g", "carbohydrate": "carbs_g"}
-_GRAMS_PER_UNIT = {"mg": 0.001, "g": 1.0, "ml": 1.0, "mcg": 0.000001, "ug": 0.000001}
 
 
 class LimitProgress(BaseModel):
@@ -66,10 +62,10 @@ def _item_amount(item: dict, limit: NutrientLimitValue) -> float | None:
     else:
         found = (item.get("nutrients") or {}).get(_USDA_KEYS[limit.nutrient])
         raw, unit = (found.get("amount"), found.get("unit")) if found else (None, "")
-    factor = _GRAMS_PER_UNIT.get((unit or "").lower())
+    factor = GRAMS_PER_UNIT.get((unit or "").lower())
     if raw is None or factor is None:
         return None
-    return float(raw) * factor / _GRAMS_PER_UNIT[limit.unit]
+    return float(raw) * factor / GRAMS_PER_UNIT[limit.unit]
 
 
 def _progress(
@@ -99,6 +95,47 @@ def _progress(
     )
 
 
+async def _todays_meals(user_id: str) -> list[list[dict]]:
+    """Today's logged items, one list per meal (nutrition-day boundaries)."""
+    start, end = current_day_bounds()
+    async with get_session()() as session:
+        rows = await session.execute(
+            select(MealLog.entities).where(
+                MealLog.user_id == user_id,
+                MealLog.logged_at >= start,
+                MealLog.logged_at < end,
+                MealLog.deleted_at.is_(None),
+            )
+        )
+        return [list(r) for r in rows.scalars().all()]
+
+
+def _limit_entries(entries: list[HardEntry]) -> list[HardEntry]:
+    return [e for e in confirmed(entries) if e.type == "nutrient_limit"]
+
+
+async def intake_today(
+    user_id: str, entries: list[HardEntry]
+) -> dict[str, LimitProgress]:
+    """Today's progress per confirmed nutrient limit, keyed by entry id.
+
+    Used by the recipe checker for per-day limits. Reads ``meal_log`` only
+    when the patient has a limit.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        entries: The patient's hard profile, already loaded.
+
+    Returns:
+        Empty when the patient has no confirmed nutrient limit.
+    """
+    limits = _limit_entries(entries)
+    if not limits:
+        return {}
+    meals = await _todays_meals(user_id)
+    return {e.id: _progress(e.value, e.id, meals) for e in limits}
+
+
 async def limits_today(user_id: str) -> LimitsToday:
     """Progress against every confirmed nutrient limit for today.
 
@@ -112,25 +149,11 @@ async def limits_today(user_id: str) -> LimitsToday:
     Returns:
         How many limits are on track, and each limit's progress.
     """
-    entries = [
-        e
-        for e in confirmed(await load_hard_profile(user_id))
-        if e.type == "nutrient_limit"
-    ]
-    if not entries:
-        return LimitsToday(on_track=0, total=0, limits=[])
-    start, end = current_day_bounds()
-    async with get_session()() as session:
-        rows = await session.execute(
-            select(MealLog.entities).where(
-                MealLog.user_id == user_id,
-                MealLog.logged_at >= start,
-                MealLog.logged_at < end,
-                MealLog.deleted_at.is_(None),
-            )
-        )
-        meals = [list(r) for r in rows.scalars().all()]
-    limits = [_progress(e.value, e.id, meals) for e in entries]
+    progress = list(
+        (await intake_today(user_id, await load_hard_profile(user_id))).values()
+    )
     return LimitsToday(
-        on_track=sum(1 for p in limits if p.on_track), total=len(limits), limits=limits
+        on_track=sum(1 for p in progress if p.on_track),
+        total=len(progress),
+        limits=progress,
     )
