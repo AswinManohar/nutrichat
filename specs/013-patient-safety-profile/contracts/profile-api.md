@@ -35,8 +35,9 @@ stays until then for the released app.
 ```
 
 `care_team` is a placeholder for the clinician role (decision Q1): always
-`[]` for now; each item will be `{"name": str, "role": str}`. `hard` lists live entries (pending + confirmed). 500 with a retry message when
-the profile cannot be loaded; never a partial list.
+`[]` for now; each item will be `{"name": str, "role": str}`. `hard` lists live entries (pending + confirmed). 503 with
+`safety.profile_unavailable_text` when the profile cannot be loaded; never a
+partial list.
 
 ## GET /profile/limits/today
 
@@ -83,7 +84,9 @@ Settings use this route too.
 ## POST /profile/entries
 
 Patient-entered hard entry from the app (Settings: conditions, diet settings).
-Body `{type, value, label, client_request_id}`. Created **confirmed** with
+Body `{type, value, label, client_request_id, replaces_id?}`. With
+`replaces_id` it is an edit: the old confirmed entry of the same type is
+retired (`replaced`) and the new one replaces it, in one transaction. Created **confirmed** with
 source `patient`: the act of entering it in Settings is the confirmation. A
 `clinician` source is rejected with 403 (FR-031).
 
