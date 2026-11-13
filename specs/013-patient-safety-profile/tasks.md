@@ -218,7 +218,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [x] T082 [US5] Add kinds `cuisine`, `budget`, `cooking_time` to `src/backend/agent/memory.py` and render soft facts with their dates; remove the legacy top-k `_fetch_preferences` path from `src/backend/agent/context.py` and turn soft memory on for every user (`memory.profile_enabled` removed)
 - [x] T083 [US5] Add the history block to `src/backend/agent/context.py` and pass it to `suggest.py` for variety
 - [x] T084 [US5] Add `PATCH/DELETE /profile/soft/{id}`, `GET /profile/meals`, `GET /profile/export` to `src/backend/api/profile.py`; mark `/memory` deprecated in `src/backend/api/memory.py` (removed once the app release with T085 is live)
-- [ ] T085 [US5] Android: in `ui/profile/CareProfileScreen.kt` add "inferred" and "awaiting confirmation" labels with confirm / correct actions and an entry history view; add `ui/profile/PreferencesScreen.kt` (soft facts with dates, edit, delete), `ui/profile/MealHistoryScreen.kt`, and export (share sheet with the JSON); Food preferences row on Profile opens PreferencesScreen
+- [x] T085 [US5] Android: in `ui/profile/CareProfileScreen.kt` add "inferred" and "awaiting confirmation" labels with confirm / correct actions and an entry history view; add `ui/profile/PreferencesScreen.kt` (soft facts with dates, edit, delete), `ui/profile/MealHistoryScreen.kt`, and export (share sheet with the JSON); Food preferences row on Profile opens PreferencesScreen
 - [x] T105 [US5] Docs for PR 5: Care profile preferences and export in `docs/architecture.md`; remove `memory.profile_enabled` from `.claude/CLAUDE.md` mentions
 - [ ] T086 [US5] Goldens light and dark and an on-device timing check of SC-010 (find, edit, delete a preference in under a minute)
 
@@ -301,5 +301,5 @@ Beside:   T051 recipe prompt · T060 Android DTOs
    (PR 7).
 
 Each PR goes to `feat/android-app` from `user_memory`; production only through `/ship`.
-- [ ] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
+- [x] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
 - [x] T107 [US6] Give `safety.profile.replace` (and `add_entry`) `source`/`created_by` parameters and make `api/review.py` use them instead of importing `profile.py`'s private helpers (found in review)
