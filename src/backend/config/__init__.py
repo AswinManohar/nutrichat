@@ -166,6 +166,21 @@ class GlideConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SafetyConfig(BaseModel):
+    """Patient safety profile limits and fixed texts (see tunables.yaml)."""
+
+    hard_profile_max_entries: int = Field(gt=0)
+    max_recipe_attempts: int = Field(ge=1)
+    reply_guard_min_probability: float = Field(ge=0.0, le=1.0)
+    reply_guard_fallback_text: str = Field(min_length=1)
+    profile_unavailable_text: str = Field(min_length=1)
+    no_suitable_meal_text: str = Field(min_length=1)
+    food_db_unavailable_text: str = Field(min_length=1)
+    clinical_dir: str = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PromptsConfig(BaseModel):
     """System prompts, one per field.
 
@@ -215,6 +230,7 @@ class Tunables(BaseModel):
     nutrient_checkup: NutrientCheckupConfig
     routing: RoutingConfig
     glide: GlideConfig
+    safety: SafetyConfig
     prompts: PromptsConfig
     features: FeaturesConfig
     upper_limits: dict[str, UpperLimitEntry]

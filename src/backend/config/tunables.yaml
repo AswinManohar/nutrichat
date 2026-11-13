@@ -514,3 +514,37 @@ upper_limits:
     ul: 2500
     source: "NASEM DRI — Calcium (2011)"
     url: "https://www.ncbi.nlm.nih.gov/books/NBK56070/"
+
+safety:
+  # Patient safety profile (specs/013-patient-safety-profile). Used by the
+  # hard profile, recipe checker and reply guard in backend/safety/.
+
+  # Most live entries one patient's hard profile may hold. Enforced where
+  # entries are written (safety/profile.py); the rendered profile stays small.
+  hard_profile_max_entries: 40
+
+  # Attempts to produce a recipe that passes the check before the coach says
+  # no suitable meal was found (agent/suggest.py).
+  max_recipe_attempts: 3
+
+  # Probability from the reply guard's GLiDE judgment at or above which a
+  # reply is treated as unsafe and replaced by reply_guard_fallback_text.
+  # Placeholder until measured on the guard eval (T062).
+  reply_guard_min_probability: 0.5
+
+  # Shown instead of a reply the guard rejected (agent/coaching.py).
+  reply_guard_fallback_text: "I can't suggest that safely with what I know about you. Check your profile, or ask your care team if you are unsure."
+
+  # Shown when the hard profile cannot be read, so the coach never answers
+  # without the patient's restrictions (agent/context.py).
+  profile_unavailable_text: "I can't reach your health profile right now, so I won't suggest meals yet. Please try again in a moment."
+
+  # Shown when every recipe attempt failed the check (agent/suggest.py).
+  no_suitable_meal_text: "I couldn't find a meal that fits everything on your profile. Tell me what you have at home and I'll try again."
+
+  # Shown when the food database cannot be reached, so a recipe cannot be
+  # checked (safety/recipe.py).
+  food_db_unavailable_text: "I can't check meals against your profile right now, so I won't suggest one. Please try again shortly."
+
+  # Directory of clinical YAML tables, relative to src/backend (safety/tables.py).
+  clinical_dir: "config/clinical"
