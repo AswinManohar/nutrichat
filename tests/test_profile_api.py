@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator, Callable
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import delete
 
 from backend.api import profile as profile_api
 from backend.config import get_tunables
@@ -228,6 +230,98 @@ async def test_profile_is_503_with_the_retry_text_when_it_cannot_load(
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == get_tunables().safety.profile_unavailable_text
+
+
+async def _recommendation(user_id: str) -> str:
+    from backend.db.models import Recommendation
+    from backend.db.session import get_session
+
+    row_id = str(uuid.uuid4())
+    async with get_session()() as session:
+        session.add(
+            Recommendation(
+                id=row_id,
+                user_id=user_id,
+                recipe={"name": "Soup"},
+                check_snapshot={"passed": True},
+                attempts=1,
+                status="shown",
+            )
+        )
+        await session.commit()
+    return row_id
+
+
+async def _stored(row_id: str):
+    from backend.db.models import Recommendation
+    from backend.db.session import get_session
+
+    async with get_session()() as session:
+        return await session.get(Recommendation, row_id)
+
+
+async def test_meal_feedback_is_stored_and_idempotent(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    row_id = await _recommendation(db_user)
+    url = f"/profile/meals/{row_id}/feedback"
+
+    first = await client.post(url, json={"status": "rejected", "reason": "too salty"})
+    again = await client.post(url, json={"status": "rejected", "reason": "too salty"})
+
+    assert first.status_code == again.status_code == 200
+    assert first.json() == {"recommendation_id": row_id, "status": "rejected"}
+    row = await _stored(row_id)
+    assert (row.status, row.rejection_reason) == ("rejected", "too salty")
+
+
+async def test_accepting_after_rejecting_clears_the_reason(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    row_id = await _recommendation(db_user)
+    url = f"/profile/meals/{row_id}/feedback"
+
+    await client.post(url, json={"status": "rejected", "reason": "no time"})
+    resp = await client.post(url, json={"status": "accepted"})
+
+    assert resp.status_code == 200
+    row = await _stored(row_id)
+    assert (row.status, row.rejection_reason) == ("accepted", None)
+
+
+async def test_meal_feedback_validates_the_body(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    url = f"/profile/meals/{await _recommendation(db_user)}/feedback"
+
+    too_long = await client.post(url, json={"status": "rejected", "reason": "x" * 501})
+    shown = await client.post(url, json={"status": "shown"})
+
+    assert too_long.status_code == shown.status_code == 422
+
+
+async def test_meal_feedback_for_an_unknown_or_foreign_recommendation_is_404(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    from backend.db.models import UserGoal
+    from backend.db.session import get_session
+
+    other = str(uuid.uuid4())
+    async with get_session()() as session:
+        session.add(UserGoal(user_id=other))
+        await session.commit()
+    try:
+        foreign = await _recommendation(other)
+        for target in (foreign, str(uuid.uuid4()), "not-a-uuid"):
+            resp = await client.post(
+                f"/profile/meals/{target}/feedback", json={"status": "accepted"}
+            )
+            assert resp.status_code == 404
+        assert (await _stored(foreign)).status == "shown"
+    finally:
+        async with get_session()() as session:
+            await session.execute(delete(UserGoal).where(UserGoal.user_id == other))
+            await session.commit()
 
 
 async def test_requests_without_a_token_are_401(

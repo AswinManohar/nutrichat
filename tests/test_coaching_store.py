@@ -168,3 +168,86 @@ async def test_save_without_routing_has_no_routing_key() -> None:
         )
 
     assert "routing" not in session.add.call_args.args[0].parsed_query
+
+
+async def test_link_recommendation_sets_the_response_id(db_user: str) -> None:
+    import uuid
+
+    from backend.agent.coaching_store import link_recommendation
+    from backend.db.models import Recommendation
+    from backend.db.session import get_session
+
+    rec_id = str(uuid.uuid4())
+    response_id = await save_coaching_response(
+        user_id=db_user,
+        conversation_id=None,
+        query="dinner?",
+        result=_result(),
+        model="m",
+        trace_id=None,
+    )
+    async with get_session()() as session:
+        session.add(
+            Recommendation(
+                id=rec_id,
+                user_id=db_user,
+                recipe={},
+                check_snapshot={},
+                attempts=1,
+                status="shown",
+            )
+        )
+        await session.commit()
+
+    await link_recommendation(rec_id, response_id)
+
+    async with get_session()() as session:
+        assert (await session.get(Recommendation, rec_id)).coaching_response_id == (
+            response_id
+        )
+
+
+async def test_link_recommendation_logs_a_failure_and_does_not_raise(caplog) -> None:
+    from backend.agent.coaching_store import link_recommendation
+
+    with (
+        patch(
+            "backend.agent.coaching_store.get_session",
+            side_effect=OSError("postgres down"),
+        ),
+        caplog.at_level(logging.ERROR),
+    ):
+        await link_recommendation("rec", "resp")
+
+    assert "linking recommendation rec" in caplog.text
+
+
+async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
+    from backend.agent import orchestrator
+    from backend.agent.coaching import QueryParsed
+
+    result = CoachingResult(
+        message="Recipe",
+        parsed=QueryParsed(time_range="today", suggests_meal=True),
+        recommendation_id="rec-1",
+    )
+    for response_id, expected in (("resp-1", 1), (None, 0)):
+        with (
+            patch.object(
+                orchestrator, "consume_llm_credit", AsyncMock(return_value=True)
+            ),
+            patch.object(
+                orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
+            ),
+            patch.object(
+                orchestrator,
+                "save_coaching_response",
+                AsyncMock(return_value=response_id),
+            ),
+            patch.object(orchestrator, "link_recommendation", AsyncMock()) as link,
+        ):
+            await orchestrator._handle_coaching("user-1", "dinner?")
+
+        assert link.await_count == expected
+        if expected:
+            link.assert_awaited_once_with("rec-1", "resp-1")

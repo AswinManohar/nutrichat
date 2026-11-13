@@ -58,3 +58,11 @@ needs_guidance: true when the user asks what they SHOULD eat, whether a
   holistic-assessment questions above. Pure data questions ("how much
   protein today", "what did I eat yesterday", "average calories last week")
   stay false.
+
+suggests_meal: true when the user asks for a specific meal, recipe, meal idea
+  or meal plan to eat — "what should I eat for dinner", "give me a recipe
+  with chicken", "suggest a snack", "plan my meals for tomorrow", "something
+  quick for lunch", "I'm tired, what's an easy dinner". False for readbacks of
+  logged data ("what did I eat yesterday"), questions about whether a food is
+  healthy or how much of a nutrient to have ("is rice ok for me", "how much
+  protein should I eat"), logging and general nutrition questions.

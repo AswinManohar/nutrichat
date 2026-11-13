@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy import update
+
 from backend.agent.coaching import CoachingResult
-from backend.db.models import CoachingResponse
+from backend.db.models import CoachingResponse, Recommendation
 from backend.db.session import get_session
 
 logger = logging.getLogger(__name__)
@@ -87,4 +89,31 @@ async def save_coaching_response(
     return row_id
 
 
-__all__ = ["save_coaching_response"]
+async def link_recommendation(recommendation_id: str, response_id: str) -> None:
+    """Point a recommendation at the coaching reply that carried it.
+
+    One UPDATE. The recipe was already shown and recorded, so a failure is
+    logged and swallowed.
+
+    Args:
+        recommendation_id: ``recommendation.id``.
+        response_id: ``coaching_response.id`` returned by save_coaching_response.
+    """
+    try:
+        async with get_session()() as session, session.begin():
+            await session.execute(
+                update(Recommendation)
+                .where(Recommendation.id == recommendation_id)
+                .values(coaching_response_id=response_id)
+            )
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.error(
+            "linking recommendation %s to response %s failed: %s",
+            recommendation_id,
+            response_id,
+            exc,
+            exc_info=True,
+        )
+
+
+__all__ = ["link_recommendation", "save_coaching_response"]

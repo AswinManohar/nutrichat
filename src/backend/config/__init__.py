@@ -173,6 +173,10 @@ class SafetyConfig(BaseModel):
     max_recipe_attempts: int = Field(ge=1)
     reply_guard_min_probability: float = Field(ge=0.0, le=1.0)
     reply_guard_fallback_text: str = Field(min_length=1)
+    reply_guard_max_phrases: int = Field(gt=0)
+    reply_judge_timeout_s: float = Field(gt=0)
+    reply_guard_negations: list[str] = Field(min_length=1)
+    mass_balance_min_g: float = Field(gt=0, le=100)
     profile_unavailable_text: str = Field(min_length=1)
     no_suitable_meal_text: str = Field(min_length=1)
     food_db_unavailable_text: str = Field(min_length=1)
@@ -195,6 +199,7 @@ class PromptsConfig(BaseModel):
     correction_system: str
     intent_system: str
     query_parse_system: str
+    recipe_generation_system: str
     coaching_response_system: str
     coaching_role_and_tone: str
     coaching_hard_constraints: str

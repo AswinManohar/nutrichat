@@ -8,8 +8,9 @@ was already applied returns the entry; a state the action cannot reach is a 409.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Awaitable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.agent.memory import load_state
 from backend.auth.supabase import get_current_user_id
 from backend.config import get_tunables
+from backend.db.models import Recommendation
+from backend.db.session import get_session
 from backend.safety import profile
 from backend.safety.limits import LimitsToday, limits_today
 from backend.safety.tables import ClinicalTables, TablesUnavailable, load_tables
@@ -108,6 +111,24 @@ class RetireIn(BaseModel):
     confirm: Literal[True]
     # Retiring is idempotent by state, so the key needs no storage of its own.
     client_request_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MealFeedbackIn(BaseModel):
+    """Body of POST /profile/meals/{recommendation_id}/feedback."""
+
+    status: Literal["accepted", "rejected"]
+    reason: str | None = Field(default=None, max_length=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MealFeedbackOut(BaseModel):
+    """The recommendation's status after the feedback."""
+
+    recommendation_id: str
+    status: Literal["accepted", "rejected"]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -287,3 +308,29 @@ async def retire_entry(
 ) -> EntryOut:
     """Retire a confirmed entry. ``confirm: true`` is required."""
     return await _act(profile.retire(user_id, entry_id, reason="retired_by_patient"))
+
+
+@router.post("/meals/{recommendation_id}/feedback")
+async def meal_feedback(
+    recommendation_id: str,
+    req: MealFeedbackIn,
+    user_id: str = Depends(get_current_user_id),
+) -> MealFeedbackOut:
+    """Record whether the patient accepted or rejected a recipe they were shown.
+
+    Repeating the same status returns 200 and changes nothing. A reason is kept
+    only with ``rejected``.
+    """
+    try:
+        uuid.UUID(recommendation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Recommendation not found") from exc
+    async with get_session()() as session, session.begin():
+        row = await session.get(Recommendation, recommendation_id, with_for_update=True)
+        if row is None or row.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Recommendation not found")
+        if row.status != req.status:
+            row.status = req.status
+            row.rejection_reason = req.reason if req.status == "rejected" else None
+            row.status_at = datetime.now(UTC)
+    return MealFeedbackOut(recommendation_id=recommendation_id, status=req.status)

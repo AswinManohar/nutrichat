@@ -535,6 +535,44 @@ safety:
   # Shown instead of a reply the guard rejected (agent/coaching.py).
   reply_guard_fallback_text: "I can't suggest that safely with what I know about you. Check your profile, or ask your care team if you are unsure."
 
+  # Most n-gram food phrases of one reply looked up in USDA by the reply guard
+  # (safety/reply_guard.py). Longest phrases go first; the lookups run in
+  # parallel threads.
+  reply_guard_max_phrases: 40
+
+  # Wait for the reply guard's GLiDE judgment, no retries. Past it, the
+  # lexical and USDA layers stand alone. It runs inside the chat turn, so keep
+  # it near the routing timeout (glide.request_timeout_s).
+  reply_judge_timeout_s: 0.8
+
+  # A food term in a reply does not count as a suggestion when one of these
+  # words or phrases precedes it within 3 words in the same sentence, or when
+  # "-free" / " free" follows it ("peanut-free"). Single source for the reply
+  # guard's lexical layer (safety/reply_guard.py).
+  reply_guard_negations:
+    - "no"
+    - "not"
+    - "without"
+    - "avoid"
+    - "avoiding"
+    - "skip"
+    - "skipping"
+    - "free of"
+    - "instead of"
+    - "leave out"
+    - "left out"
+    - "swap out"
+    - "replace"
+    - "replaced"
+
+  # Mass balance for recipe totals (safety/recipe.py): a matched food with no
+  # protein or carbohydrate value in USDA counts that macro as 0 only when the
+  # proximates it does have (protein, fat, carbohydrate, water, ash, alcohol,
+  # g per 100 g) add up to at least this much, i.e. the food is accounted for
+  # without it (olive oil). Otherwise the value stays unknown and fails a limit.
+  # Minerals and vitamin K are never inferred.
+  mass_balance_min_g: 97
+
   # Shown when the hard profile cannot be read, so the coach never answers
   # without the patient's restrictions (agent/context.py).
   profile_unavailable_text: "I can't reach your health profile right now, so I won't suggest meals yet. Please try again in a moment."
