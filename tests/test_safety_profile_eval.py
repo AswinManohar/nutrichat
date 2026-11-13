@@ -94,3 +94,52 @@ def test_score_profiles_reports_precision_and_recall_per_type() -> None:
 def test_live_mode_stops_until_extraction_is_wired() -> None:
     with pytest.raises(SystemExit, match="T073"):
         ev.run_live(PATIENTS)
+
+
+# --- fixture recipes (spec 013 US2, T059) ------------------------------------
+
+FIXTURES = ev.load_fixtures(PATIENTS)
+
+
+def test_fixture_recipes_cover_every_rule_and_both_outcomes() -> None:
+    expected = {rule for f in FIXTURES for rule in f.expect_fail}
+
+    assert expected == {
+        "allergen",
+        "food_exclusion",
+        "diet_setting",
+        "interaction",
+        "nutrient_limit",
+        "texture",
+        "physical",
+    }
+    assert any(not f.expect_fail for f in FIXTURES)
+    assert any(f.expect_missing for f in FIXTURES)
+    assert any(f.expect_conflicts for f in FIXTURES)
+
+
+def test_every_fixture_fails_exactly_the_expected_rules() -> None:
+    tables = load_tables()
+
+    results = [ev.check_fixture(f, BY_ID[f.patient], tables) for f in FIXTURES]
+
+    assert [(r.id, r.problems) for r in results if r.problems] == []
+    assert [r.id for r in results if r.shown_violation] == []
+
+
+def test_a_fixture_that_should_be_blocked_but_passes_is_a_shown_violation() -> None:
+    fixture = next(f for f in FIXTURES if f.id == "fx01-peanut-oil")
+    safe = fixture.model_copy(update={"foods": {}, "recipe": FIXTURES[1].recipe})
+
+    result = ev.check_fixture(safe, BY_ID[safe.patient], load_tables())
+
+    assert result.shown_violation and result.problems
+
+
+def test_load_fixtures_rejects_an_unknown_patient(tmp_path) -> None:
+    line = FIXTURES[0].model_copy(update={"patient": "nobody"}).model_dump_json()
+    path = tmp_path / "fixtures.jsonl"
+    path.write_text(line + "\n")
+
+    with pytest.raises(ValueError, match="unknown patients"):
+        ev.load_fixtures(PATIENTS, path)

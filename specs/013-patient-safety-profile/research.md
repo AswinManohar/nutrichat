@@ -108,6 +108,13 @@ phase that depends on them merges.
   boundaries) plus the recipe must stay within the limit. Logged items with an
   unknown value are counted as zero but noted in the check result; only the
   recipe's own unknowns fail the check.
+- **Mass balance**: for a resolved food with no protein or carbohydrate value
+  (olive oil has no protein key in some FDC rows), the missing macro counts as
+  0 when the proximates USDA does give sum to at least
+  `safety.mass_balance_min_g` (97 g per 100 g): the food is accounted for
+  without it. Otherwise it stays unknown and fails a limit. Minerals and
+  vitamin K are never inferred, and every inferred zero is recorded in the
+  totals so the snapshot shows it.
 - **Alternatives rejected**: live FDC API (flaky, see usda-api-flaky memory;
   adds network I/O); the LLM estimate (FR-010 forbids model numbers).
 

@@ -17,6 +17,14 @@ Two modes:
       earlier session whose label is present in the block (SC-003, target 100%);
     - pending leaks: pending facts that appear anywhere but the "Awaiting
       confirmation" line (must be 0).
+  It also checks every fixture recipe in ``fixture_recipes.jsonl`` (a recipe, its
+  USDA values written into the case, a patient id, and the rules the check must
+  fail) with the real deterministic checker (``backend.safety.checker``), and
+  reports:
+    - shown violations: fixtures that must be blocked but passed the check
+      (must be 0);
+    - mismatches: fixtures whose failed rules, missing values or conflict count
+      differ from what the case expects (must be 0).
 * ``--live`` replays the sessions through the extraction pipeline and scores the
   extracted profile against the expected one (precision and recall per entry
   type). The pipeline step is not wired yet: it arrives with the curator rewrite
@@ -43,9 +51,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.safety import profile
+from backend.safety.checker import check
+from backend.safety.recipe import Recipe, ResolvedIngredient
 from backend.safety.tables import ClinicalTables, load_tables
 
 CASES = Path(__file__).parent / "cases" / "safety_profile" / "patients.jsonl"
+FIXTURES = Path(__file__).parent / "cases" / "safety_profile" / "fixture_recipes.jsonl"
 _EPOCH = datetime(2026, 11, 1, tzinfo=UTC)
 
 
@@ -203,7 +214,159 @@ def score_profiles(
     return dict(per_type)
 
 
-def run_offline(patients: list[Patient]) -> int:
+class Food(BaseModel):
+    """What the food database would return for one ingredient name.
+
+    ``per_100g`` lists the nutrients the case cares about (canonical units, see
+    ``safety.recipe``); every other nutrient is 0. Use ``null`` for a nutrient
+    the database has no value for.
+    """
+
+    description: str | None = None
+    unresolved: bool = False
+    per_100g: dict[str, float | None] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FixtureRecipe(BaseModel):
+    """A recipe, a patient and the rules the check must fail."""
+
+    id: str
+    patient: str
+    summary: str
+    recipe: Recipe
+    foods: dict[str, Food] = Field(default_factory=dict)
+    expect_fail: list[str]
+    expect_missing: list[str] | None = None
+    expect_conflicts: int | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def load_fixtures(
+    patients: list[Patient], path: Path = FIXTURES
+) -> list[FixtureRecipe]:
+    """Read and validate the fixture recipes.
+
+    Raises:
+        ValueError: On an invalid case, a duplicate id, or an unknown patient.
+    """
+    fixtures = [
+        FixtureRecipe.model_validate_json(line)
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+    known = {p.id for p in patients}
+    if len({f.id for f in fixtures}) != len(fixtures):
+        raise ValueError("duplicate fixture ids")
+    unknown = {f.patient for f in fixtures} - known
+    if unknown:
+        raise ValueError(f"fixtures name unknown patients: {sorted(unknown)}")
+    return fixtures
+
+
+_NUTRIENTS = (
+    "sodium",
+    "potassium",
+    "phosphorus",
+    "protein",
+    "carbohydrate",
+    "fluid",
+    "vitamin_k",
+    "kcal",
+)
+
+
+def resolve_fixture(fixture: FixtureRecipe) -> list[ResolvedIngredient]:
+    """The ingredients as the food database would resolve them."""
+    resolved = []
+    for ingredient in fixture.recipe.ingredients:
+        food = fixture.foods.get(ingredient.name, Food())
+        found = not food.unresolved
+        resolved.append(
+            ResolvedIngredient(
+                name=ingredient.name,
+                qty_g=ingredient.qty_g,
+                fdc_id=1 if found else None,
+                usda_description=(food.description or ingredient.name)
+                if found
+                else None,
+                match_confidence=1.0 if found else 0.0,
+                per_100g={**dict.fromkeys(_NUTRIENTS, 0.0), **food.per_100g}
+                if found
+                else {},
+            )
+        )
+    return resolved
+
+
+class FixtureResult(BaseModel):
+    """Offline result for one fixture recipe."""
+
+    id: str
+    failed_rules: list[str]
+    shown_violation: bool
+    problems: list[str]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def check_fixture(
+    fixture: FixtureRecipe, patient: Patient, tables: ClinicalTables
+) -> FixtureResult:
+    """Run the checker on a fixture with the patient's final live profile."""
+    entries = to_entries(live_facts(patient, len(patient.sessions)))
+    result = check(
+        fixture.recipe, resolve_fixture(fixture), entries, {}, tables, attempt=1
+    )
+    failed = sorted({f.rule for f in result.failures})
+    problems = []
+    if failed != sorted(fixture.expect_fail):
+        problems.append(
+            f"failed rules {failed}, expected {sorted(fixture.expect_fail)}"
+        )
+    if (
+        fixture.expect_missing is not None
+        and result.missing_values != fixture.expect_missing
+    ):
+        problems.append(f"missing values {result.missing_values}")
+    if (
+        fixture.expect_conflicts is not None
+        and len(result.conflicts) != fixture.expect_conflicts
+    ):
+        problems.append(f"{len(result.conflicts)} conflicts")
+    return FixtureResult(
+        id=fixture.id,
+        failed_rules=failed,
+        shown_violation=bool(fixture.expect_fail) and result.passed,
+        problems=problems,
+    )
+
+
+def run_fixtures(patients: list[Patient], fixtures: list[FixtureRecipe]) -> int:
+    """Print the fixture report; return the number of bad fixtures."""
+    tables = load_tables()
+    by_id = {p.id: p for p in patients}
+    results = [check_fixture(f, by_id[f.patient], tables) for f in fixtures]
+    for r in results:
+        flag = "ok " if not r.problems and not r.shown_violation else "BAD"
+        print(
+            f"{flag} {r.id}: failed={r.failed_rules}"
+            + "".join(f" !{p}" for p in r.problems)
+        )
+    shown = sum(r.shown_violation for r in results)
+    mismatched = sum(bool(r.problems) for r in results)
+    print(
+        f"\nfixture recipes: {len(results)}, shown violations: {shown}, "
+        f"mismatches: {mismatched}"
+    )
+    return shown + mismatched
+
+
+def run_offline(
+    patients: list[Patient], fixtures: list[FixtureRecipe] | None = None
+) -> int:
     """Print the offline report; return the exit code."""
     tables = load_tables()
     results = [check_patient(p, tables) for p in patients]
@@ -221,7 +384,8 @@ def run_offline(patients: list[Patient]) -> int:
         f"\nrecall of earlier-session facts: {recalled}/{total} "
         f"({100 * recalled / total:.1f}%), pending leaks: {leaks}"
     )
-    return 0 if recalled == total and leaks == 0 else 1
+    bad_fixtures = run_fixtures(patients, fixtures) if fixtures else 0
+    return 0 if recalled == total and leaks == 0 and bad_fixtures == 0 else 1
 
 
 def run_live(patients: list[Patient]) -> int:
@@ -241,12 +405,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cases", type=Path, default=CASES)
     parser.add_argument("--only", help="run one patient id")
     args = parser.parse_args(argv)
-    patients = load_patients(args.cases)
+    everyone = load_patients(args.cases)
+    patients = everyone
     if args.only:
         patients = [p for p in patients if p.id == args.only]
         if not patients:
             parser.error(f"no patient {args.only!r}")
-    return run_offline(patients) if args.offline else run_live(patients)
+    if args.offline:
+        selected = {p.id for p in patients}
+        fixtures = [f for f in load_fixtures(everyone) if f.patient in selected]
+        return run_offline(patients, fixtures)
+    return run_live(patients)
 
 
 if __name__ == "__main__":

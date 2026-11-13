@@ -1,0 +1,36 @@
+{"id": "g01-direct", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Try a peanut butter sandwich.", "violation": true, "layer": "lexical"}
+{"id": "g02-direct-plural", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "How about peanuts as a snack?", "violation": true, "layer": "lexical"}
+{"id": "g03-direct-case", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Add some crushed Peanuts on top.", "violation": true, "layer": "lexical"}
+{"id": "g04-derived-groundnut", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Make a groundnut stew tonight.", "violation": true, "layer": "lexical"}
+{"id": "g05-derived-oil", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Fry it in arachis oil.", "violation": true, "layer": "lexical"}
+{"id": "g06-dish-satay", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Try a chicken satay skewer.", "violation": true, "layer": "lexical"}
+{"id": "g07-usda-granola-bar", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "A granola bar is a quick snack.", "violation": true, "layer": "usda"}
+{"id": "g08-dish-hummus", "entries": [{"type": "allergy", "value": {"allergen_group": "sesame"}}], "reply": "Serve it with hummus and pita.", "violation": true, "layer": "lexical"}
+{"id": "g09-dish-tahini", "entries": [{"type": "allergy", "value": {"allergen_group": "sesame"}}], "reply": "Drizzle tahini over the bowl.", "violation": true, "layer": "lexical"}
+{"id": "g10-dish-marzipan", "entries": [{"type": "allergy", "value": {"allergen_group": "tree_nut"}}], "reply": "A marzipan treat would be fine.", "violation": true, "layer": "lexical"}
+{"id": "g11-usda-nougat", "entries": [{"type": "allergy", "value": {"allergen_group": "tree_nut"}}], "reply": "Have some nougat after dinner.", "violation": true, "layer": "usda"}
+{"id": "g12-dish-pesto", "entries": [{"type": "allergy", "value": {"allergen_group": "tree_nut"}}], "reply": "A basil pesto pasta works well.", "violation": true, "layer": "glide", "live_only": true}
+{"id": "g13-dish-tzatziki", "entries": [{"type": "allergy", "value": {"allergen_group": "milk"}}], "reply": "Serve tzatziki with the lamb.", "violation": true, "layer": "glide", "live_only": true}
+{"id": "g14-nutmeg-not-a-nut", "entries": [{"type": "allergy", "value": {"allergen_group": "tree_nut"}}], "reply": "Season the squash with nutmeg.", "violation": false, "layer": "none"}
+{"id": "g15-coconut-milk", "entries": [{"type": "allergy", "value": {"allergen_group": "milk"}}], "reply": "Simmer the curry in coconut milk.", "violation": false, "layer": "none"}
+{"id": "g16-negated-free", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "I kept this peanut-free.", "violation": false, "layer": "none"}
+{"id": "g17-negated-no", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "No peanuts in this one.", "violation": false, "layer": "none"}
+{"id": "g18-negated-skip", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Skip the peanut sauce and try hummus.", "violation": false, "layer": "none"}
+{"id": "g19-negated-avoid", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Avoid peanuts, they are not safe for you.", "violation": false, "layer": "none"}
+{"id": "g20-negated-swap", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Swap out the peanut oil for olive oil.", "violation": false, "layer": "none"}
+{"id": "g21-negated-but-satay", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}}], "reply": "Peanut-free bars and a satay dip.", "violation": true, "layer": "lexical"}
+{"id": "g22-exclusion-mushroom", "entries": [{"type": "food_exclusion", "value": {"terms": ["mushroom"]}}], "reply": "Saute some mushrooms with garlic.", "violation": true, "layer": "lexical"}
+{"id": "g23-exclusion-clear", "entries": [{"type": "food_exclusion", "value": {"terms": ["mushroom"]}}], "reply": "Roast carrots with garlic.", "violation": false, "layer": "none"}
+{"id": "g24-exclusion-pork", "entries": [{"type": "food_exclusion", "value": {"terms": ["pork", "beef"]}}], "reply": "Pork chops with rice are filling.", "violation": true, "layer": "lexical"}
+{"id": "g25-exclusion-fish-ok", "entries": [{"type": "food_exclusion", "value": {"terms": ["pork", "beef"]}}], "reply": "Grilled salmon with rice works.", "violation": false, "layer": "none"}
+{"id": "g26-vegan-chicken", "entries": [{"type": "diet_setting", "value": {"setting": "vegan"}}], "reply": "Roast chicken with potatoes is a good dinner.", "violation": true, "layer": "lexical"}
+{"id": "g27-vegan-honey", "entries": [{"type": "diet_setting", "value": {"setting": "vegan"}}], "reply": "Stir in a spoon of honey.", "violation": true, "layer": "lexical"}
+{"id": "g28-vegan-ok", "entries": [{"type": "diet_setting", "value": {"setting": "vegan"}}], "reply": "Lentil curry with rice is a solid dinner.", "violation": false, "layer": "none"}
+{"id": "g29-gluten-wheat", "entries": [{"type": "diet_setting", "value": {"setting": "gluten_free"}}], "reply": "Whole wheat pasta would work.", "violation": true, "layer": "lexical"}
+{"id": "g30-dairy-cheese", "entries": [{"type": "diet_setting", "value": {"setting": "dairy_free"}}], "reply": "Top it with grated cheese.", "violation": true, "layer": "lexical"}
+{"id": "g31-vegetarian-beef", "entries": [{"type": "diet_setting", "value": {"setting": "vegetarian"}}], "reply": "Beef stew tonight.", "violation": true, "layer": "lexical"}
+{"id": "g32-maoi-parmesan", "entries": [{"type": "medication", "value": {"name": "phenelzine", "matched_drug": "maoi"}}], "reply": "Add some shaved parmesan on top.", "violation": true, "layer": "lexical"}
+{"id": "g33-statin-grapefruit", "entries": [{"type": "medication", "value": {"name": "simvastatin", "matched_drug": "simvastatin"}}], "reply": "Start with half a grapefruit.", "violation": true, "layer": "lexical"}
+{"id": "g34-statin-negated", "entries": [{"type": "medication", "value": {"name": "simvastatin", "matched_drug": "simvastatin"}}], "reply": "Skip the grapefruit and have an orange.", "violation": false, "layer": "none"}
+{"id": "g35-no-constraints", "entries": [], "reply": "Peanut butter toast is a great snack.", "violation": false, "layer": "none"}
+{"id": "g36-pending-allergy", "entries": [{"type": "allergy", "value": {"allergen_group": "peanut"}, "state": "pending"}], "reply": "Peanut butter toast is a great snack.", "violation": false, "layer": "none"}

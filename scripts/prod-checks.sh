@@ -12,6 +12,7 @@
 #
 # Checks (any failure blocks):
 #   code      ruff (no NEW findings in changed .py files), backend pytest,
+#             offline safety eval (no shown violation, no fixture mismatch),
 #             frontend tests + typecheck/build
 #   database  every Alembic migration in the commit is already applied to the
 #             production database (migrations are applied manually; see
@@ -82,6 +83,15 @@ if env -u DATABASE_URL PYTHONPATH=src uv run -q pytest -q -p no:cacheprovider \
   pass "pytest ($(tail -1 "$LOG_DIR/pytest.log"))"
 else
   tail -15 "$LOG_DIR/pytest.log"; fail "pytest"
+fi
+
+step "Safety eval, offline (no shown violations, no fixture mismatches)"
+# No model and no database: fixture recipes through the real checker.
+if env -u DATABASE_URL PYTHONPATH=src uv run -q python eval/eval_safety_profile.py --offline \
+    >"$LOG_DIR/safety-eval.log" 2>&1; then
+  pass "safety eval ($(tail -1 "$LOG_DIR/safety-eval.log"))"
+else
+  grep -E '^BAD|shown violations' "$LOG_DIR/safety-eval.log" | tail -15; fail "safety eval"
 fi
 
 step "Frontend tests and build"

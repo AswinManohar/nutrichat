@@ -43,9 +43,27 @@ class NutrientTotal(BaseModel):
     unit: str
     unknown_from: list[str]     # ingredient names that made it unknown
     approximate: bool           # true for fluid (water content), R7
+    inferred_zero_from: list[str]  # ingredients whose missing protein/carbohydrate was taken as 0
 ```
 
 Totals are per serving, from `usda_local` only (R7).
+
+Mass balance: for a resolved ingredient with no protein or carbohydrate value,
+the missing macro is 0 when the proximates USDA does give (protein, fat,
+carbohydrate, water, ash, alcohol; g per 100 g) sum to at least
+`safety.mass_balance_min_g` (97). Otherwise it stays unknown and fails a limit.
+Minerals and vitamin K are never inferred. `ResolvedIngredient.inferred_zero`
+and `NutrientTotal.inferred_zero_from` record every inferred zero.
+
+`safety/` may not import `backend.agent`, so the lookup is passed in:
+`resolve(recipe, lookup)` takes `usda_local.lookup` and runs it in worker
+threads, one per ingredient. `ResolvedIngredient` also carries `per_100g`
+(each tracked nutrient per 100 g in the canonical unit, `None` = unknown or
+unresolved); `totals_for(recipe, resolved)` derives the `NutrientTotal`s from
+it, and `check()` puts them in the result. `qty_g` has no `> 0` constraint in
+the model, so `malformed_reasons(recipe)` can flag it as a failed attempt; a
+response that fails schema validation (`Recipe` limits above) is also a failed
+attempt with rule `malformed` (the agent runs with `retries=0`).
 
 ## CheckResult (safety/checker.py, FR-009)
 
@@ -62,13 +80,19 @@ class Failure(BaseModel):
 class Applied(BaseModel):
     entry_id: str
     phrase: str                 # "your peanut allergy", "your sodium limit of 600 mg per meal"
+    kept: str                   # what the recipe was kept to: "free of peanut", "low in sodium"
+
+class Conflict(BaseModel):
+    note: str                   # "Your sodium limits differ (800 mg and 400 mg a meal); ..."
+    entry_ids: list[str]        # the entries involved; the first is the review item's subject
 
 class CheckResult(BaseModel):
     passed: bool
     failures: list[Failure]
     applied: list[Applied]      # every confirmed entry that was evaluated
     missing_values: list[str]   # "potassium limit for chronic kidney disease" (FR-033)
-    conflicts: list[str]        # stricter-rule notes (FR-035)
+    conflicts: list[Conflict]   # stricter-rule notes (FR-035)
+    notes: list[str]            # e.g. logged items with no value, so today's total may be low
     profile_version: str
     entry_ids: list[str]
     table_versions: dict[str, str]
@@ -76,8 +100,10 @@ class CheckResult(BaseModel):
     attempt: int
 ```
 
-`check()` is a pure function of `(Recipe, resolved ingredients, confirmed
-entries, today's intake, tables)`. It never raises on a bad recipe; it returns
+`check()` is a pure function of `(Recipe, resolved ingredients, entries,
+today's intake, tables, attempt)`; `today_intake` maps a limit entry id to its
+`LimitProgress` from `safety.limits.intake_today`. Pending entries are
+ignored. It never raises on a bad recipe; it returns
 failures. It raises `FoodDbUnavailable` when the SQLite file cannot be read, and
 the caller shows the retry message (spec edge case "Food database down").
 
@@ -117,10 +143,21 @@ class GuardVerdict(BaseModel):
     retry_reason: str
 ```
 
+- `GuardVerdict` also carries `food_phrases` (phrases that resolved to a
+  food), which decides whether layer 3 runs. Layers 1-2 are
+  `reply_guard.scan(text, entries, tables, lookup)`; all three run in
+  `agent/reply_judge.guard(text, entries, tables)`, which the validator calls.
+  A guard that cannot run (tables or food database unreadable) replaces the
+  reply with the fallback text.
 - Layers run in order and stop at the first violation: lexical terms, food
   phrases resolved through `usda_local`, then the GLiDE judgment
   (`agent/reply_judge.py`) when a food phrase was found without a violation.
   A GLiDE probability ≥ `safety.reply_guard_min_probability` is a violation.
+- Negation: a lexical hit is dropped when, in the same sentence, one of
+  `safety.reply_guard_negations` precedes it within 3 words, or "-free" /
+  " free" follows it. Dropped mentions are also removed before food phrases
+  are looked up; if every hit was dropped and a food phrase remains, layer 3
+  decides as before.
 - GLiDE unavailable: the result of layers 1-2 stands, and the span records
   `layer_skipped=glide`.
 - `retries=2` on the agent. After the last retry fails, the reply is replaced
