@@ -5,12 +5,13 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -32,14 +33,17 @@ from backend.agent.cost import record_run_cost
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
 from backend.agent.memory import profile_active
 from backend.agent.memory_tools import memory_toolset
+from backend.agent.reply_judge import guard as guard_reply_text
+from backend.agent.suggest import suggest_meal
 from backend.agent.tools.history import (
     get_food_breakdown_for_range,
     get_macros_for_range,
     get_micronutrients_for_range,
 )
+from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today
-from backend.db.models import UserGoal
+from backend.db.models import CheckFailure, UserGoal
 from backend.db.redis_client import (
     CoachingTurn,
     get_coaching_history,
@@ -48,10 +52,14 @@ from backend.db.redis_client import (
 from backend.db.session import get_session
 from backend.guidelines.retrieval import RetrievedChunk, retrieve
 from backend.safety.profile import (
+    HardEntry,
     active_diet_settings,
     declared_conditions,
     load_hard_profile,
+    version_of,
 )
+from backend.safety.recipe import Recipe
+from backend.safety.tables import TablesUnavailable, load_tables
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +91,9 @@ class QueryParsed(BaseModel):
     # True when the user asks for a recommendation (what to eat, is X
     # healthy, how to change intake) rather than a readback of their data.
     needs_guidance: bool = False
+    # True when the user asks for a meal, a recipe, a meal idea or a plan; the
+    # reply is then a checked recipe (agent/suggest.py), not free text.
+    suggests_meal: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -105,6 +116,8 @@ class CoachingResult(BaseModel):
     parsed: QueryParsed
     retrieved: list[RetrievedChunk] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
+    recipe: Recipe | None = None
+    recommendation_id: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -231,6 +244,17 @@ _PROFILE_RULES = _TUNABLES.prompts.coaching_profile_rules.strip()
 # tool round trips, and the final answer.
 _MEMORY_RUN_LIMITS = UsageLimits(request_limit=4)
 
+# Rewrites the reply guard may ask for before the reply is replaced.
+_REPLY_RETRIES = 2
+
+
+@dataclass
+class _Blocked:
+    """The last reply the guard rejected, kept for the audit row."""
+
+    reply: str
+    failures: list[dict]
+
 
 @dataclass
 class _ResponseDeps:
@@ -241,6 +265,10 @@ class _ResponseDeps:
     # Set only for users on the curated profile; enables the memory tools
     # and the profile rules.
     user_id: str | None = None
+    # The patient's live hard entries, loaded once for the turn; the reply
+    # guard applies the confirmed ones.
+    entries: list[HardEntry] = field(default_factory=list)
+    blocked: _Blocked | None = None
 
 
 # `instructions` rather than `system_prompt`: pydantic-ai only re-sends
@@ -252,7 +280,31 @@ _response_agent = Agent(
     GoogleModel(COACHING_MODEL),
     deps_type=_ResponseDeps,
     instructions=_RESPONSE_SYSTEM,
+    retries=_REPLY_RETRIES,
 )
+
+
+@_response_agent.output_validator
+async def _guard_reply(ctx: RunContext[_ResponseDeps], text: str) -> str:
+    """Reject a reply that suggests a food the patient must avoid (R10).
+
+    Raises:
+        ModelRetry: With the reason, so the model rewrites the reply.
+        TablesUnavailable: A confirmed entry names a group the tables lack.
+        FoodDbUnavailable: The USDA database cannot be read.
+    """
+    verdict = await guard_reply_text(text, ctx.deps.entries, load_tables())
+    if verdict.violations:
+        ctx.deps.blocked = _Blocked(
+            reply=text,
+            failures=[
+                {"rule": v.rule, "entry_id": v.entry_id, "detail": v.detail}
+                for v in verdict.violations
+            ],
+        )
+        raise ModelRetry(verdict.retry_reason)
+    ctx.deps.blocked = None
+    return text
 
 
 @_response_agent.instructions
@@ -363,7 +415,9 @@ def _build_period(date_from: date, date_to: date, label: str) -> dict:
     }
 
 
-async def fetch_data(user_id: str, parsed: QueryParsed) -> dict:
+async def fetch_data(
+    user_id: str, parsed: QueryParsed, entries: list[HardEntry] | None = None
+) -> dict:
     """Fetch grounding data for the response generator per the data fetcher table.
 
     Today + macro-only queries hit Redis (falling back to Postgres on
@@ -373,6 +427,8 @@ async def fetch_data(user_id: str, parsed: QueryParsed) -> dict:
     Args:
         user_id: Supabase Auth UUID.
         parsed: Output of parse_query().
+        entries: The patient's live hard entries when the caller already
+            loaded them this turn; read from the database when None.
 
     Returns:
         Dict with any of "today_totals", "macros", "micronutrients",
@@ -420,7 +476,9 @@ async def fetch_data(user_id: str, parsed: QueryParsed) -> dict:
                     "dietary_prefs": {
                         setting: True
                         for setting in active_diet_settings(
-                            await load_hard_profile(user_id)
+                            entries
+                            if entries is not None
+                            else await load_hard_profile(user_id)
                         )
                     },
                 }
@@ -440,6 +498,7 @@ async def generate_response(
     history: Sequence[CoachingTurn] = (),
     passages: Sequence[RetrievedChunk] = (),
     user_id: str | None = None,
+    entries: Sequence[HardEntry] = (),
 ) -> str:
     """Generate a grounded natural-language answer from fetched data.
 
@@ -459,26 +518,65 @@ async def generate_response(
             and appended after the context block. Empty omits the block.
         user_id: Supabase Auth UUID. Memory tools are enabled only when
             given and the user is on the curated profile.
+        entries: The patient's live hard entries; the reply guard applies
+            the confirmed ones to the reply.
 
     Returns:
         Natural language response, under 3 sentences, possibly carrying
-        [n] citations into ``passages``.
+        [n] citations into ``passages``. When the guard rejects the reply
+        after its rewrites, ``safety.reply_guard_fallback_text`` instead.
     """
     content = f"User question: {message}\n\nData:\n{json.dumps(data, default=str)}"
     use_memory = user_id is not None and profile_active(user_id)
-    result = await _response_agent.run(
-        content,
-        deps=_ResponseDeps(
-            context_prompt=context_prompt,
-            passage_block=format_passages(passages),
-            user_id=user_id if use_memory else None,
-        ),
-        message_history=_history_to_messages(history) or None,
-        toolsets=[memory_toolset] if use_memory else None,
-        usage_limits=_MEMORY_RUN_LIMITS if use_memory else None,
+    deps = _ResponseDeps(
+        context_prompt=context_prompt,
+        passage_block=format_passages(passages),
+        user_id=user_id if use_memory else None,
+        entries=list(entries),
     )
+    try:
+        result = await _response_agent.run(
+            content,
+            deps=deps,
+            message_history=_history_to_messages(history) or None,
+            toolsets=[memory_toolset] if use_memory else None,
+            usage_limits=_MEMORY_RUN_LIMITS if use_memory else None,
+        )
+    except UnexpectedModelBehavior:
+        # Exhausted rewrites: any other model failure is not ours to hide.
+        if deps.blocked is None:
+            raise
+        return await _replace_reply(user_id, deps.entries, deps.blocked)
+    except (TablesUnavailable, FoodDbUnavailable) as exc:
+        # The guard could not run, so the reply cannot be shown unchecked.
+        logger.error("reply guard unavailable: %s", exc)
+        blocked = _Blocked(
+            reply="",
+            failures=[{"rule": "guard_unavailable", "detail": type(exc).__name__}],
+        )
+        return await _replace_reply(user_id, deps.entries, blocked)
     record_run_cost(result, COACHING_MODEL, operation="coaching_response")
     return result.output
+
+
+async def _replace_reply(
+    user_id: str | None, entries: list[HardEntry], blocked: _Blocked
+) -> str:
+    """Log the rejected reply and return the fixed fallback text."""
+    logger.warning("reply replaced by the guard: %s", blocked.failures)
+    if user_id is not None:
+        async with get_session()() as session, session.begin():
+            session.add(
+                CheckFailure(
+                    user_id=user_id,
+                    attempt=_REPLY_RETRIES + 1,
+                    recipe={"reply": blocked.reply},
+                    failures=blocked.failures,
+                    profile_version=version_of(entries),
+                    outcome="reply_replaced",
+                )
+            )
+    return _TUNABLES.safety.reply_guard_fallback_text
 
 
 class RestrictionsUnavailableError(Exception):
@@ -489,15 +587,15 @@ class RestrictionsUnavailableError(Exception):
     """
 
 
-async def _context_prompt(user_id: str, message: str) -> str:
+async def _context_prompt(user_id: str, message: str, entries: list[HardEntry]) -> str:
     """Build the per-user context block, falling back to restrictions only.
 
     build_context fans out to Postgres, Redis and the Gemini embeddings API.
     Most of the context is an enrichment, so a failure there must not take
     down a coaching turn that could answer from fetch_data alone, hence the
-    broad catch. The binding part (the hard profile) is then reloaded from
-    Postgres alone. That second read
-    runs only on the failure path, so a normal turn pays nothing for it.
+    broad catch. The binding part (the hard profile) is then rendered again
+    from the entries already in hand, with one Postgres read for the goals
+    row. That second read runs only on the failure path.
 
     Raises:
         RestrictionsUnavailableError: when the restrictions cannot be loaded
@@ -505,7 +603,7 @@ async def _context_prompt(user_id: str, message: str) -> str:
             must not eat.
     """
     try:
-        return build_system_prompt(await build_context(user_id, message))
+        return build_system_prompt(await build_context(user_id, message, entries))
     except Exception as exc:  # noqa: BLE001 — see docstring
         logger.warning(
             "build_context failed for %s, coaching with restrictions only: %s",
@@ -513,25 +611,26 @@ async def _context_prompt(user_id: str, message: str) -> str:
             exc,
         )
     try:
-        return build_restrictions_prompt(await load_restrictions(user_id))
+        return build_restrictions_prompt(await load_restrictions(user_id, entries))
     except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
         logger.error("loading restrictions failed for %s: %s", user_id, exc)
         raise RestrictionsUnavailableError(user_id) from exc
 
 
-async def _user_conditions(user_id: str) -> list[str]:
-    """Confirmed diagnoses from the hard profile, for retrieval filtering."""
-    return declared_conditions(await load_hard_profile(user_id))
+async def _profile_and_context(
+    user_id: str, message: str
+) -> tuple[list[HardEntry], str]:
+    """Load the hard profile once, then build the context from it.
 
-
-async def _retrieve_for(user_id: str, message: str) -> list[RetrievedChunk]:
-    """Retrieve guideline passages for this user; [] on any failure."""
+    Raises:
+        RestrictionsUnavailableError: when the profile cannot be loaded.
+    """
     try:
-        conditions = await _user_conditions(user_id)
-    except Exception as exc:  # noqa: BLE001 — retrieval must not fail the turn
-        logger.warning("reading conditions failed for %s: %s", user_id, exc)
-        conditions = []
-    return await retrieve(message, conditions)
+        entries = await load_hard_profile(user_id)
+    except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
+        logger.error("loading hard profile failed for %s: %s", user_id, exc)
+        raise RestrictionsUnavailableError(user_id) from exc
+    return entries, await _context_prompt(user_id, message, entries)
 
 
 async def _none() -> list[RetrievedChunk]:
@@ -541,6 +640,9 @@ async def _none() -> list[RetrievedChunk]:
 
 class CoachingAgent:
     """Linear pipeline: parse_query -> fetch_data -> generate_response.
+
+    A meal request (``suggests_meal``) branches to ``suggest_meal`` instead,
+    which returns a recipe checked in code.
 
     Both LLM calls see the user's recent conversation (Redis, see
     db/redis_client.py get_coaching_history), and the response call also
@@ -561,16 +663,27 @@ class CoachingAgent:
             and resolved citations for persistence.
         """
         history = await get_coaching_history(user_id)
-        # Independent I/O: the parse call and the context fan-out don't
-        # depend on each other, so overlap them.
-        parsed, context_prompt = await asyncio.gather(
+        # Independent I/O: the parse call and the profile + context fan-out
+        # don't depend on each other, so overlap them.
+        parsed, (entries, context_prompt) = await asyncio.gather(
             parse_query(message, history=history),
-            _context_prompt(user_id, message),
+            _profile_and_context(user_id, message),
         )
+        if parsed.suggests_meal:
+            # A meal request is answered by a recipe that passed the check.
+            suggestion = await suggest_meal(user_id, message, history, entries)
+            return CoachingResult(
+                message=suggestion.message,
+                parsed=parsed,
+                recipe=suggestion.recipe,
+                recommendation_id=suggestion.recommendation_id,
+            )
         # Data fetch and guideline retrieval are independent too.
         data, retrieved = await asyncio.gather(
-            fetch_data(user_id, parsed),
-            _retrieve_for(user_id, message) if parsed.needs_guidance else _none(),
+            fetch_data(user_id, parsed, entries),
+            retrieve(message, declared_conditions(entries))
+            if parsed.needs_guidance
+            else _none(),
         )
 
         micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
@@ -593,6 +706,7 @@ class CoachingAgent:
             history=history,
             passages=retrieved,
             user_id=user_id,
+            entries=entries,
         )
         return CoachingResult(
             message=text,

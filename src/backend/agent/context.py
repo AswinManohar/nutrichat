@@ -32,6 +32,7 @@ from backend.db.redis_client import (
 )
 from backend.db.session import get_session
 from backend.safety import profile as hard_profile
+from backend.safety.profile import HardEntry
 from backend.safety.tables import load_tables
 
 logger = logging.getLogger(__name__)
@@ -151,19 +152,27 @@ def _goal_summary(goal_row: UserGoal | None) -> GoalSummary | None:
     )
 
 
-async def _hard_block(user_id: str) -> str:
+async def _hard_block(user_id: str, entries: list[HardEntry] | None) -> str:
     """Render the user's hard profile for the prompt.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        entries: The live entries when the caller already loaded them this
+            turn; read from the database when None.
 
     Raises:
         Exception: Any failure to read or render it (including
             ``ProfileTooLarge`` and unreadable clinical tables). The coach
             must not answer without the binding profile.
     """
-    entries = await hard_profile.load_hard_profile(user_id)
+    if entries is None:
+        entries = await hard_profile.load_hard_profile(user_id)
     return hard_profile.render_block(entries, load_tables())
 
 
-async def load_restrictions(user_id: str) -> ContextBundle:
+async def load_restrictions(
+    user_id: str, entries: list[HardEntry] | None = None
+) -> ContextBundle:
     """Load only what binds the coach's suggestions.
 
     Used when :func:`build_context` fails, so that a Redis or embeddings
@@ -173,6 +182,7 @@ async def load_restrictions(user_id: str) -> ContextBundle:
 
     Args:
         user_id: Supabase Auth UUID.
+        entries: The live hard entries if already loaded this turn.
 
     Returns:
         A ContextBundle with ``goals`` and the rendered hard profile.
@@ -186,11 +196,15 @@ async def load_restrictions(user_id: str) -> ContextBundle:
     return ContextBundle(
         today_totals=TodayTotals(),
         goals=goals,
-        hard_block=await _hard_block(user_id),
+        hard_block=await _hard_block(user_id, entries),
     )
 
 
-async def build_context(user_id: str, user_message: str | None = None) -> ContextBundle:
+async def build_context(
+    user_id: str,
+    user_message: str | None = None,
+    entries: list[HardEntry] | None = None,
+) -> ContextBundle:
     """Assemble the context bundle for build_system_prompt().
 
     Reads Redis today totals, Postgres goals + most recent weekly summary,
@@ -203,12 +217,14 @@ async def build_context(user_id: str, user_message: str | None = None) -> Contex
         user_message: Latest user message, used to retrieve relevant
             preferences via pgvector ANN. Omitted for flows (e.g. meal
             logging) that don't need the preferences block.
+        entries: The live hard entries if the caller already loaded them
+            this turn; read from the database when None.
 
     Returns:
         A populated ContextBundle.
     """
     today_totals, hard_block = await asyncio.gather(
-        get_today_totals(user_id), _hard_block(user_id)
+        get_today_totals(user_id), _hard_block(user_id, entries)
     )
 
     session_factory = get_session()

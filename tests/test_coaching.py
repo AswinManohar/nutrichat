@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic_ai import capture_run_messages
-from pydantic_ai.messages import ModelRequest, ModelResponse
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from backend.agent import coaching
@@ -19,10 +20,14 @@ from backend.agent.coaching import (
     parse_query,
 )
 from backend.agent.context import ContextBundle, GoalSummary
+from backend.agent.suggest import SuggestionResult
+from backend.agent.tools.usda_local import FoodDbUnavailable
+from backend.config import get_tunables
 from backend.db.models import UserGoal
 from backend.db.redis_client import CoachingTurn, TodayTotals
 from backend.safety import profile
 from tests.profile_helpers import hard_entry
+from tests.recipe_helpers import make_recipe
 
 
 @pytest.fixture(autouse=True)
@@ -575,7 +580,7 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
         reply = await CoachingAgent().handle("user-1", "and yesterday?")
 
     assert reply.message == "120g yesterday."
-    ctx_mock.assert_awaited_once_with("user-1", "and yesterday?")
+    ctx_mock.assert_awaited_once_with("user-1", "and yesterday?", [])
     assert parse_mock.await_args.kwargs["history"] == _HISTORY
     kwargs = gen_mock.await_args.kwargs
     assert kwargs["history"] == _HISTORY
@@ -656,3 +661,188 @@ async def test_handle_fails_when_restrictions_cannot_be_loaded():
         await CoachingAgent().handle("user-1", "what should I eat for dinner?")
 
     gen_mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Spec 013 US2: meal requests, one profile load, reply guard
+# ---------------------------------------------------------------------------
+
+
+async def test_handle_answers_a_meal_request_with_a_checked_recipe(hard_entries):
+    parsed = QueryParsed(time_range="today", suggests_meal=True)
+    recipe = make_recipe("rice")
+    suggestion = SuggestionResult(
+        message="Rice bowl ...", recipe=recipe, recommendation_id="rec-1", attempts=1
+    )
+    entry = hard_entry(profile.AllergyValue(allergen_group="peanut"))
+    hard_entries.append(entry)
+
+    with (
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching.suggest_meal",
+            new_callable=AsyncMock,
+            return_value=suggestion,
+        ) as suggest_mock,
+        patch(
+            "backend.agent.coaching.generate_response", new_callable=AsyncMock
+        ) as gen_mock,
+    ):
+        result = await CoachingAgent().handle("user-1", "what should I eat tonight?")
+
+    assert result.message == "Rice bowl ..."
+    assert (result.recipe, result.recommendation_id) == (recipe, "rec-1")
+    assert suggest_mock.await_args.args[3] == [entry]
+    gen_mock.assert_not_awaited()
+
+
+async def test_handle_loads_the_hard_profile_once_per_turn(hard_entries):
+    parsed = QueryParsed(
+        time_range="today", nutrients=["kcal"], include_goals=True, needs_guidance=True
+    )
+    goal = UserGoal(
+        user_id="user-1",
+        kcal_goal=2000.0,
+        protein_goal=150.0,
+        fiber_goal=30.0,
+        dietary_prefs={},
+        streak_days=2,
+    )
+
+    with (
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            return_value=hard_entries,
+        ) as load_mock,
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=parsed,
+        ),
+        patch(
+            "backend.agent.coaching.get_today_totals",
+            new_callable=AsyncMock,
+            return_value=TodayTotals(kcal=1240),
+        ),
+        patch(
+            "backend.agent.coaching.get_session",
+            return_value=_mock_session_factory(goal),
+        ),
+        patch(
+            "backend.agent.coaching.retrieve", new_callable=AsyncMock, return_value=[]
+        ) as retrieve_mock,
+        patch(
+            "backend.agent.coaching.generate_response",
+            new_callable=AsyncMock,
+            return_value="ok",
+        ),
+    ):
+        await CoachingAgent().handle("user-1", "how am I doing on calories?")
+
+    load_mock.assert_awaited_once()
+    retrieve_mock.assert_awaited_once()
+
+
+async def test_handle_stops_when_the_profile_cannot_be_loaded():
+    with (
+        patch(
+            "backend.agent.coaching.load_hard_profile",
+            new_callable=AsyncMock,
+            side_effect=OSError("postgres down"),
+        ),
+        patch(
+            "backend.agent.coaching.parse_query",
+            new_callable=AsyncMock,
+            return_value=QueryParsed(time_range="today", suggests_meal=True),
+        ),
+        patch("backend.agent.coaching.suggest_meal", new_callable=AsyncMock) as mock,
+        pytest.raises(RestrictionsUnavailableError),
+    ):
+        await CoachingAgent().handle("user-1", "dinner idea?")
+
+    mock.assert_not_awaited()
+
+
+def _scripted_replies(*replies: str):
+    """A model that answers with each reply in turn, then repeats the last."""
+    seen: list[list[ModelMessage]] = []
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen.append(messages)
+        text = replies[min(len(seen), len(replies)) - 1]
+        return ModelResponse(parts=[TextPart(text)])
+
+    return FunctionModel(respond), seen
+
+
+def _peanut_allergy() -> list:
+    return [hard_entry(profile.AllergyValue(allergen_group="peanut"))]
+
+
+async def test_the_reply_guard_sends_a_violating_reply_back_for_a_rewrite():
+    model, seen = _scripted_replies(
+        "Try a peanut butter sandwich.", "Try a turkey sandwich."
+    )
+
+    with coaching._response_agent.override(model=model):
+        text = await generate_response(
+            "lunch?", {}, user_id="user-1", entries=_peanut_allergy()
+        )
+
+    assert text == "Try a turkey sandwich."
+    retry = str(seen[1][-1])
+    assert "peanut" in retry and "hard restrictions" in retry
+
+
+async def test_the_reply_guard_replaces_a_reply_that_never_gets_safe():
+    model, seen = _scripted_replies("Peanut butter toast is great.")
+    session = MagicMock()
+    session.add = MagicMock()
+    factory = MagicMock()
+    factory.return_value.__aenter__.return_value = session
+    session.begin.return_value.__aenter__.return_value = None
+
+    with (
+        coaching._response_agent.override(model=model),
+        patch("backend.agent.coaching.get_session", return_value=factory),
+    ):
+        text = await generate_response(
+            "lunch?", {}, user_id="user-1", entries=_peanut_allergy()
+        )
+
+    assert text == get_tunables().safety.reply_guard_fallback_text
+    assert len(seen) == 3  # the reply and two rewrites
+    row = session.add.call_args.args[0]
+    assert (row.outcome, row.user_id) == ("reply_replaced", "user-1")
+    assert row.failures[0]["rule"] == "allergen"
+    assert row.recipe == {"reply": "Peanut butter toast is great."}
+
+
+async def test_the_reply_guard_lets_a_patient_without_constraints_through():
+    model, seen = _scripted_replies("Peanut butter toast is great.")
+
+    with coaching._response_agent.override(model=model):
+        text = await generate_response("lunch?", {}, user_id="user-1", entries=[])
+
+    assert text == "Peanut butter toast is great." and len(seen) == 1
+
+
+async def test_the_reply_is_replaced_when_the_guard_cannot_run():
+    model, _ = _scripted_replies("Anything.")
+
+    with (
+        coaching._response_agent.override(model=model),
+        patch(
+            "backend.agent.coaching.guard_reply_text",
+            new_callable=AsyncMock,
+            side_effect=FoodDbUnavailable("missing"),
+        ),
+    ):
+        text = await generate_response("lunch?", {}, entries=_peanut_allergy())
+
+    assert text == get_tunables().safety.reply_guard_fallback_text

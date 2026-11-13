@@ -12,7 +12,7 @@ from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.coaching import CoachingAgent, RestrictionsUnavailableError
-from backend.agent.coaching_store import save_coaching_response
+from backend.agent.coaching_store import link_recommendation, save_coaching_response
 from backend.agent.graph import build_graph
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
 from backend.agent.system_one import RoutingJudgment, judge_message
@@ -607,9 +607,10 @@ async def _handle_coaching(
     Returns:
         Dict with status, message, paused=False, items=[] — same shape as
         meal logging so web and Telegram channels stay uniform — plus
-        response_id when the reply was persisted. When the hard profile
-        cannot be loaded the message is ``safety.profile_unavailable_text``
-        and nothing is persisted.
+        response_id when the reply was persisted, and recipe (the checked
+        Recipe as a dict) with recommendation_id when the reply is a recipe.
+        When the hard profile cannot be loaded the message is
+        ``safety.profile_unavailable_text`` and nothing is persisted.
     """
     granted = await consume_llm_credit(user_id)
     if not granted:
@@ -650,6 +651,8 @@ async def _handle_coaching(
             trace_id=trace_id,
             routing=routing,
         )
+        if response_id is not None and result.recommendation_id is not None:
+            await link_recommendation(result.recommendation_id, response_id)
         span.set_attribute("needs_guidance", result.parsed.needs_guidance)
         span.set_attribute("retrieved_count", len(result.retrieved))
         span.set_attribute("citation_count", len(result.citations))
@@ -663,4 +666,7 @@ async def _handle_coaching(
     }
     if response_id is not None:
         response["response_id"] = response_id
+    if result.recipe is not None:
+        response["recipe"] = result.recipe.model_dump(mode="json")
+        response["recommendation_id"] = result.recommendation_id
     return response
