@@ -23,6 +23,7 @@ stays until then for the released app.
     }
   ],
   "pending_count": 1,
+  "care_team": [],
   "soft": [
     {"id": "uuid", "kind": "dislike", "text": "coriander", "source": "stated", "created_at": "…", "updated_at": "…"}
   ],
@@ -30,7 +31,8 @@ stays until then for the released app.
 }
 ```
 
-`hard` lists live entries (pending + confirmed). 500 with a retry message when
+`care_team` is a placeholder for the clinician role (decision Q1): always
+`[]` for now; each item will be `{"name": str, "role": str}`. `hard` lists live entries (pending + confirmed). 500 with a retry message when
 the profile cannot be loaded; never a partial list.
 
 ## GET /profile/limits/today

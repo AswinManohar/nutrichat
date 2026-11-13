@@ -173,7 +173,7 @@ versions keep working.
 | PR | Spec phase | Backend | Android | Gate before merge |
 |---|---|---|---|---|
 | 0 | prerequisite | Fastino DPA, privacy notice names Fastino; synthetic inference set generated and reviewed (R18) | privacy-policy link text names Fastino | owner sign-off |
-| 1 | Phase 1 | migration 019, `safety/profile.py`, backfill, hard block for every user, fail-closed profile load, goals API on profile, `POST /profile/entries` + retire, eval skeleton | **Care profile** screen (`ui/profile/`, owner mockup 2026-11-13): header with last-updated date; "N of M limits on track today" banner; one expandable row per type (Allergies, Diagnoses, Medications, Physical limitations, Nutrient limits) with a count badge; nutrient limits expand to rows with the limit text ("Up to 1,500 mg a day", "50-60 g a day") and a today-so-far bar with a limit marker; add, edit and retire per entry (FR-020a). Settings conditions and diet chips keep working through `/goals`. Chat shows the retry message on a profile-load failure | migration test, backfill dry-run counts on a prod snapshot copy, restrictions gate; on-device check light + dark |
+| 1 | Phase 1 | migration 019, `safety/profile.py`, backfill, hard block for every user, fail-closed profile load, goals API on profile, `POST /profile/entries` + retire, eval skeleton | **Navigation (owner, 2026-11-13):** the Trends tab is renamed Journey; Settings becomes the **Profile** tab (`ui/profile/ProfileScreen`, mockup 2): name and email, a Care profile card with coloured count chips per type (tapping it opens Care profile), Eating (Goals and targets, Food preferences), App (Reminders, Account and privacy), Sign out. Existing Settings content moves into these rows; nothing is dropped. **Care profile** screen (`ui/profile/CareProfileScreen`, mockup 1): header with last-updated date; "N of M limits on track today" banner; one expandable row per type (Allergies, Diagnoses, Medications, Physical limitations, Nutrient limits) with a count badge; nutrient limits expand to rows with the limit text ("Up to 1,500 mg a day", "50-60 g a day") and a today-so-far bar with a limit marker; add, edit and retire per entry (FR-020a). Settings conditions and diet chips keep working through `/goals`. Chat shows the retry message on a profile-load failure | migration test, backfill dry-run counts on a prod snapshot copy, restrictions gate; on-device check light + dark |
 | 2 | Phase 2 | clinical tables, Recipe + totals, checker, suggestion loop, reply guardrail, failure log, recommendation record, offline eval in prod-checks | recipe reply rendered as a card (ingredients, steps, time, the constraint sentence) from the optional `recipe` field, plain text fallback; accept / not for me buttons call the feedback endpoint (`recommendation_id`) | offline checker eval: 0 violations; reply_guard cases: 0 missed; live safety_profile gate; on-device check |
 | 3 | Phase 3 | red-flag screen, escalations, webhook task | fixed responses shown as a distinct safety message style (no feedback buttons); a waiting meal card stays intact | red_flags eval; screen p99 < 50 ms; on-device check |
 | 4 | Phase 4 | typed candidates + evidence, GLiDE scoring, three-band decision, pending entries, readback + reply handling, pending retirement | readback rendered with Yes / No chips from the optional `readback` field (taps send the reply); "noted" mentions for accepted inferred facts link to the profile entry | inference eval on held-out split meets SC-004; SC-002; on-device check |
@@ -181,12 +181,12 @@ versions keep working.
 | 6 | Phase 6 | review queue + admin API | none (backend-only queue by decision Q1) | review API tests |
 | 7 | contract step | migration 020 drops `user_goal.conditions`, `dietary_prefs` | none | released one version after PR 1 |
 
-**Mockup items not built in this spec.** "Shared with Dr. …, RD" needs a
-clinician role (decision Q1: none yet), so the header shows only the
-last-updated date. The mockup's bottom bar (Home, Journey, +, Explore, Profile)
-differs from today's tabs (Home, My meals, Trends, chat); this spec reaches Care
-profile from Settings and leaves the tab bar alone unless the owner decides
-otherwise.
+**Clinician placeholder (owner, 2026-11-13).** No clinician feature is
+built. `GET /profile` returns `care_team: []` (always empty until a clinician
+role exists), and both screens render the "Shared with …" line only when that
+list is non-empty, so the mockup's line appears without further app work once
+the role ships. In the backend, `source='clinician'` and the review queue
+(Phase 6) are the only other placeholders.
 
 **Code size.** Keep each module small and single-purpose: `safety/` functions
 are pure and table-driven (adding an allergen or a drug is a YAML edit, not
