@@ -232,10 +232,10 @@ Profile. No Explore tab, no Units row (issue #88).
 
 **Independent test**: a pending entry, a red flag and a plan sample appear in the queue; decisions update the profile with source clinician (quickstart PR 6).
 
-- [ ] T087 [P] [US6] Tests in `tests/test_review_api.py` for every cell of the decision table in `contracts/review-api.md`, 403 for non-reviewers, 409 on re-decision, newest-first listing and kind filter
-- [ ] T088 [US6] Implement `src/backend/auth/reviewer.py` `require_reviewer` (Supabase JWT + `REVIEWER_USER_IDS` env list; add the variable to `.env.example`)
-- [ ] T089 [US6] Implement `src/backend/api/review.py` (`GET /admin/review/items`, `GET /admin/review/escalations/{id}`, `POST /admin/review/items/{id}/decision`, `POST /admin/review/patients/{patient_id}/entries`) using `safety.profile` with actor `reviewer:<user id>`; register in `src/backend/main.py`
-- [ ] T090 [US6] Create `plan_sample` review items for a configurable share of recommendations (`safety.plan_sample_rate` in tunables) in `src/backend/agent/suggest.py`; extend `src/backend/guidelines/export_feedback.py` to export plan-sample rejections with comments
+- [x] T087 [P] [US6] Tests in `tests/test_review_api.py` for every cell of the decision table in `contracts/review-api.md`, 403 for non-reviewers, 409 on re-decision, newest-first listing and kind filter
+- [x] T088 [US6] Implement `src/backend/auth/reviewer.py` `require_reviewer` (Supabase JWT + `REVIEWER_USER_IDS` env list; add the variable to `.env.example`)
+- [x] T089 [US6] Implement `src/backend/api/review.py` (`GET /admin/review/items`, `GET /admin/review/escalations/{id}`, `POST /admin/review/items/{id}/decision`, `POST /admin/review/patients/{patient_id}/entries`) using `safety.profile` with actor `reviewer:<user id>`; register in `src/backend/main.py`
+- [x] T090 [US6] Create `plan_sample` review items for a configurable share of recommendations (`safety.plan_sample_rate` in tunables) in `src/backend/agent/suggest.py`; extend `src/backend/guidelines/export_feedback.py` to export plan-sample rejections with comments
 
 - [ ] T104 [US6] Docs for PR 6: `REVIEWER_USER_IDS` and the admin API in `.claude/CLAUDE.md` and `docs/architecture.md`
 
@@ -302,3 +302,4 @@ Beside:   T051 recipe prompt · T060 Android DTOs
 
 Each PR goes to `feat/android-app` from `user_memory`; production only through `/ship`.
 - [ ] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
+- [ ] T107 [US6] Give `safety.profile.replace` (and `add_entry`) `source`/`created_by` parameters and make `api/review.py` use them instead of importing `profile.py`'s private helpers (found in review)
