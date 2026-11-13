@@ -154,8 +154,8 @@ Profile. No Explore tab, no Units row (issue #88).
 - [x] T057 [US2] Add `POST /profile/meals/{recommendation_id}/feedback` to `src/backend/api/profile.py` (status `accepted` | `rejected`, reason "≤ 500 chars") (FR-025)
 - [ ] T058 [US2] Run the coaching gate categories (`eval/gate.py` for the coaching and restrictions categories, `--runs 5`) against the committed baselines after the `query_parse_system.md` change in T053, and create `eval/baseline_safety_profile.json` from the first passing live run with the measured numbers in the PR (Principle V)
 - [x] T059 [US2] Implement `eval/eval_safety_profile.py --offline` (fixture recipes × synthetic profiles, no model, must print 0 shown violations and each expected failure rule) and live mode reporting every FR-043 metric: violation rate, recall of earlier-session facts, handling of updated facts, abstention when a value is missing (recipe and prose), nutrient-total error against the food database (SC-006), tokens and latency per plan; add the offline run to `scripts/prod-checks.sh`; add `eval/eval_reply_guard.py` over `eval/cases/reply_guard.jsonl`
-- [ ] T060 [P] [US2] Android: `RecipeDto` and optional `recipe`, `recommendationId` on the chat response in `Dtos.kt`; feedback endpoint in `MealsyApi.kt`
-- [ ] T061 [US2] Android: `ui/chat/RecipeCardView.kt` rendering name, intro, ingredients with grams, steps, time and the constraint sentence, with "Accept" and "Not for me" (optional reason) calling feedback; plain-text fallback when `recipe` is absent; goldens light and dark; on-device check
+- [x] T060 [P] [US2] Android: `RecipeDto` and optional `recipe`, `recommendationId` on the chat response in `Dtos.kt`; feedback endpoint in `MealsyApi.kt`
+- [x] T061 [US2] Android: `ui/chat/RecipeCardView.kt` rendering name, intro, ingredients with grams, steps, time and the constraint sentence, with "Accept" and "Not for me" (optional reason) calling feedback; plain-text fallback when `recipe` is absent; goldens light and dark; on-device check
 - [x] T098 [US2] Prompt rules and eval cases for FR-033 (prose abstention: no invented clinical value), FR-034 (decline diagnosis, medication changes and clinical targets with a pointer to the clinician) and FR-036 (swaps and low-effort options, warm tone) in `src/backend/config/prompts/coaching_hard_constraints.md` and `coaching_role_and_tone.md`, cases in `eval/cases/safety_profile/`; gate run recorded in the PR
 - [ ] T099 [US2] Measure ordinary-turn latency before and after (FR-041: at most +300 ms p95) from 50 Logfire `coaching` spans per side on the eval set; record in the PR
 - [x] T100 [US2] Docs for PR 2: `.claude/CLAUDE.md` (eval commands, recipe flow) and `docs/architecture.md` (suggestion loop, checker, reply guardrail)
@@ -178,7 +178,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [x] T067 [US3] Implement `notify_escalation` in `src/backend/workers/tasks.py` per `contracts/webhook.md` (httpx, timeout 5 s, backoff 5 s, 15 s, 45 s, 2 min, 5 min; status on the row; `logfire.error` on `failed` / `no_recipient`); add `SAFETY_WEBHOOK_URL` to `.env.example`
 - [ ] T068 [US3] Implement `eval/eval_red_flags.py` (100% of listed and marked phrases, ≤ 1% of ordinary messages, p99 screen time) and run it; record results in the PR
 - [x] T101 [US3] Docs for PR 3: `SAFETY_WEBHOOK_URL` in `.claude/CLAUDE.md` env section, red-flag screen in `docs/architecture.md`
-- [ ] T069 [US3] Android: render replies with `kind == "safety"` in a distinct safety message style without feedback buttons in `ui/chat/`; add optional `kind` to the chat DTO; golden light and dark; on-device check with a paused meal card
+- [x] T069 [US3] Android: render replies with `kind == "safety"` in a distinct safety message style without feedback buttons in `ui/chat/`; add optional `kind` to the chat DTO; golden light and dark; on-device check with a paused meal card
 
 **Checkpoint**: PR 3. Phases 1-3 shippable without 4-6 (SC-011).
 
@@ -301,3 +301,4 @@ Beside:   T051 recipe prompt · T060 Android DTOs
    (PR 7).
 
 Each PR goes to `feat/android-app` from `user_memory`; production only through `/ship`.
+- [ ] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
