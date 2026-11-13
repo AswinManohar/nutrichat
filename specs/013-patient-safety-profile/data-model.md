@@ -61,7 +61,7 @@ columns listed under "Mutable"; values are never rewritten (FR-003).
 | diagnosis | `condition` (key in `condition_limits.yaml`, or free text) |
 | medication | `name` (as stated), `matched_drug: str \| None` (key in interactions table) |
 | physical_limitation | `kind`: `chewing`, `swallowing`, `grip`, `standing_time`; `max_texture: str \| None`; `max_active_minutes: int \| None` |
-| nutrient_limit | `nutrient`: `sodium`, `potassium`, `phosphorus`, `protein`, `fluid`, `carbohydrate`; `amount: float > 0`; `unit`: `mg`, `g`, `ml`; `period`: `per_meal`, `per_day` |
+| nutrient_limit | `nutrient`: `sodium`, `potassium`, `phosphorus`, `protein`, `fluid`, `carbohydrate`; `amount: float > 0` (the ceiling); `min_amount: float \| None` (lower end of a target range such as protein 50-60 g a day, shown in the app, never enforced by the checker); `unit`: `mg`, `g`, `ml`; `period`: `per_meal`, `per_day` |
 | diet_setting | `setting` (the chip keys in `memory.DIET_CHIPS`) |
 | food_exclusion | `terms: list[str]` (1-10 words or phrases) |
 

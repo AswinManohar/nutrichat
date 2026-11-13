@@ -33,6 +33,26 @@ stays until then for the released app.
 `hard` lists live entries (pending + confirmed). 500 with a retry message when
 the profile cannot be loaded; never a partial list.
 
+## GET /profile/limits/today
+
+Progress for the Care profile banner and bars. Derived on read from today's
+`meal_log` (nutrition-day boundaries); nothing is stored.
+
+```json
+{
+  "on_track": 5, "total": 5,
+  "limits": [
+    {"entry_id": "uuid", "nutrient": "sodium", "label": "Up to 1,500 mg a day",
+     "amount": 1500, "min_amount": null, "unit": "mg", "period": "per_day",
+     "so_far": 920, "unknown_items": 0, "on_track": true}
+  ]
+}
+```
+
+`on_track` is false when `so_far` exceeds `amount`. Per-meal limits report
+the highest single meal today. `unknown_items` counts logged items with no
+value for that nutrient, so the app can say the total may be low.
+
 ## GET /profile/history
 
 Every hard entry including retired ones, newest first, with `retired_at`,

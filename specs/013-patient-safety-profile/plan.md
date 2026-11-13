@@ -164,16 +164,35 @@ its tests (the response shape is kept, so none are expected).
 
 ## Delivery phases (one PR each)
 
-| PR | Spec phase | Contents | Gate before merge |
-|---|---|---|---|
-| 0 | prerequisite for FR-040 | Fastino DPA signed, privacy notice names Fastino; synthetic inference set generated and reviewed (R18) | owner sign-off; no code |
-| 1 | Phase 1 | migration 019, `safety/profile.py`, backfill of conditions/diet/restrictions, hard block for every user, fail-closed profile load, goals API on profile, eval skeleton (patients + expected profiles) | migration test, backfill dry-run counts on a prod snapshot copy, restrictions gate |
-| 2 | Phase 2 | clinical tables, Recipe + totals, checker, suggestion path + regenerate loop, reply guardrail (output validator, three layers), failure log, recommendation record, offline eval in prod-checks | offline checker eval: 0 violations; reply_guard cases: 0 missed violations; live safety_profile gate |
-| 3 | Phase 3 | red-flag screen, escalations, webhook task | red_flags eval: 100% of listed/marked, ≤ 1% false positives; screen p99 < 50 ms |
-| 4 | Phase 4 | curator rewrite (typed candidates + evidence), GLiDE per-type scoring, three-band decision, pending entries, readback + reply handling, pending retirement | inference eval on held-out split meets SC-004; SC-002 |
-| 5 | Phase 5 | soft prefs dates + new kinds, 3-week history, rejection capture, `/profile` API, Android profile screen, export | SC-010 on device (light + dark), SC-003 |
-| 6 | Phase 6 | review queue + admin API, conflict and plan-sample items | review API tests |
-| 7 | contract step | migration 020 drops `user_goal.conditions`, `dietary_prefs` | released one version after PR 1 |
+Every PR ships its backend and its Android counterpart together, so the app
+never lags the API (owner instruction 2026-11-13). Android work reuses the
+existing chat (`ui/chat`), Settings (`ui/settings`) and `MealsyApi` /
+`ChatRepository` code paths; new DTO fields are optional so released app
+versions keep working.
+
+| PR | Spec phase | Backend | Android | Gate before merge |
+|---|---|---|---|---|
+| 0 | prerequisite | Fastino DPA, privacy notice names Fastino; synthetic inference set generated and reviewed (R18) | privacy-policy link text names Fastino | owner sign-off |
+| 1 | Phase 1 | migration 019, `safety/profile.py`, backfill, hard block for every user, fail-closed profile load, goals API on profile, `POST /profile/entries` + retire, eval skeleton | **Care profile** screen (`ui/profile/`, owner mockup 2026-11-13): header with last-updated date; "N of M limits on track today" banner; one expandable row per type (Allergies, Diagnoses, Medications, Physical limitations, Nutrient limits) with a count badge; nutrient limits expand to rows with the limit text ("Up to 1,500 mg a day", "50-60 g a day") and a today-so-far bar with a limit marker; add, edit and retire per entry (FR-020a). Settings conditions and diet chips keep working through `/goals`. Chat shows the retry message on a profile-load failure | migration test, backfill dry-run counts on a prod snapshot copy, restrictions gate; on-device check light + dark |
+| 2 | Phase 2 | clinical tables, Recipe + totals, checker, suggestion loop, reply guardrail, failure log, recommendation record, offline eval in prod-checks | recipe reply rendered as a card (ingredients, steps, time, the constraint sentence) from the optional `recipe` field, plain text fallback; accept / not for me buttons call the feedback endpoint (`recommendation_id`) | offline checker eval: 0 violations; reply_guard cases: 0 missed; live safety_profile gate; on-device check |
+| 3 | Phase 3 | red-flag screen, escalations, webhook task | fixed responses shown as a distinct safety message style (no feedback buttons); a waiting meal card stays intact | red_flags eval; screen p99 < 50 ms; on-device check |
+| 4 | Phase 4 | typed candidates + evidence, GLiDE scoring, three-band decision, pending entries, readback + reply handling, pending retirement | readback rendered with Yes / No chips from the optional `readback` field (taps send the reply); "noted" mentions for accepted inferred facts link to the profile entry | inference eval on held-out split meets SC-004; SC-002; on-device check |
+| 5 | Phase 5 | soft prefs dates + new kinds, 3-week history, rejection reasons, rest of `/profile` API, export | Care profile gains: "inferred" and "awaiting confirmation" labels with confirm / correct actions, entry history, a Preferences section (soft facts with dates, edit, delete), meal history and export | SC-010 on device (light + dark), SC-003 |
+| 6 | Phase 6 | review queue + admin API | none (backend-only queue by decision Q1) | review API tests |
+| 7 | contract step | migration 020 drops `user_goal.conditions`, `dietary_prefs` | none | released one version after PR 1 |
+
+**Mockup items not built in this spec.** "Shared with Dr. …, RD" needs a
+clinician role (decision Q1: none yet), so the header shows only the
+last-updated date. The mockup's bottom bar (Home, Journey, +, Explore, Profile)
+differs from today's tabs (Home, My meals, Trends, chat); this spec reaches Care
+profile from Settings and leaves the tab bar alone unless the owner decides
+otherwise.
+
+**Code size.** Keep each module small and single-purpose: `safety/` functions
+are pure and table-driven (adding an allergen or a drug is a YAML edit, not
+code); one renderer turns a `CheckResult` into the reply sentence; Android
+adds one card composable per new reply type and one profile screen, all styled
+with the `:core:ui` tokens. No new abstraction until a second caller needs it.
 
 ## Complexity Tracking
 
