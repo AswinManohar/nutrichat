@@ -171,13 +171,13 @@ Profile. No Explore tab, no Units row (issue #88).
 
 **Independent test**: every listed phrase and marked paraphrase gets the fixed response, no model span, a notification; ordinary messages pass (quickstart PR 3).
 
-- [ ] T063 [P] [US3] Tests in `tests/safety/test_red_flags.py` (match anywhere in the message, first rule in file order wins, reload on edit, invalid file fails closed, < 50 ms on 10 kB input) and `tests/test_orchestrator_safety.py` (no GLiDE task, no graph read, no model call on a match; paused meal card unchanged; fail-closed reply when the list is unreadable)
-- [ ] T064 [P] [US3] Test `notify_escalation` in `tests/test_notify_escalation.py` (payload has no message text, name or email; retries; `no_recipient` when `SAFETY_WEBHOOK_URL` unset; `failed` after the last retry)
-- [ ] T065 [US3] Implement `src/backend/safety/red_flags.py`: compiled rules from `red_flags.yaml`, `screen(message) -> RedFlagMatch | None`, fail-closed state exposing `fallback_unavailable_text`
-- [ ] T066 [US3] Call the screen first in `src/backend/agent/orchestrator.py` `handle_message`, before the GLiDE task and the checkpoint read; on a match store `red_flag_escalation`, enqueue `notify_escalation`, return the fixed response with `"kind": "safety"`; span `red_flag_screen` with rule id and duration
-- [ ] T067 [US3] Implement `notify_escalation` in `src/backend/workers/tasks.py` per `contracts/webhook.md` (httpx, timeout 5 s, backoff 5 s, 15 s, 45 s, 2 min, 5 min; status on the row; `logfire.error` on `failed` / `no_recipient`); add `SAFETY_WEBHOOK_URL` to `.env.example`
+- [x] T063 [P] [US3] Tests in `tests/safety/test_red_flags.py` (match anywhere in the message, first rule in file order wins, reload on edit, invalid file fails closed, < 50 ms on 10 kB input) and `tests/test_orchestrator_safety.py` (no GLiDE task, no graph read, no model call on a match; paused meal card unchanged; fail-closed reply when the list is unreadable)
+- [x] T064 [P] [US3] Test `notify_escalation` in `tests/test_notify_escalation.py` (payload has no message text, name or email; retries; `no_recipient` when `SAFETY_WEBHOOK_URL` unset; `failed` after the last retry)
+- [x] T065 [US3] Implement `src/backend/safety/red_flags.py`: compiled rules from `red_flags.yaml`, `screen(message) -> RedFlagMatch | None`, fail-closed state exposing `fallback_unavailable_text`
+- [x] T066 [US3] Call the screen first in `src/backend/agent/orchestrator.py` `handle_message`, before the GLiDE task and the checkpoint read; on a match store `red_flag_escalation`, enqueue `notify_escalation`, return the fixed response with `"kind": "safety"`; span `red_flag_screen` with rule id and duration
+- [x] T067 [US3] Implement `notify_escalation` in `src/backend/workers/tasks.py` per `contracts/webhook.md` (httpx, timeout 5 s, backoff 5 s, 15 s, 45 s, 2 min, 5 min; status on the row; `logfire.error` on `failed` / `no_recipient`); add `SAFETY_WEBHOOK_URL` to `.env.example`
 - [ ] T068 [US3] Implement `eval/eval_red_flags.py` (100% of listed and marked phrases, ≤ 1% of ordinary messages, p99 screen time) and run it; record results in the PR
-- [ ] T101 [US3] Docs for PR 3: `SAFETY_WEBHOOK_URL` in `.claude/CLAUDE.md` env section, red-flag screen in `docs/architecture.md`
+- [x] T101 [US3] Docs for PR 3: `SAFETY_WEBHOOK_URL` in `.claude/CLAUDE.md` env section, red-flag screen in `docs/architecture.md`
 - [ ] T069 [US3] Android: render replies with `kind == "safety"` in a distinct safety message style without feedback buttons in `ui/chat/`; add optional `kind` to the chat DTO; golden light and dark; on-device check with a paused meal card
 
 **Checkpoint**: PR 3. Phases 1-3 shippable without 4-6 (SC-011).
