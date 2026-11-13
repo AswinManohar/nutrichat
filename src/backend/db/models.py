@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -228,6 +230,9 @@ class UserMemory(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -244,7 +249,7 @@ class UserMemory(Base):
         ),
         CheckConstraint(
             "category IN ('restriction', 'dislike', 'like', 'habit', 'context', "
-            "'preference')",
+            "'preference', 'cuisine', 'budget', 'cooking_time')",
             name="ck_user_memory_category",
         ),
         CheckConstraint(
@@ -567,7 +572,6 @@ class FoodCorrection(Base):
     )
 
 
-
 class GuidelineChunk(Base):
     """One embedded passage from a curated public dietary guideline.
 
@@ -647,4 +651,256 @@ class CoachingResponse(Base):
     __table_args__ = (
         Index("ix_coaching_response_user_id", "user_id"),
         Index("ix_coaching_response_created_at", "created_at"),
+    )
+
+
+def _user_fk() -> Any:
+    return mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_goal.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+
+def _pk() -> Any:
+    return mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+
+
+def _now() -> Any:
+    return mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ProfileEntry(Base):
+    """One version of a hard-profile fact (spec 013, data-model.md).
+
+    Values are never rewritten: an edit retires the row and inserts a new one
+    that ``replaces_id`` it. The database trigger ``profile_entry_immutable``
+    enforces this; only the state columns may change. Only ``confirmed`` rows
+    bind the recipe checker.
+    """
+
+    __tablename__ = "profile_entry"
+
+    id: Mapped[str] = _pk()
+    user_id: Mapped[str] = _user_fk()
+    entry_type: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Only for free-text values; typed values derive their label on read.
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _now()
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replaces_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("profile_entry.id"), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retired_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retired_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retire_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    readback_asked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    conversation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inference_probability: Mapped[float | None] = mapped_column(
+        Float(24), nullable=True
+    )
+    mentioned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entry_type IN ('allergy', 'diagnosis', 'medication', "
+            "'physical_limitation', 'nutrient_limit', 'diet_setting', "
+            "'food_exclusion')",
+            name="ck_profile_entry_type",
+        ),
+        CheckConstraint(
+            "source IN ('patient', 'clinician', 'inferred')",
+            name="ck_profile_entry_source",
+        ),
+        CheckConstraint(
+            "state IN ('pending', 'confirmed', 'retired')",
+            name="ck_profile_entry_state",
+        ),
+        CheckConstraint(
+            "state <> 'confirmed' OR confirmed_at IS NOT NULL",
+            name="ck_profile_entry_confirmed_at",
+        ),
+        CheckConstraint(
+            "state <> 'retired' OR retired_at IS NOT NULL",
+            name="ck_profile_entry_retired_at",
+        ),
+        CheckConstraint(
+            "source <> 'clinician' OR created_by LIKE 'reviewer:%'",
+            name="ck_profile_entry_clinician_actor",
+        ),
+        Index(
+            "ix_profile_entry_live",
+            "user_id",
+            postgresql_where=text("state <> 'retired'"),
+        ),
+        Index(
+            "ix_profile_entry_review",
+            "state",
+            "created_at",
+            postgresql_where=text("state = 'pending'"),
+        ),
+        Index(
+            "uq_profile_entry_client_request",
+            "user_id",
+            "client_request_id",
+            unique=True,
+            postgresql_where=text("client_request_id IS NOT NULL"),
+        ),
+    )
+
+
+class Recommendation(Base):
+    """A recipe shown to the patient, its check snapshot and their reaction."""
+
+    __tablename__ = "recommendation"
+
+    id: Mapped[str] = _pk()
+    user_id: Mapped[str] = _user_fk()
+    conversation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    coaching_response_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("coaching_response.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    recipe: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Immutable audit snapshot of the check, deliberately a stored copy.
+    check_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = _now()
+    status_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        CheckConstraint("attempts >= 1", name="ck_recommendation_attempts"),
+        CheckConstraint(
+            "status IN ('shown', 'accepted', 'rejected')",
+            name="ck_recommendation_status",
+        ),
+        Index("ix_recommendation_user_created", "user_id", text("created_at DESC")),
+    )
+
+
+class CheckFailure(Base):
+    """One failed recipe check or reply-scan hit, kept for audit."""
+
+    __tablename__ = "check_failure"
+
+    id: Mapped[str] = _pk()
+    user_id: Mapped[str] = _user_fk()
+    recommendation_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("recommendation.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    attempt: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    recipe: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    failures: Mapped[list] = mapped_column(JSONB, nullable=False)
+    profile_version: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('regenerated', 'dropped', 'reply_replaced')",
+            name="ck_check_failure_outcome",
+        ),
+        Index("ix_check_failure_user_id", "user_id"),
+    )
+
+
+class RedFlagEscalation(Base):
+    """A patient message that matched a red-flag rule (reviewer-only read)."""
+
+    __tablename__ = "red_flag_escalation"
+
+    id: Mapped[str] = _pk()
+    user_id: Mapped[str] = _user_fk()
+    conversation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    rule_id: Mapped[str] = mapped_column(Text, nullable=False)
+    rule_label: Mapped[str] = mapped_column(Text, nullable=False)
+    rules_version: Mapped[str] = mapped_column(Text, nullable=False)
+    notify_status: Mapped[str] = mapped_column(Text, nullable=False)
+    notify_attempts: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
+    )
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        CheckConstraint(
+            "notify_status IN ('pending', 'sent', 'failed', 'no_recipient')",
+            name="ck_red_flag_escalation_notify_status",
+        ),
+        Index("ix_red_flag_escalation_user_id", "user_id"),
+    )
+
+
+class ReviewItem(Base):
+    """One item awaiting a reviewer; only the decision is stored here."""
+
+    __tablename__ = "review_item"
+
+    id: Mapped[str] = _pk()
+    user_id: Mapped[str] = _user_fk()
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    decision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('pending_entry', 'rule_conflict', 'escalation', "
+            "'plan_sample', 'unknown_medication')",
+            name="ck_review_item_kind",
+        ),
+        CheckConstraint(
+            "decision IS NULL OR decision IN "
+            "('approved', 'rejected', 'edited', 'handled')",
+            name="ck_review_item_decision",
+        ),
+        UniqueConstraint("kind", "subject_id", name="uq_review_item_subject"),
+        Index(
+            "ix_review_item_open",
+            "decision",
+            text("created_at DESC"),
+            postgresql_where=text("decision IS NULL"),
+        ),
+        Index("ix_review_item_user_id", "user_id"),
     )
