@@ -337,6 +337,135 @@ async def test_a_retirement_request_keeps_the_entry_binding(db_user) -> None:
     assert await profile.load_hard_profile(db_user) == []
 
 
+async def test_an_inferred_entry_keeps_its_evidence_probability_and_confirmer(
+    db_user,
+) -> None:
+    entry = await profile.add_entry(
+        db_user,
+        PEANUT,
+        source="inferred",
+        state="confirmed",
+        created_by="curator",
+        confirmed_by="inference",
+        evidence="I'm allergic to peanuts",
+        inference_probability=0.97,
+    )
+
+    (loaded,) = await profile.load_hard_profile(db_user)
+
+    assert loaded.id == entry.id
+    assert (loaded.confirmed_by, loaded.created_by) == ("inference", "curator")
+    assert loaded.evidence == "I'm allergic to peanuts"
+    assert loaded.inference_probability == pytest.approx(0.97, abs=1e-3)
+    assert loaded.mentioned_at is None and loaded.readback_asked_at is None
+
+
+async def test_a_retirement_request_can_be_withdrawn_and_asked_again(db_user) -> None:
+    entry = await _add(db_user, PEANUT)
+    await profile.request_retirement(db_user, entry.id)
+
+    withdrawn = await profile.cancel_retirement(db_user, entry.id)
+    again = await profile.request_retirement(db_user, entry.id)
+
+    assert withdrawn.retire_requested_at is None and withdrawn.state == "confirmed"
+    assert again.retire_requested_at is not None
+    pending = await _add(db_user, DietSettingValue(setting="vegan"), "pending")
+    with pytest.raises(profile.StateConflict):
+        await profile.cancel_retirement(db_user, pending.id)
+
+
+async def test_readback_is_recorded_per_batch_and_can_be_asked_again(db_user) -> None:
+    first = await _add(db_user, PEANUT, "pending")
+    second = await _add(db_user, DietSettingValue(setting="vegan"), "pending")
+
+    asked = await profile.mark_readback(db_user, [first.id, second.id], "conv-1")
+    again = await profile.mark_readback(db_user, [first.id], "conv-2")
+
+    entries = {e.id: e for e in await profile.load_hard_profile(db_user)}
+    assert entries[second.id].readback_asked_at == asked
+    assert entries[second.id].conversation_id == "conv-1"
+    assert entries[first.id].readback_asked_at == again
+    assert entries[first.id].conversation_id == "conv-2"
+
+
+async def test_an_inferred_entry_is_mentioned_once(db_user) -> None:
+    entry = await profile.add_entry(
+        db_user,
+        PEANUT,
+        source="inferred",
+        state="confirmed",
+        created_by="curator",
+        confirmed_by="inference",
+    )
+
+    first = await profile.mark_mentioned(db_user, entry.id)
+    second = await profile.mark_mentioned(db_user, entry.id)
+
+    assert first.mentioned_at is not None
+    assert second.mentioned_at == first.mentioned_at
+
+
+async def test_confirming_a_replacement_retires_the_confirmed_entry_it_replaces(
+    db_user,
+) -> None:
+    old = await _add(db_user, _sodium(1500))
+    pending = await profile.add_entry(
+        db_user,
+        _sodium(2300),
+        source="inferred",
+        state="pending",
+        created_by="curator",
+        replaces_id=old.id,
+    )
+
+    # Until confirmed the stricter limit keeps binding and nothing else does.
+    live = await profile.load_hard_profile(db_user)
+    assert [e.id for e in profile.confirmed(live)] == [old.id]
+
+    await profile.confirm(db_user, pending.id)
+
+    history = {e.id: e for e in await profile.load_history(db_user)}
+    assert history[old.id].state == "retired"
+    assert history[old.id].retired_reason == "replaced"
+    assert history[pending.id].state == "confirmed"
+    assert [e.id for e in await profile.load_hard_profile(db_user)] == [pending.id]
+
+
+async def test_denying_a_replacement_leaves_the_confirmed_entry(db_user) -> None:
+    old = await _add(db_user, _sodium(1500))
+    pending = await profile.add_entry(
+        db_user,
+        _sodium(2300),
+        source="inferred",
+        state="pending",
+        created_by="curator",
+        replaces_id=old.id,
+    )
+
+    await profile.deny(db_user, pending.id)
+
+    assert [e.id for e in await profile.load_hard_profile(db_user)] == [old.id]
+
+
+async def test_confirming_a_replacement_whose_target_already_retired_still_works(
+    db_user,
+) -> None:
+    old = await _add(db_user, _sodium(1500))
+    pending = await profile.add_entry(
+        db_user,
+        _sodium(2300),
+        source="inferred",
+        state="pending",
+        created_by="curator",
+        replaces_id=old.id,
+    )
+    await profile.retire(db_user, old.id)
+
+    confirmed = await profile.confirm(db_user, pending.id)
+
+    assert confirmed.state == "confirmed"
+
+
 async def test_version_changes_when_an_entry_is_confirmed_or_retired(db_user) -> None:
     pending = await _add(db_user, PEANUT, "pending")
     v0 = profile.version_of(await profile.load_hard_profile(db_user))

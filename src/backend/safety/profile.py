@@ -238,6 +238,11 @@ class HardEntry(BaseModel):
     retired_reason: str | None = None
     replaces_id: str | None = None
     acknowledged_at: datetime | None = None
+    evidence: str | None = None
+    inference_probability: float | None = None
+    mentioned_at: datetime | None = None
+    readback_asked_at: datetime | None = None
+    conversation_id: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -260,6 +265,11 @@ def _to_entry(row: ProfileEntry) -> HardEntry:
         retired_reason=row.retired_reason,
         replaces_id=row.replaces_id,
         acknowledged_at=row.acknowledged_at,
+        evidence=row.evidence,
+        inference_probability=row.inference_probability,
+        mentioned_at=row.mentioned_at,
+        readback_asked_at=row.readback_asked_at,
+        conversation_id=row.conversation_id,
     )
 
 
@@ -518,6 +528,9 @@ def _new_row(
     created_by: str,
     client_request_id: str | None,
     replaces_id: str | None = None,
+    confirmed_by: str | None = None,
+    evidence: str | None = None,
+    inference_probability: float | None = None,
 ) -> ProfileEntry:
     now = datetime.now(UTC)
     return ProfileEntry(
@@ -531,7 +544,9 @@ def _new_row(
         created_at=now,
         created_by=created_by,
         confirmed_at=now if state == "confirmed" else None,
-        confirmed_by=created_by if state == "confirmed" else None,
+        confirmed_by=(confirmed_by or created_by) if state == "confirmed" else None,
+        evidence=evidence,
+        inference_probability=inference_probability,
         client_request_id=client_request_id,
         replaces_id=replaces_id,
     )
@@ -592,6 +607,10 @@ async def add_entry(
     created_by: str,
     label: str | None = None,
     client_request_id: str | None = None,
+    confirmed_by: str | None = None,
+    evidence: str | None = None,
+    inference_probability: float | None = None,
+    replaces_id: str | None = None,
 ) -> HardEntry:
     """Insert a new entry; a repeated ``client_request_id`` returns the first.
 
@@ -605,6 +624,13 @@ async def add_entry(
         label: Free-text label; kept only for food exclusions and custom
             allergies.
         client_request_id: Idempotency key for app writes.
+        confirmed_by: Who confirmed a ``confirmed`` entry; defaults to
+            ``created_by``. The curator passes ``inference`` for an accepted
+            inferred fact.
+        evidence: The patient's own words an inferred entry came from.
+        inference_probability: GLiDE's probability for an inferred entry.
+        replaces_id: A confirmed entry this one replaces once it is confirmed
+            (a looser limit); it keeps binding until then.
 
     Returns:
         The stored entry.
@@ -626,6 +652,10 @@ async def add_entry(
             state=state,
             created_by=created_by,
             client_request_id=client_request_id,
+            confirmed_by=confirmed_by,
+            evidence=evidence,
+            inference_probability=inference_probability,
+            replaces_id=replaces_id,
         )
         session.add(row)
         await session.flush()
@@ -634,6 +664,9 @@ async def add_entry(
 
 async def confirm(user_id: str, entry_id: str, *, by: str = "patient") -> HardEntry:
     """Pending to confirmed; on an inferred confirmed entry, acknowledge it.
+
+    An entry that replaces a still-confirmed one retires it (``replaced``) in
+    the same transaction.
 
     Raises:
         EntryNotFound: Unknown entry.
@@ -646,6 +679,10 @@ async def confirm(user_id: str, entry_id: str, *, by: str = "patient") -> HardEn
             row.state = "confirmed"
             row.confirmed_at = datetime.now(UTC)
             row.confirmed_by = by
+            if row.replaces_id is not None:
+                old = await _get_row(session, user_id, row.replaces_id)
+                if old.state == "confirmed":
+                    _retire_row(old, by, "replaced")
         elif row.state == "retired":
             raise StateConflict("a retired entry cannot be confirmed")
         elif row.source == "inferred" and row.acknowledged_at is None:
@@ -705,6 +742,65 @@ async def request_retirement(user_id: str, entry_id: str) -> HardEntry:
             raise StateConflict("only a confirmed entry can be retired")
         if row.retire_requested_at is None:
             row.retire_requested_at = datetime.now(UTC)
+        return _to_entry(row)
+
+
+async def cancel_retirement(user_id: str, entry_id: str) -> HardEntry:
+    """Withdraw a retirement request; the entry keeps binding as before.
+
+    Raises:
+        EntryNotFound: Unknown entry.
+        StateConflict: The entry is not confirmed.
+    """
+    async with get_session()() as session, session.begin():
+        await _lock(session, user_id)
+        row = await _get_row(session, user_id, entry_id)
+        if row.state != "confirmed":
+            raise StateConflict("only a confirmed entry has a retirement request")
+        row.retire_requested_at = None
+        return _to_entry(row)
+
+
+async def mark_readback(
+    user_id: str, entry_ids: Collection[str], conversation_id: str
+) -> datetime:
+    """Record that the coach asked about these entries in this conversation.
+
+    One timestamp for the batch, so a short reply can be told to answer all of
+    them. Re-asking in a later conversation overwrites the earlier ask.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        entry_ids: Pending entries or confirmed ones with a retirement request.
+        conversation_id: The chat thread the question was asked in.
+
+    Returns:
+        The timestamp stored on every entry.
+
+    Raises:
+        EntryNotFound: An id is unknown or belongs to another user.
+    """
+    now = datetime.now(UTC)
+    async with get_session()() as session, session.begin():
+        await _lock(session, user_id)
+        for entry_id in entry_ids:
+            row = await _get_row(session, user_id, entry_id)
+            row.readback_asked_at = now
+            row.conversation_id = conversation_id
+    return now
+
+
+async def mark_mentioned(user_id: str, entry_id: str) -> HardEntry:
+    """Record that the coach told the patient about an inferred entry (once).
+
+    Raises:
+        EntryNotFound: Unknown entry.
+    """
+    async with get_session()() as session, session.begin():
+        await _lock(session, user_id)
+        row = await _get_row(session, user_id, entry_id)
+        if row.mentioned_at is None:
+            row.mentioned_at = datetime.now(UTC)
         return _to_entry(row)
 
 
