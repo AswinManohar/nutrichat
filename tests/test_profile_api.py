@@ -13,9 +13,22 @@ from sqlalchemy import delete
 
 from backend.api import profile as profile_api
 from backend.config import get_tunables
+from backend.db.session import get_session
+from backend.ratelimit import RateLimitResult
 from backend.safety import profile
 
 PEANUT = {"allergen_group": "peanut"}
+_SODIUM = {"nutrient": "sodium", "amount": 1500, "unit": "mg", "period": "per_day"}
+
+
+@pytest.fixture(autouse=True)
+def _no_rate_limit():
+    with patch(
+        "backend.ratelimit.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=RateLimitResult(allowed=True, remaining=9),
+    ):
+        yield
 
 
 @pytest.fixture
@@ -234,7 +247,6 @@ async def test_profile_is_503_with_the_retry_text_when_it_cannot_load(
 
 async def _recommendation(user_id: str) -> str:
     from backend.db.models import Recommendation
-    from backend.db.session import get_session
 
     row_id = str(uuid.uuid4())
     async with get_session()() as session:
@@ -254,7 +266,6 @@ async def _recommendation(user_id: str) -> str:
 
 async def _stored(row_id: str):
     from backend.db.models import Recommendation
-    from backend.db.session import get_session
 
     async with get_session()() as session:
         return await session.get(Recommendation, row_id)
@@ -304,7 +315,6 @@ async def test_meal_feedback_for_an_unknown_or_foreign_recommendation_is_404(
     client: httpx.AsyncClient, db_user: str
 ) -> None:
     from backend.db.models import UserGoal
-    from backend.db.session import get_session
 
     other = str(uuid.uuid4())
     async with get_session()() as session:
@@ -332,3 +342,285 @@ async def test_requests_without_a_token_are_401(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         assert (await c.get("/profile")).status_code == 401
+
+
+# --- soft preferences, meal history and export (spec 013 US5) -------------------
+
+
+async def _remember(user_id: str, text: str, kind: str = "like") -> str:
+    from backend.agent.memory import AddFact, apply_ops, load_state
+
+    await apply_ops(user_id, [AddFact(fact=text, kind=kind)], "user")
+    facts = (await load_state(user_id)).facts
+    return next(f.id for f in facts if f.fact == text)
+
+
+async def test_a_soft_fact_is_listed_with_its_dates(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    await _remember(db_user, "Dal")
+
+    [fact] = (await client.get("/profile")).json()["soft"]
+
+    assert (fact["kind"], fact["text"], fact["source"]) == ("like", "Dal", "stated")
+    assert fact["created_at"] and fact["updated_at"]
+
+
+async def test_patching_a_soft_fact_edits_its_text_and_kind(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    fact_id = await _remember(db_user, "Cooks 30 minutes", "habit")
+
+    resp = await client.patch(
+        f"/profile/soft/{fact_id}",
+        json={"text": "Cooks 15 minutes on weekdays", "kind": "cooking_time"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["id"] == fact_id
+    assert resp.json()["kind"] == "cooking_time"
+    assert resp.json()["text"] == "Cooks 15 minutes on weekdays"
+    [listed] = (await client.get("/profile")).json()["soft"]
+    assert listed["text"] == "Cooks 15 minutes on weekdays"
+
+
+async def test_patching_only_the_kind_keeps_the_text(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    fact_id = await _remember(db_user, "Thai", "like")
+
+    resp = await client.patch(f"/profile/soft/{fact_id}", json={"kind": "cuisine"})
+
+    assert (resp.json()["text"], resp.json()["kind"]) == ("Thai", "cuisine")
+
+
+async def test_patching_into_an_existing_preference_merges_the_two(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    await _remember(db_user, "Thai", "cuisine")
+    other = await _remember(db_user, "Thai food", "like")
+
+    resp = await client.patch(f"/profile/soft/{other}", json={"text": "thai"})
+
+    assert resp.status_code == 200 and resp.json()["text"] == "Thai"
+    assert len((await client.get("/profile")).json()["soft"]) == 1
+
+
+async def test_soft_patch_validation_and_unknown_ids(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    fact_id = await _remember(db_user, "Dal")
+    missing = "00000000-0000-4000-8000-000000000000"
+
+    assert (await client.patch(f"/profile/soft/{fact_id}", json={})).status_code == 422
+    assert (
+        await client.patch(f"/profile/soft/{fact_id}", json={"kind": "restriction"})
+    ).status_code == 422
+    assert (
+        await client.patch(f"/profile/soft/{fact_id}", json={"text": "x" * 201})
+    ).status_code == 422
+    assert (
+        await client.patch(f"/profile/soft/{missing}", json={"text": "Rice"})
+    ).status_code == 404
+    assert (
+        await client.patch("/profile/soft/nope", json={"text": "Rice"})
+    ).status_code == 404
+
+
+async def test_deleting_a_soft_fact_is_idempotent_and_not_relearned(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    from backend.agent.memory import AddFact, apply_ops
+
+    fact_id = await _remember(db_user, "Coriander", "dislike")
+
+    first = await client.delete(f"/profile/soft/{fact_id}")
+    again = await client.delete(f"/profile/soft/{fact_id}")
+
+    assert first.status_code == again.status_code == 204
+    assert (await client.get("/profile")).json()["soft"] == []
+    # The curator may not learn it again; the patient restating it may.
+    learned = await apply_ops(
+        db_user, [AddFact(fact="Coriander", kind="dislike")], "curator"
+    )
+    assert learned.n_applied == 0
+    restated = await apply_ops(
+        db_user, [AddFact(fact="Coriander", kind="dislike")], "user"
+    )
+    assert restated.n_applied == 1
+    assert (await client.delete("/profile/soft/nope")).status_code == 404
+
+
+async def test_the_soft_routes_only_touch_the_callers_facts(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    from backend.db.models import UserGoal
+
+    other = str(uuid.uuid4())
+    async with get_session()() as session:
+        session.add(UserGoal(user_id=other))
+        await session.commit()
+    try:
+        theirs = await _remember(other, "Liver", "dislike")
+
+        patched = await client.patch(f"/profile/soft/{theirs}", json={"text": "Kale"})
+        deleted = await client.delete(f"/profile/soft/{theirs}")
+        from backend.agent.memory import load_state
+
+        still = (await load_state(other)).facts
+    finally:
+        async with get_session()() as session:
+            await session.execute(delete(UserGoal).where(UserGoal.user_id == other))
+            await session.commit()
+
+    assert patched.status_code == 404 and deleted.status_code == 204
+    assert [f.fact for f in still] == ["Liver"]
+
+
+async def _seed_meals(user_id: str) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from backend.db.models import MealLog, Recommendation
+
+    old = datetime.now(UTC) - timedelta(days=40)
+    async with get_session()() as session:
+        session.add_all(
+            [
+                Recommendation(
+                    user_id=user_id,
+                    recipe={"name": "Lemon chicken"},
+                    check_snapshot={},
+                    attempts=1,
+                    status="rejected",
+                    rejection_reason="too bland",
+                ),
+                Recommendation(
+                    user_id=user_id,
+                    recipe={"name": "Dal"},
+                    check_snapshot={},
+                    attempts=1,
+                    status="accepted",
+                ),
+                Recommendation(
+                    user_id=user_id,
+                    recipe={"name": "Ancient stew"},
+                    check_snapshot={},
+                    attempts=1,
+                    status="shown",
+                    created_at=old,
+                ),
+                MealLog(
+                    user_id=user_id,
+                    meal_type="lunch",
+                    kcal=1,
+                    protein_g=1,
+                    carbs_g=1,
+                    fat_g=1,
+                    fiber_g=1,
+                    label="Oatmeal",
+                ),
+                MealLog(
+                    user_id=user_id,
+                    meal_type="lunch",
+                    kcal=1,
+                    protein_g=1,
+                    carbs_g=1,
+                    fat_g=1,
+                    fiber_g=1,
+                    label="Old toast",
+                    logged_at=old,
+                ),
+            ]
+        )
+        await session.commit()
+
+
+async def test_meals_lists_the_window_with_status_and_reason(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    await _seed_meals(db_user)
+
+    body = (await client.get("/profile/meals")).json()
+
+    assert body["days"] == 21
+    by_name = {r["name"]: r for r in body["recommendations"]}
+    assert set(by_name) == {"Lemon chicken", "Dal"}
+    assert by_name["Lemon chicken"]["status"] == "rejected"
+    assert by_name["Lemon chicken"]["rejection_reason"] == "too bland"
+    assert by_name["Dal"]["status"] == "accepted"
+    assert [m["label"] for m in body["eaten"]] == ["Oatmeal"]
+    wide = (await client.get("/profile/meals?days=90")).json()
+    assert len(wide["recommendations"]) == 3
+    assert {m["label"] for m in wide["eaten"]} == {"Oatmeal", "Old toast"}
+
+
+async def test_meals_days_is_bounded(client: httpx.AsyncClient) -> None:
+    assert (await client.get("/profile/meals?days=90")).status_code == 200
+    assert (await client.get("/profile/meals?days=91")).status_code == 422
+    assert (await client.get("/profile/meals?days=0")).status_code == 422
+
+
+async def test_export_is_a_json_attachment_of_everything_remembered(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    from backend.db.models import RedFlagEscalation
+
+    old = (await _create(client, "nutrient_limit", _SODIUM)).json()
+    await _create(
+        client, "nutrient_limit", {**_SODIUM, "amount": 1200}, replaces_id=old["id"]
+    )
+    await _remember(db_user, "Dal")
+    gone = await _remember(db_user, "Coriander", "dislike")
+    await client.delete(f"/profile/soft/{gone}")
+    await _seed_meals(db_user)
+    async with get_session()() as session:
+        session.add(
+            RedFlagEscalation(
+                user_id=db_user,
+                message="I stopped my insulin",
+                rule_id="r1",
+                rule_label="Stopped insulin",
+                rules_version="v1",
+                notify_status="sent",
+            )
+        )
+        await session.commit()
+
+    resp = await client.get("/profile/export")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.headers["content-disposition"] == (
+        'attachment; filename="mealsy-profile.json"'
+    )
+    body = resp.json()
+    assert len(body["hard"]) == 2  # the retired entry is part of the history
+    assert {e["retired_reason"] for e in body["hard"]} == {None, "replaced"}
+    assert [f["text"] for f in body["soft"]] == ["Dal"]
+    assert "Coriander" not in resp.text
+    assert {r["status"] for r in body["recommendations"]} == {
+        "rejected",
+        "accepted",
+        "shown",
+    }
+    [escalation] = body["escalations"]
+    assert escalation["rule_label"] == "Stopped insulin"
+    assert escalation["message"] == "I stopped my insulin"
+    assert escalation["notify_status"] == "sent"
+
+
+async def test_export_of_an_empty_profile_has_empty_lists(
+    client: httpx.AsyncClient,
+) -> None:
+    body = (await client.get("/profile/export")).json()
+
+    assert (body["hard"], body["soft"], body["recommendations"]) == ([], [], [])
+    assert body["escalations"] == []
+
+
+def test_the_old_memory_routes_are_marked_deprecated() -> None:
+    from backend.api import memory
+
+    flags = {route.path: route.deprecated for route in memory.router.routes}
+
+    assert flags == {"/memory": True, "/memory/{fact_id}": True}

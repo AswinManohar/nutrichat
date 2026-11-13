@@ -1,27 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from backend.db.models import MealLog
 from backend.workers.tasks import (
-    _ExtractedFacts,
     aggregate_daily_summary,
     build_nutrient_checkup,
     build_weekly_summary,
     embed_meal_summary,
     extract_and_store_facts,
 )
-
-
-@pytest.fixture(autouse=True)
-def _no_hard_curation() -> Iterator[None]:
-    """The legacy-path tests below are about soft facts; stub hard curation."""
-    with patch("backend.workers.tasks.curate_turn", new_callable=AsyncMock):
-        yield
 
 
 def _mock_session_factory(session: MagicMock) -> MagicMock:
@@ -61,81 +50,6 @@ def test_embed_meal_summary_writes_embedding():
     assert "Bananas, raw" in embed_mock.call_args[0][0]
     assert meal.embedding == [0.1] * 768
     session.commit.assert_awaited_once()
-
-
-def test_extract_and_store_facts_inserts_new_fact():
-    session = MagicMock()
-    no_match = MagicMock()
-    no_match.first.return_value = None
-    session.execute = AsyncMock(return_value=no_match)
-    session.commit = AsyncMock()
-    session.add = MagicMock()
-    factory = _mock_session_factory(session)
-
-    parser_mock = MagicMock()
-    parser_mock.ainvoke = AsyncMock(
-        return_value=_ExtractedFacts(facts=["prefers oat milk"])
-    )
-
-    with (
-        patch("backend.workers.tasks.get_session", return_value=factory),
-        patch("backend.workers.tasks._fact_extraction_llm", parser_mock),
-        patch(
-            "backend.workers.tasks.embed_text",
-            new_callable=AsyncMock,
-            return_value=[0.1] * 768,
-        ),
-    ):
-        extract_and_store_facts("user-1", "I only drink oat milk", "Got it!")
-
-    session.add.assert_called_once()
-    added = session.add.call_args[0][0]
-    assert added.fact == "prefers oat milk"
-    session.commit.assert_awaited_once()
-
-
-def test_extract_and_store_facts_skips_near_duplicate():
-    session = MagicMock()
-    near_match = MagicMock()
-    near_match.first.return_value = MagicMock(distance=0.01)
-    session.execute = AsyncMock(return_value=near_match)
-    session.commit = AsyncMock()
-    session.add = MagicMock()
-    factory = _mock_session_factory(session)
-
-    parser_mock = MagicMock()
-    parser_mock.ainvoke = AsyncMock(
-        return_value=_ExtractedFacts(facts=["prefers oat milk"])
-    )
-
-    with (
-        patch("backend.workers.tasks.get_session", return_value=factory),
-        patch("backend.workers.tasks._fact_extraction_llm", parser_mock),
-        patch(
-            "backend.workers.tasks.embed_text",
-            new_callable=AsyncMock,
-            return_value=[0.1] * 768,
-        ),
-    ):
-        extract_and_store_facts("user-1", "I only drink oat milk", "Got it!")
-
-    session.add.assert_not_called()
-
-
-def test_extract_and_store_facts_no_facts_skips_db():
-    session = MagicMock()
-    factory = _mock_session_factory(session)
-
-    parser_mock = MagicMock()
-    parser_mock.ainvoke = AsyncMock(return_value=_ExtractedFacts(facts=[]))
-
-    with (
-        patch("backend.workers.tasks.get_session", return_value=factory),
-        patch("backend.workers.tasks._fact_extraction_llm", parser_mock),
-    ):
-        extract_and_store_facts("user-1", "I had 2 eggs", "Logged 140 kcal")
-
-    factory.assert_not_called()
 
 
 def test_aggregate_daily_summary_upserts_per_user():
@@ -262,25 +176,16 @@ def test_build_nutrient_checkup_skips_users_without_recent_meals():
     session.commit.assert_awaited_once()
 
 
-def test_extract_and_store_facts_routes_profile_users_to_the_curator():
+def test_extract_and_store_facts_runs_one_curator_call_for_every_user():
     curate = AsyncMock()
-    legacy_llm = MagicMock()
-    legacy_llm.ainvoke = AsyncMock()
 
-    with (
-        patch("backend.workers.tasks.profile_active", return_value=True),
-        patch("backend.workers.tasks.curate_turn", curate),
-        patch("backend.workers.tasks._fact_extraction_llm", legacy_llm),
-        patch("backend.workers.tasks.embed_text", new_callable=AsyncMock) as embed,
-    ):
+    with patch("backend.workers.tasks.curate_turn", curate):
         extract_and_store_facts("user-1", "I'm vegetarian now", "Noted.")
 
     curate.assert_awaited_once_with("user-1", "I'm vegetarian now", "Noted.")
-    legacy_llm.ainvoke.assert_not_awaited()
-    embed.assert_not_awaited()
 
 
-def test_dispatch_log_habits_fans_out_only_to_profile_users():
+def test_dispatch_log_habits_fans_out_to_every_eligible_user():
     from backend.workers import tasks
 
     with (
@@ -289,14 +194,11 @@ def test_dispatch_log_habits_fans_out_only_to_profile_users():
             new_callable=AsyncMock,
             return_value=["user-a", "user-b"],
         ),
-        patch(
-            "backend.workers.tasks.profile_active", side_effect=lambda u: u == "user-b"
-        ),
         patch.object(tasks.infer_log_habits, "delay") as delay,
     ):
         tasks.dispatch_log_habits()
 
-    delay.assert_called_once_with("user-b")
+    assert [c.args for c in delay.call_args_list] == [("user-a",), ("user-b",)]
 
 
 def test_log_habits_schedule_runs_after_the_weekly_summary():
@@ -314,23 +216,3 @@ def test_log_habits_schedule_runs_after_the_weekly_summary():
         min(weekly.hour),
         min(weekly.minute),
     )
-
-
-def test_extract_and_store_facts_infers_hard_facts_for_every_user():
-    """Non-profile users get hard-only curation; soft stays on the legacy path."""
-    parser_mock = MagicMock()
-    parser_mock.ainvoke = AsyncMock(return_value=_ExtractedFacts(facts=[]))
-
-    with (
-        patch("backend.workers.tasks.profile_active", return_value=False),
-        patch(
-            "backend.workers.tasks.curate_turn", new_callable=AsyncMock
-        ) as curate_mock,
-        patch("backend.workers.tasks._fact_extraction_llm", parser_mock),
-    ):
-        extract_and_store_facts("user-1", "I'm allergic to shellfish", "Noted.")
-
-    curate_mock.assert_awaited_once_with(
-        "user-1", "I'm allergic to shellfish", "Noted.", soft=False
-    )
-    parser_mock.ainvoke.assert_awaited_once()

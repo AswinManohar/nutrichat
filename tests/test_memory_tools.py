@@ -240,22 +240,21 @@ def _recording_model(seen: list[AgentInfo]) -> FunctionModel:
     return FunctionModel(respond)
 
 
-async def test_legacy_users_get_no_tools_and_no_profile_rules() -> None:
+async def test_a_call_without_a_user_gets_no_tools_and_no_profile_rules() -> None:
     seen: list[AgentInfo] = []
     with (
         coaching._response_agent.override(model=_recording_model(seen)),
         capture_run_messages() as msgs,
     ):
-        await generate_response("am I on track?", {}, user_id=USER)
+        await generate_response("am I on track?", {})
 
     assert seen[0].function_tools == []
     assert "<profile_rules>" not in msgs[0].instructions
 
 
-async def test_profile_users_get_tools_and_rules_but_one_round_trip() -> None:
+async def test_every_user_gets_tools_and_rules_but_one_round_trip() -> None:
     seen: list[AgentInfo] = []
     with (
-        patch("backend.agent.coaching.profile_active", return_value=True),
         coaching._response_agent.override(model=_recording_model(seen)),
         capture_run_messages() as msgs,
     ):
@@ -292,7 +291,6 @@ async def test_explicit_remember_runs_the_tool_then_answers() -> None:
 
     apply = _apply()
     with (
-        patch("backend.agent.coaching.profile_active", return_value=True),
         patch("backend.agent.memory_tools.apply_ops", apply),
         coaching._response_agent.override(model=FunctionModel(respond)),
         capture_run_messages() as msgs,

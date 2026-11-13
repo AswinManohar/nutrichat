@@ -71,7 +71,6 @@ def test_get_memory_returns_facts_settings_and_staples(client: TestClient) -> No
             "backend.api.memory.fetch_staples",
             AsyncMock(return_value={"breakfast": ["Oats"]}),
         ),
-        patch("backend.api.memory.profile_active", return_value=True),
     ):
         response = client.get("/memory", headers=_auth("user-a"))
 

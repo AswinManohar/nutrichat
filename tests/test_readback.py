@@ -245,7 +245,6 @@ def turn(writes) -> Iterator[SimpleNamespace]:
     )
     with (
         patch.object(orchestrator, "_graph_for", return_value=graph),
-        patch.object(orchestrator, "profile_active", return_value=True),
         patch.object(orchestrator, "_load_entries", new=AsyncMock()) as entries,
         patch.object(
             orchestrator,
@@ -350,7 +349,7 @@ async def test_a_correction_denies_then_reads_the_new_statement(turn) -> None:
         result = await _send(message)
 
     turn.deny.assert_awaited_once_with("user-1", entry.id)
-    turn.extract.assert_awaited_once_with("user-1", message, soft=True)
+    turn.extract.assert_awaited_once_with("user-1", message)
     asked.assert_awaited_once_with("user-1", [prawns.id], THREAD)
     assert result["message"].startswith("Okay, I won't save that.")
     assert result["message"].endswith("Is that right?")
@@ -486,17 +485,6 @@ async def test_an_unrelated_message_while_both_wait_goes_to_the_card(turn) -> No
     turn.confirm.assert_not_awaited()
     turn.logging.assert_awaited_once()
     assert "still waiting" not in result["message"]
-
-
-async def test_readback_answers_work_for_users_off_the_curated_profile(turn) -> None:
-    entry = _pending()
-    turn.entries.return_value = [entry]
-
-    with patch.object(orchestrator, "profile_active", return_value=False):
-        await _send("yes")
-
-    turn.confirm.assert_awaited_once_with("user-1", entry.id)
-    turn.coaching.assert_not_awaited()
 
 
 async def test_celery_extraction_is_skipped_when_the_turn_extracted(turn) -> None:

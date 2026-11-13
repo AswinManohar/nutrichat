@@ -627,31 +627,3 @@ async def test_a_loosened_limit_is_saved_pending_replacing_the_confirmed_one() -
     kwargs = mocks["add_entry"].await_args.kwargs
     assert (kwargs["state"], kwargs["replaces_id"]) == ("pending", "e-1500")
     assert len(result.asked) == 1
-
-
-async def test_hard_only_extraction_uses_the_short_call_and_reads_no_soft_profile() -> (
-    None
-):
-    soft_llm = _llm_returning(CuratorOutput())
-    hard_llm = _llm_returning(CuratorOutput(hard=[_draft()]))
-    load = AsyncMock(return_value=_state())
-    mocks, patches = _patched(soft_llm, hard_scores=[0.97])
-    patches.append(patch("backend.agent.memory_curator._hard_curator_llm", hard_llm))
-    patches.append(patch("backend.agent.memory_curator.load_state", load))
-    for p in patches:
-        p.start()
-    try:
-        result = await extract_turn("user-1", MESSAGE, soft=False)
-    finally:
-        for p in reversed(patches):
-            p.stop()
-
-    soft_llm.ainvoke.assert_not_awaited()
-    load.assert_not_awaited()
-    system, human = hard_llm.ainvoke.call_args.args[0]
-    assert "health and safety facts" in system.content
-    assert "<soft_facts>" not in system.content
-    assert "Current profile" not in human.content
-    assert "Removed by the user" not in human.content
-    assert len(result.accepted) == 1
-    mocks["apply"].assert_not_awaited()

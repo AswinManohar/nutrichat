@@ -68,8 +68,7 @@ from backend.safety.tables import ClinicalTables, TablesUnavailable, load_tables
 logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
-# One prompt with soft and hard sections for users on the curated profile; the
-# hard section alone for everyone else (cheaper: no soft profile in the input).
+# One prompt with soft and hard sections for every user.
 _HARD_SYSTEM = _TUNABLES.prompts.profile_curator_hard_system
 _CURATOR_SYSTEM = f"{_TUNABLES.prompts.profile_curator_system}\n\n{_HARD_SYSTEM}"
 _LOG_HABITS_SYSTEM = _TUNABLES.prompts.log_habits_system
@@ -78,7 +77,9 @@ _LOG_SOURCE = "inferred_from_logs"
 # Most drafts of each kind one turn may carry; bounds the GLiDE requests.
 _MAX_DRAFTS = 8
 
-CuratorKind = Literal["dislike", "like", "habit", "context"]
+CuratorKind = Literal[
+    "dislike", "like", "cuisine", "budget", "cooking_time", "habit", "context"
+]
 HardType = Literal[
     "allergy",
     "diagnosis",
@@ -163,7 +164,6 @@ class CuratorOutput(HardCuratorOutput):
 
 
 _curator_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(CuratorOutput)
-_hard_curator_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(HardCuratorOutput)
 
 
 def label_hard(entries: list[HardEntry]) -> list[tuple[str, HardEntry]]:
@@ -180,8 +180,6 @@ def build_curator_input(
     agent_reply: str = "",
     entries: list[HardEntry] | None = None,
     tables: ClinicalTables | None = None,
-    *,
-    soft: bool = True,
 ) -> str:
     """Render the profile and the turn as the curator's user message.
 
@@ -192,8 +190,6 @@ def build_curator_input(
             runs before the reply exists (coaching turns).
         entries: The patient's live hard entries.
         tables: Clinical tables, for labels and known condition keys.
-        soft: False leaves out the soft profile and removed facts (the hard-only
-            call for users not on the curated profile).
 
     Returns:
         Prompt text listing facts by handle, the hard profile, removed facts,
@@ -220,18 +216,14 @@ def build_curator_input(
     turn = f"User: {user_input}"
     if agent_reply:
         turn += f"\nAssistant: {agent_reply}"
-    soft_parts = [
-        f"Current profile ({fill:.0%} full):\n{facts or '(empty)'}",
-    ]
-    removed_parts = [f"Removed by the user:\n{removed or '(none)'}"]
     return "\n\n".join(
         [
-            *(soft_parts if soft else []),
+            f"Current profile ({fill:.0%} full):\n{facts or '(empty)'}",
             "Hard profile (retire only handles h1...):\n"
             + ("\n".join(hard_lines) or "(empty)"),
             f"Known condition keys: {conditions or '(none)'}",
             f"Diet settings available: {', '.join(sorted(DIET_CHIPS))}",
-            *(removed_parts if soft else []),
+            f"Removed by the user:\n{removed or '(none)'}",
             f"Conversation turn:\n{turn}",
         ]
     )
@@ -443,7 +435,7 @@ async def _apply_hard(
 
 
 async def extract_turn(
-    user_id: str, user_input: str, agent_reply: str = "", *, soft: bool = True
+    user_id: str, user_input: str, agent_reply: str = ""
 ) -> TurnExtraction:
     """Extract soft and hard facts from one turn and write them.
 
@@ -457,39 +449,31 @@ async def extract_turn(
             fact.
         agent_reply: The assistant's reply, when it exists already. Context
             for soft facts only.
-        soft: False for users not on the curated profile: the shorter hard-only
-            prompt and output, and no soft profile read or write.
 
     Returns:
         What was written; empty when the turn changed nothing.
     """
     if not user_input.strip():
         return TurnExtraction()
-    if soft:
-        state, entries = await asyncio.gather(
-            load_state(user_id), profile.load_hard_profile(user_id)
-        )
-    else:
-        state, entries = ProfileState(), await profile.load_hard_profile(user_id)
+    state, entries = await asyncio.gather(
+        load_state(user_id), profile.load_hard_profile(user_id)
+    )
     try:
         tables: ClinicalTables | None = load_tables()
     except TablesUnavailable as exc:
         logger.error("clinical tables unavailable, no hard facts this turn: %s", exc)
         tables = None
-    llm = _curator_llm if soft else _hard_curator_llm
-    output: HardCuratorOutput = await llm.ainvoke(
+    output: CuratorOutput = await _curator_llm.ainvoke(
         [
-            SystemMessage(content=_CURATOR_SYSTEM if soft else _HARD_SYSTEM),
+            SystemMessage(content=_CURATOR_SYSTEM),
             HumanMessage(
                 content=build_curator_input(
-                    state, user_input, agent_reply, entries, tables, soft=soft
+                    state, user_input, agent_reply, entries, tables
                 )
             ),
         ]
     )
-    soft_candidates = (
-        to_memory_ops(output.ops, state) if isinstance(output, CuratorOutput) else []
-    )
+    soft_candidates = to_memory_ops(output.ops, state)
     hard_candidates = (
         to_hard_candidates(output, user_input, entries, tables) if tables else []
     )
@@ -521,21 +505,18 @@ async def _apply_soft(
         result.soft = await apply_ops(user_id, ops, "curator")
 
 
-async def curate_turn(
-    user_id: str, user_input: str, agent_reply: str, *, soft: bool = True
-) -> ApplyOutcome:
+async def curate_turn(user_id: str, user_input: str, agent_reply: str) -> ApplyOutcome:
     """Update a user's profile from one logged turn (Celery, after the reply).
 
     Args:
         user_id: Supabase Auth UUID.
         user_input: The user's message.
         agent_reply: The agent's response.
-        soft: False runs the hard-only extraction (users off the curated profile).
 
     Returns:
         What was applied to the soft profile; empty when nothing changed.
     """
-    return (await extract_turn(user_id, user_input, agent_reply, soft=soft)).soft
+    return (await extract_turn(user_id, user_input, agent_reply)).soft
 
 
 class LogHabit(BaseModel):

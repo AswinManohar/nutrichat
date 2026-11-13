@@ -44,7 +44,9 @@ logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
-FactKind = Literal["dislike", "like", "habit", "context"]
+FactKind = Literal[
+    "dislike", "like", "cuisine", "budget", "cooking_time", "habit", "context"
+]
 FactSource = Literal["stated", "inferred_from_chat", "inferred_from_logs"]
 Actor = Literal["user", "curator", "weekly"]
 
@@ -59,11 +61,25 @@ _SOURCE_FOR: dict[str, str] = {
     "weekly": "inferred_from_logs",
 }
 # Kinds that may be evicted when the profile is full.
-_SOFT_KINDS = frozenset({"like", "habit", "context", LEGACY_KIND})
-_KIND_ORDER = ("dislike", "like", "habit", "context", LEGACY_KIND)
+_SOFT_KINDS = frozenset(
+    {"like", "cuisine", "budget", "cooking_time", "habit", "context", LEGACY_KIND}
+)
+_KIND_ORDER = (
+    "dislike",
+    "like",
+    "cuisine",
+    "budget",
+    "cooking_time",
+    "habit",
+    "context",
+    LEGACY_KIND,
+)
 _KIND_HEADINGS: dict[str, str] = {
     "dislike": "Dislikes (avoid)",
     "like": "Likes",
+    "cuisine": "Cuisines",
+    "budget": "Budget",
+    "cooking_time": "Cooking time",
     "habit": "Habits",
     "context": "Context",
     LEGACY_KIND: "Other noted preferences",
@@ -218,12 +234,6 @@ class _Plan:
     added: list[UserMemory] = field(default_factory=list)
     deleted: list[UserMemory] = field(default_factory=list)
     evicted: list[str] = field(default_factory=list)
-
-
-def profile_active(user_id: str) -> bool:
-    """Whether this user is on the curated-profile path (flag or allowlist)."""
-    cfg = _TUNABLES.memory
-    return cfg.profile_enabled or user_id in cfg.profile_allowlist
 
 
 def _clean(fact: str) -> str:
@@ -664,6 +674,13 @@ async def load_profile(user_id: str) -> list[MemoryFact]:
     return _sorted_facts(rows)
 
 
+def _dated(fact: MemoryFact) -> str:
+    """The fact with the day it was learned, so the coach can weigh how stale it is."""
+    if fact.created_at is None:
+        return fact.fact
+    return f"{fact.fact} (since {fact.created_at.date().isoformat()})"
+
+
 def label_facts(facts: list[MemoryFact]) -> list[tuple[str, MemoryFact]]:
     """Pair each fact with a short handle ("m1", "m2", ...) for LLM prompts.
 
@@ -681,8 +698,9 @@ def render_profile_block(
 ) -> str:
     """Render the soft profile as the coach's prompt block.
 
-    Kinds are added while the block stays within ``max_chars``, so the prompt
-    is bounded even if the table is not. The staples line is bounded by its
+    Kinds are added while the fact text stays within ``max_chars`` (the dates
+    add at most about 19 characters per fact), so the prompt is bounded even
+    if the table is not. The staples line is bounded by its
     producer (agent/tools/history.py get_staple_foods). Hard facts are
     rendered separately by ``safety.profile.render_block``.
 
@@ -699,11 +717,11 @@ def render_profile_block(
     used = 0
     for kind in _KIND_ORDER:
         kept: list[str] = []
-        for fact in (f.fact for f in facts if f.kind == kind):
-            if used + len(fact) > budget:
+        for fact in (f for f in facts if f.kind == kind):
+            if used + len(fact.fact) > budget:
                 break
-            kept.append(fact)
-            used += len(fact)
+            kept.append(_dated(fact))
+            used += len(fact.fact)
         if kept:
             lines.append(f"- {_KIND_HEADINGS[kind]}: " + "; ".join(kept))
 
@@ -748,6 +766,5 @@ __all__ = [
     "load_profile",
     "load_state",
     "plan_ops",
-    "profile_active",
     "render_profile_block",
 ]

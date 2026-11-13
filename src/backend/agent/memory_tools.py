@@ -1,6 +1,6 @@
 """The coach's in-turn memory tools: remember, forget, set_diet.
 
-Offered to the response agent only for users on the curated profile, and
+Offered to the response agent for every signed-in user, and
 only called on an explicit request, so an ordinary coaching turn makes no
 extra model round trip. Soft facts go through agent/memory.py apply_ops as
 the "user" actor. Hard facts (restrictions, diet settings) become pending
@@ -71,7 +71,8 @@ async def remember_fact(user_id: str, fact: str, kind: RememberKind) -> str:
     Args:
         user_id: Supabase Auth UUID.
         fact: Short third-person statement, e.g. "Dislikes mushrooms".
-        kind: restriction, dislike, like, habit or context.
+        kind: restriction, dislike, like, cuisine, budget, cooking_time, habit or
+            context.
 
     Returns:
         A sentence for the model saying what happened.
@@ -200,8 +201,8 @@ async def remember(ctx: RunContext[_HasUserId], fact: str, kind: RememberKind) -
         fact: Short third-person statement without a full stop, e.g.
             "Dislikes mushrooms" or "Allergic to peanuts".
         kind: restriction (an allergy or food that must never be served; it
-            is pending until the user confirms), dislike, like, habit or
-            context.
+            is pending until the user confirms), dislike, like, cuisine, budget,
+            cooking_time, habit or context.
     """
     if ctx.deps.user_id is None:
         return "Nothing saved: memory is not available."

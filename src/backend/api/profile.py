@@ -7,20 +7,33 @@ was already applied returns the entry; a state the action cannot reach is a 409.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, get_args
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
-from backend.agent.memory import load_state
+from backend.agent import meal_history
+from backend.agent.memory import (
+    MAX_FACT_CHARS,
+    FactKind,
+    MemoryFact,
+    RemoveFact,
+    ReplaceFact,
+    apply_ops,
+    load_state,
+    normalize_fact,
+)
 from backend.auth.supabase import get_current_user_id
 from backend.config import get_tunables
-from backend.db.models import Recommendation
+from backend.db.models import Recommendation, RedFlagEscalation
 from backend.db.session import get_session
+from backend.ratelimit import user_rate_limiter
 from backend.safety import profile
 from backend.safety.limits import LimitsToday, limits_today
 from backend.safety.tables import ClinicalTables, TablesUnavailable, load_tables
@@ -133,6 +146,83 @@ class MealFeedbackOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SoftFactPatch(BaseModel):
+    """Body of PATCH /profile/soft/{id}: the fields to change."""
+
+    text: str | None = Field(default=None, min_length=1, max_length=MAX_FACT_CHARS)
+    kind: FactKind | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MealsOut(BaseModel):
+    """Response of GET /profile/meals."""
+
+    days: int
+    recommendations: list[meal_history.SuggestedMeal]
+    eaten: list[meal_history.EatenMeal]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ExportedRecommendation(BaseModel):
+    """A recipe that was shown, as exported."""
+
+    id: str
+    created_at: datetime
+    recipe: dict
+    status: str
+    rejection_reason: str | None
+    status_at: datetime
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ExportedEscalation(BaseModel):
+    """A message that matched a red-flag rule; the message is the patient's own."""
+
+    id: str
+    created_at: datetime
+    rule_label: str
+    notify_status: str
+    message: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ExportOut(BaseModel):
+    """Everything remembered about the patient (FR-040b)."""
+
+    exported_at: datetime
+    hard: list[HistoryEntryOut]
+    soft: list[SoftFactOut]
+    recommendations: list[ExportedRecommendation]
+    escalations: list[ExportedEscalation]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _soft_out(fact: MemoryFact) -> SoftFactOut:
+    return SoftFactOut(
+        id=fact.id,
+        kind=fact.kind,
+        text=fact.fact,
+        source=fact.source,
+        created_at=fact.created_at,
+        updated_at=fact.updated_at,
+    )
+
+
+def _history_out(entry: profile.HardEntry, tables: ClinicalTables) -> HistoryEntryOut:
+    return HistoryEntryOut(
+        **_entry_out(entry, tables).model_dump(),
+        retired_at=entry.retired_at,
+        retired_by=entry.retired_by,
+        retired_reason=entry.retired_reason,
+        replaces_id=entry.replaces_id,
+    )
+
+
 def _unavailable() -> HTTPException:
     return HTTPException(
         status_code=503, detail=get_tunables().safety.profile_unavailable_text
@@ -196,17 +286,7 @@ async def get_profile(user_id: str = Depends(get_current_user_id)) -> ProfileOut
         hard=[_entry_out(e, tables) for e in entries],
         pending_count=sum(1 for e in entries if e.state == "pending"),
         care_team=[],
-        soft=[
-            SoftFactOut(
-                id=f.id,
-                kind=f.kind,
-                text=f.fact,
-                source=f.source,
-                created_at=f.created_at,
-                updated_at=f.updated_at,
-            )
-            for f in state.facts
-        ],
+        soft=[_soft_out(f) for f in state.facts],
         missing_values=profile.missing_values(entries, tables),
     )
 
@@ -222,16 +302,7 @@ async def get_history(
         logger.error("loading profile history failed for %s: %s", user_id, exc)
         raise _unavailable() from exc
     tables = _tables()
-    return [
-        HistoryEntryOut(
-            **_entry_out(e, tables).model_dump(),
-            retired_at=e.retired_at,
-            retired_by=e.retired_by,
-            retired_reason=e.retired_reason,
-            replaces_id=e.replaces_id,
-        )
-        for e in entries
-    ]
+    return [_history_out(e, tables) for e in entries]
 
 
 @router.get("/limits/today")
@@ -334,3 +405,153 @@ async def meal_feedback(
             row.rejection_reason = req.reason if req.status == "rejected" else None
             row.status_at = datetime.now(UTC)
     return MealFeedbackOut(recommendation_id=recommendation_id, status=req.status)
+
+
+def _fact_id(fact_id: str) -> str:
+    try:
+        return str(uuid.UUID(fact_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Preference not found") from exc
+
+
+@router.patch("/soft/{fact_id}")
+async def edit_soft_fact(
+    fact_id: str, req: SoftFactPatch, user_id: str = Depends(get_current_user_id)
+) -> SoftFactOut:
+    """Change a preference's text or kind; the patient's edit counts as stated.
+
+    If the new text equals another live preference the two merge and that one
+    is returned. 404 for an unknown id (or another patient's).
+    """
+    fact_id = _fact_id(fact_id)
+    if req.text is None and req.kind is None:
+        raise HTTPException(status_code=422, detail="Give a text or a kind")
+    facts = (await load_state(user_id)).facts
+    current = next((f for f in facts if f.id == fact_id), None)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Preference not found")
+    text = req.text if req.text is not None else current.fact
+    if req.kind is not None:
+        kind = req.kind
+    elif current.kind in get_args(FactKind):
+        kind = current.kind
+    else:
+        raise HTTPException(status_code=422, detail="Choose a kind for this older note")
+    outcome = await apply_ops(
+        user_id, [ReplaceFact(id=fact_id, fact=text, kind=kind)], "user"
+    )
+    if outcome.n_applied == 0:
+        raise HTTPException(status_code=404, detail="Preference not found")
+    key = normalize_fact(text)
+    saved = next(
+        (f for f in (await load_state(user_id)).facts if normalize_fact(f.fact) == key),
+        None,
+    )
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Preference not found")
+    return _soft_out(saved)
+
+
+@router.delete("/soft/{fact_id}", status_code=204)
+async def delete_soft_fact(
+    fact_id: str, user_id: str = Depends(get_current_user_id)
+) -> Response:
+    """Delete a preference. It is not learned again unless the patient restates it.
+
+    Idempotent: 204 whether the preference was live, already deleted or never
+    existed, so ids cannot be probed.
+    """
+    await apply_ops(user_id, [RemoveFact(id=_fact_id(fact_id))], "user")
+    return Response(status_code=204)
+
+
+@router.get("/meals")
+async def get_meals(
+    days: int = Query(default=21, ge=1, le=90),
+    user_id: str = Depends(get_current_user_id),
+) -> MealsOut:
+    """Recipes shown (with accepted or rejected status and reason) and the
+    labelled meals logged in the last ``days`` days, newest first."""
+    limit = get_tunables().memory.history_api_max_rows
+    try:
+        suggested, eaten = await asyncio.gather(
+            meal_history.load_suggested(user_id, days, limit),
+            meal_history.load_eaten(user_id, days, limit),
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure must not look like "empty"
+        logger.error("loading meal history failed for %s: %s", user_id, exc)
+        raise _unavailable() from exc
+    return MealsOut(days=days, recommendations=suggested, eaten=eaten)
+
+
+@router.get(
+    "/export",
+    dependencies=[Depends(user_rate_limiter("profile_export", limit=10, window_s=60))],
+)
+async def export_profile(user_id: str = Depends(get_current_user_id)) -> Response:
+    """Everything remembered about the patient as one JSON file (FR-040b).
+
+    Hard entries with their history, live preferences (deleted ones are not
+    kept in the file), recipes shown, and red-flag matches with the message.
+    """
+    try:
+        history = await profile.load_history(user_id)
+        state = await load_state(user_id)
+        async with get_session()() as session:
+            recs = (
+                (
+                    await session.execute(
+                        select(Recommendation)
+                        .where(Recommendation.user_id == user_id)
+                        .order_by(Recommendation.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            escalations = (
+                (
+                    await session.execute(
+                        select(RedFlagEscalation)
+                        .where(RedFlagEscalation.user_id == user_id)
+                        .order_by(RedFlagEscalation.created_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+    except Exception as exc:  # noqa: BLE001 - never hand out a partial export
+        logger.error("profile export failed for %s: %s", user_id, exc)
+        raise _unavailable() from exc
+    tables = _tables()
+    body = ExportOut(
+        exported_at=datetime.now(UTC),
+        hard=[_history_out(e, tables) for e in history],
+        soft=[_soft_out(f) for f in state.facts],
+        recommendations=[
+            ExportedRecommendation(
+                id=r.id,
+                created_at=r.created_at,
+                recipe=r.recipe,
+                status=r.status,
+                rejection_reason=r.rejection_reason,
+                status_at=r.status_at,
+            )
+            for r in recs
+        ],
+        escalations=[
+            ExportedEscalation(
+                id=e.id,
+                created_at=e.created_at,
+                rule_label=e.rule_label,
+                notify_status=e.notify_status,
+                message=e.message,
+            )
+            for e in escalations
+        ],
+    )
+    return Response(
+        content=body.model_dump_json(),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="mealsy-profile.json"'},
+    )

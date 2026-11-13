@@ -12,11 +12,14 @@ is saved.
 Lasting facts about the user's eating that would change what a coach suggests
 weeks from now, written to `ops`:
 - dislike: foods or preparations they do not want.
-- like: foods, cuisines or flavours they enjoy.
+- like: foods or flavours they enjoy.
+- cuisine: cuisines they favour or avoid cooking and eating (Thai, Italian).
+- budget: what they can spend on food (tight weekly budget, prefers cheap cuts).
+- cooking_time: how long they will spend cooking (15 minutes on weekdays).
 - habit: recurring patterns (usually skips breakfast, meal preps on Sunday,
   eats late).
-- context: stable circumstances (cooks for a family of four, no oven, tight
-  budget, night shifts).
+- context: stable circumstances (cooks for a family of four, no oven, night
+  shifts).
 
 Operations:
 - add: a new fact. Give `fact` and `kind`.

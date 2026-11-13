@@ -314,6 +314,28 @@ def test_render_orders_soft_kinds_and_adds_staples() -> None:
     assert "Diet settings" not in block
 
 
+def test_render_adds_the_new_kinds_in_order_with_the_date_learned() -> None:
+    learned = datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
+    facts = [
+        MemoryFact(id=text, fact=text, kind=kind, source="stated", created_at=learned)
+        for text, kind in [
+            ("15 minutes on weekdays", "cooking_time"),
+            ("Tight weekly budget", "budget"),
+            ("Thai", "cuisine"),
+            ("Dal", "like"),
+        ]
+    ]
+
+    lines = render_profile_block(facts, None).splitlines()
+
+    assert lines[1:] == [
+        "- Likes: Dal (since 2026-10-02)",
+        "- Cuisines: Thai (since 2026-10-02)",
+        "- Budget: Tight weekly budget (since 2026-10-02)",
+        "- Cooking time: 15 minutes on weekdays (since 2026-10-02)",
+    ]
+
+
 def test_render_truncates_soft_facts_to_the_budget() -> None:
     facts = [_fact(f"like {i} " + "l" * 40, "like") for i in range(10)]
     block = render_profile_block(facts, None, max_chars=350)

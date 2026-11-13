@@ -21,6 +21,7 @@ from backend.agent.coaching import (
     parse_query,
 )
 from backend.agent.context import ContextBundle, GoalSummary
+from backend.agent.memory import MemoryFact
 from backend.agent.memory_curator import TurnExtraction
 from backend.agent.memory_tools import hard_writes
 from backend.agent.suggest import SuggestionResult
@@ -464,6 +465,10 @@ async def test_handle_meal_plan_feeds_today_totals_and_goals(hard_entries):
 # ---------------------------------------------------------------------------
 
 
+def _fact(text: str, kind: str) -> MemoryFact:
+    return MemoryFact(id=text, fact=text, kind=kind, source="stated")
+
+
 async def test_generate_response_puts_user_context_in_instructions():
     ctx = ContextBundle(
         today_totals=TodayTotals(kcal=1450, protein_g=95, fiber_g=18, n_meals=3),
@@ -473,7 +478,7 @@ async def test_generate_response_puts_user_context_in_instructions():
             fiber_goal=30,
             streak_days=4,
         ),
-        preferences=["dislikes mushrooms"],
+        profile=[_fact("dislikes mushrooms", "dislike")],
     )
     context_prompt = coaching.build_system_prompt(ctx)
 
@@ -550,7 +555,7 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
     parsed = QueryParsed(time_range="yesterday", nutrients=["protein_g"])
     ctx = ContextBundle(
         today_totals=TodayTotals(kcal=1450, protein_g=95, fiber_g=18, n_meals=3),
-        preferences=["vegetarian"],
+        profile=[_fact("vegetarian", "habit")],
     )
 
     with (
@@ -583,7 +588,7 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
         reply = await CoachingAgent().handle("user-1", "and yesterday?")
 
     assert reply.message == "120g yesterday."
-    ctx_mock.assert_awaited_once_with("user-1", "and yesterday?", [])
+    ctx_mock.assert_awaited_once_with("user-1", [])
     assert parse_mock.await_args.kwargs["history"] == _HISTORY
     kwargs = gen_mock.await_args.kwargs
     assert kwargs["history"] == _HISTORY
@@ -675,7 +680,11 @@ async def test_handle_answers_a_meal_request_with_a_checked_recipe(hard_entries)
     parsed = QueryParsed(time_range="today", suggests_meal=True)
     recipe = make_recipe("rice")
     suggestion = SuggestionResult(
-        message="Rice bowl ...", recipe=recipe, recommendation_id="rec-1", attempts=1
+        message="Rice bowl ...",
+        recipe=recipe,
+        recommendation_id="rec-1",
+        constraint_note="Kept this free of peanut.",
+        attempts=1,
     )
     entry = hard_entry(profile.AllergyValue(allergen_group="peanut"))
     hard_entries.append(entry)
@@ -699,6 +708,7 @@ async def test_handle_answers_a_meal_request_with_a_checked_recipe(hard_entries)
 
     assert result.message == "Rice bowl ..."
     assert (result.recipe, result.recommendation_id) == (recipe, "rec-1")
+    assert result.constraint_note == "Kept this free of peanut."
     assert suggest_mock.await_args.args[3] == [entry]
     gen_mock.assert_not_awaited()
 
@@ -1032,7 +1042,6 @@ async def test_fact_extraction_runs_alongside_the_query_parse(hard_entries):
 
     with (
         patch("backend.agent.coaching.parse_query", parse),
-        patch("backend.agent.coaching.profile_active", return_value=True),
         patch("backend.agent.coaching.extract_turn", extract),
         patch(
             "backend.agent.coaching.fetch_data",
@@ -1050,11 +1059,10 @@ async def test_fact_extraction_runs_alongside_the_query_parse(hard_entries):
     assert result.facts_extracted is True
 
 
-async def test_users_off_the_curated_profile_get_the_hard_only_extraction(
+async def test_every_user_gets_the_full_in_turn_extraction(
     hard_entries,
 ):
     with (
-        patch("backend.agent.coaching.profile_active", return_value=False),
         patch(
             "backend.agent.coaching.extract_turn",
             new_callable=AsyncMock,
@@ -1078,7 +1086,7 @@ async def test_users_off_the_curated_profile_get_the_hard_only_extraction(
     ):
         result = await CoachingAgent().handle("user-1", "how are my macros?", THREAD)
 
-    extract_mock.assert_awaited_once_with("user-1", "how are my macros?", soft=False)
+    extract_mock.assert_awaited_once_with("user-1", "how are my macros?")
     assert result.facts_extracted is True
 
 
@@ -1165,7 +1173,6 @@ async def test_a_failed_extraction_does_not_fail_the_turn_and_leaves_celery_to_r
     hard_entries,
 ):
     with (
-        patch("backend.agent.coaching.profile_active", return_value=True),
         patch(
             "backend.agent.coaching.extract_turn",
             new_callable=AsyncMock,

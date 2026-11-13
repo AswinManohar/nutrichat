@@ -7,8 +7,8 @@ Two gates, both required at 100% before the profile is enabled for users:
    the excluded foods, and the coach must make NO memory tool call (a
    spurious call would add a model round trip to an ordinary turn). Run on
    three prompt paths (issue #70):
-   - profile: the curated profile is on;
-   - default: the profile is off, as for every user today, and the data
+   - profile: the soft profile is in the prompt;
+   - default: no soft profile, and the data
      payload carries no goals (the parser did not ask for them), so the diet
      setting can only come from the prompt;
    - fallback: build_context fails and the coach falls back to the
@@ -130,17 +130,17 @@ PROFILES = [
 _PATHS = ("profile", "default", "fallback")
 
 
-def _cases_for(path: str) -> list[tuple[Profile, bool]]:
-    """(profile, profile_on) pairs scored on one prompt path."""
+def _cases_for(path: str) -> list[Profile]:
+    """The profiles scored on one prompt path."""
     chip_only = [p for p in PROFILES if p.chips and not p.facts]
     if path == "profile":
-        return [(p, True) for p in PROFILES]
+        return PROFILES
     if path == "default":
-        return [(p, False) for p in chip_only]
+        return chip_only
     with_restriction = [
         p for p in PROFILES if p.chips or any(f.kind == "restriction" for f in p.facts)
     ]
-    return [(p, True) for p in with_restriction] + [(p, False) for p in chip_only]
+    return [*with_restriction, *chip_only]
 
 
 @dataclass
@@ -208,7 +208,6 @@ def _context(facts: list[MemoryFact], chips: list[str]) -> tuple[str, dict]:
         today_totals=_TOTALS,
         goals=GoalSummary(streak_days=3, **_GOALS),
         hard_block=_hard_block(facts, chips),
-        profile_active=True,
         profile=[f for f in facts if f.kind != "restriction"],
     )
     data = {
@@ -258,10 +257,6 @@ class _Recorder:
         self.attempted: dict[str, list[MemoryOp]] = {}
         self.goals: dict[str, UserGoal] = {}
         self.hard: dict[str, list[hard_profile.HardEntry]] = {}
-        self.profile_on: set[str] = set()
-
-    def is_profile_on(self, user_id: str) -> bool:
-        return user_id in self.profile_on
 
     def session_factory(self) -> MagicMock:
         """A get_session() stand-in whose get(UserGoal, id) reads self.goals."""
@@ -291,14 +286,11 @@ async def _ask(
     chips: list[str],
     *,
     path: str = "profile",
-    profile_on: bool = True,
 ) -> tuple[str, list[MemoryOp]]:
     """Run one coaching reply; return it with the ops the tools tried to apply."""
     user_id = str(uuid.uuid4())
     recorder.profiles[user_id] = facts
     recorder.hard[user_id] = _entries(facts, chips)
-    if profile_on:
-        recorder.profile_on.add(user_id)
     if path == "profile":
         context_prompt, data = _context(facts, chips)
     elif path == "default":
@@ -309,7 +301,7 @@ async def _ask(
             streak_days=3,
             **_GOALS,
         )
-        context_prompt = await _context_prompt(user_id, message)
+        context_prompt = await _context_prompt(user_id, recorder.hard[user_id])
         # fetch_data does not go through build_context, so it still answers.
         data = _default_context(chips)[1]
     reply = await generate_response(
@@ -325,8 +317,6 @@ def _op_text(op: MemoryOp) -> str:
 async def _run_once() -> int:
     recorder = _Recorder()
     with (
-        patch("backend.agent.coaching.profile_active", recorder.is_profile_on),
-        patch("backend.agent.context.profile_active", recorder.is_profile_on),
         patch(
             "backend.agent.coaching.build_context",
             AsyncMock(side_effect=RuntimeError("simulated context failure")),
@@ -346,27 +336,26 @@ async def _score(recorder: _Recorder) -> int:
     failures = 0
 
     restriction_cases = [
-        (path, profile, on, ask)
+        (path, profile, ask)
         for path in _PATHS
-        for profile, on in _cases_for(path)
+        for profile in _cases_for(path)
         for ask in _ASKS
     ]
     results = await asyncio.gather(
         *(
-            _ask(recorder, ask, p.facts, p.chips, path=path, profile_on=on)
-            for path, p, on, ask in restriction_cases
+            _ask(recorder, ask, p.facts, p.chips, path=path)
+            for path, p, ask in restriction_cases
         )
     )
     path_failures = dict.fromkeys(_PATHS, 0)
-    for (path, profile, on, ask), (reply, attempted) in zip(
+    for (path, profile, ask), (reply, attempted) in zip(
         restriction_cases, results, strict=True
     ):
         hits = _violations(reply, profile.forbidden)
         if hits or attempted:
             failures += 1
             path_failures[path] += 1
-            state = "profile on" if on else "profile off"
-            print(f"  FAIL [{path}, {state}] [{profile.name}] {ask!r}")
+            print(f"  FAIL [{path}] [{profile.name}] {ask!r}")
             if hits:
                 print(f"       suggested: {', '.join(hits)}")
             if attempted:

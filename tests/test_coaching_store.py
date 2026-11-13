@@ -251,3 +251,53 @@ async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
         assert link.await_count == expected
         if expected:
             link.assert_awaited_once_with("rec-1", "resp-1")
+
+
+async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
+    from backend.agent import orchestrator
+    from backend.agent.coaching import QueryParsed
+    from tests.recipe_helpers import make_recipe
+
+    note = "Kept this free of peanut because of your peanut allergy."
+    result = CoachingResult(
+        message=f"Rice bowl\n\n{note}",
+        parsed=QueryParsed(time_range="today", suggests_meal=True),
+        recipe=make_recipe("rice"),
+        recommendation_id="rec-1",
+        constraint_note=note,
+    )
+    with (
+        patch.object(orchestrator, "consume_llm_credit", AsyncMock(return_value=True)),
+        patch.object(
+            orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
+        ),
+        patch.object(
+            orchestrator, "save_coaching_response", AsyncMock(return_value=None)
+        ),
+    ):
+        response = await orchestrator._handle_coaching("user-1", "dinner?")
+
+    assert response["constraint_note"] == note
+    assert response["recommendation_id"] == "rec-1"
+    assert note in response["message"]
+
+
+async def test_a_reply_without_a_recipe_has_no_constraint_note() -> None:
+    from backend.agent import orchestrator
+    from backend.agent.coaching import QueryParsed
+
+    result = CoachingResult(
+        message="120 g today.", parsed=QueryParsed(time_range="today")
+    )
+    with (
+        patch.object(orchestrator, "consume_llm_credit", AsyncMock(return_value=True)),
+        patch.object(
+            orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
+        ),
+        patch.object(
+            orchestrator, "save_coaching_response", AsyncMock(return_value=None)
+        ),
+    ):
+        response = await orchestrator._handle_coaching("user-1", "protein?")
+
+    assert "constraint_note" not in response

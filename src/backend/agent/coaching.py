@@ -31,7 +31,6 @@ from backend.agent.context import (
 )
 from backend.agent.cost import record_run_cost
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
-from backend.agent.memory import profile_active
 from backend.agent.memory_curator import TurnExtraction, extract_turn
 from backend.agent.memory_tools import hard_writes, memory_toolset
 from backend.agent.readback import Plan, Readback, commit_readback, plan_readback
@@ -121,6 +120,9 @@ class CoachingResult(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     recipe: Recipe | None = None
     recommendation_id: str | None = None
+    # The sentence naming what a shown recipe was kept to (already inside
+    # ``message``), for clients that show it on its own.
+    constraint_note: str | None = None
     # The question asked at the end of the reply, when a hard fact needs
     # confirming (spec 013 US4).
     readback: Readback | None = None
@@ -271,8 +273,8 @@ class _ResponseDeps:
 
     context_prompt: str
     passage_block: str = ""
-    # Set only for users on the curated profile; enables the memory tools
-    # and the profile rules.
+    # Set whenever the turn has a user; enables the memory tools and the
+    # profile rules.
     user_id: str | None = None
     # The patient's live hard entries, loaded once for the turn; the reply
     # guard applies the confirmed ones.
@@ -320,8 +322,8 @@ async def _guard_reply(ctx: RunContext[_ResponseDeps], text: str) -> str:
 def _user_context_instructions(ctx: RunContext[_ResponseDeps]) -> str:
     """Append the per-user context block (today, goals, weekly pattern,
     preferences) built by agent/context.py, then any guideline passages,
-    to the static coaching rules. Users on the curated profile also get
-    the profile rules, ahead of the context they govern."""
+    to the static coaching rules. Signed-in users also get the profile
+    rules, ahead of the context they govern."""
     blocks = (
         _PROFILE_RULES if ctx.deps.user_id else "",
         ctx.deps.context_prompt,
@@ -511,7 +513,7 @@ async def generate_response(
 ) -> str:
     """Generate a grounded natural-language answer from fetched data.
 
-    For a user on the curated profile the model is also offered the memory
+    For a signed-in user the model is also offered the memory
     tools (remember, forget, set_diet). It calls one only on an explicit
     request, which costs one extra model round trip on that turn; every
     other turn is a single round trip, as before.
@@ -526,7 +528,7 @@ async def generate_response(
         passages: Retrieved guideline passages; rendered by format_passages
             and appended after the context block. Empty omits the block.
         user_id: Supabase Auth UUID. Memory tools are enabled only when
-            given and the user is on the curated profile.
+            given.
         entries: The patient's live hard entries; the reply guard applies
             the confirmed ones to the reply.
 
@@ -536,11 +538,11 @@ async def generate_response(
         after its rewrites, ``safety.reply_guard_fallback_text`` instead.
     """
     content = f"User question: {message}\n\nData:\n{json.dumps(data, default=str)}"
-    use_memory = user_id is not None and profile_active(user_id)
+    use_memory = user_id is not None
     deps = _ResponseDeps(
         context_prompt=context_prompt,
         passage_block=format_passages(passages),
-        user_id=user_id if use_memory else None,
+        user_id=user_id,
         entries=list(entries),
     )
     try:
@@ -596,10 +598,10 @@ class RestrictionsUnavailableError(Exception):
     """
 
 
-async def _context_prompt(user_id: str, message: str, entries: list[HardEntry]) -> str:
+async def _context_prompt(user_id: str, entries: list[HardEntry]) -> str:
     """Build the per-user context block, falling back to restrictions only.
 
-    build_context fans out to Postgres, Redis and the Gemini embeddings API.
+    build_context fans out to Postgres and Redis.
     Most of the context is an enrichment, so a failure there must not take
     down a coaching turn that could answer from fetch_data alone, hence the
     broad catch. The binding part (the hard profile) is then rendered again
@@ -612,7 +614,7 @@ async def _context_prompt(user_id: str, message: str, entries: list[HardEntry]) 
             must not eat.
     """
     try:
-        return build_system_prompt(await build_context(user_id, message, entries))
+        return build_system_prompt(await build_context(user_id, entries))
     except Exception as exc:  # noqa: BLE001 — see docstring
         logger.warning(
             "build_context failed for %s, coaching with restrictions only: %s",
@@ -626,9 +628,7 @@ async def _context_prompt(user_id: str, message: str, entries: list[HardEntry]) 
         raise RestrictionsUnavailableError(user_id) from exc
 
 
-async def _profile_and_context(
-    user_id: str, message: str
-) -> tuple[list[HardEntry], str]:
+async def _profile_and_context(user_id: str) -> tuple[list[HardEntry], str]:
     """Load the hard profile once, then build the context from it.
 
     Raises:
@@ -639,7 +639,7 @@ async def _profile_and_context(
     except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
         logger.error("loading hard profile failed for %s: %s", user_id, exc)
         raise RestrictionsUnavailableError(user_id) from exc
-    return entries, await _context_prompt(user_id, message, entries)
+    return entries, await _context_prompt(user_id, entries)
 
 
 async def _replan(
@@ -676,13 +676,12 @@ async def _none() -> list[RetrievedChunk]:
 async def _extract_facts(user_id: str, message: str) -> TurnExtraction | None:
     """Extract hard and soft facts from the patient's message, inside the turn.
 
-    Hard facts are read for every user; soft preferences only for users on the
-    curated profile (a cheaper, hard-only call for the rest). A failure is
+    One curator call reads hard facts and soft preferences. A failure is
     logged and returns None: the turn goes on without new facts and the
     orchestrator still queues the Celery curator for it.
     """
     try:
-        return await extract_turn(user_id, message, soft=profile_active(user_id))
+        return await extract_turn(user_id, message)
     except Exception as exc:  # noqa: BLE001 — extraction must never fail the turn
         logger.error("in-turn fact extraction failed for %s: %s", user_id, exc)
         return None
@@ -734,7 +733,7 @@ class CoachingAgent:
         # the fact extraction don't depend on each other, so overlap them.
         parsed, (entries, context_prompt), extraction = await asyncio.gather(
             parse_query(message, history=history),
-            _profile_and_context(user_id, message),
+            _profile_and_context(user_id),
             _extract_facts(user_id, message),
         )
         if extraction is not None:
@@ -777,6 +776,7 @@ class CoachingAgent:
                     parsed=parsed,
                     recipe=suggestion.recipe,
                     recommendation_id=suggestion.recommendation_id,
+                    constraint_note=suggestion.constraint_note,
                 )
             )
         # Data fetch and guideline retrieval are independent too.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +15,7 @@ from sqlalchemy import select
 from backend.agent import suggest
 from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
-from backend.db.models import CheckFailure, Recommendation, ReviewItem
+from backend.db.models import CheckFailure, MealLog, Recommendation, ReviewItem
 from backend.db.session import get_session
 from backend.safety import profile
 from backend.safety.checker import CheckResult
@@ -106,6 +107,85 @@ async def rows(model):
 
 async def user_rows(model, user_id: str):
     return [r for r in await rows(model) if r.user_id == user_id]
+
+
+async def test_the_constraint_sentence_is_also_sent_on_its_own(
+    db_user, generator
+) -> None:
+    generator(_RICE)
+
+    result = await run(db_user, [peanut_allergy()])
+
+    assert result.constraint_note == (
+        "Kept this free of peanut because of your peanut allergy."
+    )
+    assert result.constraint_note in result.message
+
+
+async def test_no_constraint_note_when_no_entry_applied(db_user, generator) -> None:
+    generator(_RICE)
+
+    result = await run(db_user, [])
+
+    assert result.recipe is not None and result.constraint_note is None
+
+
+async def test_three_weeks_of_meals_reach_the_recipe_prompt(
+    db_user, generator, prompts
+) -> None:
+    async with get_session()() as session:
+        session.add_all(
+            [
+                Recommendation(
+                    user_id=db_user,
+                    recipe={"name": "Lemon chicken"},
+                    check_snapshot={"passed": True},
+                    attempts=1,
+                    status="rejected",
+                    rejection_reason="too bland",
+                ),
+                Recommendation(
+                    user_id=db_user,
+                    recipe={"name": "Old stew"},
+                    check_snapshot={"passed": True},
+                    attempts=1,
+                    status="shown",
+                    created_at=datetime.now(UTC) - timedelta(days=30),
+                ),
+                MealLog(
+                    user_id=db_user,
+                    meal_type="breakfast",
+                    kcal=300,
+                    protein_g=10,
+                    carbs_g=40,
+                    fat_g=5,
+                    fiber_g=4,
+                    label="Oatmeal with banana",
+                ),
+            ]
+        )
+        await session.commit()
+    generator(_RICE)
+
+    await run(db_user, [])
+
+    assert "- Lemon chicken (suggested, rejected: too bland)" in prompts[0]
+    assert "- Oatmeal with banana (eaten)" in prompts[0]
+    assert "Old stew" not in prompts[0]
+
+
+async def test_a_failed_history_read_does_not_stop_the_recipe(
+    db_user, generator, prompts
+) -> None:
+    generator(_RICE)
+
+    with patch(
+        "backend.agent.meal_history.load_suggested", side_effect=OSError("down")
+    ):
+        result = await run(db_user, [])
+
+    assert result.recipe is not None
+    assert "do not repeat these" not in prompts[0]
 
 
 async def test_a_recipe_that_passes_is_shown_and_recorded(db_user, generator) -> None:

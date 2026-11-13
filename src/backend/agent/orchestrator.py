@@ -18,7 +18,6 @@ from backend.agent.coaching import CoachingAgent, RestrictionsUnavailableError
 from backend.agent.coaching_store import link_recommendation, save_coaching_response
 from backend.agent.graph import build_graph
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
-from backend.agent.memory import profile_active
 from backend.agent.memory_curator import TurnExtraction, extract_turn
 from backend.agent.system_one import RoutingJudgment, judge_message
 from backend.agent.tools.usda import NULLABLE_MACROS
@@ -428,9 +427,7 @@ async def _read_correction(
     if all(e.state == "confirmed" for e in awaiting):
         return TurnExtraction()
     try:
-        extraction = await extract_turn(
-            user_id, user_input, soft=profile_active(user_id)
-        )
+        extraction = await extract_turn(user_id, user_input)
     except Exception as exc:  # noqa: BLE001 — route the message normally instead
         logger.error("could not read the correction for %s: %s", user_id, exc)
         return None
@@ -840,7 +837,8 @@ async def _handle_coaching(
         Dict with status, message, paused=False, items=[] — same shape as
         meal logging so web and Telegram channels stay uniform — plus
         response_id when the reply was persisted, and recipe (the checked
-        Recipe as a dict) with recommendation_id when the reply is a recipe.
+        Recipe as a dict) with recommendation_id and constraint_note when the
+        reply is a recipe.
         When the hard profile cannot be loaded the message is
         ``safety.profile_unavailable_text`` and nothing is persisted.
     """
@@ -901,6 +899,7 @@ async def _handle_coaching(
     if result.recipe is not None:
         response["recipe"] = result.recipe.model_dump(mode="json")
         response["recommendation_id"] = result.recommendation_id
+        response["constraint_note"] = result.constraint_note
     if result.readback is not None:
         response["readback"] = result.readback.model_dump()
     if result.facts_extracted:

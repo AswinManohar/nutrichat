@@ -1,4 +1,8 @@
-"""What Mealsy remembers about the user: read the profile, remove a fact."""
+"""What Mealsy remembers about the user: read the profile, remove a fact.
+
+Deprecated: ``/profile`` (api/profile.py) replaces these routes. They stay for
+the released app and go once the app release that uses ``/profile`` is live.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,6 @@ from backend.agent.memory import (
     RemoveFact,
     apply_ops,
     load_state,
-    profile_active,
 )
 from backend.auth.supabase import get_current_user_id
 from backend.ratelimit import user_rate_limiter
@@ -45,8 +48,8 @@ class MemoryResponse(BaseModel):
     ``facts`` are stored and can be removed. ``diet_settings`` are the
     user's own Settings chips, and ``staples`` are computed from their meal
     log; both are shown for transparency and changed elsewhere.
-    ``coach_uses_profile`` is false while the user is still on the legacy
-    memory path, where the coach sees only a few of these facts per turn.
+    ``coach_uses_profile`` is always true now; the field stays for the
+    released app.
     """
 
     coach_uses_profile: bool
@@ -59,15 +62,16 @@ class MemoryResponse(BaseModel):
 
 @router.get(
     "",
+    deprecated=True,
     dependencies=[
         Depends(user_rate_limiter("memory_read", limit=READ_RATE_LIMIT, window_s=60))
     ],
 )
 async def get_memory(user_id: str = Depends(get_current_user_id)) -> MemoryResponse:
-    """Return everything the coach remembers about the caller."""
+    """Return everything the coach remembers about the caller (use GET /profile)."""
     state = await load_state(user_id)
     return MemoryResponse(
-        coach_uses_profile=profile_active(user_id),
+        coach_uses_profile=True,
         facts=[FactOut(**fact.model_dump()) for fact in state.facts],
         diet_settings=state.diet_chips,
         staples=await fetch_staples(user_id),
@@ -77,6 +81,7 @@ async def get_memory(user_id: str = Depends(get_current_user_id)) -> MemoryRespo
 @router.delete(
     "/{fact_id}",
     status_code=204,
+    deprecated=True,
     dependencies=[
         Depends(
             user_rate_limiter("memory_delete", limit=DELETE_RATE_LIMIT, window_s=60)

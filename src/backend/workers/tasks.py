@@ -11,14 +11,11 @@ import logfire
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_process_init
-from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from backend.agent.llm import FLASH_LITE_MODEL, embed_text, make_llm
-from backend.agent.memory import profile_active
+from backend.agent.llm import embed_text
 from backend.agent.memory_curator import curate_turn
 from backend.agent.memory_curator import infer_log_habits as _infer_log_habits
 from backend.agent.tools.history import (
@@ -37,7 +34,6 @@ from backend.db.models import (
     NutrientCheckup,
     RedFlagEscalation,
     UserGoal,
-    UserMemory,
 )
 from backend.db.session import dispose_engine, get_session
 from backend.observability import configure_observability
@@ -91,8 +87,6 @@ def _init_observability(**_: object) -> None:
 
 
 # Tunable thresholds — see src/backend/config/tunables.yaml for docs.
-_DEDUP_DISTANCE_THRESHOLD = _TUNABLES.memory.dedup_distance_threshold
-_NEW_FACT_CONFIDENCE = _TUNABLES.memory.new_fact_confidence
 _VEG_DAY_FIBER_THRESHOLD_G = _TUNABLES.summaries.veg_day_fiber_threshold_g
 _WEAK_SPOT_RATIO = _TUNABLES.summaries.weak_spot_ratio
 _MISSED_MEAL_MIN_DAYS = _TUNABLES.summaries.missed_meal_min_days
@@ -121,21 +115,6 @@ def _run(coro: Coroutine[Any, Any, _T]) -> _T:
             await dispose_engine()
 
     return asyncio.run(_wrapped())
-
-
-class _ExtractedFacts(BaseModel):
-    """Preference/habit facts extracted from a conversation turn."""
-
-    facts: list[str] = Field(default_factory=list)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-_FACT_EXTRACTION_SYSTEM = _TUNABLES.prompts.fact_extraction_system
-
-_fact_extraction_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(
-    _ExtractedFacts
-)
 
 
 # ---------------------------------------------------------------------------
@@ -177,75 +156,21 @@ def embed_meal_summary(meal_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _extract_and_store_facts(
-    user_id: str, user_input: str, agent_reply: str
-) -> None:
-    if profile_active(user_id):
-        await curate_turn(user_id, user_input, agent_reply)
-        return
-
-    # Hard facts (allergies, medications, ...) are inferred for every user;
-    # soft facts stay on the legacy path below until the curated profile
-    # replaces it for everyone (spec 013, T082).
-    await curate_turn(user_id, user_input, agent_reply, soft=False)
-
-    # Legacy append-only path, for users not yet on the curated profile.
-    extracted = await _fact_extraction_llm.ainvoke(
-        [
-            SystemMessage(content=_FACT_EXTRACTION_SYSTEM),
-            HumanMessage(content=f"User: {user_input}\nAssistant: {agent_reply}"),
-        ]
-    )
-    if not extracted.facts:
-        return
-
-    session_factory = get_session()
-    async with session_factory() as session:
-        for fact in extracted.facts:
-            embedding = await embed_text(fact)
-
-            stmt = (
-                select(
-                    UserMemory.id,
-                    UserMemory.embedding.cosine_distance(embedding).label("distance"),
-                )
-                .where(UserMemory.user_id == user_id)
-                .order_by("distance")
-                .limit(1)
-            )
-            nearest = (await session.execute(stmt)).first()
-            if nearest is not None and nearest.distance < _DEDUP_DISTANCE_THRESHOLD:
-                continue
-
-            session.add(
-                UserMemory(
-                    user_id=user_id,
-                    fact=fact,
-                    embedding=embedding,
-                    category="preference",
-                    confidence=_NEW_FACT_CONFIDENCE,
-                )
-            )
-        await session.commit()
-
-
 @celery_app.task(
     name="backend.workers.tasks.extract_and_store_facts", ignore_result=True
 )
 def extract_and_store_facts(user_id: str, user_input: str, agent_reply: str) -> None:
-    """Update the user's preference memory from one conversation turn.
+    """Update the user's profile from one conversation turn.
 
-    Users on the curated profile go through agent/memory_curator.py, which
-    can add, replace and remove facts. Everyone else stays on the legacy
-    path: append new facts, deduplicated against existing `user_memory`
-    rows by cosine distance.
+    One curator call (agent/memory_curator.py) drafts soft and hard facts;
+    soft ones can be added, replaced and removed under memory.apply_ops.
 
     Args:
         user_id: Supabase Auth UUID.
         user_input: The user's message.
         agent_reply: The agent's response.
     """
-    _run(_extract_and_store_facts(user_id, user_input, agent_reply))
+    _run(curate_turn(user_id, user_input, agent_reply))
 
 
 # ---------------------------------------------------------------------------
@@ -353,14 +278,13 @@ def dispatch_log_habits() -> None:
     """Fan the weekly log-habits job out to one task per eligible user.
 
     Eligible: at least ``memory.weekly_habits_min_meals`` meals in the last
-    ``memory.staples_window_days`` days, and on the curated profile. One
+    ``memory.staples_window_days`` days. One
     query finds them; the per-user work (and its LLM call) runs in
     :func:`infer_log_habits`, so a slow or failing user never blocks the
     rest.
     """
     for user_id in _run(_log_habit_candidates()):
-        if profile_active(user_id):
-            infer_log_habits.delay(user_id)
+        infer_log_habits.delay(user_id)
 
 
 # rate_limit is per worker process: it keeps a large fan-out from bursting

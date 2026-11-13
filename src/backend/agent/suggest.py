@@ -30,7 +30,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from backend.agent.cost import record_run_cost
 from backend.agent.llm import FLASH_LITE_MODEL
-from backend.agent.memory import load_profile, profile_active, render_profile_block
+from backend.agent.meal_history import build_history_block
+from backend.agent.memory import load_profile, render_profile_block
 from backend.agent.tools import usda_local
 from backend.config import get_tunables
 from backend.db.models import CheckFailure, Recommendation, ReviewItem
@@ -41,7 +42,7 @@ from backend.safety.checker import CheckResult, Failure, check, find_conflicts
 from backend.safety.limits import intake_today
 from backend.safety.matching import medication_drug
 from backend.safety.recipe import Recipe, resolve
-from backend.safety.render import render_recipe
+from backend.safety.render import constraint_sentence, render_recipe
 from backend.safety.tables import ClinicalTables, TablesUnavailable, load_tables
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,9 @@ class SuggestionResult(BaseModel):
     message: str
     recipe: Recipe | None = None
     recommendation_id: str | None = None
+    # The sentence naming what the recipe was kept to, also part of ``message``;
+    # sent on its own so the app need not parse it out (spec 013 T106).
+    constraint_note: str | None = None
     attempts: int = 0
 
     model_config = ConfigDict(extra="forbid")
@@ -69,6 +73,7 @@ class _Deps:
 
     hard_block: str
     soft_block: str
+    history_block: str
     prior_failures: list[str]
 
 
@@ -92,7 +97,7 @@ _recipe_agent = Agent(
 @_recipe_agent.instructions
 def _profile_instructions(ctx: RunContext[_Deps]) -> str:
     """The patient's profile, then what earlier attempts got wrong."""
-    blocks = [ctx.deps.hard_block, ctx.deps.soft_block]
+    blocks = [ctx.deps.hard_block, ctx.deps.soft_block, ctx.deps.history_block]
     if ctx.deps.prior_failures:
         blocks.append(
             "Previous attempts that failed the safety check. Fix every reason:\n"
@@ -138,9 +143,12 @@ def _lesson(attempt: _Attempt) -> str:
 
 
 async def _soft_block(user_id: str) -> str:
-    if not profile_active(user_id):
+    """The soft profile for the recipe prompt; "" when it cannot be read (FR-027)."""
+    try:
+        return render_profile_block(await load_profile(user_id))
+    except Exception as exc:  # noqa: BLE001 - enrichment must not fail the request
+        logger.warning("soft profile unavailable for %s: %s", user_id, exc)
         return ""
-    return render_profile_block(await load_profile(user_id))
 
 
 async def _generate(deps: _Deps, prompt: str) -> Recipe | str:
@@ -302,12 +310,15 @@ async def _suggest(
     conversation_id: str | None,
 ) -> SuggestionResult:
     tables = load_tables()
-    soft_block, intake = await asyncio.gather(
-        _soft_block(user_id), intake_today(user_id, entries)
+    soft_block, history_block, intake = await asyncio.gather(
+        _soft_block(user_id),
+        build_history_block(user_id),
+        intake_today(user_id, entries),
     )
     deps = _Deps(
         hard_block=profile.render_block(entries, tables),
         soft_block=soft_block,
+        history_block=history_block,
         prior_failures=[],
     )
     prompt = _prompt(request, history)
@@ -341,6 +352,7 @@ async def _suggest(
                     message=render_recipe(generated, result),
                     recipe=generated,
                     recommendation_id=recommendation_id,
+                    constraint_note=constraint_sentence(result.applied) or None,
                     attempts=number,
                 )
             attempts.append(

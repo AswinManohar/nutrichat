@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
-from backend.agent.llm import EMBEDDING_DIM, EMBEDDING_MODEL
 from backend.agent.memory import (
     MemoryFact,
     load_profile,
-    profile_active,
     render_profile_block,
 )
 from backend.agent.tools.history import get_staple_foods
@@ -23,7 +19,7 @@ from backend.agent.tools.mindful import (
 )
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today
-from backend.db.models import UserGoal, UserMemory, WeeklySummary
+from backend.db.models import UserGoal, WeeklySummary
 from backend.db.redis_client import (
     TodayTotals,
     get_cached_staples,
@@ -38,8 +34,6 @@ from backend.safety.tables import load_tables
 logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
-
-_TOP_K_PREFERENCES = _TUNABLES.memory.top_k_preferences
 
 
 class GoalSummary(BaseModel):
@@ -74,51 +68,31 @@ class ContextBundle(BaseModel):
     """Everything build_system_prompt needs to assemble the coaching prompt.
 
     Assembled by build_context() from Redis (today totals), Postgres
-    (goals + weekly pattern), and the user's preferences. For users on the
-    curated profile (``profile_active``) that is the whole profile plus
-    staple foods from their logs; otherwise the legacy pgvector top-3
-    ``preferences``.
+    (goals + weekly pattern), and the user's soft profile: every live fact
+    plus staple foods from their logs.
     """
 
     today_totals: TodayTotals
     goals: GoalSummary | None = None
     weekly_pattern: WeeklyPattern | None = None
     hard_block: str = ""
-    preferences: list[str] = []
-    profile_active: bool = False
     profile: list[MemoryFact] = []
     staples: dict[str, list[str]] = {}
 
     model_config = ConfigDict(extra="forbid")
 
 
-async def _embed_query(text: str) -> list[float]:
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model=EMBEDDING_MODEL,
-        google_api_key=os.environ.get("GOOGLE_API_KEY", ""),
-        output_dimensionality=EMBEDDING_DIM,
-    )
-    return await embeddings.aembed_query(text)
+async def _load_soft_profile(user_id: str) -> list[MemoryFact]:
+    """The user's soft facts; none when they cannot be read.
 
-
-async def _fetch_preferences(user_id: str, user_message: str) -> list[str]:
-    """Top-3 most relevant preference facts via pgvector ANN.
-
-    Only called when a user message is available to embed (per PRD §5.2 —
-    the preferences block is conditional on `user_message` being given).
+    Soft preferences enrich the prompt (FR-027), so a failed read is logged
+    and the turn goes on with the hard profile alone.
     """
-    query_embedding = await _embed_query(user_message)
-
-    session_factory = get_session()
-    async with session_factory() as session:
-        stmt = (
-            select(UserMemory)
-            .where(UserMemory.user_id == user_id, UserMemory.deleted_at.is_(None))
-            .order_by(UserMemory.embedding.cosine_distance(query_embedding))
-            .limit(_TOP_K_PREFERENCES)
-        )
-        result = await session.execute(stmt)
-        return [row.fact for row in result.scalars().all()]
+    try:
+        return await load_profile(user_id)
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        logger.warning("soft profile unavailable for %s: %s", user_id, exc)
+        return []
 
 
 async def fetch_staples(user_id: str) -> dict[str, list[str]]:
@@ -202,21 +176,16 @@ async def load_restrictions(
 
 async def build_context(
     user_id: str,
-    user_message: str | None = None,
     entries: list[HardEntry] | None = None,
 ) -> ContextBundle:
     """Assemble the context bundle for build_system_prompt().
 
     Reads Redis today totals, Postgres goals + most recent weekly summary,
-    and the user's preferences: the whole curated profile plus staple foods
-    for users on the profile path (no embedding call), otherwise (when
-    `user_message` is given) the top-3 pgvector-relevant preference facts.
+    and the user's soft profile (every live fact plus staple foods; no
+    embedding call). A failed soft read leaves the profile out and logs.
 
     Args:
         user_id: Supabase Auth UUID.
-        user_message: Latest user message, used to retrieve relevant
-            preferences via pgvector ANN. Omitted for flows (e.g. meal
-            logging) that don't need the preferences block.
         entries: The live hard entries if the caller already loaded them
             this turn; read from the database when None.
 
@@ -255,24 +224,15 @@ async def build_context(
         intake = await get_daily_intake(user_id, nutrition_today())
         goals.active_alerts = evaluate_safety(intake)
 
-    use_profile = profile_active(user_id)
-    preferences: list[str] = []
-    profile: list[MemoryFact] = []
-    staples: dict[str, list[str]] = {}
-    if use_profile:
-        profile, staples = await asyncio.gather(
-            load_profile(user_id), fetch_staples(user_id)
-        )
-    elif user_message:
-        preferences = await _fetch_preferences(user_id, user_message)
+    profile, staples = await asyncio.gather(
+        _load_soft_profile(user_id), fetch_staples(user_id)
+    )
 
     return ContextBundle(
         today_totals=today_totals,
         goals=goals,
         weekly_pattern=weekly_pattern,
         hard_block=hard_block,
-        preferences=preferences,
-        profile_active=use_profile,
         profile=profile,
         staples=staples,
     )
@@ -287,11 +247,10 @@ def build_system_prompt(ctx: ContextBundle) -> str:
     """Assemble the ~456-token coaching system prompt from a ContextBundle.
 
     Follows the PRD §5.2 token budget: role/tone (~120), today totals
-    (~80), weekly pattern (~120), preferences (~150, omitted if empty),
-    accountability rules (~95), hard constraints (~112). For users on the
-    curated profile the preferences block is the whole profile instead,
-    capped at ``memory.profile_max_chars`` (~350 tokens) plus one staples
-    line.
+    (~80), weekly pattern (~120), soft profile (omitted if empty),
+    accountability rules (~95), hard constraints (~112). The soft profile is
+    every live fact, capped at ``memory.profile_max_chars`` (~350 tokens)
+    plus one staples line.
 
     Note: this is consumed by the coaching agent (agent/coaching.py), not
     the meal-logging graph — extraction/classification prompts in
@@ -380,18 +339,11 @@ def _goals_line(goals: GoalSummary | None) -> str | None:
 
 
 def _restriction_blocks(ctx: ContextBundle) -> list[str]:
-    """The hard profile, then soft preferences, for the coaching prompt.
-
-    The hard block is rendered for every user; soft facts only for users on
-    the curated profile, the legacy top-3 preferences otherwise.
-    """
+    """The hard profile, then soft preferences, for the coaching prompt."""
     blocks: list[str] = [ctx.hard_block] if ctx.hard_block else []
-    if ctx.profile_active:
-        profile_block = render_profile_block(ctx.profile, ctx.staples)
-        if profile_block:
-            blocks.append(profile_block)
-    elif ctx.preferences:
-        blocks.append("Known preferences: " + "; ".join(ctx.preferences) + ".")
+    profile_block = render_profile_block(ctx.profile, ctx.staples)
+    if profile_block:
+        blocks.append(profile_block)
     return blocks
 
 

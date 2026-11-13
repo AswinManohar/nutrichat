@@ -9,7 +9,7 @@ when the same action was already applied, and 409 only when the entry is in a
 state the action cannot reach.
 
 Replaces `/memory` (GET, DELETE) once the Android screen ships (PR 5); `/memory`
-stays until then for the released app.
+stays until then for the released app and is marked `deprecated` in OpenAPI.
 
 ## GET /profile
 
@@ -92,12 +92,28 @@ source `patient`: the act of entering it in Settings is the confirmation. A
 
 ## PATCH /profile/soft/{id} · DELETE /profile/soft/{id}
 
-Edit text/kind; delete creates a tombstone (FR-022, US5-4).
+Body of PATCH: `{"text"?: str (1-200), "kind"?: "dislike"|"like"|"cuisine"|"budget"|"cooking_time"|"habit"|"context"}`,
+at least one field; the edit counts as stated by the patient and returns the
+updated `soft` item (the surviving one when the new text equals another
+preference and the two merge). 404 for an unknown or foreign id, 422 for an
+empty body or an older note with no kind.
+
+DELETE creates a tombstone (FR-022, US5-4) so the preference is not learned
+again unless the patient restates it. Always 204 for a well-formed id, whether
+the preference was live, already deleted or never existed.
 
 ## GET /profile/meals?days=21
 
 Recommendations (shown, accepted, rejected with reason) and logged meal labels
-for the window. `days` ≤ 90.
+for the window. `days` defaults to 21, 1 to 90 (422 otherwise).
+
+```json
+{"days": 21,
+ "recommendations": [{"recommendation_id": "uuid", "name": "Lemon chicken", "status": "rejected", "rejection_reason": "too bland", "created_at": "…"}],
+ "eaten": [{"label": "Oatmeal with banana", "logged_at": "…"}]}
+```
+
+Newest first; each list is capped at `memory.history_api_max_rows`.
 
 ## POST /profile/meals/{recommendation_id}/feedback
 
@@ -105,9 +121,12 @@ Body `{"status": "accepted" | "rejected", "reason": "…" | null}` (FR-025).
 
 ## GET /profile/export
 
-Full JSON copy of everything remembered: hard entries with history, soft facts,
-recommendations, escalations about the patient (FR-040b). Content type
-`application/json`, attachment filename `mealsy-profile.json`.
+Full JSON copy of everything remembered (FR-040b): `hard` (every entry with its
+history, as in `/profile/history`), `soft` (live preferences; deleted ones are
+not exported), `recommendations` (id, date, recipe, status, rejection reason),
+`escalations` (date, rule label, notify status and the patient's own message).
+Content type `application/json`, attachment filename `mealsy-profile.json`.
+Rate limited to 10 a minute.
 
 ## Goals API (changed, shape kept)
 
@@ -132,4 +151,12 @@ message; the server reads it before routing (research R13), so the client sends
 "Yes" or "No" as text.
 
 Released clients ignore it (the text is also in `message`). A recipe reply
-carries `recommendation_id` so the app can send feedback.
+carries `recommendation_id` so the app can send feedback, and `constraint_note`:
+the sentence naming what the recipe was kept to ("Kept this free of peanut
+because of your peanut allergy."), or `null` when no confirmed entry applied.
+The sentence is also part of `message`; the app shows `constraint_note` on its
+own instead of parsing it out of the text.
+
+```json
+{"recipe": {"…": "…"}, "recommendation_id": "uuid", "constraint_note": "Kept this free of peanut because of your peanut allergy."}
+```
