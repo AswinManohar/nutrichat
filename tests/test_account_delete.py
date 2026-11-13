@@ -63,6 +63,24 @@ def test_delete_account_removes_all_rows(
     }
     assert "food_correction" in deleted_tables
 
+    # Patient safety tables must not survive account deletion (spec 013,
+    # FR-040b), and check_failure goes before the recommendation it points at.
+    safety_tables = [
+        "check_failure",
+        "recommendation",
+        "review_item",
+        "red_flag_escalation",
+        "profile_entry",
+    ]
+    assert set(safety_tables) <= deleted_tables
+    order = [
+        call.args[0].table.name
+        for call in session.execute.await_args_list
+        if hasattr(call.args[0], "table")
+    ]
+    assert order.index("check_failure") < order.index("recommendation")
+    assert order.index("profile_entry") < order.index("user_goal")
+
 
 def test_delete_account_fails_closed_when_auth_delete_fails(
     client: TestClient,

@@ -10,13 +10,18 @@ from sqlalchemy import delete, select, text
 
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import (
+    CheckFailure,
     DailySummary,
     DeviceToken,
     FoodCorrection,
     IntegrationToken,
     MealLog,
     NutrientCheckup,
+    ProfileEntry,
     PushSubscription,
+    Recommendation,
+    RedFlagEscalation,
+    ReviewItem,
     TelegramLink,
     UserGoal,
     UserMeal,
@@ -123,7 +128,8 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
         # Tables below all cascade from user_goal (ondelete="CASCADE" on
         # their user_id FK): telegram_link, integration_token, device_token,
         # meal_log, user_meal, user_memory, daily_summary, weekly_summary,
-        # nutrient_checkup, food_correction. Deleted explicitly anyway for
+        # nutrient_checkup, food_correction, profile_entry, recommendation,
+        # check_failure, red_flag_escalation, review_item. Deleted explicitly anyway for
         # clarity and to keep this endpoint correct even if a future
         # migration drops a cascade.
         await session.execute(
@@ -147,6 +153,21 @@ async def delete_account(user_id: str = Depends(get_current_user_id)) -> Respons
         )
         await session.execute(
             delete(NutrientCheckup).where(NutrientCheckup.user_id == user_id)
+        )
+        # Patient safety tables (spec 013, FR-040b). check_failure points at
+        # recommendation, so it goes first.
+        await session.execute(
+            delete(CheckFailure).where(CheckFailure.user_id == user_id)
+        )
+        await session.execute(
+            delete(Recommendation).where(Recommendation.user_id == user_id)
+        )
+        await session.execute(delete(ReviewItem).where(ReviewItem.user_id == user_id))
+        await session.execute(
+            delete(RedFlagEscalation).where(RedFlagEscalation.user_id == user_id)
+        )
+        await session.execute(
+            delete(ProfileEntry).where(ProfileEntry.user_id == user_id)
         )
         await session.execute(delete(UserGoal).where(UserGoal.user_id == user_id))
 
