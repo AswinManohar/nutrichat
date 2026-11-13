@@ -4,64 +4,81 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agent.memory import (
     AddFact,
-    AddRestriction,
     ApplyOutcome,
     MemoryFact,
     ProfileState,
     RemoveFact,
     ReplaceFact,
-    SetDietChip,
 )
 from backend.agent.memory_curator import (
     CuratorOp,
     CuratorOutput,
+    HardDraft,
     LogHabit,
     LogHabitsOutput,
+    RetireDraft,
     build_curator_input,
     build_log_habits_input,
     curate_turn,
+    evidence_in,
+    extract_turn,
     infer_log_habits,
     plan_log_habit_ops,
+    to_hard_candidates,
     to_memory_ops,
 )
+from backend.agent.memory_judge import HardAdd, HardRetire
+from backend.safety.profile import (
+    AllergyValue,
+    DietSettingValue,
+    MedicationValue,
+    NutrientLimitValue,
+    PhysicalLimitationValue,
+)
+from backend.safety.tables import load_tables
+from tests.profile_helpers import hard_entry
 
 
 def _state() -> ProfileState:
     return ProfileState(
         facts=[
             MemoryFact(
-                id="id-a",
-                fact="Allergic to peanuts",
-                kind="restriction",
-                source="stated",
+                id="id-a", fact="Dislikes okra", kind="dislike", source="stated"
             ),
             MemoryFact(id="id-b", fact="Loves chicken", kind="like", source="stated"),
         ],
         tombstones=["Likes spicy food"],
-        diet_chips=["high_protein"],
     )
 
 
-def test_build_curator_input_lists_handles_settings_and_removed_facts() -> None:
-    text = build_curator_input(_state(), "I'm vegetarian now", "Noted.")
+def test_build_curator_input_lists_handles_hard_profile_and_removed_facts() -> None:
+    warfarin = hard_entry(MedicationValue(name="Warfarin"), entry_id="e-w")
+    pending = hard_entry(
+        AllergyValue(allergen_group="peanut"), "pending", entry_id="e-p"
+    )
 
-    assert "m1 [restriction] Allergic to peanuts" in text
+    text = build_curator_input(
+        _state(), "I'm vegetarian now", "", [warfarin, pending], load_tables()
+    )
+
+    assert "m1 [dislike] Dislikes okra" in text
     assert "m2 [like] Loves chicken" in text
-    assert "Diet settings on: high_protein" in text
+    assert "h1 [confirmed] Warfarin" in text
+    assert "- [pending] Peanut allergy" in text  # no handle: cannot be retired
+    assert "Known condition keys: ckd, hypertension, diabetes, prediabetes" in text
     assert "vegetarian" in text.split("Diet settings available:")[1].splitlines()[0]
-    assert (
-        "high_protein" not in text.split("Diet settings available:")[1].splitlines()[0]
-    )
     assert "- Likes spicy food" in text
-    assert "User: I'm vegetarian now\nAssistant: Noted." in text
+    assert "User: I'm vegetarian now" in text
+    assert "Assistant:" not in text
     assert "% full" in text
 
 
-def test_build_curator_input_empty_profile() -> None:
+def test_build_curator_input_includes_the_reply_when_there_is_one() -> None:
     text = build_curator_input(ProfileState(), "hi", "hello")
 
     assert "Current profile (0% full):\n(empty)" in text
     assert "Removed by the user:\n(none)" in text
+    assert "User: hi\nAssistant: hello" in text
 
 
 def test_to_memory_ops_maps_handles_to_ids() -> None:
@@ -72,7 +89,6 @@ def test_to_memory_ops_maps_handles_to_ids() -> None:
                 action="replace", ref="M2", fact="No longer eats meat", kind="habit"
             ),
             CuratorOp(action="remove", ref="m2"),
-            CuratorOp(action="set_diet", chip=" Vegetarian "),
         ],
         _state(),
     )
@@ -81,20 +97,7 @@ def test_to_memory_ops_maps_handles_to_ids() -> None:
         AddFact(fact="Dislikes okra", kind="dislike"),
         ReplaceFact(id="id-b", fact="No longer eats meat", kind="habit"),
         RemoveFact(id="id-b"),
-        SetDietChip(chip="vegetarian", on=True),
     ]
-
-
-def test_to_memory_ops_maps_a_restriction_to_a_hard_op() -> None:
-    ops = to_memory_ops(
-        [
-            CuratorOp(action="add", fact="Allergic to peanuts", kind="restriction"),
-            CuratorOp(action="replace", ref="m2", fact="No meat", kind="restriction"),
-        ],
-        _state(),
-    )
-
-    assert ops == [AddRestriction(fact="Allergic to peanuts")]
 
 
 def test_to_memory_ops_drops_malformed_proposals() -> None:
@@ -104,7 +107,6 @@ def test_to_memory_ops_drops_malformed_proposals() -> None:
             CuratorOp(action="add", kind="like"),
             CuratorOp(action="replace", ref="m9", fact="Unknown handle", kind="like"),
             CuratorOp(action="remove"),
-            CuratorOp(action="set_diet"),
         ],
         _state(),
     )
@@ -120,111 +122,332 @@ def test_to_memory_ops_truncates_overlong_facts() -> None:
     assert len(op.fact) == 200
 
 
+# --- hard candidates: the evidence check (FR-023) -----------------------------
+
+MESSAGE = "Oh and I found out I'm allergic to Shellfish and peanuts, ugh"
+
+
+def _draft(**kwargs) -> HardDraft:
+    base = {
+        "type": "allergy",
+        "label": "Shellfish allergy",
+        "evidence": "I'm allergic to shellfish",
+        "terms": ["shellfish"],
+    }
+    return HardDraft(**{**base, **kwargs})
+
+
+def _candidates(output: CuratorOutput, message: str = MESSAGE, entries=()):
+    return to_hard_candidates(output, message, list(entries), load_tables())
+
+
+def test_evidence_is_a_case_insensitive_substring_of_the_message() -> None:
+    assert evidence_in(MESSAGE, "i'm ALLERGIC to shellfish")
+    assert evidence_in("line one\nI'm   allergic", "one i'm allergic")
+    assert not evidence_in(MESSAGE, "allergic to prawns")
+    assert not evidence_in(MESSAGE, "   ")
+
+
+def test_a_hard_draft_with_evidence_becomes_a_typed_candidate() -> None:
+    (candidate,) = _candidates(CuratorOutput(hard=[_draft()]))
+
+    assert candidate == HardAdd(
+        type="allergy",
+        value=AllergyValue(allergen_group="shellfish"),
+        label=None,
+        evidence="I'm allergic to shellfish",
+    )
+
+
+def test_a_draft_whose_evidence_is_not_in_the_message_is_discarded() -> None:
+    drafts = [
+        _draft(evidence="I am allergic to shellfish"),  # paraphrase
+        _draft(evidence="Noted, I've added a shellfish allergy"),  # assistant words
+    ]
+
+    assert _candidates(CuratorOutput(hard=drafts)) == []
+
+
+def test_assistant_reply_and_logs_never_produce_a_hard_candidate() -> None:
+    # The reply says it, the patient's message does not: nothing to quote.
+    draft = _draft(evidence="you are allergic to shellfish")
+
+    assert (
+        _candidates(CuratorOutput(hard=[draft]), "log 2 eggs and a prawn curry") == []
+    )
+
+
+def test_several_allergens_become_one_candidate_each() -> None:
+    draft = _draft(
+        label="Shellfish and strawberry allergy",
+        terms=["shellfish", "strawberries"],
+        evidence="allergic to Shellfish and peanuts",
+    )
+
+    values = [c.value for c in _candidates(CuratorOutput(hard=[draft]))]
+
+    assert values == [
+        AllergyValue(allergen_group="shellfish"),
+        AllergyValue(custom_terms=["strawberries"]),
+    ]
+
+
+def test_each_hard_type_builds_its_value() -> None:
+    message = (
+        "I take warfarin, I can't swallow solids, my doctor says 1500 mg of "
+        "sodium a day, I'm vegan and I never eat pork"
+    )
+    drafts = [
+        _draft(type="medication", medication="Warfarin", evidence="I take warfarin"),
+        _draft(
+            type="physical_limitation",
+            limitation="swallowing",
+            max_texture="pureed",
+            evidence="I can't swallow solids",
+        ),
+        _draft(
+            type="nutrient_limit",
+            nutrient="Sodium",
+            amount=1500,
+            unit="mg",
+            period="per_day",
+            evidence="1500 mg of sodium a day",
+        ),
+        _draft(type="diet_setting", setting="vegan", evidence="I'm vegan"),
+        _draft(
+            type="food_exclusion",
+            terms=["pork"],
+            label="No pork",
+            evidence="I never eat pork",
+        ),
+    ]
+
+    candidates = _candidates(CuratorOutput(hard=drafts), message)
+
+    assert [c.value for c in candidates] == [
+        MedicationValue(name="Warfarin"),
+        PhysicalLimitationValue(kind="swallowing", max_texture="pureed"),
+        NutrientLimitValue(nutrient="sodium", amount=1500, unit="mg", period="per_day"),
+        DietSettingValue(setting="vegan"),
+        candidates[4].value,
+    ]
+    assert candidates[4].label == "No pork"
+
+
+def test_a_draft_that_does_not_fit_its_type_is_discarded() -> None:
+    drafts = [
+        _draft(type="diet_setting", setting="carnivore", evidence="I'm allergic"),
+        _draft(type="nutrient_limit", nutrient="sodium", evidence="I'm allergic"),
+    ]
+
+    assert _candidates(CuratorOutput(hard=drafts)) == []
+
+
+def test_repeated_drafts_collapse_to_one_candidate() -> None:
+    assert len(_candidates(CuratorOutput(hard=[_draft(), _draft()]))) == 1
+
+
+def test_a_retirement_needs_a_confirmed_handle_and_evidence() -> None:
+    warfarin = hard_entry(MedicationValue(name="Warfarin"), entry_id="e-w")
+    pending = hard_entry(DietSettingValue(setting="vegan"), "pending", entry_id="e-v")
+    message = "the doctor took me off warfarin last week"
+    output = CuratorOutput(
+        retire=[
+            RetireDraft(ref="h1", evidence="took me off warfarin"),
+            RetireDraft(ref="h1", evidence="stopped taking it"),  # not quoted
+            RetireDraft(ref="h2", evidence="took me off warfarin"),  # no such handle
+        ]
+    )
+
+    candidates = _candidates(output, message, [warfarin, pending])
+
+    assert candidates == [HardRetire(entry_id="e-w", evidence="took me off warfarin")]
+
+
+# --- extract_turn / curate_turn ---------------------------------------------------
+
+
 def _llm_returning(output: CuratorOutput) -> MagicMock:
     llm = MagicMock()
     llm.ainvoke = AsyncMock(return_value=output)
     return llm
 
 
-async def test_curate_turn_applies_ops_as_curator() -> None:
-    llm = _llm_returning(
-        CuratorOutput(ops=[CuratorOp(action="set_diet", chip="vegetarian")])
-    )
-    apply = AsyncMock(return_value=ApplyOutcome())
-    judge = AsyncMock(return_value=[0.95])
-
-    with (
+def _patched(llm, *, soft_scores=(), hard_scores=(), apply=None, entries=()):
+    """Patch every collaborator of extract_turn; returns the mocks by name."""
+    mocks = {
+        "apply": apply or AsyncMock(return_value=ApplyOutcome()),
+        "add_entry": AsyncMock(
+            side_effect=lambda *a, **k: hard_entry(a[1], k["state"])
+        ),
+        "request": AsyncMock(
+            side_effect=lambda uid, eid: hard_entry(
+                MedicationValue(name="Warfarin"), entry_id=eid
+            )
+        ),
+        "judge_hard": AsyncMock(return_value=list(hard_scores)),
+    }
+    patches = [
         patch(
             "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
         ),
-        patch("backend.agent.memory_curator._curator_llm", llm),
-        patch("backend.agent.memory_curator.judge_ops", judge),
-        patch("backend.agent.memory_curator.apply_ops", apply),
-    ):
-        await curate_turn("user-1", "I'm vegetarian now", "Noted.")
-
-    judge.assert_awaited_once_with(
-        "I'm vegetarian now", [SetDietChip(chip="vegetarian", on=True)], _state()
-    )
-
-    apply.assert_awaited_once_with(
-        "user-1", [SetDietChip(chip="vegetarian", on=True)], "curator"
-    )
-    system, human = llm.ainvoke.call_args.args[0]
-    assert "long-term food profile" in system.content
-    assert "I'm vegetarian now" in human.content
-
-
-async def test_curate_turn_saves_only_what_jev_scores_high_enough() -> None:
-    llm = _llm_returning(
-        CuratorOutput(
-            ops=[
-                CuratorOp(action="add", fact="Allergic to peanuts", kind="restriction"),
-                CuratorOp(action="add", fact="Likes salad", kind="like"),
-            ]
-        )
-    )
-    apply = AsyncMock(return_value=ApplyOutcome())
-
-    with (
         patch(
-            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
+            "backend.agent.memory_curator.profile.load_hard_profile",
+            AsyncMock(return_value=list(entries)),
         ),
         patch("backend.agent.memory_curator._curator_llm", llm),
         patch(
             "backend.agent.memory_curator.judge_ops",
-            AsyncMock(return_value=[0.97, 0.08]),
+            AsyncMock(return_value=list(soft_scores)),
         ),
-        patch("backend.agent.memory_curator.apply_ops", apply),
-    ):
-        await curate_turn("user-1", "salad, no peanuts, I'm allergic", "Logged.")
+        patch("backend.agent.memory_curator.judge_hard", mocks["judge_hard"]),
+        patch("backend.agent.memory_curator.apply_ops", mocks["apply"]),
+        patch("backend.agent.memory_curator.profile.add_entry", mocks["add_entry"]),
+        patch(
+            "backend.agent.memory_curator.profile.request_retirement", mocks["request"]
+        ),
+    ]
+    return mocks, patches
 
-    apply.assert_awaited_once_with(
-        "user-1",
-        [AddRestriction(fact="Allergic to peanuts")],
-        "curator",
-    )
+
+async def _extract(llm, message=MESSAGE, **kwargs):
+    mocks, patches = _patched(llm, **kwargs)
+    for p in patches:
+        p.start()
+    try:
+        return mocks, await extract_turn("user-1", message)
+    finally:
+        for p in patches:
+            p.stop()
 
 
-async def test_curate_turn_all_candidates_scored_low_skips_the_write() -> None:
+async def test_soft_facts_are_scored_and_applied_as_curator() -> None:
     llm = _llm_returning(
         CuratorOutput(ops=[CuratorOp(action="add", fact="Likes salad", kind="like")])
     )
-    apply = AsyncMock()
 
-    with (
-        patch(
-            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
-        ),
-        patch("backend.agent.memory_curator._curator_llm", llm),
-        patch("backend.agent.memory_curator.judge_ops", AsyncMock(return_value=[0.1])),
-        patch("backend.agent.memory_curator.apply_ops", apply),
-    ):
-        outcome = await curate_turn("user-1", "had a salad", "Logged.")
+    mocks, result = await _extract(llm, soft_scores=[0.9])
 
-    apply.assert_not_awaited()
-    assert outcome.results == []
+    mocks["apply"].assert_awaited_once_with(
+        "user-1", [AddFact(fact="Likes salad", kind="like", confidence=0.9)], "curator"
+    )
+    mocks["add_entry"].assert_not_awaited()
+    assert not result.changed_hard
+    system, human = llm.ainvoke.call_args.args[0]
+    assert "long-term profile" in system.content
+    assert MESSAGE in human.content
+    assert "Assistant:" not in human.content
 
 
-async def test_curate_turn_nothing_to_store_skips_the_write() -> None:
-    apply = AsyncMock()
+async def test_an_accepted_hard_fact_is_saved_confirmed_and_inferred() -> None:
+    llm = _llm_returning(CuratorOutput(hard=[_draft()]))
 
-    with (
-        patch(
-            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
-        ),
-        patch(
-            "backend.agent.memory_curator._curator_llm", _llm_returning(CuratorOutput())
-        ),
-        patch("backend.agent.memory_curator.apply_ops", apply),
-    ):
-        outcome = await curate_turn("user-1", "log 2 eggs", "Logged 140 kcal")
+    mocks, result = await _extract(llm, hard_scores=[0.97])
 
-    apply.assert_not_awaited()
-    assert outcome.results == []
+    (call,) = mocks["add_entry"].await_args_list
+    assert call.args[1] == AllergyValue(allergen_group="shellfish")
+    assert call.kwargs | {} == {
+        "source": "inferred",
+        "state": "confirmed",
+        "created_by": "curator",
+        "confirmed_by": "inference",
+        "label": None,
+        "evidence": "I'm allergic to shellfish",
+        "inference_probability": 0.97,
+        "replaces_id": None,
+    }
+    assert len(result.accepted) == 1 and not result.asked
+    mocks["apply"].assert_not_awaited()
 
 
-async def test_curate_turn_blank_input_makes_no_calls() -> None:
+async def test_an_ask_band_hard_fact_is_saved_pending_with_its_probability() -> None:
+    llm = _llm_returning(CuratorOutput(hard=[_draft()]))
+
+    mocks, result = await _extract(llm, hard_scores=[0.7])
+
+    (call,) = mocks["add_entry"].await_args_list
+    assert call.kwargs["state"] == "pending"
+    assert call.kwargs["confirmed_by"] is None
+    assert call.kwargs["inference_probability"] == 0.7
+    assert len(result.asked) == 1 and not result.accepted
+
+
+async def test_an_unscored_hard_fact_is_saved_pending() -> None:
+    llm = _llm_returning(CuratorOutput(hard=[_draft()]))
+
+    mocks, result = await _extract(llm, hard_scores=[None])
+
+    assert mocks["add_entry"].await_args.kwargs["state"] == "pending"
+    assert mocks["add_entry"].await_args.kwargs["inference_probability"] is None
+
+
+async def test_a_low_scored_hard_fact_is_not_saved() -> None:
+    llm = _llm_returning(CuratorOutput(hard=[_draft()]))
+
+    mocks, result = await _extract(llm, hard_scores=[0.1])
+
+    mocks["add_entry"].assert_not_awaited()
+    assert not result.changed_hard
+
+
+async def test_a_retirement_only_requests_it() -> None:
+    warfarin = hard_entry(MedicationValue(name="Warfarin"), entry_id="e-w")
+    llm = _llm_returning(
+        CuratorOutput(retire=[RetireDraft(ref="h1", evidence="took me off warfarin")])
+    )
+
+    mocks, result = await _extract(
+        llm,
+        "the doctor took me off warfarin",
+        hard_scores=[0.99],
+        entries=[warfarin],
+    )
+
+    mocks["request"].assert_awaited_once_with("user-1", "e-w")
+    mocks["add_entry"].assert_not_awaited()
+    assert len(result.retirements) == 1
+
+
+async def test_a_hard_draft_with_bad_evidence_makes_no_judge_call() -> None:
+    llm = _llm_returning(
+        CuratorOutput(hard=[_draft(evidence="you told me you are allergic")])
+    )
+
+    mocks, _ = await _extract(llm, hard_scores=[])
+
+    mocks["add_entry"].assert_not_awaited()
+
+
+async def test_curate_turn_returns_the_soft_outcome_only() -> None:
+    llm = _llm_returning(
+        CuratorOutput(ops=[CuratorOp(action="add", fact="Likes salad", kind="like")])
+    )
+    outcome = ApplyOutcome()
+    mocks, patches = _patched(
+        llm, soft_scores=[0.9], apply=AsyncMock(return_value=outcome)
+    )
+    for p in patches:
+        p.start()
+    try:
+        assert await curate_turn("user-1", "I like salad", "Logged.") is outcome
+    finally:
+        for p in patches:
+            p.stop()
+    human = llm.ainvoke.call_args.args[0][1]
+    assert "Assistant: Logged." in human.content
+
+
+async def test_a_turn_with_nothing_to_store_skips_judge_and_writes() -> None:
+    llm = _llm_returning(CuratorOutput())
+
+    mocks, result = await _extract(llm)
+
+    mocks["apply"].assert_not_awaited()
+    mocks["judge_hard"].assert_not_awaited()
+    assert not result.changed_hard
+
+
+async def test_blank_input_makes_no_calls() -> None:
     load = AsyncMock()
     llm = _llm_returning(CuratorOutput())
 
@@ -367,3 +590,68 @@ async def test_infer_log_habits_without_staples_makes_no_model_call() -> None:
 
     llm.ainvoke.assert_not_awaited()
     assert outcome.results == []
+
+
+def test_the_weekly_log_job_cannot_produce_a_hard_candidate() -> None:
+    # Spec 013 FR-023: nothing logged becomes a hard fact. The job's output
+    # has no hard field, and its ops are soft facts applied as "weekly".
+    assert set(LogHabitsOutput.model_fields) == {"facts"}
+    ops = plan_log_habit_ops(
+        [LogHabit(fact="Eats prawn curry often", kind="habit")], ProfileState(), 3
+    )
+    assert all(isinstance(op, AddFact | RemoveFact) for op in ops)
+
+
+async def test_a_loosened_limit_is_saved_pending_replacing_the_confirmed_one() -> None:
+    confirmed = hard_entry(
+        NutrientLimitValue(nutrient="sodium", amount=1500, unit="mg", period="per_day"),
+        entry_id="e-1500",
+    )
+    draft = _draft(
+        type="nutrient_limit",
+        nutrient="sodium",
+        amount=2300,
+        unit="mg",
+        period="per_day",
+        evidence="2300 mg of sodium",
+    )
+    llm = _llm_returning(CuratorOutput(hard=[draft]))
+
+    mocks, result = await _extract(
+        llm,
+        "my new limit is 2300 mg of sodium a day",
+        hard_scores=[0.99],
+        entries=[confirmed],
+    )
+
+    kwargs = mocks["add_entry"].await_args.kwargs
+    assert (kwargs["state"], kwargs["replaces_id"]) == ("pending", "e-1500")
+    assert len(result.asked) == 1
+
+
+async def test_hard_only_extraction_uses_the_short_call_and_reads_no_soft_profile() -> (
+    None
+):
+    soft_llm = _llm_returning(CuratorOutput())
+    hard_llm = _llm_returning(CuratorOutput(hard=[_draft()]))
+    load = AsyncMock(return_value=_state())
+    mocks, patches = _patched(soft_llm, hard_scores=[0.97])
+    patches.append(patch("backend.agent.memory_curator._hard_curator_llm", hard_llm))
+    patches.append(patch("backend.agent.memory_curator.load_state", load))
+    for p in patches:
+        p.start()
+    try:
+        result = await extract_turn("user-1", MESSAGE, soft=False)
+    finally:
+        for p in reversed(patches):
+            p.stop()
+
+    soft_llm.ainvoke.assert_not_awaited()
+    load.assert_not_awaited()
+    system, human = hard_llm.ainvoke.call_args.args[0]
+    assert "health and safety facts" in system.content
+    assert "<soft_facts>" not in system.content
+    assert "Current profile" not in human.content
+    assert "Removed by the user" not in human.content
+    assert len(result.accepted) == 1
+    mocks["apply"].assert_not_awaited()

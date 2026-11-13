@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _DEFAULT_PATH = Path(__file__).parent / "tunables.yaml"
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -83,8 +83,30 @@ class MemoryConfig(BaseModel):
     weekly_habits_max_facts: int = Field(gt=0)
     coaching_history_turns: int = Field(gt=0)
     coaching_history_ttl_s: int = Field(gt=0)
+    hard_accept_min_probability: float = Field(ge=0.0, le=1.0)
+    hard_ask_min_probability: float = Field(ge=0.0, le=1.0)
+    hard_judge_timeout_s: float = Field(gt=0)
+    readback_text: str = Field(min_length=1)
+    retire_readback_text: str = Field(min_length=1)
+    noted_text: str = Field(min_length=1)
+    readback_confirm_text: str = Field(min_length=1)
+    readback_reject_text: str = Field(min_length=1)
+    retire_confirm_text: str = Field(min_length=1)
+    retire_keep_text: str = Field(min_length=1)
+    recipe_withheld_text: str = Field(min_length=1)
+    card_waiting_text: str = Field(min_length=1)
+    readback_still_waiting_text: str = Field(min_length=1)
+    readback_confirm_max_words: int = Field(gt=0)
+    readback_confirm_excluded_words: list[str]
+    readback_correction_min_words: int = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _bands_are_ordered(self) -> MemoryConfig:
+        if self.hard_ask_min_probability > self.hard_accept_min_probability:
+            raise ValueError("hard_ask_min_probability must not exceed accept")
+        return self
 
 
 class JunkConfig(BaseModel):
@@ -171,6 +193,7 @@ class SafetyConfig(BaseModel):
 
     hard_profile_max_entries: int = Field(gt=0)
     max_recipe_attempts: int = Field(ge=1)
+    plan_sample_rate: float = Field(ge=0.0, le=1.0)
     reply_guard_min_probability: float = Field(ge=0.0, le=1.0)
     reply_guard_fallback_text: str = Field(min_length=1)
     reply_guard_max_phrases: int = Field(gt=0)
@@ -181,7 +204,6 @@ class SafetyConfig(BaseModel):
     no_suitable_meal_text: str = Field(min_length=1)
     food_db_unavailable_text: str = Field(min_length=1)
     clinical_dir: str = Field(min_length=1)
-    plan_sample_rate: float = Field(ge=0.0, le=1.0)
     escalation_retry_seconds: list[int] = Field(min_length=1)
     escalation_webhook_timeout_s: float = Field(gt=0)
 
@@ -209,6 +231,7 @@ class PromptsConfig(BaseModel):
     coaching_profile_rules: str
     fact_extraction_system: str
     profile_curator_system: str
+    profile_curator_hard_system: str
     log_habits_system: str
     nutrition_estimate_system: str
     decompose_system: str

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from backend.db.models import MealLog
 from backend.workers.tasks import (
@@ -12,6 +15,13 @@ from backend.workers.tasks import (
     embed_meal_summary,
     extract_and_store_facts,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_hard_curation() -> Iterator[None]:
+    """The legacy-path tests below are about soft facts; stub hard curation."""
+    with patch("backend.workers.tasks.curate_turn", new_callable=AsyncMock):
+        yield
 
 
 def _mock_session_factory(session: MagicMock) -> MagicMock:
@@ -304,3 +314,23 @@ def test_log_habits_schedule_runs_after_the_weekly_summary():
         min(weekly.hour),
         min(weekly.minute),
     )
+
+
+def test_extract_and_store_facts_infers_hard_facts_for_every_user():
+    """Non-profile users get hard-only curation; soft stays on the legacy path."""
+    parser_mock = MagicMock()
+    parser_mock.ainvoke = AsyncMock(return_value=_ExtractedFacts(facts=[]))
+
+    with (
+        patch("backend.workers.tasks.profile_active", return_value=False),
+        patch(
+            "backend.workers.tasks.curate_turn", new_callable=AsyncMock
+        ) as curate_mock,
+        patch("backend.workers.tasks._fact_extraction_llm", parser_mock),
+    ):
+        extract_and_store_facts("user-1", "I'm allergic to shellfish", "Noted.")
+
+    curate_mock.assert_awaited_once_with(
+        "user-1", "I'm allergic to shellfish", "Noted.", soft=False
+    )
+    parser_mock.ainvoke.assert_awaited_once()

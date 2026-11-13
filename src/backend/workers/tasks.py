@@ -184,6 +184,11 @@ async def _extract_and_store_facts(
         await curate_turn(user_id, user_input, agent_reply)
         return
 
+    # Hard facts (allergies, medications, ...) are inferred for every user;
+    # soft facts stay on the legacy path below until the curated profile
+    # replaces it for everyone (spec 013, T082).
+    await curate_turn(user_id, user_input, agent_reply, soft=False)
+
     # Legacy append-only path, for users not yet on the curated profile.
     extracted = await _fact_extraction_llm.ainvoke(
         [

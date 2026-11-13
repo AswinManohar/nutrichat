@@ -244,6 +244,47 @@ memory:
   # patient than glide.request_timeout_s on the reply path.
   judge_timeout_s: 5.0
 
+  # --- Hard facts the patient states in chat (agent/memory_judge.py) --------
+  # GLiDE scores each typed hard candidate; code places it in a band.
+  # p >= accept AND the candidate adds a constraint: saved confirmed
+  # (source inferred, confirmed_by inference) and mentioned once. ask <= p <
+  # accept, any retirement or loosening, and any candidate GLiDE could not
+  # score: saved pending (a retirement: requested) and read back. p < ask:
+  # dropped. Placeholder until the T078 sweep on eval/cases/hard_fact_inference.jsonl.
+  hard_accept_min_probability: 0.9
+  # Placeholder until T078 sweep.
+  hard_ask_min_probability: 0.5
+
+  # Per-request wait for a hard-fact judgment. It can run inside a coaching
+  # turn, so far shorter than judge_timeout_s; a timeout sends the candidate
+  # to the ask band, never to accept.
+  hard_judge_timeout_s: 1.5
+
+  # Fixed texts for the readback in chat (agent/readback.py). Built from the
+  # entry's label in code, never from model text. {label} is the entry label.
+  readback_text: "I'll note this on your profile: {label}. Is that right?"
+  retire_readback_text: "Should I stop applying this from now on: {label}?"
+  noted_text: "I've noted this on your profile: {label}. Tell me if that's wrong."
+  readback_confirm_text: "Got it, I'll apply that from now on."
+  readback_reject_text: "Okay, I won't save that."
+  retire_confirm_text: "Got it, I'll stop applying that."
+  retire_keep_text: "Okay, I'll keep applying it."
+  # Replaces a recipe when a hard fact still has to be confirmed first.
+  recipe_withheld_text: "Before I suggest a meal, I need to check one thing."
+  # Appended when a meal card and a readback wait together and one reply
+  # answers the other: says which one the reply took.
+  card_waiting_text: "Your meal card is still waiting for you."
+  readback_still_waiting_text: "I'm still waiting for your answer on this: {question}"
+  # A yes is a message of at most this many words that opens with a word of
+  # routing.confirm_keywords, so "what's a good dinner?" never confirms (or
+  # retires) a fact; a no with at least correction_min_words words is a
+  # correction and its text is read for a new fact. Words listed as excluded
+  # are confirm keywords that mean something else here ("log 2 eggs").
+  readback_confirm_max_words: 4
+  readback_confirm_excluded_words:
+    - "log"
+  readback_correction_min_words: 3
+
   # "Often eats" block: foods logged at least staples_min_count times in
   # the last staples_window_days, per meal type. Derived from meal_log on
   # read and cached in Redis for staples_cache_ttl_s.
