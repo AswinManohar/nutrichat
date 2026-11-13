@@ -62,6 +62,8 @@ _DIET_CHIPS = frozenset(
         "high_protein",
     }
 )
+# The web onboarding stores this spelling; see safety/profile.py.
+_DIET_ALIASES = {"pescetarian": "pescatarian"}
 _ALLERGEN_FILE = (
     Path(__file__).parents[3] / "config" / "clinical" / "allergen_groups.yaml"
 )
@@ -433,6 +435,7 @@ def _backfill(conn: sa.Connection) -> None:
         for key, on in (prefs or {}).items():
             if not on:
                 continue
+            key = _DIET_ALIASES.get(key, key)
             if key not in _DIET_CHIPS:
                 logger.warning(
                     "019 backfill: user %s dietary_prefs key %r is not a diet chip; "

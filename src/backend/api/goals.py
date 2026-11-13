@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+import logging
+from typing import Literal, get_args
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -8,11 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import UserGoal
 from backend.db.session import get_session
+from backend.safety import profile
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
 TrackingMode = Literal["goals", "mindful"]
 Condition = Literal["diabetes", "prediabetes", "hypertension", "ckd"]
+_CONDITIONS = frozenset(get_args(Condition))
 
 
 class GoalResponse(BaseModel):
@@ -84,17 +89,51 @@ class GoalUpdate(BaseModel):
         return self
 
 
-def _to_response(goal: UserGoal) -> GoalResponse:
+def _diet_settings(dietary_prefs: dict) -> list[str]:
+    """Diet chips switched on in a request; other keys have no home any more."""
+    on = [
+        profile.normalize_diet_key(key)
+        for key, value in dietary_prefs.items()
+        if value is True
+    ]
+    unknown = [key for key in on if key not in profile.DIET_CHIPS]
+    if unknown:
+        logger.warning("ignoring unknown dietary_prefs keys: %s", unknown)
+    return [key for key in on if key in profile.DIET_CHIPS]
+
+
+async def _to_response(goal: UserGoal) -> GoalResponse:
+    """The goals row plus the declarations the profile now owns."""
+    entries = await profile.load_hard_profile(goal.user_id)
     return GoalResponse(
         tracking_mode=goal.tracking_mode or "goals",
         kcal_goal=goal.kcal_goal,
         protein_goal=goal.protein_goal,
         fiber_goal=goal.fiber_goal,
-        dietary_prefs=goal.dietary_prefs,
-        conditions=list(goal.conditions or []),
+        dietary_prefs={s: True for s in profile.active_diet_settings(entries)},
+        conditions=[
+            c for c in profile.declared_conditions(entries) if c in _CONDITIONS
+        ],
         first_meal_time=goal.first_meal_time,
         streak_days=goal.streak_days,
     )
+
+
+async def _write_declarations(
+    user_id: str, conditions: list[str] | None, dietary_prefs: dict
+) -> None:
+    """Save the Settings choices as confirmed profile entries."""
+    try:
+        await profile.set_declarations(
+            user_id,
+            conditions=conditions,
+            managed_conditions=_CONDITIONS,
+            diet_settings=_diet_settings(dietary_prefs),
+        )
+    except profile.ProfileFull as exc:
+        raise HTTPException(
+            status_code=409, detail="The profile is full; remove an entry first"
+        ) from exc
 
 
 @router.get("")
@@ -104,7 +143,7 @@ async def get_goals(user_id: str = Depends(get_current_user_id)) -> GoalResponse
         goal = await session.get(UserGoal, user_id)
         if goal is None:
             raise HTTPException(status_code=404, detail="User has not been onboarded")
-        return _to_response(goal)
+        return await _to_response(goal)
 
 
 @router.post("", status_code=201)
@@ -123,15 +162,14 @@ async def create_goals(
             kcal_goal=req.kcal_goal,
             protein_goal=req.protein_goal,
             fiber_goal=req.fiber_goal,
-            dietary_prefs=req.dietary_prefs,
-            conditions=req.conditions,
             first_meal_time=req.first_meal_time,
             streak_days=0,
         )
         session.add(goal)
         await session.commit()
         await session.refresh(goal)
-        return _to_response(goal)
+    await _write_declarations(user_id, req.conditions, req.dietary_prefs)
+    return await _to_response(goal)
 
 
 @router.put("")
@@ -161,10 +199,8 @@ async def update_goals(
             goal.kcal_goal = req.kcal_goal
             goal.protein_goal = req.protein_goal
             goal.fiber_goal = req.fiber_goal
-        goal.dietary_prefs = req.dietary_prefs
-        if req.conditions is not None:
-            goal.conditions = req.conditions
         goal.first_meal_time = req.first_meal_time
         await session.commit()
         await session.refresh(goal)
-        return _to_response(goal)
+    await _write_declarations(user_id, req.conditions, req.dietary_prefs)
+    return await _to_response(goal)

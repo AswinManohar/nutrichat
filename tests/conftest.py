@@ -19,7 +19,8 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 
 # Imports below must stay after the env setup above: backend modules read the
 # environment at import time.
-from collections.abc import Callable  # noqa: E402
+import uuid  # noqa: E402
+from collections.abc import AsyncIterator, Callable  # noqa: E402
 from types import ModuleType  # noqa: E402
 from typing import Any  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock  # noqa: E402
@@ -144,3 +145,34 @@ def patch_get_session(
         return session
 
     return patch_it
+
+
+@pytest.fixture
+async def db_user() -> AsyncIterator[str]:
+    """A throwaway ``user_goal`` row on the local test database.
+
+    Skips unless ``DATABASE_URL`` was set on purpose and points at this
+    machine, so no test can write to the production database. Everything the
+    test creates for the user is removed with the row (ON DELETE CASCADE).
+    """
+    from sqlalchemy import delete
+    from sqlalchemy.engine import make_url
+
+    from backend.db.models import UserGoal
+    from backend.db.session import dispose_engine, get_session
+
+    if not DATABASE_URL_PRESET:
+        pytest.skip("DATABASE_URL not set")
+    if make_url(os.environ["DATABASE_URL"]).host not in {"127.0.0.1", "localhost"}:
+        pytest.skip("DATABASE_URL is not a local throwaway database")
+    user_id = str(uuid.uuid4())
+    async with get_session()() as session:
+        session.add(UserGoal(user_id=user_id))
+        await session.commit()
+    try:
+        yield user_id
+    finally:
+        async with get_session()() as session:
+            await session.execute(delete(UserGoal).where(UserGoal.user_id == user_id))
+            await session.commit()
+        await dispose_engine()

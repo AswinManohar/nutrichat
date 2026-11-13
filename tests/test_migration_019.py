@@ -80,7 +80,7 @@ def seeded(engine: Engine) -> Iterator[dict[str, str]]:
             (
                 ids["a"],
                 ["diabetes", "ckd"],
-                {"vegan": True, "keto": False, "odd": True},
+                {"vegan": True, "keto": False, "odd": True, "pescetarian": True},
             ),
             (ids["b"], [], {}),
         ):
@@ -151,6 +151,8 @@ def test_backfill_copies_conditions_and_diet_chips(
     assert ("diagnosis", '{"condition": "diabetes"}') in entries
     assert ("diagnosis", '{"condition": "ckd"}') in entries
     assert ("diet_setting", '{"setting": "vegan"}') in entries
+    # the web's spelling is kept under the chip's name, not dropped
+    assert ("diet_setting", '{"setting": "pescatarian"}') in entries
     # false chip and non-chip key are not copied
     assert not any(v for k, v in entries.items() if "keto" in k[1] or "odd" in k[1])
     row = entries[("diagnosis", '{"condition": "ckd"}')]

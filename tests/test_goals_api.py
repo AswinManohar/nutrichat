@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,55 @@ from fastapi.testclient import TestClient
 
 from backend.api import goals
 from backend.db.models import UserGoal
+from backend.safety import profile
+
+
+@pytest.fixture(autouse=True)
+def declarations() -> Iterator[dict]:
+    """Stand in for the profile: the diff semantics are tested in tests/safety."""
+    state: dict = {"conditions": [], "chips": [], "calls": []}
+    base = datetime(2026, 11, 1, tzinfo=UTC)
+
+    async def fake_set(user_id, *, conditions, managed_conditions, diet_settings):
+        state["calls"].append((user_id, conditions, set(managed_conditions)))
+        if conditions is not None:
+            state["conditions"] = list(conditions)
+        state["chips"] = list(diet_settings)
+
+    async def fake_load(user_id):
+        entries = [
+            profile.HardEntry(
+                id=f"c{i}",
+                type="diagnosis",
+                value=profile.DiagnosisValue(condition=c),
+                source="patient",
+                state="confirmed",
+                created_at=base + timedelta(seconds=i),
+                created_by="patient",
+                confirmed_at=base + timedelta(seconds=i),
+            )
+            for i, c in enumerate(state["conditions"])
+        ]
+        entries += [
+            profile.HardEntry(
+                id=f"d{i}",
+                type="diet_setting",
+                value=profile.DietSettingValue(setting=d),
+                source="patient",
+                state="confirmed",
+                created_at=base,
+                created_by="patient",
+                confirmed_at=base,
+            )
+            for i, d in enumerate(state["chips"])
+        ]
+        return entries
+
+    with (
+        patch("backend.api.goals.profile.set_declarations", fake_set),
+        patch("backend.api.goals.profile.load_hard_profile", fake_load),
+    ):
+        yield state
 
 
 @pytest.fixture
@@ -350,9 +400,11 @@ def test_invalid_condition_is_rejected(
 
 
 def test_put_without_conditions_leaves_them_unchanged(
-    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    declarations: dict,
 ) -> None:
-    factory, store = _round_trip_session(mock_session_factory)
+    factory, _ = _round_trip_session(mock_session_factory)
     base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
 
     with patch("backend.api.goals.get_session", return_value=factory):
@@ -365,13 +417,16 @@ def test_put_without_conditions_leaves_them_unchanged(
 
     assert put.status_code == 200
     assert put.json()["conditions"] == ["diabetes"]
-    assert store["user-1"].conditions == ["diabetes"]
+    # None tells the profile to leave conditions alone.
+    assert declarations["calls"][-1][1] is None
 
 
 def test_put_with_empty_conditions_clears_them(
-    client: TestClient, mock_session_factory: Callable[[MagicMock], MagicMock]
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    declarations: dict,
 ) -> None:
-    factory, store = _round_trip_session(mock_session_factory)
+    factory, _ = _round_trip_session(mock_session_factory)
     base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
 
     with patch("backend.api.goals.get_session", return_value=factory):
@@ -386,4 +441,62 @@ def test_put_with_empty_conditions_clears_them(
 
     assert put.status_code == 200
     assert put.json()["conditions"] == []
-    assert store["user-1"].conditions == []
+    assert declarations["calls"][-1][1] == []
+
+
+def test_diet_settings_round_trip_through_the_profile(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    declarations: dict,
+) -> None:
+    factory, _ = _round_trip_session(mock_session_factory)
+    base = {"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30}
+
+    with patch("backend.api.goals.get_session", return_value=factory):
+        post = client.post(
+            "/goals",
+            json={
+                **base,
+                "dietary_prefs": {"vegan": True, "keto": False, "custom": True},
+            },
+            headers=_auth_headers("user-1"),
+        )
+        get = client.get("/goals", headers=_auth_headers("user-1"))
+
+    # The response keeps its shape: a dict of the diet settings that are on.
+    # Keys that are not diet settings have no home in the profile and are dropped.
+    assert post.status_code == 201
+    assert post.json()["dietary_prefs"] == {"vegan": True}
+    assert get.json()["dietary_prefs"] == {"vegan": True}
+    assert declarations["chips"] == ["vegan"]
+
+
+def test_conditions_the_settings_screen_cannot_set_are_not_listed(
+    client: TestClient,
+    mock_session_factory: Callable[[MagicMock], MagicMock],
+    declarations: dict,
+) -> None:
+    factory, _ = _round_trip_session(mock_session_factory)
+    with patch("backend.api.goals.get_session", return_value=factory):
+        client.post(
+            "/goals",
+            json={"kcal_goal": 2000, "protein_goal": 150, "fiber_goal": 30},
+            headers=_auth_headers("user-1"),
+        )
+        declarations["conditions"] = ["diabetes", "gout"]
+        get = client.get("/goals", headers=_auth_headers("user-1"))
+
+    assert get.json()["conditions"] == ["diabetes"]
+    assert declarations["calls"][-1][2] == {
+        "diabetes",
+        "prediabetes",
+        "hypertension",
+        "ckd",
+    }
+
+
+def test_diet_settings_accept_the_web_spelling() -> None:
+    """The web onboarding sends "pescetarian"; it must not be dropped."""
+    prefs = {"pescetarian": True, "vegan": False, "odd": True}
+
+    assert goals._diet_settings(prefs) == ["pescatarian"]
