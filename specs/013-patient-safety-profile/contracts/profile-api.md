@@ -22,7 +22,8 @@ stays until then for the released app and is marked `deprecated` in OpenAPI.
       "value": {"allergen_group": "peanut"},
       "source": "patient", "state": "confirmed",
       "created_at": "2026-11-20T10:00:00Z", "confirmed_at": "2026-11-20T10:01:00Z",
-      "retire_requested": false
+      "retire_requested": false,
+      "acknowledged": false
     }
   ],
   "pending_count": 1,
@@ -104,16 +105,14 @@ the preference was live, already deleted or never existed.
 
 ## GET /profile/meals?days=21
 
-Recommendations (shown, accepted, rejected with reason) and logged meal labels
-for the window. `days` defaults to 21, 1 to 90 (422 otherwise).
-
 ```json
 {"days": 21,
- "recommendations": [{"recommendation_id": "uuid", "name": "Lemon chicken", "status": "rejected", "rejection_reason": "too bland", "created_at": "…"}],
- "eaten": [{"label": "Oatmeal with banana", "logged_at": "…"}]}
+ "recommendations": [{"recommendation_id": "uuid", "name": "Lentil soup", "status": "rejected",
+                      "rejection_reason": "too spicy", "created_at": "…"}],
+ "eaten": [{"label": "Lunch: rice and dal", "logged_at": "…"}]}
 ```
 
-Newest first; each list is capped at `memory.history_api_max_rows`.
+`days` ≤ 90. Eaten meals come from `meal_log`; nothing is copied.
 
 ## POST /profile/meals/{recommendation_id}/feedback
 

@@ -172,6 +172,25 @@ async def test_confirm_and_deny_follow_the_state_rules(
     assert (await client.get("/profile")).json()["pending_count"] == 0
 
 
+async def test_confirming_an_inferred_entry_acknowledges_it(
+    client: httpx.AsyncClient, db_user: str
+) -> None:
+    inferred = await profile.add_entry(
+        db_user,
+        profile.DietSettingValue(setting="vegan"),
+        source="inferred",
+        state="confirmed",
+        created_by="curator",
+        confirmed_by="inference",
+    )
+    before = (await client.get("/profile")).json()["hard"]
+    after = await client.post(f"/profile/entries/{inferred.id}/confirm")
+
+    assert [e["acknowledged"] for e in before if e["id"] == inferred.id] == [False]
+    assert after.json()["acknowledged"] is True
+    assert after.json()["state"] == "confirmed"
+
+
 async def test_unknown_and_foreign_entries_are_404(client: httpx.AsyncClient) -> None:
     missing = "00000000-0000-4000-8000-000000000000"
 

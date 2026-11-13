@@ -55,6 +55,9 @@ class EntryOut(BaseModel):
     created_at: datetime
     confirmed_at: datetime | None
     retire_requested: bool
+    # An inferred entry the patient has agreed with in the app; the app stops
+    # showing the "Inferred" prompt for it.
+    acknowledged: bool
 
     model_config = ConfigDict(extra="forbid")
 
@@ -249,6 +252,7 @@ def _entry_out(entry: profile.HardEntry, tables: ClinicalTables) -> EntryOut:
         confirmed_at=entry.confirmed_at,
         retire_requested=entry.retire_requested_at is not None
         and entry.state == "confirmed",
+        acknowledged=entry.acknowledged_at is not None,
     )
 
 
