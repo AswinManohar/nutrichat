@@ -35,6 +35,7 @@ import re
 import sys
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.agent.coaching import _context_prompt, generate_response
@@ -42,6 +43,9 @@ from backend.agent.context import ContextBundle, GoalSummary, build_system_promp
 from backend.agent.memory import ApplyOutcome, MemoryFact, MemoryOp, OpResult
 from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
+from backend.safety import profile as hard_profile
+from backend.safety.matching import restriction_value
+from backend.safety.tables import load_tables
 
 _TOTALS = TodayTotals(kcal=1300, protein_g=60, fiber_g=12, n_meals=2)
 _GOALS = {"kcal_goal": 2200, "protein_goal": 140, "fiber_goal": 30}
@@ -150,7 +154,9 @@ class MemoryCase:
 
 MEMORY_CASES = [
     MemoryCase("remember that I hate mushrooms", "add", "mushroom"),
-    MemoryCase("please remember I'm allergic to shellfish", "add", "shellfish"),
+    MemoryCase(
+        "please remember I'm allergic to shellfish", "add_restriction", "shellfish"
+    ),
     MemoryCase("don't suggest tofu to me again", "add", "tofu"),
     MemoryCase(
         "forget that I dislike mushrooms, I like them now",
@@ -170,13 +176,40 @@ MEMORY_CASES = [
 ]
 
 
+def _entries(facts: list[MemoryFact], chips: list[str]) -> list[hard_profile.HardEntry]:
+    """The hard profile this case stands for: restriction facts and diet chips."""
+    tables = load_tables()
+    values = [
+        restriction_value(f.fact, tables)[0] for f in facts if f.kind == "restriction"
+    ] + [hard_profile.DietSettingValue(setting=chip) for chip in chips]
+    at = datetime(2026, 11, 1, tzinfo=UTC)
+    return [
+        hard_profile.HardEntry(
+            id=str(uuid.uuid4()),
+            type=hard_profile._TYPE_OF[type(value)],
+            value=value,
+            source="patient",
+            state="confirmed",
+            created_at=at,
+            created_by="patient",
+            confirmed_at=at,
+        )
+        for value in values
+    ]
+
+
+def _hard_block(facts: list[MemoryFact], chips: list[str]) -> str:
+    return hard_profile.render_block(_entries(facts, chips), load_tables())
+
+
 def _context(facts: list[MemoryFact], chips: list[str]) -> tuple[str, dict]:
     prefs = {chip: True for chip in chips}
     ctx = ContextBundle(
         today_totals=_TOTALS,
-        goals=GoalSummary(dietary_prefs=prefs, streak_days=3, **_GOALS),
+        goals=GoalSummary(streak_days=3, **_GOALS),
+        hard_block=_hard_block(facts, chips),
         profile_active=True,
-        profile=facts,
+        profile=[f for f in facts if f.kind != "restriction"],
     )
     data = {
         "today_totals": _TOTALS.model_dump(),
@@ -190,9 +223,8 @@ def _default_context(chips: list[str]) -> tuple[str, dict]:
     """Profile off, no goals in the data: the prompt is the only source."""
     ctx = ContextBundle(
         today_totals=_TOTALS,
-        goals=GoalSummary(
-            dietary_prefs={chip: True for chip in chips}, streak_days=3, **_GOALS
-        ),
+        goals=GoalSummary(streak_days=3, **_GOALS),
+        hard_block=_hard_block([], chips),
     )
     data = {
         "today_totals": _TOTALS.model_dump(),
@@ -225,6 +257,7 @@ class _Recorder:
         self.profiles: dict[str, list[MemoryFact]] = {}
         self.attempted: dict[str, list[MemoryOp]] = {}
         self.goals: dict[str, UserGoal] = {}
+        self.hard: dict[str, list[hard_profile.HardEntry]] = {}
         self.profile_on: set[str] = set()
 
     def is_profile_on(self, user_id: str) -> bool:
@@ -245,7 +278,10 @@ class _Recorder:
         return ApplyOutcome(results=[OpResult(op=op, applied=True) for op in ops])
 
     async def load_profile(self, user_id: str) -> list[MemoryFact]:
-        return self.profiles.get(user_id, [])
+        return [f for f in self.profiles.get(user_id, []) if f.kind != "restriction"]
+
+    async def load_hard_profile(self, user_id: str) -> list[hard_profile.HardEntry]:
+        return self.hard.get(user_id, [])
 
 
 async def _ask(
@@ -260,6 +296,7 @@ async def _ask(
     """Run one coaching reply; return it with the ops the tools tried to apply."""
     user_id = str(uuid.uuid4())
     recorder.profiles[user_id] = facts
+    recorder.hard[user_id] = _entries(facts, chips)
     if profile_on:
         recorder.profile_on.add(user_id)
     if path == "profile":
@@ -269,8 +306,6 @@ async def _ask(
     else:
         recorder.goals[user_id] = UserGoal(
             user_id=user_id,
-            dietary_prefs={chip: True for chip in chips},
-            conditions=[],
             streak_days=3,
             **_GOALS,
         )
@@ -298,6 +333,9 @@ async def _run_once() -> int:
         ),
         patch("backend.agent.context.get_session", recorder.session_factory),
         patch("backend.agent.context.load_profile", recorder.load_profile),
+        # One patch covers context.py and the memory tools: both reach it
+        # through the safety.profile module.
+        patch("backend.safety.profile.load_hard_profile", recorder.load_hard_profile),
         patch("backend.agent.memory_tools.apply_ops", recorder.apply_ops),
         patch("backend.agent.memory_tools.load_profile", recorder.load_profile),
     ):
