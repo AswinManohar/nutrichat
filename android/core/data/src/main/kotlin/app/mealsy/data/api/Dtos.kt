@@ -58,6 +58,16 @@ data class LogTurnResponse(
     @SerialName("recommendation_id") val recommendationId: String? = null,
     /** `"safety"` on a red-flag reply; absent on every other turn. */
     val kind: String? = null,
+    /** A yes/no question about a stated health fact; the patient answers by sending plain chat text. */
+    val readback: ReadbackDto? = null,
+)
+
+/** The latest readback question: [kind] is `"add"` (confirm a new fact) or `"retire"` (stop using one). */
+@Serializable
+data class ReadbackDto(
+    @SerialName("entry_id") val entryId: String,
+    val text: String,
+    val kind: String,
 )
 
 /** One recipe ingredient: a plain food name and grams as eaten. */

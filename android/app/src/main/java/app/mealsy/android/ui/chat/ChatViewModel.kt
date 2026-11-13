@@ -2,6 +2,7 @@ package app.mealsy.android.ui.chat
 
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
+import app.mealsy.data.api.ReadbackDto
 import app.mealsy.data.api.RecipeDto
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.PastelTone
@@ -56,6 +57,8 @@ sealed interface ChatMsg {
         val constraintNote: String? = null,
         val recipeChoice: RecipeChoice = RecipeChoice.None,
         val isSafety: Boolean = false,
+        /** An open yes/no question; cleared as soon as the patient sends any message. */
+        val readback: ReadbackDto? = null,
     ) : ChatMsg
 
     data class UpgradeNotice(

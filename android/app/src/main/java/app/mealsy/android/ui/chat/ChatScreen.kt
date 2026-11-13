@@ -273,6 +273,7 @@ fun ChatScreen(
                             onSaveAsMyMeal = viewModel::onSaveAsMyMeal,
                             onFeedback = viewModel::submitFeedback,
                             onRecipeFeedback = viewModel::submitRecipeFeedback,
+                            onReadbackAnswer = { viewModel.send(it) },
                             // #49: no LazyColumn in the app used
                             // `animateItem()`, so a removal/undo/merge made
                             // every row below it pop to its new position
@@ -508,6 +509,7 @@ internal fun ChatMessageRow(
     onFeedback: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
     onRecipeFeedback: (String, Boolean, String?) -> Unit = { _, _, _ -> },
+    onReadbackAnswer: (String) -> Unit = {},
 ) {
     val colors = MealsyTheme.colors
     Box(modifier = modifier) {
@@ -548,6 +550,9 @@ internal fun ChatMessageRow(
                                 timestamp = timestamp,
                             )
                         else -> CoachReply(text = msg.text, tags = msg.tags, timestamp = timestamp)
+                    }
+                    if (msg.readback != null) {
+                        ReadbackChips(readback = msg.readback, onAnswer = onReadbackAnswer)
                     }
                     if (msg.responseId != null && !msg.isSafety) {
                         Row(
@@ -740,7 +745,7 @@ private fun HighlightOnChange(
  * bubble.
  */
 @Composable
-private fun CoachReply(
+internal fun CoachReply(
     text: String,
     tags: List<MacroTag>,
     timestamp: String?,

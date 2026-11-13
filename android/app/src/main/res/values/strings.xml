@@ -49,6 +49,10 @@
     <string name="chat_recipe_reason_send">Send</string>
     <string name="chat_recipe_accepted">You said: sounds good</string>
     <string name="chat_recipe_rejected">You said: not for me</string>
+    <string name="chat_readback_yes">Yes</string>
+    <string name="chat_readback_no">No</string>
+    <string name="chat_readback_yes_retire">Yes, stop it</string>
+    <string name="chat_readback_no_retire">No, keep it</string>
     <string name="chat_safety_icon_description">Safety message</string>
     <string name="chat_card_logged">Logged: %1$s · %2$d kcal</string>
     <string name="chat_card_not_logged">Not logged</string>

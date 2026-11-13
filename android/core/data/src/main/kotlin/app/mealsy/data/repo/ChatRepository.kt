@@ -8,6 +8,7 @@ import app.mealsy.data.api.LogTurnRequest
 import app.mealsy.data.api.LogTurnResponse
 import app.mealsy.data.api.MealFeedbackRequest
 import app.mealsy.data.api.MealsyApi
+import app.mealsy.data.api.ReadbackDto
 import app.mealsy.data.api.RecipeDto
 import app.mealsy.data.api.toCard
 import app.mealsy.data.offline.PendingLogQueue
@@ -49,6 +50,7 @@ sealed interface TurnResult {
         val recommendationId: String? = null,
         val kind: String? = null,
         val constraintNote: String? = null,
+        val readback: ReadbackDto? = null,
     ) : TurnResult
 
     data class Card(val card: ConfirmationCard) : TurnResult
@@ -380,6 +382,7 @@ class ChatRepository
                 recipe = response.recipe,
                 recommendationId = response.recommendationId,
                 kind = response.kind,
+                readback = response.readback,
                 constraintNote = if (response.recipe != null) constraintNote(response.message) else null,
             )
         }

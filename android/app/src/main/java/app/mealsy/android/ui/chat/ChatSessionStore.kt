@@ -286,6 +286,7 @@ class ChatSessionStore
          * result. Returns the underlying [Job] purely so tests can [Job.join] it.
          */
         fun send(text: String): Job {
+            clearReadbacks()
             appendUser(text)
             _sending.value = true
             return sessionScope.launch {
@@ -901,7 +902,17 @@ class ChatSessionStore
                     recommendationId = reply.recommendationId,
                     constraintNote = reply.constraintNote,
                     isSafety = reply.kind == "safety",
+                    readback = reply.readback,
                 )
+        }
+
+        /** Hides the Yes/No chips: any message the patient sends answers or abandons the question. */
+        private fun clearReadbacks() {
+            if (_messages.value.none { it is ChatMsg.Coach && it.readback != null }) return
+            _messages.value =
+                _messages.value.map { msg ->
+                    if (msg is ChatMsg.Coach && msg.readback != null) msg.copy(readback = null) else msg
+                }
         }
 
         private fun appendUpgradeNotice(text: String) {

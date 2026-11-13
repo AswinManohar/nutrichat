@@ -152,6 +152,29 @@ class ChatRepositoryTest {
         }
 
     @Test
+    fun `sendTurn carries a readback when present and none otherwise`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"status":"done","message":"Got it. Is that right?","paused":false,
+                       "readback":{"entry_id":"e-1","text":"Do you have celiac disease?","kind":"add"}}""",
+                ),
+            )
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"remaining":3}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"done","message":"Hello","paused":false}"""))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"remaining":3}"""))
+            val repository = buildRepository()
+
+            val asked = repository.sendTurn("I have celiac") as TurnResult.Reply
+            val plain = repository.sendTurn("hi") as TurnResult.Reply
+
+            assertEquals("e-1", asked.readback?.entryId)
+            assertEquals("Do you have celiac disease?", asked.readback?.text)
+            assertEquals("add", asked.readback?.kind)
+            assertEquals(null, plain.readback)
+        }
+
+    @Test
     fun `submitMealFeedback posts status and keeps the reason only on rejection`() =
         runBlocking {
             server.enqueue(MockResponse().setResponseCode(200).setBody("""{"recommendation_id":"rec-1","status":"rejected"}"""))

@@ -713,6 +713,58 @@ class ChatViewModelTest {
             assertEquals(RecipeChoice.None, recipeChoice(viewModel))
         }
 
+    private fun readbackBody(): String =
+        """
+        {"status":"done","message":"Is that right?","paused":false,
+         "readback":{"entry_id":"e-1","text":"Do you have celiac disease?","kind":"add"}}
+        """.trimIndent()
+
+    private fun coachReadbacks(viewModel: ChatViewModel) = viewModel.messages.value.filterIsInstance<ChatMsg.Coach>().map { it.readback }
+
+    @Test
+    fun `a readback reply shows the chips`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(readbackBody()))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+
+            viewModel.send("I have celiac").join()
+
+            assertEquals("e-1", coachReadbacks(viewModel).single()?.entryId)
+        }
+
+    @Test
+    fun `tapping Yes sends yes and hides the chips`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(readbackBody()))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"done","message":"Saved.","paused":false}"""))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("I have celiac").join()
+
+            viewModel.send(READBACK_YES).join()
+
+            assertTrue(drainBodies().any { it.contains("\"yes\"") })
+            assertTrue(coachReadbacks(viewModel).all { it == null })
+        }
+
+    @Test
+    fun `typing something else hides the chips`() =
+        runBlocking {
+            enqueueEmptyStartup()
+            server.enqueue(MockResponse().setResponseCode(200).setBody(readbackBody()))
+            server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"done","message":"Sure.","paused":false}"""))
+            val viewModel = buildViewModel()
+            viewModel.readyJob.join()
+            viewModel.send("I have celiac").join()
+
+            viewModel.send("what's a good dinner?").join()
+
+            assertTrue(coachReadbacks(viewModel).all { it == null })
+        }
+
     @Test
     fun `a safety reply is flagged and leaves the waiting meal card active`() =
         runBlocking {
