@@ -33,13 +33,6 @@ from backend.db.models import (
 )
 from backend.db.session import get_session
 from backend.safety import profile
-from backend.safety.profile import (
-    _ensure_room,
-    _get_row,
-    _lock,
-    _new_row,
-    _retire_row,
-)
 from backend.safety.tables import ClinicalTables, TablesUnavailable, load_tables
 
 logger = logging.getLogger(__name__)
@@ -197,11 +190,12 @@ def _parse(edit: EditIn) -> profile.EntryValue:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _entry_out(row: ProfileEntry, tables: ClinicalTables) -> EntryOut:
-    entry = profile._to_entry(row)  # noqa: SLF001 - same package, one row mapper
+def _entry_out(
+    entry: profile.HardEntry, patient_id: str, tables: ClinicalTables
+) -> EntryOut:
     return EntryOut(
         id=entry.id,
-        patient_id=row.user_id,
+        patient_id=patient_id,
         type=entry.type,
         label=profile.label_for(entry, tables),
         value=entry.value.model_dump(exclude_none=True),
@@ -271,7 +265,7 @@ def _escalation_content(esc: RedFlagEscalation) -> dict:
 def _entry_content(row: ProfileEntry, tables: ClinicalTables) -> dict:
     return {
         "type": row.entry_type,
-        "label": profile.label_for(profile._to_entry(row), tables),  # noqa: SLF001
+        "label": profile.label_for(profile.to_entry(row), tables),
         "evidence": row.evidence,
     }
 
@@ -508,75 +502,37 @@ def _validate(item: ReviewItem, body: DecisionIn) -> None:
             )
 
 
-async def _replace_with_clinician_entry(
-    session: AsyncSession,
-    user_id: str,
-    retiring: list[ProfileEntry],
-    replaces_id: str,
-    edit: EditIn,
-    actor: str,
-) -> ProfileEntry:
-    """Retire entries and insert the confirmed clinician entry, in the open txn."""
-    value = _parse(edit)
-    for row in retiring:
-        _retire_row(row, actor, "replaced")
-    await session.flush()
-    await _ensure_room(session, user_id)
-    new = _new_row(
-        user_id,
-        value,
-        label=edit.label,
-        source="clinician",
-        state="confirmed",
-        created_by=actor,
-        client_request_id=None,
-        replaces_id=replaces_id,
-    )
-    session.add(new)
-    await session.flush()
-    return new
-
-
 async def _apply(
     session: AsyncSession, item: ReviewItem, body: DecisionIn, actor: str
-) -> ProfileEntry | None:
+) -> profile.HardEntry | None:
     """Carry out the decision's effect on the subject; return the entry it made."""
     if item.kind == "pending_entry":
-        await _lock(session, item.user_id)
-        row = await _get_row(session, item.user_id, item.subject_id)
-        if row.state != "pending":
-            raise HTTPException(status_code=409, detail="Entry is no longer pending")
-        if body.decision == "approved":
-            row.state = "confirmed"
-            row.confirmed_at = datetime.now(UTC)
-            row.confirmed_by = actor
-            return row
-        if body.decision == "rejected":
-            _retire_row(row, actor, "denied")
-            return None
-        assert body.edit is not None
-        return await _replace_with_clinician_entry(
-            session, item.user_id, [row], row.id, body.edit, actor
+        return await profile.apply_review(
+            session,
+            item.user_id,
+            actor=actor,
+            decision=body.decision,
+            pending_id=item.subject_id,
+            **_edit_args(body),
         )
     if item.kind == "rule_conflict":
-        assert body.edit is not None
-        await _lock(session, item.user_id)
-        ids = (item.detail or {}).get("entries", [])
-        rows = (
-            await session.execute(
-                select(ProfileEntry)
-                .where(
-                    ProfileEntry.user_id == item.user_id,
-                    ProfileEntry.id.in_(ids),
-                    ProfileEntry.state == "confirmed",
-                )
-                .with_for_update()
-            )
-        ).scalars()
-        return await _replace_with_clinician_entry(
-            session, item.user_id, list(rows), item.subject_id, body.edit, actor
+        return await profile.apply_review(
+            session,
+            item.user_id,
+            actor=actor,
+            decision="edited",
+            conflict_ids=(item.detail or {}).get("entries", []),
+            replaces_id=item.subject_id,
+            **_edit_args(body),
         )
     return None
+
+
+def _edit_args(body: DecisionIn) -> dict:
+    """The clinician's value and label when the decision is an edit."""
+    if body.edit is None:
+        return {}
+    return {"value": _parse(body.edit), "label": body.edit.label}
 
 
 @router.post("/items/{item_id}/decision")
@@ -618,7 +574,7 @@ async def decide(
                 decision=body.decision,
                 decided_by=actor,
                 decided_at=item.decided_at,
-                entry=_entry_out(entry, tables) if entry else None,
+                entry=_entry_out(entry, item.user_id, tables) if entry else None,
             )
     except IntegrityError as exc:
         # A concurrent reviewer created the same derived item first.

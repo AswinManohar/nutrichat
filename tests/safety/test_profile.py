@@ -289,6 +289,27 @@ async def test_edit_retires_the_old_entry_and_links_the_new_one(db_user) -> None
     assert len(await profile.load_history(db_user)) == 2
 
 
+async def test_replace_records_who_made_and_confirmed_the_new_entry(db_user) -> None:
+    old = await _add(db_user, _sodium(1500))
+
+    new = await profile.replace(
+        db_user,
+        old.id,
+        _sodium(1200),
+        created_by="reviewer:r1",
+        source="clinician",
+        confirmed_by="reviewer:r1",
+    )
+
+    assert (new.source, new.created_by, new.confirmed_by) == (
+        "clinician",
+        "reviewer:r1",
+        "reviewer:r1",
+    )
+    history = {e.id: e for e in await profile.load_history(db_user)}
+    assert history[old.id].retired_by == "reviewer:r1"
+
+
 async def test_replace_needs_a_confirmed_entry_of_the_same_type(db_user) -> None:
     pending = await _add(db_user, PEANUT, "pending")
     confirmed = await _add(db_user, _sodium())

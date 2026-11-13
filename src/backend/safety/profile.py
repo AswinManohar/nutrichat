@@ -247,7 +247,8 @@ class HardEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _to_entry(row: ProfileEntry) -> HardEntry:
+def to_entry(row: ProfileEntry) -> HardEntry:
+    """The typed, validated view of one ``profile_entry`` row."""
     return HardEntry(
         id=row.id,
         type=row.entry_type,
@@ -574,7 +575,7 @@ async def load_hard_profile(user_id: str) -> list[HardEntry]:
     """
     async with get_session()() as session:
         rows = await _live_rows(session, user_id)
-    return sorted((_to_entry(r) for r in rows), key=_sort_key)
+    return sorted((to_entry(r) for r in rows), key=_sort_key)
 
 
 async def load_history(user_id: str) -> list[HardEntry]:
@@ -585,7 +586,7 @@ async def load_history(user_id: str) -> list[HardEntry]:
             .where(ProfileEntry.user_id == user_id)
             .order_by(ProfileEntry.created_at.desc())
         )
-    return [_to_entry(r) for r in result.scalars().all()]
+    return [to_entry(r) for r in result.scalars().all()]
 
 
 async def get_entry(user_id: str, entry_id: str) -> HardEntry:
@@ -595,7 +596,7 @@ async def get_entry(user_id: str, entry_id: str) -> HardEntry:
         EntryNotFound: Unknown id, or one that belongs to another user.
     """
     async with get_session()() as session:
-        return _to_entry(await _get_row(session, user_id, entry_id))
+        return to_entry(await _get_row(session, user_id, entry_id))
 
 
 async def add_entry(
@@ -642,7 +643,7 @@ async def add_entry(
         await _lock(session, user_id)
         existing = await _existing_request(session, user_id, client_request_id)
         if existing is not None:
-            return _to_entry(existing)
+            return to_entry(existing)
         await _ensure_room(session, user_id)
         row = _new_row(
             user_id,
@@ -659,7 +660,7 @@ async def add_entry(
         )
         session.add(row)
         await session.flush()
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def confirm(user_id: str, entry_id: str, *, by: str = "patient") -> HardEntry:
@@ -687,7 +688,7 @@ async def confirm(user_id: str, entry_id: str, *, by: str = "patient") -> HardEn
             raise StateConflict("a retired entry cannot be confirmed")
         elif row.source == "inferred" and row.acknowledged_at is None:
             row.acknowledged_at = datetime.now(UTC)
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def deny(user_id: str, entry_id: str, *, by: str = "patient") -> HardEntry:
@@ -704,7 +705,7 @@ async def deny(user_id: str, entry_id: str, *, by: str = "patient") -> HardEntry
             _retire_row(row, by, "denied")
         elif not (row.state == "retired" and row.retired_reason == "denied"):
             raise StateConflict("only a pending entry can be denied")
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def retire(
@@ -723,7 +724,7 @@ async def retire(
             raise StateConflict("a pending entry is denied, not retired")
         if row.state == "confirmed":
             _retire_row(row, by, reason)
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def request_retirement(user_id: str, entry_id: str) -> HardEntry:
@@ -742,7 +743,7 @@ async def request_retirement(user_id: str, entry_id: str) -> HardEntry:
             raise StateConflict("only a confirmed entry can be retired")
         if row.retire_requested_at is None:
             row.retire_requested_at = datetime.now(UTC)
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def cancel_retirement(user_id: str, entry_id: str) -> HardEntry:
@@ -758,7 +759,7 @@ async def cancel_retirement(user_id: str, entry_id: str) -> HardEntry:
         if row.state != "confirmed":
             raise StateConflict("only a confirmed entry has a retirement request")
         row.retire_requested_at = None
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def mark_readback(
@@ -801,7 +802,7 @@ async def mark_mentioned(user_id: str, entry_id: str) -> HardEntry:
         row = await _get_row(session, user_id, entry_id)
         if row.mentioned_at is None:
             row.mentioned_at = datetime.now(UTC)
-        return _to_entry(row)
+        return to_entry(row)
 
 
 async def replace(
@@ -810,12 +811,25 @@ async def replace(
     value: EntryValue,
     *,
     created_by: str = "patient",
+    source: EntrySource = "patient",
+    confirmed_by: str | None = None,
     label: str | None = None,
     client_request_id: str | None = None,
 ) -> HardEntry:
     """Edit = retire the old entry (``replaced``) and insert a confirmed new one.
 
     One transaction. A repeated ``client_request_id`` returns the first result.
+
+    Args:
+        user_id: Supabase Auth UUID.
+        entry_id: The confirmed entry to replace.
+        value: The new typed value; it must have the old entry's type.
+        created_by: Who made the edit; also retires the old entry.
+        source: Who the new fact came from.
+        confirmed_by: Who confirmed the new entry; defaults to ``created_by``.
+        label: Free-text label; kept only for food exclusions and custom
+            allergies.
+        client_request_id: Idempotency key for app writes.
 
     Raises:
         EntryNotFound: Unknown entry.
@@ -826,7 +840,7 @@ async def replace(
         await _lock(session, user_id)
         existing = await _existing_request(session, user_id, client_request_id)
         if existing is not None:
-            return _to_entry(existing)
+            return to_entry(existing)
         old = await _get_row(session, user_id, entry_id)
         if old.state != "confirmed" or old.entry_type != _TYPE_OF[type(value)]:
             raise StateConflict("only a confirmed entry can be replaced by its type")
@@ -836,15 +850,111 @@ async def replace(
             user_id,
             value,
             label=label,
-            source="patient",
+            source=source,
             state="confirmed",
             created_by=created_by,
             client_request_id=client_request_id,
             replaces_id=old.id,
+            confirmed_by=confirmed_by,
         )
         session.add(row)
         await session.flush()
-        return _to_entry(row)
+        return to_entry(row)
+
+
+async def apply_review(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    actor: str,
+    decision: Literal["approved", "rejected", "edited"],
+    pending_id: str | None = None,
+    conflict_ids: Collection[str] = (),
+    value: EntryValue | None = None,
+    label: str | None = None,
+    replaces_id: str | None = None,
+) -> HardEntry | None:
+    """Apply a dietitian's decision inside the caller's open transaction.
+
+    The review decision and its effect on the profile must commit together, so
+    unlike the other writes this one runs in ``session`` and leaves committing
+    to the caller. Two kinds of subject:
+
+    * A pending entry (``pending_id``): ``approved`` confirms it as ``actor``,
+      ``rejected`` retires it as ``denied``, ``edited`` retires it as
+      ``replaced`` and inserts the clinician's value in its place.
+    * A rule conflict (``conflict_ids``, ``decision="edited"``): the listed
+      entries that are still confirmed are retired as ``replaced`` and the
+      clinician's value is inserted in their place.
+
+    Args:
+        session: The caller's open session and transaction.
+        user_id: The patient's Supabase Auth UUID.
+        actor: The reviewer, as stored on the rows.
+        decision: What the reviewer decided.
+        pending_id: The pending entry decided; None for a conflict.
+        conflict_ids: The entries a conflict names.
+        value: The clinician's value; required for ``edited``.
+        label: Free-text label for the new entry.
+        replaces_id: The entry the new one supersedes (defaults to
+            ``pending_id``).
+
+    Returns:
+        The confirmed entry for ``approved``, the new clinician entry for
+        ``edited``, None for ``rejected``.
+
+    Raises:
+        EntryNotFound: Unknown pending entry.
+        StateConflict: The pending entry was settled in the meantime.
+        ProfileFull: The patient already holds the maximum live entries.
+    """
+    await _lock(session, user_id)
+    if pending_id is not None:
+        row = await _get_row(session, user_id, pending_id)
+        if row.state != "pending":
+            raise StateConflict("Entry is no longer pending")
+        if decision == "approved":
+            row.state = "confirmed"
+            row.confirmed_at = datetime.now(UTC)
+            row.confirmed_by = actor
+            return to_entry(row)
+        if decision == "rejected":
+            _retire_row(row, actor, "denied")
+            return None
+        retiring = [row]
+    else:
+        retiring = list(
+            (
+                await session.execute(
+                    select(ProfileEntry)
+                    .where(
+                        ProfileEntry.user_id == user_id,
+                        ProfileEntry.id.in_(list(conflict_ids)),
+                        ProfileEntry.state == "confirmed",
+                    )
+                    .with_for_update()
+                )
+            ).scalars()
+        )
+    if value is None:
+        raise ValueError("an edit needs a value")
+    for old in retiring:
+        _retire_row(old, actor, "replaced")
+    await session.flush()
+    await _ensure_room(session, user_id)
+    new = _new_row(
+        user_id,
+        value,
+        label=label,
+        source="clinician",
+        state="confirmed",
+        created_by=actor,
+        client_request_id=None,
+        replaces_id=replaces_id or pending_id,
+    )
+    session.add(new)
+    await session.flush()
+    return to_entry(new)
 
 
 async def set_declarations(
