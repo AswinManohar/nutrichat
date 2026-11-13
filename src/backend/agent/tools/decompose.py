@@ -50,7 +50,9 @@ class DecomposeResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-_decompose_llm = make_llm().with_structured_output(DecomposeResult)
+_decompose_llm = make_llm(
+    retries=_TUNABLES.models.meal_logging_retries
+).with_structured_output(DecomposeResult)
 _DECOMPOSE_SYSTEM = _TUNABLES.prompts.decompose_system
 
 

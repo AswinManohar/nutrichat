@@ -35,6 +35,16 @@ models:
   # migration + full re-embed.
   embedding_dim: 768
 
+  # Retries after a failed Gemini call (429, 5xx, timeout), per agent: the
+  # meal-logging graph's calls (agent/tools/meals.py, decompose.py) and the
+  # coaching agents (agent/coaching.py). For the coaching reply the same
+  # count also caps the reply guard's rewrites (spec 013 R10). Each retry
+  # adds a model call to a failing turn only, never to a healthy one.
+  # PROVISIONAL (2026-11-13): set from production traces (failure rate per
+  # agent, latency added by a retry) once those exist.
+  meal_logging_retries: 3
+  coaching_retries: 3
+
 token_limits:
   # Max output tokens for the log_meal/coaching intent classifier in
   # agent/orchestrator.py. Gemini 3.1 flash-lite spends "thinking" tokens

@@ -438,6 +438,7 @@ _ESTIMATE_SYSTEM = _TUNABLES.prompts.nutrition_estimate_system
 # latency (see token_limits.extraction_thinking_budget).
 _estimate_agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
+    name="usda_estimate",
     output_type=NutritionEstimate,
     system_prompt=_ESTIMATE_SYSTEM,
     model_settings=GoogleModelSettings(

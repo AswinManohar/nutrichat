@@ -25,6 +25,8 @@ class ModelsConfig(BaseModel):
     coaching: str
     embedding: str
     embedding_dim: int = Field(gt=0)
+    meal_logging_retries: int = Field(ge=0)
+    coaching_retries: int = Field(ge=0)
 
     model_config = ConfigDict(extra="forbid")
 

@@ -306,7 +306,8 @@ sentence in the reply is built in code from the check (`safety/render.py`).
 (`agent/reply_judge.py`): word matching against the confirmed entries (with
 negations such as "peanut-free" ignored), then food phrases resolved through
 USDA, then, only when a food was named and nothing matched, one GLiDE yes/no
-judgment. A violation makes the model rewrite (up to two times); after that the
+judgment. A violation makes the model rewrite (up to `models.coaching_retries`
+times, 3 for now); after that the
 reply is replaced with `safety.reply_guard_fallback_text` and logged.
 
 Cost per turn: a recipe turn is one structured Flash-Lite call per attempt
@@ -462,9 +463,17 @@ system and per-screen QA checklist are in `android/CLAUDE.md`; setup is in
 Logfire (OpenTelemetry), service `nutrichat`; `LOGFIRE_ENABLED=false` disables all
 instrumentation. Instruments FastAPI, asyncpg, Redis, Celery, aiohttp, httpx,
 LangChain and Pydantic AI. Key spans: `handle_message`, `route_message`,
-`classify_intent_llm`, `meal_logging`, `coaching`, `resolve_ingredient`,
+`classify_intent_llm`, `invoke_agent meal_logging`, `coaching`, `resolve_ingredient`,
 `telegram_update`. The `route_message` span carries the routing path, certainty and
 GLiDE latency.
+
+Logfire's Agents view lists every span with `gen_ai.operation.name = invoke_agent`
+by `gen_ai.agent.name`, grouped into conversations by `gen_ai.conversation.id` (the
+chat thread). Pydantic AI writes these spans itself (instrumentation version 3) for
+the named agents `coaching`, `coaching_parse`, `meal_suggestion` and
+`usda_estimate`. The meal-logging graph is LangGraph, so the orchestrator writes its
+`invoke_agent meal_logging` span by hand, with the user message and the reply as
+`gen_ai.input.messages` and `gen_ai.output.messages`.
 
 ## 11. Eval (`eval/`)
 

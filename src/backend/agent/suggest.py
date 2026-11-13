@@ -82,6 +82,7 @@ class _Deps:
 # instead of a hidden retry that would not count toward the attempt limit.
 _recipe_agent = Agent(
     GoogleModel(FLASH_LITE_MODEL),
+    name="meal_suggestion",
     output_type=Recipe,
     deps_type=_Deps,
     instructions=_TUNABLES.prompts.recipe_generation_system,

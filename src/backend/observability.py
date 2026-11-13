@@ -122,7 +122,9 @@ def configure_observability(app: FastAPI | None = None) -> None:
         logger.warning("opentelemetry langchain instrumentation unavailable")
 
     try:
-        logfire.instrument_pydantic_ai()
+        # Version 3: agent runs become `invoke_agent {name}` spans, which
+        # Logfire's Agents view reads (the default, 2, emits `agent run`).
+        logfire.instrument_pydantic_ai(version=3)
     except ImportError:
         logger.warning("logfire pydantic-ai instrumentation unavailable")
 

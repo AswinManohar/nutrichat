@@ -139,10 +139,11 @@ class MealLogResult(BaseModel):
 # LLM setup
 # ---------------------------------------------------------------------------
 
-_extraction_llm = make_llm().with_structured_output(ExtractionResult)
-_classifier_llm = make_llm().with_structured_output(ImageClassification)
-_correction_llm = make_llm().with_structured_output(ExtractionResult)
-_log_reply_llm = make_llm()
+_RETRIES = _TUNABLES.models.meal_logging_retries
+_extraction_llm = make_llm(retries=_RETRIES).with_structured_output(ExtractionResult)
+_classifier_llm = make_llm(retries=_RETRIES).with_structured_output(ImageClassification)
+_correction_llm = make_llm(retries=_RETRIES).with_structured_output(ExtractionResult)
+_log_reply_llm = make_llm(retries=_RETRIES)
 
 _EXTRACTION_SYSTEM = _TUNABLES.prompts.extraction_system
 _CLASSIFY_SYSTEM = _TUNABLES.prompts.image_classify_system

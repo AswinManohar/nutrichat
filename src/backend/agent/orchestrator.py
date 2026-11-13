@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
 from datetime import datetime
@@ -729,7 +730,19 @@ async def _handle_meal_logging(
     Returns:
         Dict with status, message, paused, and items.
     """
-    with logfire.span("meal_logging"):
+    # The graph is LangGraph, not Pydantic AI, so the agent span is written
+    # here with the OTel GenAI attributes Logfire's Agents view reads.
+    thread_id = config["configurable"]["thread_id"]
+    with logfire.span(
+        "invoke_agent meal_logging",
+        **{
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": "meal_logging",
+            "gen_ai.conversation.id": thread_id,
+            "gen_ai.request.model": FLASH_LITE_MODEL,
+            "gen_ai.input.messages": _genai_messages("user", user_input),
+        },
+    ) as span:
         if is_paused:
             # Resume: inject new message (+ picked category + any card action)
             # into checkpoint state, then resume with None. `action` is set
@@ -807,7 +820,16 @@ async def _handle_meal_logging(
             response["saved_meal"] = _saved_meal_payload(result)
         else:
             response["meal_id"] = result.get("meal_id")
+        span.set_attribute(
+            "gen_ai.output.messages",
+            _genai_messages("assistant", response["message"]),
+        )
         return response
+
+
+def _genai_messages(role: str, text: str) -> str:
+    """One message in the OTel GenAI message format, as a JSON string."""
+    return json.dumps([{"role": role, "parts": [{"type": "text", "content": text}]}])
 
 
 async def _handle_coaching(

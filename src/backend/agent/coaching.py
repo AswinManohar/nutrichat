@@ -30,7 +30,7 @@ from backend.agent.context import (
     load_restrictions,
 )
 from backend.agent.cost import record_run_cost
-from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL
+from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, gemini_provider
 from backend.agent.memory_curator import TurnExtraction, extract_turn
 from backend.agent.memory_tools import hard_writes, memory_toolset
 from backend.agent.readback import Plan, Readback, commit_readback, plan_readback
@@ -237,9 +237,13 @@ _RESPONSE_SYSTEM = _TUNABLES.prompts.coaching_response_system
 # Thinking off (extraction-tier): query parsing is a structured-output call
 # that gates every coaching turn — skip the dynamic-thinking latency. The
 # response agent below keeps thinking ON for answer quality.
+# Named agents: Logfire's Agents view lists runs by gen_ai.agent.name.
+_RETRIES = _TUNABLES.models.coaching_retries
 _parse_agent = Agent(
-    GoogleModel(FLASH_LITE_MODEL),
+    GoogleModel(FLASH_LITE_MODEL, provider=gemini_provider(_RETRIES)),
+    name="coaching_parse",
     output_type=QueryParsed,
+    retries=_RETRIES,
     system_prompt=_QUERY_PARSE_SYSTEM,
     model_settings=GoogleModelSettings(
         google_thinking_config={
@@ -256,7 +260,7 @@ _PROFILE_RULES = _TUNABLES.prompts.coaching_profile_rules.strip()
 _MEMORY_RUN_LIMITS = UsageLimits(request_limit=4)
 
 # Rewrites the reply guard may ask for before the reply is replaced.
-_REPLY_RETRIES = 2
+_REPLY_RETRIES = _RETRIES
 
 
 @dataclass
@@ -288,7 +292,8 @@ class _ResponseDeps:
 # message, so instructions — which are sent on every run — are the right
 # slot for both the static rule set and the per-user context block.
 _response_agent = Agent(
-    GoogleModel(COACHING_MODEL),
+    GoogleModel(COACHING_MODEL, provider=gemini_provider(_RETRIES)),
+    name="coaching",
     deps_type=_ResponseDeps,
     instructions=_RESPONSE_SYSTEM,
     retries=_REPLY_RETRIES,
@@ -510,6 +515,7 @@ async def generate_response(
     passages: Sequence[RetrievedChunk] = (),
     user_id: str | None = None,
     entries: Sequence[HardEntry] = (),
+    conversation_id: str | None = None,
 ) -> str:
     """Generate a grounded natural-language answer from fetched data.
 
@@ -531,6 +537,8 @@ async def generate_response(
             given.
         entries: The patient's live hard entries; the reply guard applies
             the confirmed ones to the reply.
+        conversation_id: Chat thread, recorded as gen_ai.conversation.id so
+            Logfire groups the turns of one conversation.
 
     Returns:
         Natural language response, under 3 sentences, possibly carrying
@@ -552,6 +560,7 @@ async def generate_response(
             message_history=_history_to_messages(history) or None,
             toolsets=[memory_toolset] if use_memory else None,
             usage_limits=_MEMORY_RUN_LIMITS if use_memory else None,
+            conversation_id=conversation_id,
         )
     except UnexpectedModelBehavior:
         # Exhausted rewrites: any other model failure is not ours to hide.
@@ -812,6 +821,7 @@ class CoachingAgent:
                 passages=retrieved,
                 user_id=user_id,
                 entries=entries,
+                conversation_id=conversation_id,
             )
         finally:
             wrote_hard = bool(hard_writes.get())

@@ -829,7 +829,8 @@ async def test_the_reply_guard_replaces_a_reply_that_never_gets_safe():
         )
 
     assert text == get_tunables().safety.reply_guard_fallback_text
-    assert len(seen) == 3  # the reply and two rewrites
+    # The reply, then one rewrite per retry.
+    assert len(seen) == get_tunables().models.coaching_retries + 1
     row = session.add.call_args.args[0]
     assert (row.outcome, row.user_id) == ("reply_replaced", "user-1")
     assert row.failures[0]["rule"] == "allergen"

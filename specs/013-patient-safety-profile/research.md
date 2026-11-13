@@ -148,7 +148,8 @@ phase that depends on them merges.
 - **Decision**: register `@_response_agent.output_validator` on the coaching
   response agent. The validator runs on every free-text reply before it is
   returned and raises `ModelRetry("<reason>")` on a violation, so the model
-  rewrites with the reason; `retries` caps it at 2, after which the reply is
+  rewrites with the reason; `retries` caps it at `models.coaching_retries`
+  (3, provisional until production traces), after which the reply is
   replaced with `safety.reply_guard_fallback_text` and a `check_failure` with
   outcome `reply_replaced` is logged. No new dependency: Pydantic AI 1.107
   provides both.
