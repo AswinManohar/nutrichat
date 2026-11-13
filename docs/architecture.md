@@ -180,39 +180,37 @@ as JSONL for a coaching eval set.
 
 ### 4.6 Preference memory (`agent/memory.py`)
 
-The coach keeps a small typed profile per user in `user_memory` and sees all of
-it on every coaching turn. It is rolled out behind `memory.profile_enabled` and
-`memory.profile_allowlist`; users not on it keep the legacy path (append-only
-facts, top-3 by embedding similarity).
+The coach keeps a small typed profile of soft preferences per user in
+`user_memory` and sees all of it, with the date each fact was learned, on every
+coaching turn. Since spec 013 PR 5 this applies to every user; the old
+append-only path with top-3 embedding search is gone. Hard facts live in the
+hard profile (4.7).
 
 **What is in the profile**
 
 | Part | Where it lives | Who changes it |
 |---|---|---|
 | Hard facts: allergies, diagnoses, medications, physical limitations, nutrient limits, diet settings, food exclusions | `profile_entry` (see 4.7) | Settings and the Care profile screen; chat statements become *pending* entries |
-| Soft facts: dislike, like, habit, context | `user_memory` | curators, coach tools, `/memory` API |
+| Soft facts: dislike, like, cuisine, budget, cooking time, habit, context | `user_memory` | curators, coach tools, `/profile/soft` API (Care profile Preferences screen) |
 | Staple foods per meal type | derived from `meal_log` on read, cached in Redis | nothing stores them |
 
 **One write path.** Everything goes through `apply_ops(user_id, ops, actor)`,
 which takes a per-user advisory lock and enforces:
 
-- *Tighten only.* The background actors (`curator`, `weekly`) can add a
-  restriction or switch a diet setting on. Changing or removing a restriction,
-  or switching a setting off, is allowed only to the `user` actor.
 - *Tombstones.* A fact the user removes keeps its row with `deleted_at` set, and
   is not learned again until the user states it again.
 - *Cap.* At most `profile_max_facts` facts and `profile_max_chars` characters.
   On overflow the oldest inferred like/habit/context fact is evicted;
-  restrictions and stated facts never are.
+  stated facts never are.
 
 **Writers**
 
 | Writer | When | Actor |
 |---|---|---|
-| `memory_curator.curate_turn` | Celery, after each turn (`extract_and_store_facts`) | `curator` |
+| `memory_curator.extract_turn` | in the coaching turn (beside `parse_query`); in Celery after a logging turn | `curator` |
 | `memory_curator.infer_log_habits` | Celery, weekly, users with enough logged meals | `weekly` |
 | `memory_tools` remember / forget / set_diet | in the coaching turn, on an explicit request | `user` |
-| `DELETE /memory/{id}` | client | `user` |
+| `PATCH`/`DELETE /profile/soft/{id}` (and the deprecated `/memory`) | client | `user` |
 
 **Save decision.** In `curate_turn` the Gemini curator only drafts candidate
 changes (fact text and operation). `memory_judge.judge_ops` asks Fastino GLiDE
@@ -227,8 +225,10 @@ explicit user request.
 
 **Read path and cost.** `build_context` loads the live facts with one indexed
 query (no embedding call) and the staples from Redis, and
-`render_profile_block` puts diet settings and restrictions first. The block is
-capped, so prompt size does not grow with history. A coaching turn is still two
+`render_profile_block` renders it after the hard profile. The block is capped,
+so prompt size does not grow with history. Recipe requests also get the last 21
+days of suggested and logged meals (`agent/meal_history.py`, at most 30 lines)
+for variety; a failed read omits the block. A coaching turn is still two
 model calls; only an explicit remember/forget adds a third. Meal-logging turns
 do not read the profile.
 
