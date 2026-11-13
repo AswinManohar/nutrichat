@@ -17,7 +17,7 @@ import app.mealsy.android.R
  * Shared full-screen error state: [message] plus a "Retry" button calling
  * [onRetry]. Extracted from `TrendsScreen`/`MyMealsScreen`, which had
  * identical private composables before Task 14's sweep — see `ChatScreen`
- * and `SettingsScreen` for why they keep their own, bespoke error
+ * and the Profile sub-screens for why they keep their own, bespoke error
  * presentation instead of this one (documented at each call site).
  */
 @Composable

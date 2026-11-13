@@ -46,13 +46,16 @@ interface AuthGateway {
 
     /**
      * Reads `{first_name, goal_focus}` back from the current user's
-     * metadata, or null when signed out.
+     * metadata (plus their email), or null when signed out.
      */
     suspend fun currentProfileMetadata(): ProfileMetadata?
 }
 
-/** First name and goal focus as stored in Supabase user metadata (plan Assumption 1). */
-data class ProfileMetadata(val firstName: String?, val goalFocus: String?)
+/**
+ * First name and goal focus as stored in Supabase user metadata (plan Assumption 1),
+ * plus the account [email] (an auth field, not metadata) for the Profile header.
+ */
+data class ProfileMetadata(val firstName: String?, val goalFocus: String?, val email: String? = null)
 
 /**
  * Seam for Task 9's best-effort FCM device deregistration on sign-out.

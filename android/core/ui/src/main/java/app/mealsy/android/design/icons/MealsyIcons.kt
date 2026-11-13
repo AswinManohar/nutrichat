@@ -272,6 +272,17 @@ object MealsyIcons {
                 pathData = arrayOf("M4 7a3 3 0 013-3h10a3 3 0 013 3v6a3 3 0 01-3 3H9l-5 4z"),
             ).also { _chat = it }
 
+    private var _user: ImageVector? = null
+
+    /** Bottom nav "Profile" tab. Built to the 24-grid stroke style; not a handoff path. */
+    val User: ImageVector
+        get() =
+            _user ?: strokedIcon(
+                name = "User",
+                strokeWidth = 1.8f,
+                pathData = arrayOf(circlePath(cx = 12f, cy = 8f, r = 4f), "M4 21c0-4 3.6-7 8-7s8 3 8 7"),
+            ).also { _user = it }
+
     private var _plus: ImageVector? = null
 
     /** FAB "log a meal" glyph. */
@@ -436,6 +447,7 @@ object MealsyIcons {
                 "Snack" to Snack,
                 "LineChart" to LineChart,
                 "Chat" to Chat,
+                "User" to User,
                 "Plus" to Plus,
                 "ChevronRight" to ChevronRight,
                 "ChevronLeft" to ChevronLeft,

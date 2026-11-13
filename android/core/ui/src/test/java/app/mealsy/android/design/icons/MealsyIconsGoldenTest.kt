@@ -25,6 +25,7 @@ class MealsyIconsGoldenTest : ScreenshotTestBase() {
             "Snack" to MealsyIcons.Snack,
             "LineChart" to MealsyIcons.LineChart,
             "Chat" to MealsyIcons.Chat,
+            "User" to MealsyIcons.User,
             "Plus" to MealsyIcons.Plus,
             "ChevronRight" to MealsyIcons.ChevronRight,
             "ChevronLeft" to MealsyIcons.ChevronLeft,

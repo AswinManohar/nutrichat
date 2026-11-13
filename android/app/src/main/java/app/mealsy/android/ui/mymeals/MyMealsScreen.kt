@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mealsy.android.R
+import app.mealsy.android.design.components.CircleIconButton
 import app.mealsy.android.design.components.Eyebrow
 import app.mealsy.android.design.components.InkToast
 import app.mealsy.android.design.components.InsetDivider
@@ -80,12 +81,14 @@ private val SWIPE_DELETE_THRESHOLD = 96.dp
  *
  * @param onOpenMeal Navigates to the meal-detail screen (My-Meal mode) for a
  *   tapped row's meal id.
+ * @param onBack Leaves the screen (it is pushed from Home, not a tab).
  */
 @Composable
 fun MyMealsScreen(
     viewModel: MyMealsViewModel = hiltViewModel(),
     onLoggedNavigateToChat: () -> Unit = {},
     onOpenMeal: (String) -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val hiddenIds by viewModel.hiddenIds.collectAsStateWithLifecycle()
@@ -97,6 +100,7 @@ fun MyMealsScreen(
         hiddenIds = hiddenIds,
         pendingUndoIds = pendingUndoIds,
         onOpenMeal = onOpenMeal,
+        onBack = onBack,
         onRetry = viewModel::load,
         onDeleteWithUndo = viewModel::deleteWithUndo,
         onUndoDelete = viewModel::undoDelete,
@@ -117,6 +121,7 @@ internal fun MyMealsContent(
     uiState: MyMealsUiState,
     hiddenIds: Set<String>,
     onOpenMeal: (String) -> Unit,
+    onBack: () -> Unit,
     onRetry: () -> Unit,
     onDeleteWithUndo: (String) -> Unit,
     onUndoDelete: (String) -> Unit,
@@ -138,6 +143,12 @@ internal fun MyMealsContent(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().mealsyScreenPadding()) {
+            CircleIconButton(
+                icon = MealsyIcons.ChevronLeft,
+                contentDescription = stringResource(R.string.settings_back),
+                onClick = onBack,
+            )
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
             Eyebrow(text = stringResource(R.string.my_meals_eyebrow))
             androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
             androidx.compose.material3.Text(

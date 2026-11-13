@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,64 +75,36 @@ import app.mealsy.android.ui.onboarding.PREF_LABELS
 import kotlinx.coroutines.delay
 
 /**
- * Settings screen: profile (name, goal focus), always-live daily targets,
- * dietary preferences, the daily reminder toggle, privacy policy link, app
- * version, sign out, and the account-deletion danger zone.
- *
- * Unlike the old modal "editing goals" flow, every control here is inline
- * and saves on its own — see [SettingsViewModel] for the per-field
- * (debounced) save behavior.
- *
- * [onSignedOut] fires once [SettingsViewModel.uiState]'s `signedOut` flips
- * true (after either a plain sign-out or a successful account deletion) —
- * `AppNav`'s own [app.mealsy.data.auth.SessionManager] observer then routes
- * to login on its own, so this is only a hook for screen-local cleanup if a
- * caller needs one; the default no-op is fine since navigation happens
- * automatically.
+ * Runs [action] on every `ON_RESUME` of the current lifecycle owner, so a
+ * screen re-reads state that can change outside the app (e.g. notification
+ * permission toggled in system settings, #44).
  */
 @Composable
-fun SettingsScreen(
-    onBack: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel(),
-    onSignedOut: () -> Unit = {},
-) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val uriHandler = LocalUriHandler.current
-    val context = LocalContext.current
-
-    LaunchedEffect(uiState.signedOut) {
-        if (uiState.signedOut) onSignedOut()
-    }
-
-    // Re-checks notification permission whenever the user comes back to this
-    // screen (e.g. after visiting system settings from the "Open settings"
-    // link below), and reflects a revoked/re-granted permission on the
-    // reminder switch either way (#44).
+internal fun OnResume(action: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentAction by rememberUpdatedState(action)
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) viewModel.onResume()
+                if (event == Lifecycle.Event.ON_RESUME) currentAction()
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+}
 
-    val requestPermissionLauncher =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission(),
-            ) { granted -> viewModel.onNotificationPermissionResult(granted) }
-        } else {
-            null
-        }
-    LaunchedEffect(viewModel, requestPermissionLauncher) {
-        viewModel.requestNotificationPermission.collect {
-            requestPermissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-
-    SettingsContent(
+/**
+ * Profile > Goals and targets: the profile name and goal focus, plus the
+ * always-live daily targets. Every control saves on its own — see
+ * [SettingsViewModel] for the per-field (debounced) save behavior.
+ */
+@Composable
+fun GoalsScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    GoalsContent(
         uiState = uiState,
         onBack = onBack,
         onStartEditingName = viewModel::startEditingName,
@@ -145,31 +119,16 @@ fun SettingsScreen(
         onSetKcalGoal = viewModel::setKcalGoal,
         onSetProteinGoal = viewModel::setProteinGoal,
         onSetFiberGoal = viewModel::setFiberGoal,
-        onToggleDietaryPref = viewModel::toggleDietaryPref,
-        onSetReminderEnabled = viewModel::setReminderEnabled,
-        onOpenNotificationSettings = {
-            val intent =
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                }
-            context.startActivity(intent)
-        },
-        onOpenPrivacyPolicy = { uriHandler.openUri(BuildConfig.PRIVACY_POLICY_URL) },
-        onSignOut = viewModel::signOut,
-        onSetDeleteConfirmationText = viewModel::setDeleteConfirmationText,
-        onDeleteAccount = viewModel::deleteAccount,
-        isDeleteConfirmed = viewModel::isDeleteConfirmedNow,
     )
 }
 
 /**
- * Stateless render of the whole screen — [SettingsScreen] is the Hilt/state
- * entry point above; this is what [app.mealsy.android.ui.settings.SettingsGoldenTest]
- * exercises directly with hand-built [SettingsUiState] values, same
+ * Stateless render of [GoalsScreen] — [app.mealsy.android.ui.settings.SettingsGoldenTest]
+ * exercises it directly with hand-built [SettingsUiState] values, same
  * convention as `HomeContent`/`OnboardingContent`.
  */
 @Composable
-fun SettingsContent(
+fun GoalsContent(
     uiState: SettingsUiState,
     onBack: () -> Unit,
     onStartEditingName: () -> Unit,
@@ -184,43 +143,8 @@ fun SettingsContent(
     onSetKcalGoal: (Double) -> Unit,
     onSetProteinGoal: (Double) -> Unit,
     onSetFiberGoal: (Double) -> Unit,
-    onToggleDietaryPref: (String) -> Unit,
-    onSetReminderEnabled: (Boolean) -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onOpenPrivacyPolicy: () -> Unit,
-    onSignOut: () -> Unit,
-    onSetDeleteConfirmationText: (String) -> Unit,
-    onDeleteAccount: () -> Unit,
-    isDeleteConfirmed: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var showSavedToast by remember { mutableStateOf(false) }
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-
-    LaunchedEffect(uiState.savedTick) {
-        if (uiState.savedTick > 0) {
-            showSavedToast = true
-            delay(1500)
-            showSavedToast = false
-        }
-    }
-
-    if (showDeleteDialog) {
-        DeleteAccountDialog(
-            confirmationText = uiState.deleteConfirmationText,
-            deleting = uiState.deletingAccount,
-            error = uiState.deleteError,
-            confirmed = isDeleteConfirmed(),
-            onConfirmationTextChange = onSetDeleteConfirmationText,
-            onConfirm = onDeleteAccount,
-            onDismiss = {
-                showDeleteDialog = false
-                onSetDeleteConfirmationText("")
-            },
-        )
-    }
-
     if (uiState.showGoalSheet) {
         GoalPickerDialog(
             selectedKey = uiState.goalFocus,
@@ -255,6 +179,224 @@ fun SettingsContent(
         )
     }
 
+    SubScreenFrame(
+        title = stringResource(R.string.profile_goals),
+        onBack = onBack,
+        savedTick = uiState.savedTick,
+        modifier = modifier,
+    ) {
+        item {
+            ProfileSection(
+                uiState = uiState,
+                onStartEditingName = onStartEditingName,
+                onSetNameDraft = onSetNameDraft,
+                onSaveName = onSaveName,
+                onOpenGoalSheet = onOpenGoalSheet,
+            )
+        }
+        item { Spacer(modifier = Modifier.height(24.dp)) }
+        item {
+            TargetsSection(
+                uiState = uiState,
+                onSetTrackingEnabled = onSetTrackingEnabled,
+                onSetKcalGoal = onSetKcalGoal,
+                onSetProteinGoal = onSetProteinGoal,
+                onSetFiberGoal = onSetFiberGoal,
+            )
+        }
+    }
+}
+
+/** Profile > Food preferences: the dietary-preference chips. */
+@Composable
+fun FoodPreferencesScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    FoodPreferencesContent(
+        uiState = uiState,
+        onBack = onBack,
+        onTogglePref = viewModel::toggleDietaryPref,
+    )
+}
+
+/** Stateless render of [FoodPreferencesScreen]. */
+@Composable
+fun FoodPreferencesContent(
+    uiState: SettingsUiState,
+    onBack: () -> Unit,
+    onTogglePref: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SubScreenFrame(
+        title = stringResource(R.string.profile_food),
+        onBack = onBack,
+        savedTick = uiState.savedTick,
+        modifier = modifier,
+    ) {
+        item { PreferencesSection(uiState = uiState, onTogglePref = onTogglePref) }
+    }
+}
+
+/** Profile > Reminders: the daily-summary toggle and its notification-permission handling. */
+@Composable
+fun RemindersScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Re-checks notification permission whenever the user comes back to this
+    // screen (e.g. after visiting system settings from the "Open settings"
+    // link), and reflects a revoked/re-granted permission on the reminder
+    // switch either way (#44).
+    OnResume(viewModel::onResume)
+
+    val requestPermissionLauncher =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted -> viewModel.onNotificationPermissionResult(granted) }
+        } else {
+            null
+        }
+    LaunchedEffect(viewModel, requestPermissionLauncher) {
+        viewModel.requestNotificationPermission.collect {
+            requestPermissionLauncher?.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    RemindersContent(
+        uiState = uiState,
+        onBack = onBack,
+        onSetReminderEnabled = viewModel::setReminderEnabled,
+        onOpenNotificationSettings = {
+            val intent =
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                }
+            context.startActivity(intent)
+        },
+    )
+}
+
+/** Stateless render of [RemindersScreen]. */
+@Composable
+fun RemindersContent(
+    uiState: SettingsUiState,
+    onBack: () -> Unit,
+    onSetReminderEnabled: (Boolean) -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SubScreenFrame(
+        title = stringResource(R.string.profile_reminders),
+        onBack = onBack,
+        savedTick = uiState.savedTick,
+        modifier = modifier,
+    ) {
+        item {
+            RemindersSection(
+                uiState = uiState,
+                onSetReminderEnabled = onSetReminderEnabled,
+                onOpenNotificationSettings = onOpenNotificationSettings,
+            )
+        }
+    }
+}
+
+/** Profile > Account and privacy: privacy policy, app version and account deletion. */
+@Composable
+fun AccountScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
+    AccountContent(
+        uiState = uiState,
+        onBack = onBack,
+        onOpenPrivacyPolicy = { uriHandler.openUri(BuildConfig.PRIVACY_POLICY_URL) },
+        onSetDeleteConfirmationText = viewModel::setDeleteConfirmationText,
+        onDeleteAccount = viewModel::deleteAccount,
+        isDeleteConfirmed = viewModel::isDeleteConfirmedNow,
+    )
+}
+
+/** Stateless render of [AccountScreen]. */
+@Composable
+fun AccountContent(
+    uiState: SettingsUiState,
+    onBack: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onSetDeleteConfirmationText: (String) -> Unit,
+    onDeleteAccount: () -> Unit,
+    isDeleteConfirmed: () -> Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        DeleteAccountDialog(
+            confirmationText = uiState.deleteConfirmationText,
+            deleting = uiState.deletingAccount,
+            error = uiState.deleteError,
+            confirmed = isDeleteConfirmed(),
+            onConfirmationTextChange = onSetDeleteConfirmationText,
+            onConfirm = onDeleteAccount,
+            onDismiss = {
+                showDeleteDialog = false
+                onSetDeleteConfirmationText("")
+            },
+        )
+    }
+
+    SubScreenFrame(
+        title = stringResource(R.string.profile_account),
+        onBack = onBack,
+        savedTick = uiState.savedTick,
+        modifier = modifier,
+    ) {
+        item { AboutSection(uiState = uiState, onOpenPrivacyPolicy = onOpenPrivacyPolicy) }
+        item { Spacer(modifier = Modifier.height(28.dp)) }
+        item {
+            Eyebrow(text = stringResource(R.string.settings_danger_zone))
+            Spacer(modifier = Modifier.height(10.dp))
+            MealsyButton(
+                text = stringResource(R.string.settings_delete_account),
+                onClick = { showDeleteDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                style = MealsyButtonStyle.DestructiveOutline,
+            )
+        }
+    }
+}
+
+/**
+ * Shared frame of every Profile sub-screen: back header with [title], the
+ * scrolling [content], and the "Saved" toast keyed off [savedTick].
+ */
+@Composable
+private fun SubScreenFrame(
+    title: String,
+    onBack: () -> Unit,
+    savedTick: Int,
+    modifier: Modifier = Modifier,
+    content: LazyListScope.() -> Unit,
+) {
+    var showSavedToast by remember { mutableStateOf(false) }
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    LaunchedEffect(savedTick) {
+        if (savedTick > 0) {
+            showSavedToast = true
+            delay(1500)
+            showSavedToast = false
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -266,70 +408,9 @@ fun SettingsContent(
                     bottom = 120.dp,
                 ),
         ) {
-            item { HeaderRow(onBack = onBack) }
+            item { HeaderRow(title = title, onBack = onBack) }
             item { Spacer(modifier = Modifier.height(20.dp)) }
-
-            item {
-                ProfileSection(
-                    uiState = uiState,
-                    onStartEditingName = onStartEditingName,
-                    onSetNameDraft = onSetNameDraft,
-                    onSaveName = onSaveName,
-                    onOpenGoalSheet = onOpenGoalSheet,
-                )
-            }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item {
-                TargetsSection(
-                    uiState = uiState,
-                    onSetTrackingEnabled = onSetTrackingEnabled,
-                    onSetKcalGoal = onSetKcalGoal,
-                    onSetProteinGoal = onSetProteinGoal,
-                    onSetFiberGoal = onSetFiberGoal,
-                )
-            }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item { PreferencesSection(uiState = uiState, onTogglePref = onToggleDietaryPref) }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item {
-                RemindersSection(
-                    uiState = uiState,
-                    onSetReminderEnabled = onSetReminderEnabled,
-                    onOpenNotificationSettings = onOpenNotificationSettings,
-                )
-            }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item {
-                AboutSection(uiState = uiState, onOpenPrivacyPolicy = onOpenPrivacyPolicy)
-            }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item {
-                Eyebrow(text = stringResource(R.string.settings_section_account))
-                Spacer(modifier = Modifier.height(10.dp))
-                MealsyButton(
-                    text = stringResource(R.string.settings_sign_out),
-                    onClick = onSignOut,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MealsyButtonStyle.Secondary,
-                )
-            }
-            item { Spacer(modifier = Modifier.height(28.dp)) }
-
-            item {
-                Eyebrow(text = stringResource(R.string.settings_danger_zone))
-                Spacer(modifier = Modifier.height(10.dp))
-                MealsyButton(
-                    text = stringResource(R.string.settings_delete_account),
-                    onClick = { showDeleteDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MealsyButtonStyle.DestructiveOutline,
-                )
-            }
+            content()
         }
 
         InkToast(
@@ -344,7 +425,10 @@ fun SettingsContent(
 }
 
 @Composable
-private fun HeaderRow(onBack: () -> Unit) {
+private fun HeaderRow(
+    title: String,
+    onBack: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -356,7 +440,7 @@ private fun HeaderRow(onBack: () -> Unit) {
             onClick = onBack,
             size = 38.dp,
         )
-        Eyebrow(text = stringResource(R.string.settings_eyebrow))
+        Eyebrow(text = title)
         Spacer(modifier = Modifier.width(38.dp))
     }
 }
@@ -569,8 +653,6 @@ private fun PreferencesSection(
     onTogglePref: (String) -> Unit,
 ) {
     Column {
-        Eyebrow(text = stringResource(R.string.settings_section_preferences))
-        Spacer(modifier = Modifier.height(10.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             // 12dp so the 48dp touch targets of adjacent rows don't overlap
@@ -597,8 +679,6 @@ private fun RemindersSection(
     onOpenNotificationSettings: () -> Unit,
 ) {
     Column {
-        Eyebrow(text = stringResource(R.string.settings_section_reminders))
-        Spacer(modifier = Modifier.height(10.dp))
         ListContainer {
             Row(
                 modifier =

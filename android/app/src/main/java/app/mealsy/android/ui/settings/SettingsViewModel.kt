@@ -79,6 +79,7 @@ const val GOALS_SAVE_DEBOUNCE_MS: Long = 700
 data class SettingsUiState(
     val goalsLoading: Boolean = true,
     val firstName: String = "",
+    val email: String = "",
     val goalFocus: String = OnboardingGoal.Maintain.key,
     val trackingMode: String = DEFAULT_TRACKING_MODE,
     val kcalGoal: Double = DEFAULT_KCAL_GOAL,
@@ -109,7 +110,8 @@ data class SettingsUiState(
 )
 
 /**
- * Drives [SettingsScreen]: the always-live inline goals editor (no more
+ * Drives the Profile tab and its sub-screens ([GoalsScreen], [FoodPreferencesScreen],
+ * [RemindersScreen], [AccountScreen]): the always-live inline goals editor (no more
  * modal "editing goals" flow — every [Stepper]/[MealsyToggle]/
  * [FilterChipPill] edit auto-saves, numeric/dietary edits debounced by
  * [GOALS_SAVE_DEBOUNCE_MS]), profile name and goal-focus edits (written to
@@ -165,6 +167,17 @@ class SettingsViewModel
         }
 
         private fun loadProfile() {
+            viewModelScope.launch {
+                val email =
+                    try {
+                        sessionManager.currentProfileMetadata()?.email
+                    } catch (exc: CancellationException) {
+                        throw exc
+                    } catch (exc: Exception) {
+                        null
+                    }
+                if (email != null) _uiState.update { it.copy(email = email) }
+            }
             viewModelScope.launch {
                 val profile =
                     try {
@@ -235,7 +248,7 @@ class SettingsViewModel
          * Reconciles [SettingsUiState.reminderEnabled]/[SettingsUiState.notificationsBlocked]
          * with the OS-level notification permission — called after loading the
          * stored reminder flag ([loadReminderState]) and again on every
-         * `ON_RESUME` ([SettingsScreen]), since permission can change out from
+         * `ON_RESUME` ([RemindersScreen]), since permission can change out from
          * under the app (system settings, the app-info screen) at any time (#44).
          */
         private suspend fun syncReminderWithNotificationPermission() {
@@ -255,7 +268,7 @@ class SettingsViewModel
             }
         }
 
-        /** Called by [SettingsScreen] on `ON_RESUME`. */
+        /** Called by [RemindersScreen] on `ON_RESUME`. */
         fun onResume() {
             viewModelScope.launch { syncReminderWithNotificationPermission() }
         }

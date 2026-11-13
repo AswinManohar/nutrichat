@@ -51,6 +51,7 @@ import app.mealsy.android.design.components.MetricCard
 import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.StatusPill
 import app.mealsy.android.design.components.StatusPillAwareness
+import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.mascot.Olli
 import app.mealsy.android.design.mascot.OlliSize
@@ -71,15 +72,17 @@ import app.mealsy.domain.ProteinFood
  * `ChatScreen`'s `ON_RESUME` pattern, and wraps [HomeContent] in an
  * [PullToRefreshBox] for a manual pull gesture.
  *
- * @param onOpenSettings Navigates to the Settings screen (the header's gear button).
+ * @param onOpenProfile Navigates to the Profile tab (the header's profile button).
  * @param onOpenMealType Navigates to a meal-type's detail, given its wire key
  *   ("breakfast"|"lunch"|"dinner"|"snack").
+ * @param onOpenMyMeals Navigates to the My meals screen (the "My meals" row).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenMyMeals: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -101,8 +104,9 @@ fun HomeScreen(
     ) {
         HomeContent(
             state = state,
-            onOpenSettings = onOpenSettings,
+            onOpenProfile = onOpenProfile,
             onOpenMealType = onOpenMealType,
+            onOpenMyMeals = onOpenMyMeals,
             onRetry = viewModel::retry,
             modifier = Modifier.fillMaxSize(),
         )
@@ -117,15 +121,16 @@ fun HomeScreen(
 @Composable
 internal fun HomeContent(
     state: HomeUiState,
-    onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenMyMeals: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
         state.loading -> HomeSkeleton(modifier = modifier)
         state.error -> ErrorState(message = stringResource(R.string.home_error), onRetry = onRetry, modifier = modifier)
-        else -> HomeLoaded(state, onOpenSettings, onOpenMealType, modifier)
+        else -> HomeLoaded(state, onOpenProfile, onOpenMealType, onOpenMyMeals, modifier)
     }
 }
 
@@ -224,8 +229,9 @@ private fun SkeletonBlock(
 @Composable
 private fun HomeLoaded(
     state: HomeUiState,
-    onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenMealType: (String) -> Unit,
+    onOpenMyMeals: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -246,9 +252,9 @@ private fun HomeLoaded(
                 )
             }
             CircleIconButton(
-                icon = MealsyIcons.Gear,
-                contentDescription = stringResource(R.string.home_settings),
-                onClick = onOpenSettings,
+                icon = MealsyIcons.User,
+                contentDescription = stringResource(R.string.home_profile),
+                onClick = onOpenProfile,
             )
         }
 
@@ -319,6 +325,18 @@ private fun HomeLoaded(
                 )
                 if (index != state.meals.lastIndex) InsetDivider()
             }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        ListContainer {
+            ListRow(
+                label = stringResource(R.string.home_my_meals),
+                onClick = onOpenMyMeals,
+                leading = {
+                    PastelIconCircle(icon = MealsyIcons.BowlBars, tone = TagTone.Leaf, contentDescription = null)
+                },
+            )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
