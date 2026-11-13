@@ -189,7 +189,7 @@ facts, top-3 by embedding similarity).
 
 | Part | Where it lives | Who changes it |
 |---|---|---|
-| Hard facts: allergies, diagnoses, medications, physical limitations, nutrient limits, diet settings, food exclusions | `profile_entry` (see 4.8) | Settings and the Care profile screen; chat statements become *pending* entries |
+| Hard facts: allergies, diagnoses, medications, physical limitations, nutrient limits, diet settings, food exclusions | `profile_entry` (see 4.7) | Settings and the Care profile screen; chat statements become *pending* entries |
 | Soft facts: dislike, like, habit, context | `user_memory` | curators, coach tools, `/memory` API |
 | Staple foods per meal type | derived from `meal_log` on read, cached in Redis | nothing stores them |
 
@@ -251,7 +251,7 @@ alone, so nothing follows one message from draft to score to storage to a later
 reply; the weekly job has no eval; coaching cases use profiles of one or two
 facts. Turn latency with the profile on has not been measured in production.
 
-### 4.8 Patient safety profile (`safety/`, spec 013)
+### 4.7 Patient safety profile (`safety/`, spec 013)
 
 The hard facts that must never be broken live in `profile_entry`, one row per
 version of a fact. `safety/profile.py` is the only writer. A database trigger
@@ -284,7 +284,7 @@ deny, retire) backs the Android Care profile screen. `GET /profile` returns
 response shape but reads and writes diagnoses and diet settings through the
 profile.
 
-### 4.7 LLM config
+### 4.8 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction tier
 `gemini-3.1-flash-lite` with thinking budget 0, coaching `gemini-3.1-flash-lite`,
@@ -301,7 +301,7 @@ to Logfire. Override the tunables file with `NUTRICHAT_TUNABLES_PATH`.
 | Table | Role |
 |---|---|
 | `user_goal` | per-user goals, tracking mode, LLM quota (`conditions` and `dietary_prefs` are no longer read; dropped in 020) |
-| `profile_entry` | the hard profile: append-only, versioned facts (see 4.8) |
+| `profile_entry` | the hard profile: append-only, versioned facts (see 4.7) |
 | `recommendation`, `check_failure` | every checked meal suggestion and every failed check (spec 013) |
 | `red_flag_escalation`, `review_item` | red-flag matches and the reviewer queue (spec 013) |
 | `meal_log` | the ledger: macros, `entities` JSONB, label, `embedding vector(768)`, `client_request_id`, soft delete |

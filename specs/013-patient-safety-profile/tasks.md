@@ -120,7 +120,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T040 [US1] Show `profile_unavailable_text` as an error message in chat (`ui/chat/ChatViewModel.kt`) when the turn fails for that reason
 - [ ] T041 [US1] Goldens for CareProfileScreen (empty, typical, expanded nutrient limits) in light and dark in `android/app/src/test/java/app/mealsy/android/ui/profile/`; on-device check on the Pixel 9
 - [x] T042 [US1] Write `eval/cases/safety_profile/` (24 synthetic patients with entries, multi-session scripts and expected profiles) and the skeleton of `eval/eval_safety_profile.py` reporting recall of earlier-session facts (SC-003); register the `safety_profile` category in `eval/gate.py`
-- [ ] T097 [US1] Docs for PR 1 in the same change: `.claude/CLAUDE.md` (layout `safety/`, `config/clinical/`, `/profile` API, Care profile screen) and `docs/architecture.md` (hard profile, fail-closed load, data model)
+- [x] T097 [US1] Docs for PR 1 in the same change: `.claude/CLAUDE.md` (layout `safety/`, `config/clinical/`, `/profile` API, Care profile screen) and `docs/architecture.md` (hard profile, fail-closed load, data model)
 - [ ] T043 [US1] Run `eval/eval_profile_coaching.py --runs 3` (restrictions gate) and the backfill dry-run counts against a copy of production data; record both in the PR (quickstart PR 1)
 
 **Checkpoint**: PR 1. US1 works on its own.
