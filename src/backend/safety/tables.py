@@ -14,7 +14,7 @@ import hashlib
 import re
 from datetime import date
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -203,6 +203,27 @@ def _load_file(path: Path, model: type[_Header]) -> tuple[str, _Header]:
     return digest, parsed
 
 
+def clinical_dir(directory: Path | None = None) -> Path:
+    """Folder holding the clinical YAML files (default: the tunable)."""
+    return directory or _BACKEND_DIR / get_tunables().safety.clinical_dir
+
+
+def load_red_flags(directory: Path | None = None) -> tuple[str, RedFlags]:
+    """Load only the red-flag file, so other broken tables cannot affect it.
+
+    Args:
+        directory: Folder holding the YAML files; defaults like load_tables.
+
+    Returns:
+        The file's SHA-256 and the validated rules.
+
+    Raises:
+        TablesUnavailable: If red_flags.yaml is missing, unreadable or invalid.
+    """
+    digest, parsed = _load_file(clinical_dir(directory) / "red_flags.yaml", RedFlags)
+    return digest, cast(RedFlags, parsed)
+
+
 def load_tables(directory: Path | None = None) -> ClinicalTables:
     """Load all clinical tables, re-reading any file whose mtime changed.
 
@@ -216,7 +237,7 @@ def load_tables(directory: Path | None = None) -> ClinicalTables:
     Raises:
         TablesUnavailable: If any file is missing, unreadable or invalid.
     """
-    base = directory or _BACKEND_DIR / get_tunables().safety.clinical_dir
+    base = clinical_dir(directory)
     parsed: dict[str, _Header] = {}
     hashes: dict[str, str] = {}
     for name, model in _MODELS.items():

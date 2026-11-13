@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from typing import Any, Literal
 
 import logfire
@@ -20,6 +21,8 @@ from backend.agent.tools.usda import NULLABLE_MACROS
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import UPGRADE_MSG, consume_llm_credit
+from backend.safety.escalation import record_escalation
+from backend.safety.red_flags import RedFlagsUnavailable, fallback_text, screen
 from backend.workers.tasks import extract_and_store_facts
 
 logger = logging.getLogger(__name__)
@@ -214,6 +217,13 @@ async def handle_message(
         thread_id=thread_id,
         has_image=bool(image_b64),
     ) as span:
+        # Before the judgment task, the checkpoint read and any model call
+        # (spec 013 FR-015): a paused meal card is left untouched.
+        safety_result = await _screen_red_flags(user_id, thread_id, user_input)
+        if safety_result is not None:
+            span.set_attribute("intent", "safety")
+            return safety_result
+
         graph = _graph_for(checkpointer)
         config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
 
@@ -267,6 +277,49 @@ async def handle_message(
     if action is None and user_input.strip():
         _enqueue_fact_extraction(user_id, user_input, result["message"])
     return result
+
+
+def _safety_result(message: str) -> dict[str, Any]:
+    """Fixed-reply response shape; the client renders it as a safety message."""
+    return {
+        "status": "success",
+        "message": message,
+        "paused": False,
+        "items": [],
+        "kind": "safety",
+    }
+
+
+async def _screen_red_flags(
+    user_id: str, thread_id: str, user_input: str
+) -> dict[str, Any] | None:
+    """Screen the text; return the fixed reply on a match or an unreadable list.
+
+    The message is not recorded into coaching history and no fact extraction
+    is queued, so the model never sees it later. Spans carry the rule id and
+    duration only, never the text.
+    """
+    if not user_input.strip():
+        return None
+    with logfire.span("red_flag_screen") as span:
+        started = time.perf_counter()
+        try:
+            match = screen(user_input)
+        except RedFlagsUnavailable as exc:
+            span.set_attribute("rule_id", "unavailable")
+            logfire.error(
+                "red-flag list unavailable: refusing model replies",
+                user_id=user_id,
+                error=str(exc),
+            )
+            return _safety_result(fallback_text())
+        finally:
+            span.set_attribute("duration_ms", (time.perf_counter() - started) * 1000)
+        span.set_attribute("rule_id", match.rule_id if match else "none")
+    if match is None:
+        return None
+    await record_escalation(user_id, thread_id, user_input, match)
+    return _safety_result(match.response)
 
 
 async def _discard(task: asyncio.Task[Any] | None) -> None:

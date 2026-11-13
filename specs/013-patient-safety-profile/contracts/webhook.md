@@ -22,3 +22,12 @@ Slack-compatible body (R12: no message text, no name or email):
 - `SAFETY_WEBHOOK_URL` unset → `no_recipient` and `logfire.error` on every
   escalation (spec Decisions, Q3).
 - The patient's fixed response never waits on this task (US3-5).
+
+Implementation notes:
+
+- One try at once, then one retry after each delay (6 tries in all). Delays and
+  the 5 s timeout are `safety.escalation_retry_seconds` and
+  `safety.escalation_webhook_timeout_s` in `tunables.yaml`.
+- `SAFETY_REVIEW_BASE_URL` unset: the text omits the "Review:" link.
+- A row already `sent` is not posted again if the task runs twice.
+- Failures log the HTTP status or exception class only, never the webhook URL.

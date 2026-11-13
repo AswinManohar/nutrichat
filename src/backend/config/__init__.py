@@ -181,6 +181,8 @@ class SafetyConfig(BaseModel):
     no_suitable_meal_text: str = Field(min_length=1)
     food_db_unavailable_text: str = Field(min_length=1)
     clinical_dir: str = Field(min_length=1)
+    escalation_retry_seconds: list[int] = Field(min_length=1)
+    escalation_webhook_timeout_s: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 

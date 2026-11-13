@@ -9,7 +9,7 @@ rules:
   - id: stopped_insulin
     label: "Stopped insulin"
     patterns:
-      - '\b(stopp?ed|quit|not taking|skipp(ing|ed))\b.{0,40}\binsulin\b'
+      - '\b(stopp?ed|quit|not (been )?taking|skipp(ing|ed))\b.{0,40}\binsulin\b'
       - '\binsulin\b.{0,30}\b(stopped|quit)\b'
     response: "Stopping insulin can be dangerous. Please contact your doctor or diabetes team today. If you feel very unwell, drowsy, or are vomiting, seek emergency care now."
   - id: self_harm

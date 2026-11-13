@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Coroutine
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, TypeVar
 
+import httpx
+import logfire
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_process_init
@@ -33,6 +35,7 @@ from backend.db.models import (
     DeviceToken,
     MealLog,
     NutrientCheckup,
+    RedFlagEscalation,
     UserGoal,
     UserMemory,
 )
@@ -655,6 +658,97 @@ def send_daily_summary_push() -> int:
     return _run(_send_daily_summary_push())
 
 
+# ---------------------------------------------------------------------------
+# notify_escalation
+# ---------------------------------------------------------------------------
+
+
+async def _notify_escalation(escalation_id: str, attempt: int) -> str:
+    """One delivery attempt; returns sent, retry, failed or no_recipient.
+
+    The payload carries ids only: the webhook host is not an approved
+    processor for health data (spec 013, R12).
+    """
+    cfg = _TUNABLES.safety
+    async with get_session()() as session:
+        row = await session.get(RedFlagEscalation, escalation_id)
+        if row is None:
+            logfire.error("escalation not found", escalation_id=escalation_id)
+            return "failed"
+        if row.notify_status == "sent":
+            return "sent"
+        url = os.environ.get("SAFETY_WEBHOOK_URL")
+        if not url:
+            row.notify_status = "no_recipient"
+            await session.commit()
+            logfire.error(
+                "red-flag escalation has no recipient: SAFETY_WEBHOOK_URL is unset",
+                escalation_id=escalation_id,
+                user_id=row.user_id,
+            )
+            return "no_recipient"
+        base = os.environ.get("SAFETY_REVIEW_BASE_URL", "").rstrip("/")
+        text = f"Mealsy red flag: {row.rule_label}. Patient {row.user_id}."
+        if base:
+            text += f" Review: {base}/admin/review/escalations/{row.id}"
+        payload = {
+            "text": text,
+            "escalation_id": row.id,
+            "rule_id": row.rule_id,
+            "patient_id": row.user_id,
+            "created_at": row.created_at.isoformat(),
+        }
+        failure: str | None = None
+        try:
+            async with httpx.AsyncClient(
+                timeout=cfg.escalation_webhook_timeout_s
+            ) as client:
+                response = await client.post(url, json=payload)
+            if not response.is_success:
+                failure = f"HTTP {response.status_code}"
+        except httpx.HTTPError as exc:
+            # The exception text can embed the (secret) webhook URL.
+            failure = type(exc).__name__
+        row.notify_attempts = attempt + 1
+        if failure is None:
+            row.notify_status = "sent"
+            row.notified_at = datetime.now(UTC)
+            outcome = "sent"
+        elif attempt >= len(cfg.escalation_retry_seconds):
+            row.notify_status = "failed"
+            outcome = "failed"
+            logfire.error(
+                "red-flag notification failed after the last retry",
+                escalation_id=escalation_id,
+                user_id=row.user_id,
+                failure=failure,
+            )
+        else:
+            outcome = "retry"
+        await session.commit()
+        return outcome
+
+
+@celery_app.task(bind=True, name="backend.workers.tasks.notify_escalation")
+def notify_escalation(self: Any, escalation_id: str) -> str:
+    """POST a red-flag escalation to SAFETY_WEBHOOK_URL, retrying on failure.
+
+    Args:
+        escalation_id: ``red_flag_escalation.id``.
+
+    Returns:
+        The row's notify status after this attempt (``retry`` when requeued).
+    """
+    attempt = self.request.retries
+    outcome = _run(_notify_escalation(escalation_id, attempt))
+    if outcome == "retry":
+        raise self.retry(
+            countdown=_TUNABLES.safety.escalation_retry_seconds[attempt],
+            max_retries=len(_TUNABLES.safety.escalation_retry_seconds),
+        )
+    return outcome
+
+
 __all__ = [
     "celery_app",
     "embed_meal_summary",
@@ -665,4 +759,5 @@ __all__ = [
     "send_daily_summary_telegram",
     "send_push_fcm",
     "send_daily_summary_push",
+    "notify_escalation",
 ]

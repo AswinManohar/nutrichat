@@ -586,3 +586,9 @@ safety:
 
   # Directory of clinical YAML tables, relative to src/backend (safety/tables.py).
   clinical_dir: "config/clinical"
+
+  # Red-flag escalation webhook (workers/tasks.py notify_escalation). One try
+  # now, then one retry after each delay below; after the last, the row is
+  # marked failed. The POST waits at most the timeout.
+  escalation_retry_seconds: [5, 15, 45, 120, 300]
+  escalation_webhook_timeout_s: 5
