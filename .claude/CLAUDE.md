@@ -56,6 +56,8 @@ nutrichat/
 │   │   ├── glide.py            # Fastino GLiDE client (typed judgments)
 │   │   ├── system_one.py       # GLiDE routing judgment (judge_message)
 │   │   ├── coaching.py         # Pydantic AI coaching agent
+│   │   ├── suggest.py          # checked meal suggestions (spec 013)
+│   │   ├── reply_judge.py      # reply guard: GLiDE layer + output validator hook
 │   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
 │   │   ├── memory.py           # preference profile: apply_ops write rules, render
 │   │   ├── memory_curator.py   # background curators (per turn, weekly from logs)
@@ -76,7 +78,8 @@ nutrichat/
 │   │                           # billing, push, devices, telegram_link, integrations
 │   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
 │   ├── safety/                 # spec 013, model-free: profile.py (hard profile),
-│   │                           # tables.py (clinical YAML), matching.py, limits.py
+│   │                           # tables.py (clinical YAML), matching.py, limits.py,
+│   │                           # recipe.py, checker.py, render.py, reply_guard.py
 │   ├── config/                 # tunables.yaml, prompts/, clinical/ (dietitian tables)
 │   ├── core/                   # nutrition_day.py (day boundaries)
 │   ├── guidelines/             # curated dietary-guideline corpus
@@ -156,6 +159,8 @@ python eval/gate.py --only intent_routing --runs 5 \
 python eval/probe_glide.py --check | --scores | --n 50          # GLiDE: request, thresholds, latency
 PYTHONPATH=src python eval/eval_profile_curator.py --runs 3      # memory curator
 PYTHONPATH=src python eval/eval_profile_coaching.py --runs 3     # restrictions gate
+PYTHONPATH=src python eval/eval_safety_profile.py --offline       # checker on fixtures (prod-checks)
+PYTHONPATH=src python eval/eval_reply_guard.py --offline          # reply guard, layers 1-2
 ```
 
 ---

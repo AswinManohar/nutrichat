@@ -158,7 +158,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T061 [US2] Android: `ui/chat/RecipeCardView.kt` rendering name, intro, ingredients with grams, steps, time and the constraint sentence, with "Accept" and "Not for me" (optional reason) calling feedback; plain-text fallback when `recipe` is absent; goldens light and dark; on-device check
 - [x] T098 [US2] Prompt rules and eval cases for FR-033 (prose abstention: no invented clinical value), FR-034 (decline diagnosis, medication changes and clinical targets with a pointer to the clinician) and FR-036 (swaps and low-effort options, warm tone) in `src/backend/config/prompts/coaching_hard_constraints.md` and `coaching_role_and_tone.md`, cases in `eval/cases/safety_profile/`; gate run recorded in the PR
 - [ ] T099 [US2] Measure ordinary-turn latency before and after (FR-041: at most +300 ms p95) from 50 Logfire `coaching` spans per side on the eval set; record in the PR
-- [ ] T100 [US2] Docs for PR 2: `.claude/CLAUDE.md` (eval commands, recipe flow) and `docs/architecture.md` (suggestion loop, checker, reply guardrail)
+- [x] T100 [US2] Docs for PR 2: `.claude/CLAUDE.md` (eval commands, recipe flow) and `docs/architecture.md` (suggestion loop, checker, reply guardrail)
 - [ ] T062 [US2] Run the live `safety_profile` gate and `eval_reply_guard.py`; record violation rate (must be 0), share and p95 latency of the GLiDE layer, recipe-turn p90 (budget < 12 s) in the PR
 
 **Checkpoint**: PR 2. US1 and US2 work together.
