@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
+import logfire
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent import glide
@@ -528,11 +529,13 @@ def select_hard_ops(
             band = "accept"
         else:
             band = "ask"
-        logger.info(
-            "hard candidate %s scored %s, band=%s",
-            candidate.type if isinstance(candidate, HardAdd) else "retire",
-            "none" if score is None else f"{score:.2f}",
-            band or "drop",
+        # A Logfire event, not a log line: error analysis reads the band of
+        # each candidate next to the GLiDE call in the turn's trace.
+        logfire.info(
+            "hard candidate {kind} scored {score}, band={band}",
+            kind=candidate.type if isinstance(candidate, HardAdd) else "retire",
+            score=score,
+            band=band or "drop",
         )
         if band is not None:
             decisions.append(HardDecision(candidate, band, score, replaces_id))
