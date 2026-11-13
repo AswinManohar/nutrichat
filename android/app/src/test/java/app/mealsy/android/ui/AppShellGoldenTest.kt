@@ -51,8 +51,9 @@ class AppShellGoldenTest : AppScreenshotTestBase() {
         Box(modifier = Modifier.fillMaxSize()) {
             HomeContent(
                 state = partialState(),
-                onOpenSettings = {},
+                onOpenProfile = {},
                 onOpenMealType = {},
+                onOpenMyMeals = {},
                 onRetry = {},
                 modifier = Modifier.fillMaxSize(),
             )

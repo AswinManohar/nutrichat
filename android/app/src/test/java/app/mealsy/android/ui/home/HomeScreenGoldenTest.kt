@@ -44,8 +44,9 @@ class HomeScreenGoldenTest : AppScreenshotTestBase() {
     private fun render(state: HomeUiState) {
         HomeContent(
             state = state,
-            onOpenSettings = {},
+            onOpenProfile = {},
             onOpenMealType = {},
+            onOpenMyMeals = {},
             onRetry = {},
             modifier = Modifier.fillMaxSize(),
         )

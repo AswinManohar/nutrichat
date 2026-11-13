@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -22,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -49,7 +51,12 @@ import app.mealsy.android.ui.meals.MealTypeListScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
-import app.mealsy.android.ui.settings.SettingsScreen
+import app.mealsy.android.ui.profile.ProfileScreen
+import app.mealsy.android.ui.settings.AccountScreen
+import app.mealsy.android.ui.settings.FoodPreferencesScreen
+import app.mealsy.android.ui.settings.GoalsScreen
+import app.mealsy.android.ui.settings.RemindersScreen
+import app.mealsy.android.ui.settings.SettingsViewModel
 import app.mealsy.android.ui.trends.TrendsScreen
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.auth.SessionManager
@@ -69,7 +76,7 @@ import javax.inject.Inject
 
 private const val APP_META_TIMEOUT_MS = 3_000L
 
-/** Push-screen (meal detail, settings, My Meal, onboarding, login) transition duration — #49 item 1. */
+/** Push-screen (meal detail, profile sub-screens, My Meal, onboarding, login) transition duration — #49 item 1. */
 private const val PUSH_TRANSITION_MS = 220
 
 /** Bottom-nav tab-switch transition duration — kept short/near-instant so it doesn't read as lag. */
@@ -85,7 +92,11 @@ private const val ARG_START_STEP = "startStep"
 private const val ROUTE_ONBOARDING_PATTERN = "$ROUTE_ONBOARDING?$ARG_START_STEP={$ARG_START_STEP}"
 private const val ROUTE_TRENDS = "trends"
 private const val ROUTE_MY_MEALS = "my-meals"
-private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_PROFILE = "profile"
+private const val ROUTE_PROFILE_GOALS = "profile/goals"
+private const val ROUTE_PROFILE_FOOD = "profile/food"
+private const val ROUTE_PROFILE_REMINDERS = "profile/reminders"
+private const val ROUTE_PROFILE_ACCOUNT = "profile/account"
 private const val ROUTE_MEAL_TYPE = "meals"
 private const val ARG_MEAL_TYPE = "mealType"
 private const val ROUTE_MEAL_TYPE_PATTERN = "$ROUTE_MEAL_TYPE/{$ARG_MEAL_TYPE}"
@@ -112,38 +123,32 @@ private fun myMealRoute(id: String): String = "$ROUTE_MY_MEAL/$id"
 private fun quickLogChatRoute(): String = "$ROUTE_CHAT?$ARG_QUICK_LOG=true"
 
 /**
- * The four bottom-nav tab destinations, in display order, per the "Bottom
- * nav + FAB" spec: Home, Meals (My Meals), Trends, Chat. Settings is
- * deliberately not a tab — it's reached from Home's gear button instead.
+ * The three bottom-nav tab destinations, in display order (the FAB sits
+ * between the second and third): Home, Journey (the trends screen), Profile.
+ * My meals is reached from Home, and chat only from the FAB's quick-log.
  */
 private fun bottomNavItems(
     homeLabel: String,
-    mealsLabel: String,
-    trendsLabel: String,
-    chatLabel: String,
+    journeyLabel: String,
+    profileLabel: String,
 ): List<MealsyNavItem> =
     listOf(
         MealsyNavItem(MealsyIcons.Home, homeLabel, ROUTE_HOME),
-        MealsyNavItem(MealsyIcons.BowlBars, mealsLabel, ROUTE_MY_MEALS),
-        MealsyNavItem(MealsyIcons.LineChart, trendsLabel, ROUTE_TRENDS),
-        MealsyNavItem(MealsyIcons.Chat, chatLabel, ROUTE_CHAT),
+        MealsyNavItem(MealsyIcons.LineChart, journeyLabel, ROUTE_TRENDS),
+        MealsyNavItem(MealsyIcons.User, profileLabel, ROUTE_PROFILE),
     )
 
 /**
  * Maps a live [NavDestination] back to the bottom-nav tab route it belongs
- * to, or `null` if it isn't one of the four tabs (and so the pill should be
- * hidden and nothing should show as selected). [NavDestination.route] on a
- * parameterized destination is the *pattern* string (e.g.
- * `"chat?quickLog={quickLog}"`), not the concrete URI that was navigated to,
- * so the chat tab needs an explicit pattern match rather than an equality
- * check against [ROUTE_CHAT].
+ * to, or `null` if it isn't one of the three tabs (and so the pill should be
+ * hidden and nothing should show as selected). That keeps chat, My meals and
+ * the Profile sub-screens full-screen.
  */
 internal fun NavDestination?.tabRoute(): String? =
     when (this?.route) {
         ROUTE_HOME -> ROUTE_HOME
-        ROUTE_MY_MEALS -> ROUTE_MY_MEALS
         ROUTE_TRENDS -> ROUTE_TRENDS
-        ROUTE_CHAT_PATTERN -> ROUTE_CHAT
+        ROUTE_PROFILE -> ROUTE_PROFILE
         else -> null
     }
 
@@ -351,7 +356,7 @@ internal fun startRouteFor(
  * what [AppNav] composes rather than a hand-copied stand-in.
  *
  * @param selectedRoute The active tab route (one of [ROUTE_HOME],
- *   [ROUTE_MY_MEALS], [ROUTE_TRENDS], [ROUTE_CHAT]).
+ *   [ROUTE_TRENDS] (Journey), [ROUTE_PROFILE]).
  * @param onSelect Invoked with a tab route when a nav icon is tapped.
  * @param onFabClick Invoked when the centered FAB is tapped (quick log).
  */
@@ -365,9 +370,8 @@ internal fun MealsyBottomBar(
     val items =
         bottomNavItems(
             homeLabel = stringResource(R.string.nav_home),
-            mealsLabel = stringResource(R.string.nav_my_meals),
-            trendsLabel = stringResource(R.string.nav_trends),
-            chatLabel = stringResource(R.string.nav_chat),
+            journeyLabel = stringResource(R.string.nav_journey),
+            profileLabel = stringResource(R.string.nav_profile),
         )
     BottomNavPill(
         items = items,
@@ -381,6 +385,16 @@ internal fun MealsyBottomBar(
             )
         },
     )
+}
+
+/** The [SettingsViewModel] owned by the Profile tab's back stack entry, shared with its sub-screens. */
+@Composable
+private fun profileViewModel(
+    navController: NavHostController,
+    entry: NavBackStackEntry,
+): SettingsViewModel {
+    val profileEntry = remember(entry) { navController.getBackStackEntry(ROUTE_PROFILE) }
+    return hiltViewModel(profileEntry)
 }
 
 /**
@@ -438,8 +452,8 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 // NavHost before the first real sessionState value arrives.
                 Box(modifier = Modifier.fillMaxSize().background(MealsyTheme.colors.canvas))
             } else {
-                // Login/onboarding/settings/meal-detail render with no bottom nav —
-                // only the four tab destinations (home/my-meals/trends/chat) get it.
+                // Login/onboarding/profile sub-screens/chat/meal-detail render with no
+                // bottom nav — only the three tab destinations (home/trends/profile) get it.
                 // An unrecognized route (including these) maps to `null` here, so
                 // the pill defaults to hidden rather than shown.
                 val backStackEntry by navController.currentBackStackEntryAsState()
@@ -447,8 +461,8 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
 
                 // #49 item 1: Navigation-Compose 2.8's un-set default is a 700ms
                 // crossfade on every destination change. Push screens (meal
-                // detail, settings, onboarding, login) get a slide+fade at the
-                // product register's ~220ms; the four tab destinations override
+                // detail, profile sub-screens, onboarding, login) get a slide+fade at the
+                // product register's ~220ms; the tab destinations override
                 // this per-`composable` below with a near-instant fade instead,
                 // so switching tabs doesn't feel like navigating "into" a screen.
                 // Both durations collapse to 0 (a snap) under ReducedMotion.
@@ -456,6 +470,24 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                 val pushMs = if (reducedMotion) 0 else PUSH_TRANSITION_MS
                 val tabMs = if (reducedMotion) 0 else TAB_TRANSITION_MS
                 val pushEasing = FastOutSlowInEasing
+
+                // popUpTo ROUTE_HOME (not the graph's start destination,
+                // which is the onboarding welcome route — removed from the
+                // stack on sign-in/onboarding-complete via `inclusive =
+                // true`, making a start-destination popUpTo a no-op here)
+                // so ROUTE_HOME is the tab-root: switching tabs saves/
+                // restores each tab's state instead of stacking
+                // indefinitely, and back from any tab returns to home.
+                val navigateToTab: (String) -> Unit = { route ->
+                    navController.navigate(route) {
+                        popUpTo(ROUTE_HOME) {
+                            saveState = true
+                            inclusive = false
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     NavHost(
@@ -503,8 +535,9 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             popExitTransition = { fadeOut(tween(tabMs)) },
                         ) {
                             HomeScreen(
-                                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                                onOpenProfile = { navigateToTab(ROUTE_PROFILE) },
                                 onOpenMealType = { mealType -> navController.navigate(mealTypeRoute(mealType)) },
+                                onOpenMyMeals = { navController.navigate(ROUTE_MY_MEALS) },
                             )
                         }
                         composable(
@@ -542,13 +575,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             popEnterTransition = { fadeIn(tween(tabMs)) },
                             popExitTransition = { fadeOut(tween(tabMs)) },
                         ) { TrendsScreen() }
-                        composable(
-                            ROUTE_MY_MEALS,
-                            enterTransition = { fadeIn(tween(tabMs)) },
-                            exitTransition = { fadeOut(tween(tabMs)) },
-                            popEnterTransition = { fadeIn(tween(tabMs)) },
-                            popExitTransition = { fadeOut(tween(tabMs)) },
-                        ) {
+                        composable(ROUTE_MY_MEALS) {
                             // Home's TodayRefreshSignal-driven ON_RESUME refresh is what
                             // picks up a quick-log now, not this pop specifically — but
                             // popping back (rather than a plain nav) still avoids leaving
@@ -556,10 +583,49 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             MyMealsScreen(
                                 onLoggedNavigateToChat = { navController.popBackStack() },
                                 onOpenMeal = { id -> navController.navigate(myMealRoute(id)) },
+                                onBack = { navController.popBackStack() },
                             )
                         }
-                        composable(ROUTE_SETTINGS) {
-                            SettingsScreen(onBack = { navController.popBackStack() })
+                        composable(
+                            ROUTE_PROFILE,
+                            enterTransition = { fadeIn(tween(tabMs)) },
+                            exitTransition = { fadeOut(tween(tabMs)) },
+                            popEnterTransition = { fadeIn(tween(tabMs)) },
+                            popExitTransition = { fadeOut(tween(tabMs)) },
+                        ) {
+                            ProfileScreen(
+                                onOpenGoals = { navController.navigate(ROUTE_PROFILE_GOALS) },
+                                onOpenFood = { navController.navigate(ROUTE_PROFILE_FOOD) },
+                                onOpenReminders = { navController.navigate(ROUTE_PROFILE_REMINDERS) },
+                                onOpenAccount = { navController.navigate(ROUTE_PROFILE_ACCOUNT) },
+                            )
+                        }
+                        // The sub-screens share the Profile tab's SettingsViewModel (scoped to
+                        // its back stack entry, which stays below them) so the tab's summary
+                        // rows reflect edits made here.
+                        composable(ROUTE_PROFILE_GOALS) { entry ->
+                            GoalsScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = profileViewModel(navController, entry),
+                            )
+                        }
+                        composable(ROUTE_PROFILE_FOOD) { entry ->
+                            FoodPreferencesScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = profileViewModel(navController, entry),
+                            )
+                        }
+                        composable(ROUTE_PROFILE_REMINDERS) { entry ->
+                            RemindersScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = profileViewModel(navController, entry),
+                            )
+                        }
+                        composable(ROUTE_PROFILE_ACCOUNT) { entry ->
+                            AccountScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = profileViewModel(navController, entry),
+                            )
                         }
                         composable(
                             ROUTE_MEAL_TYPE_PATTERN,
@@ -598,28 +664,12 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                     // otherwise sit directly underneath it once both are lifted
                     // above the keyboard.
                     // Chat is a full-screen conversation with its own back button
-                    // (like Claude's), so it hides the pill too.
+                    // (like Claude's); it is not a tab, so `activeTab` is null there.
                     val imeVisible = WindowInsets.isImeVisible
-                    if (activeTab != null && activeTab != ROUTE_CHAT && !imeVisible) {
+                    if (activeTab != null && !imeVisible) {
                         MealsyBottomBar(
                             selectedRoute = activeTab,
-                            onSelect = { route ->
-                                // popUpTo ROUTE_HOME (not the graph's start destination,
-                                // which is the onboarding welcome route — removed from the
-                                // stack on sign-in/onboarding-complete via `inclusive =
-                                // true`, making a start-destination popUpTo a no-op here)
-                                // so ROUTE_HOME is the tab-root: switching tabs saves/
-                                // restores each tab's state instead of stacking
-                                // indefinitely, and back from any tab returns to home.
-                                navController.navigate(route) {
-                                    popUpTo(ROUTE_HOME) {
-                                        saveState = true
-                                        inclusive = false
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onSelect = navigateToTab,
                             onFabClick = {
                                 // popUpTo(ROUTE_HOME) (inclusive = false) removes any existing
                                 // chat entry — including one from a prior FAB tap or the chat

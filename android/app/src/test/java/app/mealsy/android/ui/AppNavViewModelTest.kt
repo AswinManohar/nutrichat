@@ -600,8 +600,8 @@ class TabRouteTest {
     }
 
     @Test
-    fun `my-meals tab route maps to itself`() {
-        assertEquals("my-meals", destination("my-meals").tabRoute())
+    fun `profile tab route maps to itself`() {
+        assertEquals("profile", destination("profile").tabRoute())
     }
 
     @Test
@@ -610,13 +610,21 @@ class TabRouteTest {
     }
 
     @Test
-    fun `chat's parameterized pattern route maps to the plain chat tab`() {
-        assertEquals("chat", destination("chat?quickLog={quickLog}").tabRoute())
+    fun `chat and my-meals are no longer tabs (full-screen, pill hidden)`() {
+        assertEquals(null, destination("chat?quickLog={quickLog}").tabRoute())
+        assertEquals(null, destination("my-meals").tabRoute())
+    }
+
+    @Test
+    fun `profile sub-screens are not tabs`() {
+        listOf("goals", "food", "reminders", "account").forEach {
+            assertEquals(null, destination("profile/$it").tabRoute())
+        }
     }
 
     @Test
     fun `an unrecognized route maps to null (pill defaults to hidden)`() {
-        assertEquals(null, destination("settings").tabRoute())
+        assertEquals(null, destination("meals/{mealType}").tabRoute())
         assertEquals(null, destination("onboarding?startStep={startStep}").tabRoute())
         assertEquals(null, destination(null).tabRoute())
         assertEquals(null, (null as androidx.navigation.NavDestination?).tabRoute())
