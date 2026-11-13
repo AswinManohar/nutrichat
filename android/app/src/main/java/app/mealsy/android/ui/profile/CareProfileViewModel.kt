@@ -128,6 +128,12 @@ class CareProfileViewModel
             onDone: () -> Unit,
         ) = mutate(onDone) { repository.retire(id, clientRequestId) }
 
+        /** Confirms a pending entry, or acknowledges an inferred one ("That's right"). */
+        fun confirm(id: String) = mutate({}) { repository.confirm(id) }
+
+        /** Rejects a pending entry ("Not right"). */
+        fun deny(id: String) = mutate({}) { repository.deny(id) }
+
         /** Clears a shown save failure when the sheet is dismissed. */
         fun clearSaveError() {
             _save.value = CareSaveState()
@@ -136,15 +142,15 @@ class CareProfileViewModel
         private fun mutate(
             onDone: () -> Unit,
             call: suspend () -> Unit,
-        ) {
-            if (_save.value.saving) return
+        ): Job? {
+            if (_save.value.saving) return null
             _save.value = CareSaveState(saving = true)
-            viewModelScope.launch {
+            return viewModelScope.launch {
                 try {
                     call()
                     _save.value = CareSaveState()
                     onDone()
-                    load()
+                    load().join()
                 } catch (exc: CancellationException) {
                     throw exc
                 } catch (exc: Exception) {

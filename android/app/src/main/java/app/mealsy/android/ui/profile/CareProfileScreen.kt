@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -43,6 +44,7 @@ import app.mealsy.android.design.components.InsetDivider
 import app.mealsy.android.design.components.ListContainer
 import app.mealsy.android.design.components.MealsyButton
 import app.mealsy.android.design.components.MealsyButtonStyle
+import app.mealsy.android.design.components.MealsyDialog
 import app.mealsy.android.design.components.PastelIconCircle
 import app.mealsy.android.design.components.TagChip
 import app.mealsy.android.design.components.TagTone
@@ -60,6 +62,7 @@ import app.mealsy.data.api.HardEntryDto
 import app.mealsy.data.api.LimitProgressDto
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.UUID
 import kotlin.math.roundToInt
 
 /** The tone and initial each entry type uses for its icon circle (and count chip on the Profile tab). */
@@ -98,15 +101,18 @@ private sealed interface Editor {
  * [CareProfileViewModel], shared with the Profile tab.
  *
  * @param onBack Pops back to the Profile tab.
+ * @param onOpenHistory Opens the entry history.
  */
 @Composable
 fun CareProfileScreen(
     onBack: () -> Unit,
+    onOpenHistory: () -> Unit,
     viewModel: CareProfileViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val save by viewModel.save.collectAsStateWithLifecycle()
     var editor by remember { mutableStateOf<Editor?>(null) }
+    var retiring by remember { mutableStateOf<HardEntryDto?>(null) }
 
     CareProfileContent(
         uiState = uiState,
@@ -114,8 +120,36 @@ fun CareProfileScreen(
         onRetry = { viewModel.load() },
         onAdd = { editor = Editor.Add },
         onEdit = { editor = Editor.Edit(it) },
+        onConfirm = { viewModel.confirm(it.id) },
+        onDeny = { viewModel.deny(it.id) },
+        onRetireInferred = { retiring = it },
+        onOpenHistory = onOpenHistory,
+        actionFailed = save.failed && editor == null,
         modifier = Modifier.fillMaxSize(),
     )
+
+    retiring?.let { entry ->
+        MealsyDialog(
+            onDismissRequest = { retiring = null },
+            title = stringResource(R.string.entry_retire_title),
+            body = stringResource(R.string.entry_retire_body, entry.label),
+            buttons = {
+                MealsyButton(
+                    text = stringResource(R.string.entry_retire_confirm),
+                    onClick = {
+                        retiring = null
+                        viewModel.retire(entry.id, UUID.randomUUID().toString()) {}
+                    },
+                    style = MealsyButtonStyle.Destructive,
+                )
+                MealsyButton(
+                    text = stringResource(R.string.settings_cancel),
+                    onClick = { retiring = null },
+                    style = MealsyButtonStyle.Secondary,
+                )
+            },
+        )
+    }
 
     editor?.let { target ->
         val close = {
@@ -137,6 +171,11 @@ fun CareProfileScreen(
  * Stateless render of [CareProfileScreen], driven by hand-built state in goldens.
  *
  * @param initiallyExpanded Sections that start expanded.
+ * @param onConfirm Confirms a pending entry or acknowledges an inferred one.
+ * @param onDeny Rejects a pending entry.
+ * @param onRetireInferred Asks to remove an inferred entry (the screen confirms first).
+ * @param onOpenHistory Opens the entry history.
+ * @param actionFailed Whether the last confirm, deny or remove failed.
  */
 @Composable
 fun CareProfileContent(
@@ -147,6 +186,11 @@ fun CareProfileContent(
     onEdit: (HardEntryDto) -> Unit,
     modifier: Modifier = Modifier,
     initiallyExpanded: Set<CareType> = emptySet(),
+    onConfirm: (HardEntryDto) -> Unit = {},
+    onDeny: (HardEntryDto) -> Unit = {},
+    onRetireInferred: (HardEntryDto) -> Unit = {},
+    onOpenHistory: () -> Unit = {},
+    actionFailed: Boolean = false,
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState()).mealsyScreenPadding()) {
         HeaderRow(title = stringResource(R.string.care_eyebrow), onBack = onBack)
@@ -163,7 +207,16 @@ fun CareProfileContent(
                     onRetry = onRetry,
                     modifier = Modifier.height(240.dp),
                 )
-            is CareProfileUiState.Loaded -> LoadedBody(uiState.data, onAdd, onEdit, initiallyExpanded)
+            is CareProfileUiState.Loaded ->
+                LoadedBody(
+                    data = uiState.data,
+                    actions = EntryActions(onConfirm, onDeny, onRetireInferred),
+                    onAdd = onAdd,
+                    onEdit = onEdit,
+                    onOpenHistory = onOpenHistory,
+                    actionFailed = actionFailed,
+                    initiallyExpanded = initiallyExpanded,
+                )
         }
     }
 }
@@ -171,13 +224,37 @@ fun CareProfileContent(
 @Composable
 private fun LoadedBody(
     data: CareProfileData,
+    actions: EntryActions,
     onAdd: () -> Unit,
     onEdit: (HardEntryDto) -> Unit,
+    onOpenHistory: () -> Unit,
+    actionFailed: Boolean,
     initiallyExpanded: Set<CareType>,
 ) {
     val colors = MealsyTheme.colors
-    Text(text = stringResource(R.string.care_title), style = MealsyType.screenTitle, color = colors.ink)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(text = stringResource(R.string.care_title), style = MealsyType.screenTitle, color = colors.ink)
+        Text(
+            text = stringResource(R.string.care_history),
+            style = MealsyType.body,
+            color = colors.ink,
+            modifier =
+                Modifier
+                    .defaultMinSize(minHeight = 48.dp)
+                    .clickable(role = Role.Button, onClick = onOpenHistory)
+                    .padding(horizontal = 8.dp)
+                    .wrapContentHeight(Alignment.CenterVertically),
+        )
+    }
     CareSubtitle(data)
+    if (actionFailed) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = stringResource(R.string.care_action_failed), style = MealsyType.label, color = colors.terracottaOutlineText)
+    }
     val limits = data.limits
     if (limits != null && limits.total > 0) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -200,7 +277,7 @@ private fun LoadedBody(
         ListContainer {
             sections.forEachIndexed { index, type ->
                 if (index > 0) InsetDivider()
-                CareSection(type, data, onEdit, startExpanded = type in initiallyExpanded)
+                CareSection(type, data, actions, onEdit, startExpanded = type in initiallyExpanded)
             }
         }
     }
@@ -241,6 +318,7 @@ internal fun careTeamLine(data: CareProfileData): String {
 private fun CareSection(
     type: CareType,
     data: CareProfileData,
+    actions: EntryActions,
     onEdit: (HardEntryDto) -> Unit,
     startExpanded: Boolean,
 ) {
@@ -290,6 +368,7 @@ private fun CareSection(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 EntryBody(entry, limitsByEntry[entry.id])
+                EntryReview(entry, actions)
             }
         }
     }
@@ -305,6 +384,7 @@ private fun EntryBody(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text = entry.label, style = MealsyType.body, color = colors.ink, modifier = Modifier.weight(1f, fill = false))
             if (entry.state == "pending") TagChip(stringResource(R.string.care_awaiting), TagTone.Butter)
+            if (entry.needsAcknowledgement()) TagChip(stringResource(R.string.care_inferred), TagTone.Powder)
         }
         return
     }
@@ -329,6 +409,39 @@ private fun EntryBody(
         style = MealsyType.label,
         color = if (limit.onTrack) colors.muted else colors.terracottaOutlineText,
     )
+}
+
+/** What the patient can do with entries that need a decision. */
+private class EntryActions(
+    val onConfirm: (HardEntryDto) -> Unit,
+    val onDeny: (HardEntryDto) -> Unit,
+    val onRetireInferred: (HardEntryDto) -> Unit,
+)
+
+/** An inferred entry the patient has not yet agreed with. */
+private fun HardEntryDto.needsAcknowledgement(): Boolean = source == "inferred" && state == "confirmed" && !acknowledged
+
+/** Confirm / Not right for a pending entry; That's right / Not right for an inferred one. */
+@Composable
+private fun EntryReview(
+    entry: HardEntryDto,
+    actions: EntryActions,
+) {
+    val pending = entry.state == "pending"
+    if (!pending && !entry.needsAcknowledgement()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        MealsyButton(
+            text = stringResource(if (pending) R.string.care_confirm else R.string.care_thats_right),
+            onClick = { actions.onConfirm(entry) },
+            modifier = Modifier.weight(1f),
+        )
+        MealsyButton(
+            text = stringResource(R.string.care_not_right),
+            onClick = { if (pending) actions.onDeny(entry) else actions.onRetireInferred(entry) },
+            modifier = Modifier.weight(1f),
+            style = MealsyButtonStyle.Secondary,
+        )
+    }
 }
 
 /** Today's intake as a bar filled to `soFar / amount` (capped at 1) with a marker at the limit. */

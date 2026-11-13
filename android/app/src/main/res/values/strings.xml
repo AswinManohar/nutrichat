@@ -501,4 +501,63 @@
     <string name="nutrient_fluid">Fluid</string>
     <string name="limit_period_day">Day</string>
     <string name="limit_period_meal">Meal</string>
+
+    <!-- Care profile: confirmation, inferred entries, history -->
+    <string name="care_inferred">Inferred</string>
+    <string name="care_confirm">Confirm</string>
+    <string name="care_not_right">Not right</string>
+    <string name="care_thats_right">That\'s right</string>
+    <string name="care_history">History</string>
+    <string name="care_action_failed">That did not save. Try again.</string>
+    <string name="history_title">Profile history</string>
+    <string name="history_empty">Nothing in your history yet.</string>
+    <string name="history_loading">Loading your history…</string>
+    <string name="history_error">Something went wrong loading your history.</string>
+    <string name="history_since">Added %1$s</string>
+    <string name="history_retired">Removed %1$s</string>
+    <string name="history_retired_reason">Removed %1$s, %2$s</string>
+    <string name="history_replaces">Replaced an earlier entry</string>
+    <string name="history_reason_denied">you said it was not right</string>
+    <string name="history_reason_replaced">replaced by a newer entry</string>
+
+    <!-- What Mealsy remembers -->
+    <string name="profile_remembers">What Mealsy remembers</string>
+    <string name="profile_meal_history">Meal history</string>
+    <string name="profile_export">Export my data</string>
+    <string name="profile_export_sharing">Preparing…</string>
+    <string name="profile_export_failed">Could not export your data. Try again.</string>
+    <string name="profile_export_subject">Mealsy profile export</string>
+    <string name="remembers_title">What Mealsy remembers</string>
+    <string name="remembers_empty">Nothing yet. Tell Mealsy what you like or avoid and it will show up here.</string>
+    <string name="remembers_loading">Loading what Mealsy remembers…</string>
+    <string name="remembers_error">Something went wrong loading your preferences.</string>
+    <string name="remembers_since">since %1$s</string>
+    <string name="remembers_edit">Edit %1$s</string>
+    <string name="remembers_edit_title">Edit preference</string>
+    <string name="remembers_field_text">What Mealsy remembers</string>
+    <string name="remembers_field_kind">Kind</string>
+    <string name="remembers_save">Save</string>
+    <string name="remembers_delete">Delete</string>
+    <string name="remembers_delete_title">Delete this preference</string>
+    <string name="remembers_delete_body">Mealsy will forget \"%1$s\" and will not learn it again unless you say it.</string>
+    <string name="remembers_failed">That did not save. Try again.</string>
+    <string name="remembers_kind_like">Likes</string>
+    <string name="remembers_kind_dislike">Dislikes</string>
+    <string name="remembers_kind_cuisine">Cuisines</string>
+    <string name="remembers_kind_budget">Budget</string>
+    <string name="remembers_kind_cooking_time">Cooking time</string>
+    <string name="remembers_kind_habit">Habits</string>
+    <string name="remembers_kind_context">Context</string>
+    <string name="remembers_kind_other">Other</string>
+    <string name="meal_history_title">Meal history</string>
+    <string name="meal_history_window">Last 21 days</string>
+    <string name="meal_history_recommended">Recipes Mealsy suggested</string>
+    <string name="meal_history_logged">Meals you logged</string>
+    <string name="meal_history_empty">No meals in the last 21 days.</string>
+    <string name="meal_history_loading">Loading your meals…</string>
+    <string name="meal_history_error">Something went wrong loading your meals.</string>
+    <string name="meal_history_status_shown">Shown</string>
+    <string name="meal_history_status_accepted">Accepted</string>
+    <string name="meal_history_status_rejected">Not for me</string>
+    <string name="meal_history_reason">Reason: %1$s</string>
 </resources>

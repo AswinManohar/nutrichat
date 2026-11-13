@@ -109,13 +109,14 @@ class ChatRepositoryTest {
     private fun clientRequestIdOf(body: String): String? = Regex("\"client_request_id\":\"([^\"]+)\"").find(body)?.groupValues?.get(1)
 
     @Test
-    fun `sendTurn carries recipe, recommendation id and the Kept paragraph`() =
+    fun `sendTurn carries recipe, recommendation id and the constraint note`() =
         runBlocking {
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
                     """
-                    {"status":"done","message":"A bowl.\n\n1. Cook.\n\nKept this soft because of your chewing difficulty.",
+                    {"status":"done","message":"A bowl.\n\n1. Cook.",
                      "paused":false,"recommendation_id":"rec-1",
+                     "constraint_note":"Kept this soft because of your chewing difficulty.",
                      "recipe":{"name":"Oat bowl","intro":"Warm.","ingredients":[{"name":"oats","qty_g":40}],
                        "texture":"soft_bite_sized","crunchy_or_dry":false,"steps":["Cook."],
                        "active_minutes":5,"total_minutes":10,"equipment":[],"servings":1}}

@@ -169,6 +169,17 @@ private class FakeMealsyApi(
         body: app.mealsy.data.api.RetireRequest,
     ): app.mealsy.data.api.HardEntryDto = error("unused")
 
+    override suspend fun patchSoftFact(
+        id: String,
+        body: app.mealsy.data.api.SoftFactPatch,
+    ): app.mealsy.data.api.SoftFactDto = error("unused")
+
+    override suspend fun deleteSoftFact(id: String) = error("unused")
+
+    override suspend fun profileMeals(days: Int): app.mealsy.data.api.ProfileMealsDto = error("unused")
+
+    override suspend fun profileExport(): okhttp3.ResponseBody = error("unused")
+
     override suspend fun mealFeedback(
         id: String,
         body: app.mealsy.data.api.MealFeedbackRequest,

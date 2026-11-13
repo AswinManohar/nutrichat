@@ -106,10 +106,6 @@ private val URL_PATTERN =
 
 private fun stripUrls(text: String): String = text.replace(URL_PATTERN, "").replace(Regex("[ \\t]{2,}"), " ").trim()
 
-/** The recipe reply's closing "Kept ..." paragraph, or null when the message has none. */
-private fun constraintNote(message: String): String? =
-    message.trim().split(Regex("\\n\\s*\\n")).lastOrNull()?.trim()?.takeIf { it.startsWith("Kept") }
-
 /**
  * Drives the `POST /meals/log` confirmation flow: sending turns, recovering
  * a paused card after a dropped connection, and confirming or cancelling it.
@@ -383,7 +379,7 @@ class ChatRepository
                 recommendationId = response.recommendationId,
                 kind = response.kind,
                 readback = response.readback,
-                constraintNote = if (response.recipe != null) constraintNote(response.message) else null,
+                constraintNote = response.constraintNote,
             )
         }
     }

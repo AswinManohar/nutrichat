@@ -656,7 +656,7 @@ class ChatViewModelTest {
 
     private fun recipeReplyBody(): String =
         """
-        {"status":"done","message":"Oat bowl.\n\nKept this soft.","paused":false,"recommendation_id":"rec-1",
+        {"status":"done","message":"Oat bowl.","paused":false,"recommendation_id":"rec-1","constraint_note":"Kept this soft.",
          "recipe":{"name":"Oat bowl","intro":"Warm.","ingredients":[{"name":"oats","qty_g":40}],
          "steps":["Cook."],"active_minutes":5,"total_minutes":10}}
         """.trimIndent()

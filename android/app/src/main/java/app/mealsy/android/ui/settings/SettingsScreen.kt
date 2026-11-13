@@ -72,6 +72,8 @@ import app.mealsy.android.ui.onboarding.DietaryPref
 import app.mealsy.android.ui.onboarding.GOAL_CARD_SPECS
 import app.mealsy.android.ui.onboarding.OnboardingGoal
 import app.mealsy.android.ui.onboarding.PREF_LABELS
+import app.mealsy.android.ui.profile.ExportState
+import app.mealsy.android.ui.profile.ProfileExportViewModel
 import kotlinx.coroutines.delay
 
 /**
@@ -307,14 +309,18 @@ fun RemindersContent(
     }
 }
 
-/** Profile > Account and privacy: privacy policy, app version and account deletion. */
+/** Profile > Account and privacy: privacy policy, app version, data export and account deletion. */
 @Composable
 fun AccountScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
+    exportViewModel: ProfileExportViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val exportState by exportViewModel.state.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val subject = stringResource(R.string.profile_export_subject)
     AccountContent(
         uiState = uiState,
         onBack = onBack,
@@ -322,7 +328,44 @@ fun AccountScreen(
         onSetDeleteConfirmationText = viewModel::setDeleteConfirmationText,
         onDeleteAccount = viewModel::deleteAccount,
         isDeleteConfirmed = viewModel::isDeleteConfirmedNow,
+        exportState = exportState,
+        onExport = {
+            exportViewModel.export { json ->
+                // Plain text rather than a file: sharing a file would need a FileProvider.
+                val send =
+                    Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_SUBJECT, subject)
+                        .putExtra(Intent.EXTRA_TEXT, json)
+                context.startActivity(Intent.createChooser(send, subject))
+            }
+        },
     )
+}
+
+/** "Export my data": a row that fetches the full JSON copy and opens the share sheet. */
+@Composable
+private fun ExportSection(
+    state: ExportState,
+    onExport: () -> Unit,
+) {
+    Column {
+        ListContainer {
+            ListRow(
+                label = stringResource(R.string.profile_export),
+                onClick = if (state == ExportState.Preparing) null else onExport,
+                trailingText = if (state == ExportState.Preparing) stringResource(R.string.profile_export_sharing) else null,
+            )
+        }
+        if (state == ExportState.Failed) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.profile_export_failed),
+                style = MealsyType.label,
+                color = MealsyTheme.colors.terracottaOutlineText,
+            )
+        }
+    }
 }
 
 /** Stateless render of [AccountScreen]. */
@@ -335,6 +378,8 @@ fun AccountContent(
     onDeleteAccount: () -> Unit,
     isDeleteConfirmed: () -> Boolean,
     modifier: Modifier = Modifier,
+    exportState: ExportState = ExportState.Idle,
+    onExport: (() -> Unit)? = null,
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -361,6 +406,10 @@ fun AccountContent(
     ) {
         item { AboutSection(uiState = uiState, onOpenPrivacyPolicy = onOpenPrivacyPolicy) }
         item { Spacer(modifier = Modifier.height(28.dp)) }
+        if (onExport != null) {
+            item { ExportSection(state = exportState, onExport = onExport) }
+            item { Spacer(modifier = Modifier.height(28.dp)) }
+        }
         item {
             Eyebrow(text = stringResource(R.string.settings_danger_zone))
             Spacer(modifier = Modifier.height(10.dp))

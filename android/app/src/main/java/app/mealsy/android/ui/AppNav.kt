@@ -52,6 +52,9 @@ import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
 import app.mealsy.android.ui.profile.CareProfileScreen
+import app.mealsy.android.ui.profile.EntryHistoryScreen
+import app.mealsy.android.ui.profile.MealHistoryScreen
+import app.mealsy.android.ui.profile.PreferencesScreen
 import app.mealsy.android.ui.profile.ProfileScreen
 import app.mealsy.android.ui.settings.AccountScreen
 import app.mealsy.android.ui.settings.FoodPreferencesScreen
@@ -99,6 +102,9 @@ private const val ROUTE_PROFILE_FOOD = "profile/food"
 private const val ROUTE_PROFILE_REMINDERS = "profile/reminders"
 private const val ROUTE_PROFILE_ACCOUNT = "profile/account"
 private const val ROUTE_CARE_PROFILE = "profile/care"
+private const val ROUTE_CARE_HISTORY = "profile/care/history"
+private const val ROUTE_PROFILE_REMEMBERS = "profile/remembers"
+private const val ROUTE_PROFILE_MEAL_HISTORY = "profile/meal-history"
 private const val ROUTE_MEAL_TYPE = "meals"
 private const val ARG_MEAL_TYPE = "mealType"
 private const val ROUTE_MEAL_TYPE_PATTERN = "$ROUTE_MEAL_TYPE/{$ARG_MEAL_TYPE}"
@@ -601,6 +607,8 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 onOpenReminders = { navController.navigate(ROUTE_PROFILE_REMINDERS) },
                                 onOpenAccount = { navController.navigate(ROUTE_PROFILE_ACCOUNT) },
                                 onOpenCare = { navController.navigate(ROUTE_CARE_PROFILE) },
+                                onOpenRemembers = { navController.navigate(ROUTE_PROFILE_REMEMBERS) },
+                                onOpenMealHistory = { navController.navigate(ROUTE_PROFILE_MEAL_HISTORY) },
                             )
                         }
                         // The sub-screens share the Profile tab's SettingsViewModel (scoped to
@@ -627,8 +635,18 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                         composable(ROUTE_CARE_PROFILE) { entry ->
                             CareProfileScreen(
                                 onBack = { navController.popBackStack() },
+                                onOpenHistory = { navController.navigate(ROUTE_CARE_HISTORY) },
                                 viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(ROUTE_PROFILE) }),
                             )
+                        }
+                        composable(ROUTE_CARE_HISTORY) {
+                            EntryHistoryScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(ROUTE_PROFILE_REMEMBERS) {
+                            PreferencesScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable(ROUTE_PROFILE_MEAL_HISTORY) {
+                            MealHistoryScreen(onBack = { navController.popBackStack() })
                         }
                         composable(ROUTE_PROFILE_ACCOUNT) { entry ->
                             AccountScreen(

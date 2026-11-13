@@ -1,8 +1,10 @@
 package app.mealsy.data.api
 
+import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -190,4 +192,27 @@ interface MealsyApi {
         @Path("id") id: String,
         @Body body: RetireRequest,
     ): HardEntryDto
+
+    /** Edits a remembered preference's text or kind. */
+    @PATCH("profile/soft/{id}")
+    suspend fun patchSoftFact(
+        @Path("id") id: String,
+        @Body body: SoftFactPatch,
+    ): SoftFactDto
+
+    /** Deletes a remembered preference; the server keeps a tombstone so it is not re-learned. */
+    @DELETE("profile/soft/{id}")
+    suspend fun deleteSoftFact(
+        @Path("id") id: String,
+    )
+
+    /** Recommendations and logged meal labels for the last [days] days (at most 90). */
+    @GET("profile/meals")
+    suspend fun profileMeals(
+        @Query("days") days: Int,
+    ): ProfileMealsDto
+
+    /** A full JSON copy of everything remembered about the patient. */
+    @GET("profile/export")
+    suspend fun profileExport(): ResponseBody
 }

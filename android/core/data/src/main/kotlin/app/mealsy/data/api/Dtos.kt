@@ -60,6 +60,8 @@ data class LogTurnResponse(
     val kind: String? = null,
     /** A yes/no question about a stated health fact; the patient answers by sending plain chat text. */
     val readback: ReadbackDto? = null,
+    /** The "Kept ..." sentence naming the limits a shown recipe respects; set only with [recipe]. */
+    @SerialName("constraint_note") val constraintNote: String? = null,
 )
 
 /** The latest readback question: [kind] is `"add"` (confirm a new fact) or `"retire"` (stop using one). */
@@ -822,6 +824,8 @@ data class HardEntryDto(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("confirmed_at") val confirmedAt: String? = null,
     @SerialName("retire_requested") val retireRequested: Boolean = false,
+    /** For an inferred entry: the patient has agreed with what was inferred. */
+    val acknowledged: Boolean = false,
     // Only on GET /profile/history.
     @SerialName("retired_at") val retiredAt: String? = null,
     @SerialName("retired_by") val retiredBy: String? = null,
@@ -835,6 +839,40 @@ data class SoftFactDto(
     val id: String,
     val kind: String = "",
     val text: String = "",
+    val source: String = "",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+/** Body of `PATCH /profile/soft/{id}`; only the fields sent change. */
+@Serializable
+data class SoftFactPatch(
+    val text: String? = null,
+    val kind: String? = null,
+)
+
+/** One recipe shown in chat, as listed by `GET /profile/meals`. */
+@Serializable
+data class RecommendationDto(
+    @SerialName("recommendation_id") val id: String,
+    val name: String = "",
+    val status: String = "shown",
+    @SerialName("rejection_reason") val rejectionReason: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+)
+
+/** One logged meal label, as listed by `GET /profile/meals`. */
+@Serializable
+data class LoggedMealDto(
+    val label: String = "",
+    @SerialName("logged_at") val loggedAt: String? = null,
+)
+
+/** Response of `GET /profile/meals?days=N`. */
+@Serializable
+data class ProfileMealsDto(
+    val recommendations: List<RecommendationDto> = emptyList(),
+    @SerialName("eaten") val logged: List<LoggedMealDto> = emptyList(),
 )
 
 /** Response of `GET /profile`. */

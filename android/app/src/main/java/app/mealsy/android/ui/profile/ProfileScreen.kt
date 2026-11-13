@@ -63,6 +63,8 @@ import app.mealsy.android.ui.settings.SettingsViewModel
  * @param onOpenReminders Opens Reminders.
  * @param onOpenAccount Opens Account and privacy.
  * @param onOpenCare Opens the Care profile.
+ * @param onOpenRemembers Opens What Mealsy remembers.
+ * @param onOpenMealHistory Opens the meal history.
  */
 @Composable
 fun ProfileScreen(
@@ -71,6 +73,8 @@ fun ProfileScreen(
     onOpenReminders: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenCare: () -> Unit,
+    onOpenRemembers: () -> Unit,
+    onOpenMealHistory: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
     careViewModel: CareProfileViewModel = hiltViewModel(),
 ) {
@@ -87,6 +91,8 @@ fun ProfileScreen(
         onOpenReminders = onOpenReminders,
         onOpenAccount = onOpenAccount,
         onOpenCare = onOpenCare,
+        onOpenRemembers = onOpenRemembers,
+        onOpenMealHistory = onOpenMealHistory,
         onSignOut = viewModel::signOut,
         modifier = Modifier.fillMaxSize(),
     )
@@ -102,6 +108,8 @@ fun ProfileContent(
     onOpenReminders: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenCare: () -> Unit,
+    onOpenRemembers: () -> Unit,
+    onOpenMealHistory: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -126,6 +134,10 @@ fun ProfileContent(
                 onClick = onOpenFood,
                 trailingText = firstPrefLabel(uiState),
             )
+            InsetDivider()
+            ListRow(label = stringResource(R.string.profile_remembers), onClick = onOpenRemembers)
+            InsetDivider()
+            ListRow(label = stringResource(R.string.profile_meal_history), onClick = onOpenMealHistory)
         }
 
         Spacer(modifier = Modifier.height(24.dp))

@@ -5,7 +5,12 @@ import app.mealsy.data.api.HardEntryDto
 import app.mealsy.data.api.LimitsTodayDto
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.ProfileDto
+import app.mealsy.data.api.ProfileMealsDto
 import app.mealsy.data.api.RetireRequest
+import app.mealsy.data.api.SoftFactDto
+import app.mealsy.data.api.SoftFactPatch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -19,6 +24,9 @@ import javax.inject.Inject
  * server's own user-facing text (`safety.profile_unavailable_text`), shown as is.
  */
 class ProfileUnavailableException(message: String) : Exception(message)
+
+/** The window of the Meal history screen. */
+const val MEAL_HISTORY_DAYS = 21
 
 /**
  * Thin wrapper over `/profile` (`src/backend/api/profile.py`). Reads map a 503 to
@@ -57,6 +65,19 @@ class ProfileRepository
             id: String,
             clientRequestId: String,
         ): HardEntryDto = api.retireProfileEntry(id, RetireRequest(confirm = true, clientRequestId = clientRequestId))
+
+        suspend fun editSoftFact(
+            id: String,
+            text: String,
+            kind: String,
+        ): SoftFactDto = api.patchSoftFact(id, SoftFactPatch(text = text, kind = kind))
+
+        suspend fun deleteSoftFact(id: String) = api.deleteSoftFact(id)
+
+        suspend fun meals(days: Int = MEAL_HISTORY_DAYS): ProfileMealsDto = unavailableAware { api.profileMeals(days) }
+
+        /** The full JSON export as text, for the share sheet. */
+        suspend fun export(): String = withContext(Dispatchers.IO) { api.profileExport().use { it.string() } }
 
         private suspend fun <T> unavailableAware(call: suspend () -> T): T =
             try {

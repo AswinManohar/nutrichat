@@ -144,4 +144,57 @@ class ProfileRepositoryTest {
             val body = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
             assertEquals("true", body["confirm"]?.jsonPrimitive?.content)
         }
+
+    @Test
+    fun `soft facts parse dates and edit and delete hit the soft routes`() =
+        runBlocking {
+            server.enqueue(
+                ok(
+                    """{"soft":[{"id":"s1","kind":"dislike","text":"coriander","source":"stated",
+                    "created_at":"2026-11-02T10:00:00Z","updated_at":"2026-11-03T10:00:00Z"}]}""",
+                ),
+            )
+            server.enqueue(ok("""{"id":"s1","kind":"like","text":"cilantro"}"""))
+            server.enqueue(MockResponse().setResponseCode(204))
+            val repository = buildRepository()
+
+            val fact = repository.profile().soft.single()
+            repository.editSoftFact("s1", "cilantro", "like")
+            repository.deleteSoftFact("s1")
+
+            assertEquals("2026-11-02T10:00:00Z", fact.createdAt)
+            server.takeRequest()
+            val patch = server.takeRequest()
+            assertEquals("PATCH", patch.method)
+            assertEquals("/profile/soft/s1", patch.path)
+            val body = Json.parseToJsonElement(patch.body.readUtf8()).jsonObject
+            assertEquals("cilantro", body["text"]?.jsonPrimitive?.content)
+            assertEquals("like", body["kind"]?.jsonPrimitive?.content)
+            val delete = server.takeRequest()
+            assertEquals("DELETE", delete.method)
+            assertEquals("/profile/soft/s1", delete.path)
+        }
+
+    @Test
+    fun `meals asks for 21 days and export returns the raw text`() =
+        runBlocking {
+            server.enqueue(
+                ok(
+                    """{"days":21,"recommendations":[{"recommendation_id":"r1","name":"Oat bowl","status":"rejected",
+                    "rejection_reason":"too bland","created_at":"2026-11-10T10:00:00Z"}],
+                    "eaten":[{"label":"Lunch: rice","logged_at":"2026-11-10T12:00:00Z"}]}""",
+                ),
+            )
+            server.enqueue(ok("""{"hard":[],"soft":[]}"""))
+            val repository = buildRepository()
+
+            val meals = repository.meals()
+            val export = repository.export()
+
+            assertEquals("/profile/meals?days=21", server.takeRequest().path)
+            assertEquals("too bland", meals.recommendations.single().rejectionReason)
+            assertEquals("Lunch: rice", meals.logged.single().label)
+            assertEquals("/profile/export", server.takeRequest().path)
+            assertEquals("""{"hard":[],"soft":[]}""", export)
+        }
 }

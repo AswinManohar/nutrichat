@@ -33,6 +33,8 @@ class ProfileScreenGoldenTest : AppScreenshotTestBase() {
             onOpenReminders = {},
             onOpenAccount = {},
             onOpenCare = {},
+            onOpenRemembers = {},
+            onOpenMealHistory = {},
             onSignOut = {},
             modifier = Modifier.fillMaxSize(),
         )
