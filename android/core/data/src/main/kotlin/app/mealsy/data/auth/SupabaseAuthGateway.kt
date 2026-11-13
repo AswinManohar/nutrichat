@@ -85,10 +85,12 @@ class SupabaseAuthGateway
         }
 
         override suspend fun currentProfileMetadata(): ProfileMetadata? {
-            val metadata = auth.currentUserOrNull()?.userMetadata ?: return null
+            val user = auth.currentUserOrNull()
+            val metadata = user?.userMetadata ?: return null
             return ProfileMetadata(
                 firstName = metadata["first_name"]?.jsonPrimitive?.contentOrNull,
                 goalFocus = metadata["goal_focus"]?.jsonPrimitive?.contentOrNull,
+                email = user.email,
             )
         }
 
