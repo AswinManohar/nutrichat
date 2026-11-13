@@ -284,6 +284,35 @@ deny, retire) backs the Android Care profile screen. `GET /profile` returns
 response shape but reads and writes diagnoses and diet settings through the
 profile.
 
+**Checked meal suggestions (PR 2).** When `parse_query` sets
+`suggests_meal`, `CoachingAgent.handle` skips the prose answer and calls
+`agent/suggest.py`. The model returns a structured `Recipe` (ingredients in
+grams, texture, steps, minutes, equipment). `safety/recipe.py` totals it from
+the bundled USDA SQLite only (no FDC API, no model estimate; an unresolved
+ingredient makes a limited nutrient unknown, which fails the limit; missing
+macros of a resolved food count as 0 only when its proximates sum to at least
+`safety.mass_balance_min_g`). `safety/checker.py` checks it against every
+confirmed entry: allergens and derived ingredients, food exclusions, diet
+rules (`config/clinical/diet_rules.yaml`), drug-food interactions, nutrient
+limits (per meal, or per day with today's logged intake), texture and physical
+demands. A failure is regenerated with its reasons, at most
+`safety.max_recipe_attempts` times; then the patient gets
+`safety.no_suitable_meal_text`. Every failed attempt is a `check_failure` row,
+every shown recipe a `recommendation` row with its full check snapshot, and
+conflicts or unknown medications open `review_item` rows. The constraint
+sentence in the reply is built in code from the check (`safety/render.py`).
+
+**Reply guard.** Prose replies pass an output validator on the response agent
+(`agent/reply_judge.py`): word matching against the confirmed entries (with
+negations such as "peanut-free" ignored), then food phrases resolved through
+USDA, then, only when a food was named and nothing matched, one GLiDE yes/no
+judgment. A violation makes the model rewrite (up to two times); after that the
+reply is replaced with `safety.reply_guard_fallback_text` and logged.
+
+Cost per turn: a recipe turn is one structured Flash-Lite call per attempt
+instead of the response call; a prose turn for a patient with food constraints
+adds a few milliseconds of local lookups and, on some turns, one GLiDE request.
+
 ### 4.8 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction tier
@@ -404,6 +433,10 @@ GLiDE latency.
 - `probe_glide.py` — GLiDE request check (`--check`), threshold scores on the routing
   and memory-judge cases (`--scores`), and latency under concurrency.
 - `eval_profile_curator.py`, `eval_profile_coaching.py` — preference memory (§4.6).
+- `eval_safety_profile.py --offline` — fixture recipes through the real checker;
+  runs in `scripts/prod-checks.sh` and fails on any shown violation. `--live`
+  adds model generation (needs approval). `eval_reply_guard.py` — the reply
+  guard's precision and recall (§4.7).
 - `eval_coaching.py`, `eval_quantity.py`, `food_identity_search.py` — focused evals.
 
 ## 12. Configuration
