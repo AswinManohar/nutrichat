@@ -637,6 +637,22 @@ safety:
   # Directory of clinical YAML tables, relative to src/backend (safety/tables.py).
   clinical_dir: "config/clinical"
 
+  # Meal-logging check (safety/meal_check.py), shown on the confirmation
+  # card. An allergy, a medication-food interaction, or a profile that could
+  # not be read needs "Log anyway"; every other warning is a reminder and the
+  # meal logs normally (decided 2026-11-13). Fields: {food}, {name},
+  # {reason}, {nutrient}, {total}, {limit}, {unit}, {foods}.
+  meal_warnings:
+    intro: "Before you log this:"
+    allergen: "{food} may contain {name}, which is on your allergy list."
+    interaction: "{food} can interact with {name}: {reason}."
+    food_exclusion: "{food} is on your list of foods to avoid ({name})."
+    diet_setting: "{food} doesn't fit your {name} setting."
+    nutrient_limit: "This meal brings {nutrient} to {total} {unit}, over your limit of {limit} {unit}."
+    interaction_ceiling: "This meal has {total} {unit} of {nutrient}. With {name}, keep it under {limit} {unit} ({reason})."
+    unknown: "The food database has no {nutrient} value for {foods}, so it isn't counted against your limit."
+    unavailable: "I couldn't check this meal against your Care profile."
+
   # Red-flag escalation webhook (workers/tasks.py notify_escalation). One try
   # now, then one retry after each delay below; after the last, the row is
   # marked failed. The POST waits at most the timeout.

@@ -24,6 +24,10 @@ from backend.agent.graph import build_graph
 from backend.agent.tools.meals import MealLogResult
 from backend.api import meals
 
+# The save paths are tested here; tests/test_meal_check.py tests the check.
+pytestmark = pytest.mark.usefixtures("no_meal_warnings")
+
+
 _USER = "user-1"
 _CONVO = "convo-1"
 

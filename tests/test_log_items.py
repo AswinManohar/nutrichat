@@ -5,12 +5,16 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from backend.agent.tools.meals import MealLogResult
 from backend.api import meals
+
+# The save paths are tested here; tests/test_meal_check.py tests the check.
+pytestmark = pytest.mark.usefixtures("no_meal_warnings")
 
 
 def _item(

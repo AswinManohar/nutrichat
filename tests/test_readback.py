@@ -20,6 +20,10 @@ from backend.safety.profile import (
 from backend.safety.tables import load_tables
 from tests.profile_helpers import hard_entry
 
+# The save paths are tested here; tests/test_meal_check.py tests the check.
+pytestmark = pytest.mark.usefixtures("no_meal_warnings")
+
+
 TABLES = load_tables()
 CFG = get_tunables().memory
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)

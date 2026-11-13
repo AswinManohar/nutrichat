@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal
 
@@ -27,6 +28,7 @@ from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import UPGRADE_MSG, consume_llm_credit
 from backend.safety import profile
 from backend.safety.escalation import record_escalation
+from backend.safety.meal_check import check_meal_for
 from backend.safety.red_flags import RedFlagsUnavailable, fallback_text, screen
 from backend.safety.tables import TablesUnavailable, load_tables
 from backend.workers.tasks import extract_and_store_facts
@@ -406,8 +408,7 @@ async def _answer_readback(
             f"{response['message']}\n\n{_TUNABLES.memory.card_waiting_text}"
         )
         response["paused"] = True
-        response["items"] = _serialize_items(values.get("usda_results", []))
-        response["saved_meal"] = _saved_meal_payload(values)
+        response.update(await _card_fields(user_id, values, response["message"]))
     return response
 
 
@@ -668,9 +669,7 @@ async def get_pending_card(
     return {
         "status": "pending",
         "paused": True,
-        "message": ai_texts[-1] if ai_texts else "",
-        "items": _serialize_items(state.values.get("usda_results", [])),
-        "saved_meal": _saved_meal_payload(state.values),
+        **await _card_fields(user_id, state.values, ai_texts[-1] if ai_texts else ""),
     }
 
 
@@ -808,16 +807,14 @@ async def _handle_meal_logging(
         # Expose structured items so the frontend can render editable quantity
         # fields. Only included when paused (confirmation card shown); empty
         # after log/cancel.
-        items = _serialize_items(result.get("usda_results", [])) if still_paused else []
-
         response: dict[str, Any] = {
             "status": "success",
             "message": last_ai.content if last_ai else "",
             "paused": still_paused,
-            "items": items,
+            "items": [],
         }
         if still_paused:
-            response["saved_meal"] = _saved_meal_payload(result)
+            response.update(await _card_fields(user_id, result, response["message"]))
         else:
             response["meal_id"] = result.get("meal_id")
         span.set_attribute(
@@ -825,6 +822,26 @@ async def _handle_meal_logging(
             _genai_messages("assistant", response["message"]),
         )
         return response
+
+
+async def _card_fields(
+    user_id: str, values: Mapping[str, Any], message: str
+) -> dict[str, Any]:
+    """Message, items, saved-meal link and profile check of a paused card.
+
+    The check (safety/meal_check.py) runs on every card build, so a card
+    recovered later reflects the profile as it is now. Its reminders are
+    also added to the message, for clients that only show text. Costs one
+    profile read, plus today's meals when the patient has a nutrient limit.
+    """
+    usda_results = values.get("usda_results", [])
+    check = await check_meal_for(user_id, usda_results)
+    return {
+        "message": f"{message}\n\n{check.text}" if check.warnings else message,
+        "items": _serialize_items(usda_results),
+        "saved_meal": _saved_meal_payload(values),
+        "safety": check.model_dump(),
+    }
 
 
 def _genai_messages(role: str, text: str) -> str:

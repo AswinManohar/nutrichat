@@ -582,6 +582,13 @@ retires the original and adds the edited version.
   handling of updated facts, abstention when information is missing,
   nutrient-total error against the food database, and tokens and latency per
   plan.
+- **FR-044** (added 2026-11-13): Logging a meal MUST check its foods against
+  the confirmed profile with the same word lists and limits as suggested
+  meals. A hit on an allergy or a medication-food interaction MUST NOT be
+  saved until the patient taps "Log anyway", on every save path; the save
+  records which warnings were acknowledged. A diet setting, food exclusion,
+  nutrient limit or nutrient ceiling is a reminder on the card and the meal
+  logs normally. A check that cannot run MUST ask for "Log anyway" too.
 
 ### Key Entities
 

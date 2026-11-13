@@ -200,3 +200,19 @@ def no_turn_database_reads():
         ),
     ):
         yield
+
+
+@pytest.fixture
+def no_meal_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the meal-logging profile check (safety/meal_check.py) find nothing.
+
+    For tests of the save paths themselves, which run without a profile
+    table; tests/test_meal_check.py covers the check.
+    """
+    from backend.safety import meal_check
+
+    async def _clean(user_id: str, items: object) -> meal_check.MealCheck:
+        return meal_check.MealCheck(warnings=[], needs_ack=False)
+
+    monkeypatch.setattr(meal_check, "check_meal_for", _clean)
+    monkeypatch.setattr("backend.agent.orchestrator.check_meal_for", _clean)

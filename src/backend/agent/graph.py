@@ -22,6 +22,7 @@ from backend.agent.tools.meals import (
 from backend.agent.tools.saved_meals import find_saved_meal, saved_meal_to_results
 from backend.agent.tools.usda import usda_lookup_batch
 from backend.config import get_tunables
+from backend.safety.meal_check import gate_log
 
 # ---------------------------------------------------------------------------
 # State
@@ -374,6 +375,11 @@ async def log_node(state: AgentState) -> dict:
     else:
         label = _meal_label(state["entities"])
         extra_flags = None
+    # Confirming in chat after the card showed its reminders counts as
+    # "Log anyway"; the gate only records what was acknowledged.
+    acked = await gate_log(state["user_id"], state["usda_results"], acknowledged=True)
+    if acked:
+        extra_flags = {**(extra_flags or {}), **acked}
     result = await log_meal(
         state["user_id"], results, meal_type, label=label, extra_flags=extra_flags
     )

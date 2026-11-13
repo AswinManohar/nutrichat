@@ -32,6 +32,7 @@ from backend.db.redis_client import current_day_bounds
 from backend.db.session import get_session
 from backend.quota import UPGRADE_MSG
 from backend.ratelimit import user_rate_limiter
+from backend.safety.meal_check import MealNeedsAck, gate_log
 
 __all__ = ["router", "find_saved_meal"]
 
@@ -188,6 +189,8 @@ class LogMyMealRequest(BaseModel):
     meal_type: str
     portion: float = Field(default=1.0, gt=0)
     ingredients: list[IngredientOverride] | None = None
+    # The patient tapped "Log anyway" on an allergy or interaction warning.
+    acknowledged_warnings: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -208,6 +211,33 @@ def _scaled_macro(stored: dict, macro: str, scale: float) -> float | None:
         if macro in stored and stored[macro] is None:
             return None
     return round((stored.get(macro) or 0.0) * scale, 2)
+
+
+async def safety_flags(
+    user_id: str, results: list[USDAResult], *, acknowledged: bool
+) -> dict:
+    """Run the save-time profile check; 409 when it needs "Log anyway".
+
+    Args:
+        user_id: Supabase Auth UUID.
+        results: The items being saved.
+        acknowledged: The request's ``acknowledged_warnings``.
+
+    Returns:
+        Extra ``meal_log.flags`` to store with the meal.
+
+    Raises:
+        HTTPException 409: ``detail.code`` is ``meal_needs_ack`` and
+            ``detail.safety`` carries the warnings to show.
+    """
+    items = [r.model_dump() for r in results]
+    try:
+        return await gate_log(user_id, items, acknowledged=acknowledged)
+    except MealNeedsAck as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "meal_needs_ack", "safety": exc.check.model_dump()},
+        ) from exc
 
 
 def _scaled_result(stored: dict, edited_qty_g: float, portion: float) -> USDAResult:
@@ -406,12 +436,13 @@ async def log_my_meal(
         raise HTTPException(status_code=422, detail="No ingredients to log")
 
     results = [_scaled_result(s, qty, req.portion) for s, qty in kept]
+    flags = await safety_flags(user_id, results, acknowledged=req.acknowledged_warnings)
     return await log_meal(
         user_id,
         results,
         req.meal_type,
         label=meal_name,
-        extra_flags={"saved_meal_id": meal_id},
+        extra_flags={"saved_meal_id": meal_id, **flags},
     )
 
 

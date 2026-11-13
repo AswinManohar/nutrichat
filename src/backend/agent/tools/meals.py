@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from kombu.exceptions import OperationalError
@@ -453,7 +453,7 @@ async def _insert_meal_log(
     label: str | None = None,
     client_request_id: str | None = None,
     corrections: list[dict] | None = None,
-    extra_flags: dict[str, str] | None = None,
+    extra_flags: dict[str, Any] | None = None,
 ) -> str:
     """Insert a meal_log row (and any food_correction rows) in one transaction.
 
@@ -540,7 +540,7 @@ async def log_meal(
     label: str | None = None,
     client_request_id: str | None = None,
     corrections: list[dict | None] | None = None,
-    extra_flags: dict[str, str] | None = None,
+    extra_flags: dict[str, Any] | None = None,
 ) -> MealLogResult:
     """Persist confirmed meal to Postgres and increment Redis daily totals.
 

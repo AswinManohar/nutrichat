@@ -310,6 +310,15 @@ judgment. A violation makes the model rewrite (up to `models.coaching_retries`
 times, 3 for now); after that the
 reply is replaced with `safety.reply_guard_fallback_text` and logged.
 
+Meal logging runs the same rules on the confirmation card
+(`safety/meal_check.py`, FR-044). An allergy or medication-food interaction
+sets `safety.needs_ack` on the card, and every save path (chat confirm,
+`POST /meals/log-items`, `POST /my-meals/{id}/log`) refuses with 409
+`meal_needs_ack` until the client sends `acknowledged_warnings: true`; the
+acknowledged warnings are kept in `meal_log.flags.safety_ack`. Diet settings,
+exclusions and nutrient limits are reminders only. If the check cannot run,
+the card asks for "Log anyway".
+
 Cost per turn: a recipe turn is one structured Flash-Lite call per attempt
 instead of the response call; a prose turn for a patient with food constraints
 adds a few milliseconds of local lookups and, on some turns, one GLiDE request.

@@ -13,6 +13,9 @@ from fastapi.testclient import TestClient
 from backend.agent.tools.meals import MealLogResult
 from backend.api import my_meals
 
+# The save paths are tested here; tests/test_meal_check.py tests the check.
+pytestmark = pytest.mark.usefixtures("no_meal_warnings")
+
 
 def _stored(name: str, qty: float, kcal: float, na: float = 0.0) -> dict:
     return {

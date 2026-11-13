@@ -20,7 +20,7 @@ from backend.agent.tools.meals import (
     soft_delete_meal,
 )
 from backend.agent.tools.meals import log_meal as persist_meal
-from backend.api.my_meals import _scaled_result
+from backend.api.my_meals import _scaled_result, safety_flags
 from backend.auth.supabase import get_current_user_id
 from backend.core.nutrition_day import (
     NUTRITION_DATE_SQL,
@@ -217,6 +217,8 @@ class LogItemsRequest(BaseModel):
     client_request_id: str | None = Field(default=None, max_length=64)
     conversation_id: str | None = Field(default=None)
     saved_meal_id: str | None = Field(default=None, max_length=64)
+    # The patient tapped "Log anyway" on an allergy or interaction warning.
+    acknowledged_warnings: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -324,6 +326,9 @@ async def log_items(
     pending-recovery poll could resurrect the stale, unswapped card.
 
     Raises:
+        HTTPException 409: The meal hits an allergy or medication-food
+            interaction and `acknowledged_warnings` is false (see
+            safety/meal_check.py).
         HTTPException 422: Invalid meal_type, or an item's
             `correction.to_fdc_id` doesn't match its own `fdc_id`.
     """
@@ -351,12 +356,15 @@ async def log_items(
     ]
     results = [_scaled_result(d, d["target_qty_g"], req.portion) for d in item_dicts]
     label = _meal_label(item_dicts) or None
-    extra_flags: dict[str, str] | None = None
+    extra_flags: dict | None = None
     if req.saved_meal_id:
         saved = await _owned_saved_meal(user_id, req.saved_meal_id)
         if saved is not None:
             label = saved.name
             extra_flags = {"saved_meal_id": saved.id}
+    flags = await safety_flags(user_id, results, acknowledged=req.acknowledged_warnings)
+    if flags:
+        extra_flags = {**(extra_flags or {}), **flags}
     try:
         result = await persist_meal(
             user_id,

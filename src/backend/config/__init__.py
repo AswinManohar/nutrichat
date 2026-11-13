@@ -189,6 +189,22 @@ class GlideConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class MealWarningTexts(BaseModel):
+    """Templates for the meal-logging check (safety/meal_check.py)."""
+
+    intro: str = Field(min_length=1)
+    allergen: str = Field(min_length=1)
+    interaction: str = Field(min_length=1)
+    food_exclusion: str = Field(min_length=1)
+    diet_setting: str = Field(min_length=1)
+    nutrient_limit: str = Field(min_length=1)
+    interaction_ceiling: str = Field(min_length=1)
+    unknown: str = Field(min_length=1)
+    unavailable: str = Field(min_length=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SafetyConfig(BaseModel):
     """Patient safety profile limits and fixed texts (see tunables.yaml)."""
 
@@ -205,6 +221,7 @@ class SafetyConfig(BaseModel):
     no_suitable_meal_text: str = Field(min_length=1)
     food_db_unavailable_text: str = Field(min_length=1)
     clinical_dir: str = Field(min_length=1)
+    meal_warnings: MealWarningTexts
     escalation_retry_seconds: list[int] = Field(min_length=1)
     escalation_webhook_timeout_s: float = Field(gt=0)
 

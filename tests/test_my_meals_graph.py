@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 from backend.agent.graph import (
@@ -17,6 +18,10 @@ from backend.agent.graph import (
 )
 from backend.agent.orchestrator import _saved_meal_payload, get_pending_card
 from backend.agent.tools.saved_meals import saved_meal_to_results
+
+# The save paths are tested here; tests/test_meal_check.py tests the check.
+pytestmark = pytest.mark.usefixtures("no_meal_warnings")
+
 
 _UPDATED = datetime(2026, 10, 1, 12, 0, 0, 123456, tzinfo=UTC)
 

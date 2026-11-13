@@ -24,7 +24,6 @@ from backend.safety.recipe import GRAMS_PER_UNIT, USDA_KEYS
 # Limit nutrient -> USDA nutrient key in an item's ``nutrients``, or the
 # top-level item field for the two macros.
 # Water is grams; treating 1 g as 1 ml is approximate, which the app shows.
-_USDA_KEYS = {n: USDA_KEYS[n] for n in ("sodium", "potassium", "phosphorus", "fluid")}
 _ITEM_FIELDS = {"protein": "protein_g", "carbohydrate": "carbs_g"}
 
 
@@ -55,17 +54,26 @@ class LimitsToday(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _item_amount(item: dict, limit: NutrientLimitValue) -> float | None:
-    """The item's amount of the limited nutrient in the limit's unit, or None."""
-    if limit.nutrient in _ITEM_FIELDS:
-        raw, unit = item.get(_ITEM_FIELDS[limit.nutrient]), "g"
+def item_amount(item: dict, nutrient: str, unit: str) -> float | None:
+    """An item's amount of ``nutrient`` in ``unit``, or None when unknown.
+
+    Args:
+        item: A meal item as logged (``USDAResult`` fields: macro columns and
+            the scaled ``nutrients`` breakdown).
+        nutrient: A tracked nutrient key (``recipe.USDA_KEYS`` or protein).
+        unit: The unit to return the amount in.
+    """
+    if nutrient in _ITEM_FIELDS:
+        raw, from_unit = item.get(_ITEM_FIELDS[nutrient]), "g"
     else:
-        found = (item.get("nutrients") or {}).get(_USDA_KEYS[limit.nutrient])
-        raw, unit = (found.get("amount"), found.get("unit")) if found else (None, "")
-    factor = GRAMS_PER_UNIT.get((unit or "").lower())
+        found = (item.get("nutrients") or {}).get(USDA_KEYS.get(nutrient, ""))
+        raw, from_unit = (
+            (found.get("amount"), found.get("unit")) if found else (None, "")
+        )
+    factor = GRAMS_PER_UNIT.get((from_unit or "").lower())
     if raw is None or factor is None:
         return None
-    return float(raw) * factor / GRAMS_PER_UNIT[limit.unit]
+    return float(raw) * factor / GRAMS_PER_UNIT[unit]
 
 
 def _progress(
@@ -74,7 +82,7 @@ def _progress(
     meal_totals: list[float] = []
     unknown = 0
     for items in meals:
-        amounts = [_item_amount(item, limit) for item in items]
+        amounts = [item_amount(item, limit.nutrient, limit.unit) for item in items]
         unknown += sum(1 for a in amounts if a is None)
         meal_totals.append(sum(a for a in amounts if a is not None))
     so_far = (
