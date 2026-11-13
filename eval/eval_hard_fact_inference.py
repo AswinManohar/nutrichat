@@ -86,6 +86,14 @@ class Case(BaseModel):
     expected: list[Expected]
     stratum: str
     split: str
+    # Hedged statements ("I think I might be lactose intolerant"): asking is
+    # right, saving silently is not. An ask-band candidate on such a case is
+    # neither a hit nor an error; an accept-band one is a false positive.
+    ask_ok: bool = False
+    # Provenance written by eval/gen_hard_fact_cases.py; not scored.
+    seed_id: str | None = None
+    type: str | None = None
+    source: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -178,13 +186,15 @@ def score_case(
     ask: float,
     accept: float,
     soft_min: float,
+    ask_ok: bool = False,
 ) -> Scored:
     """Count tp/fp/fn for one case at one pair of thresholds.
 
     Hard predictions are placed in a band; a dropped one is neither a tp nor an
     fp, and the expected fact it would have matched is a false negative. Soft
     predictions are kept at ``soft_min`` (the soft save threshold). Each
-    expected fact is matched by at most one prediction.
+    expected fact is matched by at most one prediction. On an ``ask_ok`` case
+    an unmatched hard candidate in the ask band is not counted.
     """
     scored = Scored(expected_total=len(expected))
     unmatched = list(expected)
@@ -198,6 +208,8 @@ def score_case(
         if not kept:
             continue
         hit = next((e for e in unmatched if matches(prediction, e)), None)
+        if hit is None and ask_ok and band == "ask":
+            continue
         counts = Counts(tp=int(hit is not None), fp=int(hit is None))
         if hit is not None:
             unmatched.remove(hit)
@@ -291,7 +303,10 @@ def sweep(
         if ask > accept:
             continue
         scored = merge(
-            [score_case(p, c.expected, ask, accept, soft_min) for c, p in cases]
+            [
+                score_case(p, c.expected, ask, accept, soft_min, c.ask_ok)
+                for c, p in cases
+            ]
         )
         hard = Counts()
         for key, counts in scored.by_type.items():
@@ -422,7 +437,9 @@ def report(
     soft_min: float,
 ) -> None:
     """Print the per-type, per-band, calibration and soft sections."""
-    scored = merge([score_case(p, c.expected, ask, accept, soft_min) for c, p in cases])
+    scored = merge(
+        [score_case(p, c.expected, ask, accept, soft_min, c.ask_ok) for c, p in cases]
+    )
     print_scored(f"Thresholds ask={ask} accept={accept} ({len(cases)} cases)", scored)
     points = [
         (pred.probability, is_correct(pred, case.expected))

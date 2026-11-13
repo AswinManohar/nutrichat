@@ -190,3 +190,27 @@ def test_report_runs_from_saved_predictions_without_a_model(tmp_path, capsys) ->
     assert code == 0
     assert "Brier score" in out and "Threshold sweep on tune" in out
     assert "Holdout (1 cases)" in out
+
+
+def test_asking_on_a_hedged_case_is_not_an_error() -> None:
+    """A hedged statement may be read back, but must not be saved silently."""
+    guess = [ev.Prediction("allergy", {"allergen_group": "milk"}, 0.7)]
+    sure = [ev.Prediction("allergy", {"allergen_group": "milk"}, 0.95)]
+
+    assert ev.score_case(guess, [], 0.5, 0.9, 0.6, ask_ok=True).overall.fp == 0
+    assert ev.score_case(sure, [], 0.5, 0.9, 0.6, ask_ok=True).overall.fp == 1
+    assert ev.score_case(guess, [], 0.5, 0.9, 0.6).overall.fp == 1
+
+
+def test_generated_rows_load_as_cases() -> None:
+    row = {
+        "message": "I think I might be lactose intolerant",
+        "expected": [],
+        "stratum": "hedged",
+        "split": "tune",
+        "ask_ok": True,
+        "seed_id": "allergy-hedged-01",
+        "type": "allergy",
+        "source": "generated",
+    }
+    assert ev.Case.model_validate(row).ask_ok is True
