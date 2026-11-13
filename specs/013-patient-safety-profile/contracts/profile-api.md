@@ -1,9 +1,12 @@
 # Contract: Patient profile API
 
 Router `api/profile.py`, prefix `/profile`, Supabase JWT (`get_current_user_id`).
-All bodies are Pydantic models with `extra="forbid"`. Writes accept an optional
-`client_request_id`; a repeat with the same id returns the original result
-(Constitution III).
+All bodies are Pydantic models with `extra="forbid"`. Every write is
+idempotent (Constitution III): `POST /profile/entries` and retire take a
+`client_request_id` and a repeat returns the original result; confirm, deny,
+feedback, soft `PATCH` and soft `DELETE` return 200/204 with the current state
+when the same action was already applied, and 409 only when the entry is in a
+state the action cannot reach.
 
 Replaces `/memory` (GET, DELETE) once the Android screen ships (PR 5); `/memory`
 stays until then for the released app.
@@ -63,8 +66,9 @@ Every hard entry including retired ones, newest first, with `retired_at`,
 ## POST /profile/entries/{id}/confirm · POST /profile/entries/{id}/deny
 
 Pending → confirmed (source unchanged, `confirmed_by='patient'`) or → retired
-(`retired_reason='denied'`). 409 if the entry is neither pending nor an
-unacknowledged inferred entry.
+(`retired_reason='denied'`). Repeating the action that was already applied
+returns 200 with the entry; 409 only for a conflicting state (for example deny
+on a confirmed entry).
 
 Also accepted on a confirmed entry with source `inferred`: sets
 `acknowledged_at` (the patient agrees with what was inferred).

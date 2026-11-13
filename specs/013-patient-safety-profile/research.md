@@ -35,7 +35,7 @@ phase that depends on them merges.
   - `hard_ask_min_probability` ≤ p < accept: saved pending, the coach asks;
   - p < ask: dropped.
   Removals and anything that loosens a constraint always ask, whatever the score.
-- **Thresholds** are set from the synthetic eval (R18), not by feel.
+- **Thresholds** are set from the synthetic eval (R17), not by feel.
 - **Unjudged** candidates (GLiDE down): hard facts go to the ask band, never
   accepted on the curator's word.
 
@@ -225,10 +225,13 @@ phase that depends on them merges.
   extraction stays in Celery; the readback is asked at the start of the next
   coaching reply.
 - **Reply handling**: a turn arriving while a readback is outstanding is
-  treated as its reply (Constitution III), classified with the existing
+  first checked as its reply (Constitution III) with the existing
   deterministic `classify_intent` keywords: confirm → `confirmed`; reject →
-  `retired` (never bound); anything else → retired and sent to the extractor as
-  a correction, whose result is read back again. When both a meal card and a
+  `retired` (never bound). A correction ("no, it's prawns not all shellfish")
+  is a reject plus a new statement: the entry is retired and the extractor
+  runs on the message, whose result is read back again. Any other message
+  (an unrelated question) leaves the entry pending, is answered normally,
+  and the readback is asked again before the next meal suggestion (US4-6). When both a meal card and a
   readback are waiting, the one asked last (card checkpoint time vs
   `readback_asked_at`) takes the reply and the coach names which one.
 - **Alternatives rejected**: a LangGraph interrupt for readbacks (the coaching
@@ -268,7 +271,7 @@ phase that depends on them merges.
   `source='clinician'` (FR-031); the check is a DB-level trigger as well as
   application code (see data-model).
 
-## R18. Synthetic data for fact inference
+## R17. Synthetic data for fact inference
 
 - **Decision**: generate a labelled set (`eval/cases/hard_fact_inference.jsonl`),
   about 600 single messages and 40 multi-turn scripts, with Gemini drafting
@@ -284,7 +287,7 @@ phase that depends on them merges.
   precision ≥ 90% in the accept band).
 - A held-out split (20%) is never used for tuning; thresholds are reported on it.
 
-## R17. Evals in CI
+## R18. Evals in CI
 
 - **Decision**: the offline checker eval (fixture recipes × synthetic
   profiles, no model) runs in `scripts/prod-checks.sh` and must report 0

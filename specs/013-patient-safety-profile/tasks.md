@@ -49,7 +49,9 @@ synthetic inference set that later phases are measured against.
 - [ ] T006 [P] Write `eval/cases/reply_guard.jsonl`: coaching replies with a patient's confirmed entries and the expected verdict, covering direct allergen names, derived ingredients ("peanut oil", "whey"), dish names ("satay", "pesto"), warnings that must pass ("skip the peanuts"), food exclusions, diet settings and medication `avoid_terms`
 - [ ] T007 [P] Write `eval/cases/red_flags.jsonl`: every phrase per rule in `red_flags.yaml`, the paraphrases the dietitians mark as expected matches, and at least 300 ordinary messages drawn from `eval/cases/intent_routing.jsonl` and `eval/test_set_200.jsonl` as negatives
 
-**Checkpoint**: owner sign-off on T001; datasets committed.
+- [x] T096 File one GitHub tracking issue for spec 013 listing PR 0, PR N, PRs 1-7 with their task ranges and gates; link it from `plan.md` (constitution: plans filed as issues)
+
+**Checkpoint**: owner sign-off on T001; datasets committed; tracking issue filed.
 
 ---
 
@@ -77,7 +79,7 @@ Profile. No Explore tab, no Units row (issue #88).
 
 - [ ] T016 Add a `safety:` section to `src/backend/config/tunables.yaml` and its Pydantic model in `src/backend/config/__init__.py`: `hard_profile_max_entries: 40`, `max_recipe_attempts: 3`, `recommendation_retention_days: 180`, `reply_guard_min_probability`, `reply_guard_fallback_text`, `profile_unavailable_text`, `no_suitable_meal_text`, `food_db_unavailable_text`, `clinical_dir: "config/clinical"`, each with a comment saying where it is used
 - [ ] T017 Write migration `src/backend/db/migrations/versions/2026111x_019_patient_safety_profile.py` (revision `019_patient_safety_profile`, down_revision `018_user_memory_profile`) creating `profile_entry`, `recommendation`, `check_failure`, `red_flag_escalation`, `review_item` exactly as in `data-model.md`: FKs to `user_goal.user_id` `ON DELETE CASCADE`, CHECKs on `entry_type` (`allergy`, `diagnosis`, `medication`, `physical_limitation`, `nutrient_limit`, `diet_setting`, `food_exclusion`), `source` (`patient`, `clinician`, `inferred`), `state` (`pending`, `confirmed`, `retired`), "`state <> 'confirmed' OR confirmed_at IS NOT NULL`", "`state <> 'retired' OR retired_at IS NOT NULL`", "`source <> 'clinician' OR created_by LIKE 'reviewer:%'`"; trigger `profile_entry_immutable`; indexes `ix_profile_entry_live (user_id) WHERE state <> 'retired'`, `ix_profile_entry_review (state, created_at) WHERE state = 'pending'`, unique `(user_id, client_request_id) WHERE client_request_id IS NOT NULL`, `recommendation (user_id, created_at desc)`, unique `review_item (kind, subject_id)`; owner RLS policy on every new table; add `user_memory.created_at timestamptz not null default now()`
-- [ ] T018 In the same migration, the idempotent backfill from `data-model.md` steps 1-4 (conditions → `diagnosis`; true `DIET_CHIPS` keys → `diet_setting`, other keys logged; live `restriction` facts → `allergy` when an allergen term matches else `food_exclusion`, then delete the `user_memory` row; replace `ck_user_memory_category` with `('dislike', 'like', 'habit', 'context', 'cuisine', 'budget', 'cooking_time', 'preference')`), and the downgrade that restores restriction rows from `created_by='backfill'` entries
+- [ ] T018 In the same migration, the idempotent backfill from `data-model.md` steps 1-4 (conditions → `diagnosis`; true `DIET_CHIPS` keys → `diet_setting`, other keys logged; live `restriction` facts → `allergy` when an allergen term matches else `food_exclusion`, **leaving the `user_memory` rows and `ck_user_memory_category` unchanged** so the running release keeps working (Principle VI; removed in 020, T091); add `cuisine`, `budget`, `cooking_time` to the category CHECK), and the downgrade that deletes `created_by='backfill'` entries
 - [ ] T019 Add ORM classes `ProfileEntry`, `Recommendation`, `CheckFailure`, `RedFlagEscalation`, `ReviewItem` and `UserMemory.created_at` to `src/backend/db/models.py`, mirroring T017 constraints in `__table_args__`
 - [ ] T020 [P] Test migration 019 up, backfill and down on the throwaway DB in `tests/test_migration_019.py` (seed conditions, diet chips, an allergy and a non-allergy restriction, a tombstone; assert entries, deleted rows, constraint rejections, immutability trigger, clean downgrade)
 - [ ] T021 [P] Create `src/backend/safety/__init__.py` and `src/backend/safety/tables.py`: Pydantic models for each clinical file (`extra="forbid"`), `load_tables() -> ClinicalTables` with SHA-256 content hash per file, mtime-based reload, `TablesUnavailable` exception on missing or invalid files; no import from `backend.agent`
@@ -104,13 +106,13 @@ Profile. No Explore tab, no Units row (issue #88).
 
 ### Implementation for US1
 
-- [ ] T029 [US1] Implement `src/backend/safety/profile.py`: `EntryValue` models per type from `data-model.md` (nutrient_limit: "`amount: float > 0` (the ceiling); `min_amount: float | None`"; `unit` in `mg`, `g`, `ml`; `period` in `per_meal`, `per_day`; food_exclusion "`terms: list[str]` (1-10 words or phrases)"; label "≤ 200 chars"), `load_hard_profile(user_id)`, `version_of(entries)`, `add_entry`, `confirm`, `deny`, `request_retirement`, `retire`, `replace` (one transaction), `render_block(entries) -> str` raising `ProfileTooLarge` above `safety.hard_profile_max_entries`
+- [ ] T029 [US1] Implement `src/backend/safety/profile.py`: `EntryValue` models per type from `data-model.md` (nutrient_limit: "`amount: float > 0` (the ceiling); `min_amount: float | None`"; `unit` in `mg`, `g`, `ml`; `period` in `per_meal`, `per_day`; food_exclusion "`terms: list[str]` (1-10 words or phrases)"; `label` stored only for free-text values, "≤ 200 chars", typed values derive their label on read), `load_hard_profile(user_id)`, `version_of(entries)`, `add_entry`, `confirm`, `deny`, `request_retirement`, `retire`, `replace` (one transaction), `render_block(entries) -> str` raising `ProfileTooLarge` above `safety.hard_profile_max_entries`
 - [ ] T030 [US1] Implement today's limit progress in `src/backend/safety/limits.py`: `limits_today(user_id)` derived from `meal_log` with nutrition-day boundaries (`core/nutrition_day.py`), per-day sums, per-meal maximum, `unknown_items` count; nothing stored
 - [ ] T031 [US1] Create `src/backend/api/profile.py` with `GET /profile` (incl. `care_team: []` placeholder), `GET /profile/history`, `GET /profile/limits/today`, `POST /profile/entries`, `POST /profile/entries/{id}/confirm|deny|retire` per `contracts/profile-api.md`; register the router in `src/backend/main.py`
 - [ ] T032 [US1] Route `GET/PUT /goals` conditions and diet settings through `safety.profile` in `src/backend/api/goals.py` (diffs become confirmed patient entries or retirements; response derived from the profile)
 - [ ] T033 [US1] Render the hard block for every user in `src/backend/agent/context.py` (`build_context`, `load_restrictions`, `_restriction_blocks`): replace the `user_goal.conditions` / `dietary_prefs` / restriction-fact lines with `safety.profile.render_block`; keep soft facts behind `memory.profile_enabled`
 - [ ] T034 [US1] Make the coaching turn fail closed in `src/backend/agent/coaching.py` `_context_prompt`: a hard-profile load failure raises `RestrictionsUnavailableError` and the orchestrator replies `safety.profile_unavailable_text`; `_user_conditions` reads diagnoses from the profile
-- [ ] T035 [US1] Remove the `restriction` kind from `src/backend/agent/memory.py` (`FactKind`, `_KIND_ORDER`, headings, curator never-loosen rules that only applied to restrictions) and from `src/backend/agent/memory_tools.py`; hard facts from the coach's tools go through `safety.profile` as pending adds or pending retirements (research R10, memory tools)
+- [ ] T035 [US1] Remove the `restriction` kind from `src/backend/agent/memory.py` (`FactKind`, `_KIND_ORDER`, headings, curator never-loosen rules that only applied to restrictions) and from `src/backend/agent/memory_tools.py`; hard facts from the coach's tools go through `safety.profile` as pending adds or pending retirements (research R10, memory tools); until T073 replaces the curator, map any `restriction` candidate from `memory_curator.py` to a pending `food_exclusion` / `allergy` entry instead of a `user_memory` row
 - [ ] T036 [P] [US1] Add `ProfileDto`, `HardEntryDto`, `LimitProgressDto`, `CareTeamMemberDto` and the `/profile` endpoints to `android/core/data/src/main/kotlin/app/mealsy/data/api/Dtos.kt` and `MealsyApi.kt`, plus `ProfileRepository` in `android/core/data/src/main/kotlin/app/mealsy/data/repo/`; repository tests with a fake API
 - [ ] T037 [US1] Add the Care profile card to `ui/profile/ProfileScreen.kt` (mockup 2: title, "Shared with …" line only when `care_team` is non-empty, coloured count chips per type); tap opens `ROUTE_CARE_PROFILE` registered in `ui/AppNav.kt`
 - [ ] T038 [US1] Create `ui/profile/CareProfileScreen.kt` and `CareProfileViewModel.kt` per mockup 1: header with last-updated date (and the `care_team` line only when non-empty), "N of M limits on track today" banner, expandable rows per type with count badges, nutrient-limit rows with limit text ("Up to 1,500 mg a day", "50-60 g a day") and a today-so-far bar with a limit marker
@@ -118,6 +120,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T040 [US1] Show `profile_unavailable_text` as an error message in chat (`ui/chat/ChatViewModel.kt`) when the turn fails for that reason
 - [ ] T041 [US1] Goldens for CareProfileScreen (empty, typical, expanded nutrient limits) in light and dark in `android/app/src/test/java/app/mealsy/android/ui/profile/`; on-device check on the Pixel 9
 - [ ] T042 [US1] Write `eval/cases/safety_profile/` (24 synthetic patients with entries, multi-session scripts and expected profiles) and the skeleton of `eval/eval_safety_profile.py` reporting recall of earlier-session facts (SC-003); register the `safety_profile` category in `eval/gate.py`
+- [ ] T097 [US1] Docs for PR 1 in the same change: `.claude/CLAUDE.md` (layout `safety/`, `config/clinical/`, `/profile` API, Care profile screen) and `docs/architecture.md` (hard profile, fail-closed load, data model)
 - [ ] T043 [US1] Run `eval/eval_profile_coaching.py --runs 3` (restrictions gate) and the backfill dry-run counts against a copy of production data; record both in the PR (quickstart PR 1)
 
 **Checkpoint**: PR 1. US1 works on its own.
@@ -149,10 +152,13 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T055 [US2] Register `@_response_agent.output_validator` in `src/backend/agent/coaching.py` raising `ModelRetry(verdict.retry_reason)`, set `retries=2`, and replace the reply with `safety.reply_guard_fallback_text` plus a `check_failure` (`outcome='reply_replaced'`) when retries run out
 - [ ] T056 [US2] Return `recipe` and `recommendation_id` in the chat response from `src/backend/agent/orchestrator.py` `_handle_coaching` (optional fields)
 - [ ] T057 [US2] Add `POST /profile/meals/{recommendation_id}/feedback` to `src/backend/api/profile.py` (status `accepted` | `rejected`, reason "≤ 500 chars") (FR-025)
-- [ ] T058 [US2] Add the nightly `purge_old_recommendations` Celery task fanned out per user in `src/backend/workers/tasks.py` (`safety.recommendation_retention_days`)
-- [ ] T059 [US2] Implement `eval/eval_safety_profile.py --offline` (fixture recipes × synthetic profiles, no model, must print 0 shown violations and each expected failure rule) and live mode; add the offline run to `scripts/prod-checks.sh`; add `eval/eval_reply_guard.py` over `eval/cases/reply_guard.jsonl`
+- [ ] T058 [US2] Run the coaching gate categories (`eval/gate.py` for the coaching and restrictions categories, `--runs 5`) against the committed baselines after the `query_parse_system.md` change in T053, and create `eval/baseline_safety_profile.json` from the first passing live run with the measured numbers in the PR (Principle V)
+- [ ] T059 [US2] Implement `eval/eval_safety_profile.py --offline` (fixture recipes × synthetic profiles, no model, must print 0 shown violations and each expected failure rule) and live mode reporting every FR-043 metric: violation rate, recall of earlier-session facts, handling of updated facts, abstention when a value is missing (recipe and prose), nutrient-total error against the food database (SC-006), tokens and latency per plan; add the offline run to `scripts/prod-checks.sh`; add `eval/eval_reply_guard.py` over `eval/cases/reply_guard.jsonl`
 - [ ] T060 [P] [US2] Android: `RecipeDto` and optional `recipe`, `recommendationId` on the chat response in `Dtos.kt`; feedback endpoint in `MealsyApi.kt`
 - [ ] T061 [US2] Android: `ui/chat/RecipeCardView.kt` rendering name, intro, ingredients with grams, steps, time and the constraint sentence, with "Accept" and "Not for me" (optional reason) calling feedback; plain-text fallback when `recipe` is absent; goldens light and dark; on-device check
+- [ ] T098 [US2] Prompt rules and eval cases for FR-033 (prose abstention: no invented clinical value), FR-034 (decline diagnosis, medication changes and clinical targets with a pointer to the clinician) and FR-036 (swaps and low-effort options, warm tone) in `src/backend/config/prompts/coaching_hard_constraints.md` and `coaching_role_and_tone.md`, cases in `eval/cases/safety_profile/`; gate run recorded in the PR
+- [ ] T099 [US2] Measure ordinary-turn latency before and after (FR-041: at most +300 ms p95) from 50 Logfire `coaching` spans per side on the eval set; record in the PR
+- [ ] T100 [US2] Docs for PR 2: `.claude/CLAUDE.md` (eval commands, recipe flow) and `docs/architecture.md` (suggestion loop, checker, reply guardrail)
 - [ ] T062 [US2] Run the live `safety_profile` gate and `eval_reply_guard.py`; record violation rate (must be 0), share and p95 latency of the GLiDE layer, recipe-turn p90 (budget < 12 s) in the PR
 
 **Checkpoint**: PR 2. US1 and US2 work together.
@@ -171,6 +177,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T066 [US3] Call the screen first in `src/backend/agent/orchestrator.py` `handle_message`, before the GLiDE task and the checkpoint read; on a match store `red_flag_escalation`, enqueue `notify_escalation`, return the fixed response with `"kind": "safety"`; span `red_flag_screen` with rule id and duration
 - [ ] T067 [US3] Implement `notify_escalation` in `src/backend/workers/tasks.py` per `contracts/webhook.md` (httpx, timeout 5 s, backoff 5 s, 15 s, 45 s, 2 min, 5 min; status on the row; `logfire.error` on `failed` / `no_recipient`); add `SAFETY_WEBHOOK_URL` to `.env.example`
 - [ ] T068 [US3] Implement `eval/eval_red_flags.py` (100% of listed and marked phrases, ≤ 1% of ordinary messages, p99 screen time) and run it; record results in the PR
+- [ ] T101 [US3] Docs for PR 3: `SAFETY_WEBHOOK_URL` in `.claude/CLAUDE.md` env section, red-flag screen in `docs/architecture.md`
 - [ ] T069 [US3] Android: render replies with `kind == "safety"` in a distinct safety message style without feedback buttons in `ui/chat/`; add optional `kind` to the chat DTO; golden light and dark; on-device check with a paused meal card
 
 **Checkpoint**: PR 3. Phases 1-3 shippable without 4-6 (SC-011).
@@ -189,9 +196,11 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T073 [US4] Rewrite `src/backend/config/prompts/profile_curator_system.md` and `src/backend/agent/memory_curator.py` to emit typed hard candidates (`type`, `value`, `label`, `evidence`) and soft facts, with the evidence substring check
 - [ ] T074 [US4] Extend `src/backend/agent/memory_judge.py` with one GLiDE question per hard type plus `no_longer_true`, and `select_hard_ops` implementing the bands with tunables `memory.hard_accept_min_probability` and `memory.hard_ask_min_probability` (placeholders until T078)
 - [ ] T075 [US4] Run hard-fact extraction concurrently with `parse_query` on coaching turns in `src/backend/agent/coaching.py`; accepted entries saved confirmed (`source='inferred'`, `confirmed_by='inference'`, `inference_probability`), ask-band entries saved pending with `readback_asked_at`; on a recipe turn with a new pending fact, withhold the recipe and ask first; logging turns keep extraction in Celery (`_enqueue_fact_extraction`)
-- [ ] T076 [US4] Handle readback replies in `src/backend/agent/orchestrator.py` before routing (Constitution III) using `agent/tools/meals.py` `classify_intent` keywords; append the templated readback or the one-time "noted" mention to the reply and return the optional `readback` field
-- [ ] T077 [US4] Implement `eval/eval_hard_fact_inference.py` (precision and recall per type and band, reliability curve, Brier score, threshold sweep on `tune`, report on `holdout`) and add the script set to `eval/eval_safety_profile.py`
+- [ ] T076 [US4] Handle readback replies in `src/backend/agent/orchestrator.py` before routing (Constitution III) using `agent/tools/meals.py` `classify_intent` keywords per research R13: confirm → confirmed; reject → retired; correction → retired then re-extracted and read back; any other message leaves the entry pending, is answered normally, and the readback is asked again before the next meal suggestion; append the templated readback or the one-time "noted" mention to the reply and return the optional `readback` field
+- [ ] T077 [US4] Implement `eval/eval_hard_fact_inference.py` (precision and recall per type and band, soft-preference precision and recall, reliability curve, Brier score, threshold sweep on `tune`, report on `holdout`) and add the script set to `eval/eval_safety_profile.py`
 - [ ] T078 [US4] Run the sweep, set `hard_accept_min_probability` and `hard_ask_min_probability` in `tunables.yaml` with the measured numbers in the comment, run on `holdout`, record SC-002 and SC-004 results (accept-band precision ≥ 98%) in the PR
+- [ ] T102 [US4] Run `PYTHONPATH=src python eval/eval_memory_pipeline.py --runs 3` and `eval/eval_profile_curator.py --runs 3` against their baselines after the curator prompt rewrite in T073; record in the PR (Principle V)
+- [ ] T103 [US4] Docs for PR 4: inference bands and readbacks in `docs/architecture.md`, eval commands in `.claude/CLAUDE.md`
 - [ ] T079 [US4] Android: render the optional `readback` with Yes / No chips that send the reply in `ui/chat/ReadbackChips.kt`; the "noted" mention links to the entry in Care profile; goldens light and dark; on-device check
 
 **Checkpoint**: PR 4.
@@ -210,6 +219,7 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T083 [US5] Add the history block to `src/backend/agent/context.py` and pass it to `suggest.py` for variety
 - [ ] T084 [US5] Add `PATCH/DELETE /profile/soft/{id}`, `GET /profile/meals`, `GET /profile/export` to `src/backend/api/profile.py`; mark `/memory` deprecated in `src/backend/api/memory.py` (removed once the app release with T085 is live)
 - [ ] T085 [US5] Android: in `ui/profile/CareProfileScreen.kt` add "inferred" and "awaiting confirmation" labels with confirm / correct actions and an entry history view; add `ui/profile/PreferencesScreen.kt` (soft facts with dates, edit, delete), `ui/profile/MealHistoryScreen.kt`, and export (share sheet with the JSON); Food preferences row on Profile opens PreferencesScreen
+- [ ] T105 [US5] Docs for PR 5: Care profile preferences and export in `docs/architecture.md`; remove `memory.profile_enabled` from `.claude/CLAUDE.md` mentions
 - [ ] T086 [US5] Goldens light and dark and an on-device timing check of SC-010 (find, edit, delete a preference in under a minute)
 
 **Checkpoint**: PR 5.
@@ -227,19 +237,24 @@ Profile. No Explore tab, no Units row (issue #88).
 - [ ] T089 [US6] Implement `src/backend/api/review.py` (`GET /admin/review/items`, `GET /admin/review/escalations/{id}`, `POST /admin/review/items/{id}/decision`, `POST /admin/review/patients/{patient_id}/entries`) using `safety.profile` with actor `reviewer:<user id>`; register in `src/backend/main.py`
 - [ ] T090 [US6] Create `plan_sample` review items for a configurable share of recommendations (`safety.plan_sample_rate` in tunables) in `src/backend/agent/suggest.py`; extend `src/backend/guidelines/export_feedback.py` to export plan-sample rejections with comments
 
+- [ ] T104 [US6] Docs for PR 6: `REVIEWER_USER_IDS` and the admin API in `.claude/CLAUDE.md` and `docs/architecture.md`
+
 **Checkpoint**: PR 6.
 
 ---
 
 ## Phase 10: Polish and cross-cutting
 
-- [ ] T091 Migration `2026112x_020_drop_goal_condition_columns.py` dropping `user_goal.conditions`, `user_goal.dietary_prefs` and `user_memory.embedding` with its ivfflat index, released one version after PR 1 (PR 7); remove the ORM attributes from `src/backend/db/models.py`
-- [ ] T092 [P] Update `.claude/CLAUDE.md` (layout: `safety/`, `config/clinical/`, new APIs, env vars `SAFETY_WEBHOOK_URL`, `REVIEWER_USER_IDS`, eval commands) and `docs/architecture.md` (turn flow with screen, guardrail, suggestion loop)
+- [ ] T091 Migration `2026112x_020_drop_goal_condition_columns.py` dropping `user_goal.conditions`, `user_goal.dietary_prefs` and `user_memory.embedding` with its ivfflat index, deleting `user_memory` rows with `category='restriction'` and `deleted_at IS NULL` and dropping `restriction` from `ck_user_memory_category`, released one version after PR 1 (PR 7); remove the ORM attributes from `src/backend/db/models.py`
+- [ ] T092 [P] Final docs pass: confirm `.claude/CLAUDE.md` and `docs/architecture.md` match the shipped system (each PR already updated them in its own docs task, Principle "same change")
 - [ ] T093 [P] Check log hygiene (FR-040c): no name or email in spans, `check_failure`, escalations or webhook payloads; message text only in Logfire spans already allowed and in `red_flag_escalation.message`
 - [ ] T094 Run the full quickstart.md end to end on the throwaway DB and the Pixel 9; run `scripts/prod-checks.sh`; fix findings
 - [ ] T095 Dietitian review of all `config/clinical/*.yaml` values (replace every `PENDING DIETITIAN REVIEW`) before PR 2 ships to production
 
 ---
+
+Task IDs T096-T105 were added after the analysis pass (2026-11-13); they sit
+in the phase where they run, so IDs are not strictly in execution order.
 
 ## Dependencies and execution order
 

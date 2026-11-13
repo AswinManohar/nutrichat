@@ -20,7 +20,7 @@ columns listed under "Mutable"; values are never rewritten (FR-003).
 | user_id | uuid FK → user_goal | not null |
 | entry_type | text | `allergy`, `diagnosis`, `medication`, `physical_limitation`, `nutrient_limit`, `diet_setting`, `food_exclusion` (R4) |
 | value | jsonb | shape by type, validated by Pydantic `EntryValue` (below) |
-| label | text | plain text shown to the patient and the coach, ≤ 200 chars |
+| label | text null | only for free-text values (medication as stated, food exclusion, custom allergy, free-text diagnosis), ≤ 200 chars; typed values derive their label on read (Principle II) |
 | source | text | `patient`, `clinician`, `inferred` |
 | state | text | `pending`, `confirmed`, `retired` |
 | created_at | timestamptz | date added |
@@ -103,9 +103,12 @@ columns listed under "Mutable"; values are never rewritten (FR-003).
 3. `user_memory` rows with `category='restriction'` and `deleted_at IS NULL` →
    `allergy` when the text matches an allergen group term, else
    `food_exclusion` with the fact text as the single term set; source
-   `patient`; the `user_memory` row is then hard-deleted so the fact exists
-   once. Tombstoned restriction rows stay in `user_memory` as tombstones.
-4. Afterwards `ck_user_memory_category` drops `restriction`.
+   `patient`; tombstoned restriction rows stay in `user_memory` as tombstones.
+4. The `user_memory` restriction rows are **not** deleted in 019 and the
+   check constraint is unchanged, so the release running during the deploy
+   keeps working (Principle VI). New code ignores restriction rows. Migration
+   020 deletes them and drops `restriction` from `ck_user_memory_category`.
+   The one-release overlap is a transitional copy (plan Complexity Tracking).
 
 Rollback: downgrade re-creates restriction rows from `food_exclusion` /
 `allergy` entries with `created_by='backfill'`, then drops the new tables.
@@ -139,8 +142,9 @@ What was shown to the patient (FR-038), its check, and the patient's reaction.
 | created_at · status_at | timestamptz | |
 
 Indexes `(user_id, created_at desc)`. "Eaten" is not stored here; it is
-`meal_log` (Principle II). Rows older than `safety.recommendation_retention_days`
-(180) are purged by a nightly Celery task fanned out per user.
+`meal_log` (Principle II). Rows are kept for the life of the account, like
+`meal_log`, so every shown recommendation stays traceable (SC-009); they are
+deleted only with the account (Principle III).
 
 ## check_failure
 

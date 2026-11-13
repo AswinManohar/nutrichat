@@ -267,7 +267,7 @@ measured against hand-labelled synthetic conversations.
 Three weeks in, the patient asks for "something for a bad day". The coach
 knows they like dal, dislike coriander, cook for one, and had khichdi twice
 this week already, so it offers a different low-effort option. The patient
-opens "What Mealsy knows about me", sees every hard entry with its state and
+opens their Care profile, sees every hard entry with its state and
 history and every soft preference with its date, corrects the cooking-time
 preference and deletes a dislike. The next suggestion reflects both changes.
 
@@ -394,7 +394,8 @@ retires the original and adds the edited version.
   limitation (chewing, swallowing, grip, standing time), and clinician-set
   nutrient limit (at least sodium, potassium, protein, fluid and
   carbohydrate, each with an amount, a unit and a period such as per meal or
-  per day).
+  per day), diet setting (vegan, gluten free, no nuts and the rest) and food
+  exclusion (a named food the patient never eats, such as pork).
 - **FR-002**: Every hard entry MUST carry a value, the date it was added, a
   source (patient, clinician or inferred) and a state (pending, confirmed or
   retired).
@@ -453,8 +454,10 @@ retires the original and adds the edited version.
 - **FR-016**: On a match the patient MUST receive the rule's fixed response,
   no model MUST be called for that message, an escalation record MUST be
   stored, and a notification MUST be sent to the configured staff contact
-  (a configurable webhook address; see Decisions) with the message, the
-  rule and the patient identifier.
+  (a configurable webhook address; see Decisions) with the rule, the
+  patient identifier and a link to the escalation. The message text stays on
+  the application host and is read through the reviewer interface, because
+  the webhook host is not an approved processor (FR-040).
 - **FR-017**: If the rule list cannot be read, the system MUST NOT produce
   model replies until it can, and MUST log the failure.
 - **FR-018**: Screening MUST add no more than 50 ms to a turn.
@@ -500,9 +503,10 @@ retires the original and adds the edited version.
 
 - **FR-025**: The system MUST record every planned, eaten and rejected meal
   with its date, and a rejection reason when given.
-- **FR-026**: For each recipe or plan request, the system MUST retrieve the
-  soft preferences relevant to the request and the last 3 weeks of meal
-  history, and use them for fit and variety.
+- **FR-026**: For each recipe or plan request, the system MUST supply the
+  patient's soft preferences (the whole capped set, which covers every
+  relevant one) and the last 3 weeks of meal history, and use them for fit
+  and variety.
 - **FR-027**: Soft-preference retrieval MUST be an enrichment: if it fails
   or times out, the request still completes with the hard profile applied.
 - **FR-028**: Patients MUST be able to view everything remembered about
@@ -561,15 +565,18 @@ retires the original and adds the edited version.
   everything remembered about them (FR-028 covers viewing).
 - **FR-040c**: Logged failures, traces and escalation notifications MUST
   identify the patient by identifier, never by name or email.
-- **FR-041**: Turns that do not request a recipe or plan MUST be no slower
-  than today. Recipe and plan requests MAY take longer, within a stated
-  budget set at planning.
+- **FR-041**: Turns that do not request a recipe or plan MUST add no more
+  than 300 ms at p95 compared with before the feature (the reply guardrail's
+  semantic check is the only addition on that path). Recipe and plan
+  requests MAY take longer, within the budget in SC-008.
 
 **Evals (built with Phases 1 and 2, run in CI)**
 
 - **FR-042**: An eval set of 20 to 30 synthetic patients with scripted
   multi-session conversations and hand-labelled expected profiles MUST exist
-  before Phase 2 merges, and MUST run in continuous integration.
+  before Phase 2 merges. Its deterministic part (the checker on fixture
+  recipes) MUST run in the production checks on every release; its live part
+  (model generation and inference) MUST run for every phase pull request.
 - **FR-043**: The eval MUST report: hard-constraint violation rate,
   extraction precision and recall, recall of facts from earlier sessions,
   handling of updated facts, abstention when information is missing,
@@ -681,8 +688,8 @@ and runs in continuous integration from Phase 2 onward.
   MAOIs and tyramine-rich foods, some statins and grapefruit). Medications
   are matched by name in the file; unmatched medications produce no
   interaction rule and are listed as "no known rule" for the dietitian.
-- **Soft-preference retrieval** uses the semantic search the app already has
-  for other content; no new memory product is introduced.
+- **Soft preferences** are supplied in full (the set is capped), so no
+  search is needed; no new memory product is introduced.
 - **Confirmation in chat** reuses the existing "waiting for your answer"
   mechanism; spec 010 governs how a reply is told apart from a new message.
 - **Encryption at rest** is provided by the managed database the app

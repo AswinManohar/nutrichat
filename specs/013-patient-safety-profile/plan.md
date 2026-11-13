@@ -2,7 +2,7 @@
 
 **Branch**: `user_memory` (worktree `~/nutrichat-user-memory`; one PR per phase into
 `feat/android-app`, the production line) | **Date**: 2026-11-13 |
-**Spec**: [spec.md](spec.md)
+**Spec**: [spec.md](spec.md) | **Tracking**: https://github.com/AswinManohar/nutrichat/issues/89
 
 **Input**: Feature specification from `specs/013-patient-safety-profile/spec.md`
 
@@ -74,7 +74,7 @@ Hard-fact scoring by GLiDE runs in the background for logging turns and concurre
 | II. Single source of truth | Pass with one justified copy | `user_goal.conditions` and `dietary_prefs` move into `profile_entry` and the columns are dropped one release later (expand/contract); goals API derives them on read. "Eaten" meals stay in `meal_log` (not copied into history). Recipe totals are computed on read from `recommendation.recipe` + USDA except the stored check snapshot, which is a deliberate immutable audit snapshot (Complexity Tracking). Clinical tables and red flags live once, in YAML. |
 | III. Confirm before write | Pass | The principle governs `meal_log`, which is unchanged. For the profile: inferred hard facts bind without a yes only when they tighten a constraint and score in the accept band (owner decision Q4), are labelled "inferred" and mentioned once; uncertain ones are `pending` until a patient yes; a reply while a readback is outstanding is treated as the reply (same rule as the meal card). Retiring a confirmed entry needs a confirmation. Profile writes from the app carry `client_request_id`. No hard entry is ever deleted except on account deletion. |
 | IV. Latency and cost | Pass | Table above. Red-flag notification and failure logging run in Celery or after the reply; USDA lookups are local and parallel; soft enrichment degrades gracefully; hard profile failure fails the turn by design (FR-007), which is the required behaviour, not an enrichment. Per-user growth bounded (entry cap, recommendation retention 180 days, escalations kept). |
-| V. Measured agent changes | Pass | Routing unchanged; hard-fact thresholds set from the synthetic inference set (R18) with a held-out split; reply-guardrail threshold from its own cases; new `safety_profile` gate category with 24 synthetic patients; curator prompt change gated by `eval_memory_pipeline.py`; spans for screen, check, regenerate, readback. |
+| V. Measured agent changes | Pass | Routing unchanged; hard-fact thresholds set from the synthetic inference set (R17) with a held-out split; reply-guardrail threshold from its own cases; new `safety_profile` gate category with 24 synthetic patients; curator prompt change gated by `eval_memory_pipeline.py`; spans for screen, check, regenerate, readback. |
 | VI. Gated production | Pass | One PR per phase, shipped through `/ship`; migration 019 is additive and applied before code; the column drop (020) ships one release after the code that stops reading them. Webhook URL in Railway variables, not in the repo. |
 
 **Post-design re-check (after Phase 1 artifacts)**: still passes. The design added no datastore, framework or provider; the only copies are the two named in Complexity Tracking.
@@ -107,6 +107,8 @@ src/backend/
 │   ├── tables.py                # load + validate clinical YAML, content-hash version, mtime reload
 │   ├── red_flags.py             # screen(message) -> RedFlagMatch | None; fail-closed state
 │   ├── profile.py               # hard profile: read, render block, state transitions, version hash
+│   ├── limits.py                # today's progress per nutrient limit (derived from meal_log)
+│   ├── render.py                # constraint sentence and recipe text from a CheckResult
 │   ├── recipe.py                # Recipe / Ingredient models; resolve_totals() via usda_local
 │   ├── checker.py               # check(recipe, profile, today_intake) -> CheckResult
 │   └── reply_guard.py           # lexical + USDA-resolution layers of the reply guardrail
@@ -134,7 +136,7 @@ src/backend/
 │                                #      condition_limits.yaml, red_flags.yaml
 ├── db/models.py · db/migrations/versions/2026111x_019_patient_safety_profile.py
 │                               · 2026112x_020_drop_goal_condition_columns.py (later release)
-└── workers/tasks.py             # notify_escalation (retrying), purge_old_recommendations
+└── workers/tasks.py             # notify_escalation (retrying)
 
 android/app/src/main/java/app/mealsy/android/ui/
 └── profile/                     # NEW (Phase 5): "What Mealsy knows about me" + history
@@ -150,7 +152,7 @@ eval/
 ├── cases/red_flags.jsonl        # phrases, marked paraphrases, ordinary messages
 ├── eval_safety_profile.py       # --offline (checker on fixture recipes) | live
 ├── eval_red_flags.py            # listed phrases, marked paraphrases, false-positive rate
-├── eval_hard_fact_inference.py  # P/R per type and band, calibration, threshold sweep (R18)
+├── eval_hard_fact_inference.py  # P/R per type and band, calibration, threshold sweep (R17)
 ├── gen_hard_fact_cases.py       # drafts synthetic cases from seeds for human review
 ├── cases/hard_fact_inference.jsonl · cases/reply_guard.jsonl
 └── baseline_safety_profile.json
@@ -172,7 +174,7 @@ versions keep working.
 
 | PR | Spec phase | Backend | Android | Gate before merge |
 |---|---|---|---|---|
-| 0 | prerequisite | Fastino DPA, privacy notice names Fastino; synthetic inference set generated and reviewed (R18) | privacy-policy link text names Fastino | owner sign-off |
+| 0 | prerequisite | Fastino DPA, privacy notice names Fastino; synthetic inference set generated and reviewed (R17) | privacy-policy link text names Fastino | owner sign-off |
 | N | navigation (before PR 1) | none | **Separate Android PR (owner, 2026-11-13).** Bottom bar becomes Home, Journey, +, Profile: Trends renamed Journey; My meals leaves the bar and opens from an option on Home; chat leaves the bar and opens only from the + button; Settings becomes the **Profile** tab (`ui/profile/ProfileScreen`, mockup 2): name and email, Eating (Goals and targets, Food preferences), App (Reminders, Account and privacy), Sign out. Existing Settings content moves into these rows; nothing is dropped. No Explore tab and no Units row (issue #88) | AppNav tests and goldens updated; on-device check light + dark |
 | 1 | Phase 1 | migration 019, `safety/profile.py`, backfill, hard block for every user, fail-closed profile load, goals API on profile, `POST /profile/entries` + retire, eval skeleton | Profile tab gains the **Care profile** card with coloured count chips per type (tapping it opens Care profile; the card is added by PR N below). **Care profile** screen (`ui/profile/CareProfileScreen`, mockup 1): header with last-updated date; "N of M limits on track today" banner; one expandable row per type (Allergies, Diagnoses, Medications, Physical limitations, Nutrient limits) with a count badge; nutrient limits expand to rows with the limit text ("Up to 1,500 mg a day", "50-60 g a day") and a today-so-far bar with a limit marker; add, edit and retire per entry (FR-020a). Settings conditions and diet chips keep working through `/goals`. Chat shows the retry message on a profile-load failure | migration test, backfill dry-run counts on a prod snapshot copy, restrictions gate; on-device check light + dark |
 | 2 | Phase 2 | clinical tables, Recipe + totals, checker, suggestion loop, reply guardrail, failure log, recommendation record, offline eval in prod-checks | recipe reply rendered as a card (ingredients, steps, time, the constraint sentence) from the optional `recipe` field, plain text fallback; accept / not for me buttons call the feedback endpoint (`recommendation_id`) | offline checker eval: 0 violations; reply_guard cases: 0 missed; live safety_profile gate; on-device check |
@@ -201,5 +203,8 @@ with the `:core:ui` tokens. No new abstraction until a second caller needs it.
 |---|---|---|
 | `recommendation.check_snapshot` stores the profile entry ids, table versions and computed totals at check time | FR-038 / SC-009: a shown recommendation must be traceable to the exact profile version and table content it passed, after both have changed | Recomputing on read gives today's answer, not the one the patient saw; tables and USDA data change. Immutable audit snapshot, named per Principle II. |
 | Hard-fact extraction moves from Celery onto the coaching reply path (concurrent) | FR-020 same-session readback and US4-6 "ask before any meal is suggested" need the result before the reply is sent | Celery-only extraction lands after the reply, so a recipe in the same turn would ignore a just-stated allergy without asking. Net model calls per turn are unchanged (the Celery curator call is removed for coaching turns). |
+| A red-flag message sent while a meal card or readback is waiting gets the fixed safety response instead of being treated as the reply (exception to Principle III) | Spec US3-4: a dangerous message must never be swallowed as a card correction; the card is left untouched and still waits for its reply | Treating it as a card reply would log it as a meal correction and never reach the screen. |
+| `user_memory` restriction rows kept for one release after 019 copied them into `profile_entry` | Principle VI: the release running during the deploy still reads and writes them | Deleting them in 019 breaks that release; 020 removes them. New code never reads them, so they cannot drift into a decision. |
+| `recommendation`, `check_failure`, `red_flag_escalation`, `review_item` grow with use (Principle IV bounded growth) | They are ledgers like `meal_log`: one row per shown recipe, failed attempt, red flag or review; SC-009 requires shown recommendations to stay traceable | A purge would hard-delete user data (Principle III) and break SC-009. Growth is per event, not per turn; revisit if a user exceeds 10k rows. |
 | New `backend/safety/` package | The checker must be provably model-free and testable offline | Putting it in `agent/tools/` invites imports of model clients and mixes it with LLM tools. |
 | `user_goal.conditions` / `dietary_prefs` kept for one release after the backfill | Constitution VI: migrations must stay compatible with code already running | Dropping in 019 breaks the running release during the deploy window. |
