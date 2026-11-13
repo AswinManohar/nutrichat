@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mealsy.android.design.components.TagTone
 import app.mealsy.android.ui.common.ErrorKind
+import app.mealsy.data.api.MealNeedsAckException
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.repo.ChatRepository
 import app.mealsy.data.repo.GoalsRepository
@@ -15,6 +16,7 @@ import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.SavedMealItem
 import app.mealsy.data.repo.SavedMealOverride
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.Goals
 import app.mealsy.domain.defaultMealCategory
@@ -123,7 +125,12 @@ data class LogAgainSheetState(
     val portion: Double = 1.0,
     val submitting: Boolean = false,
     val error: String? = null,
-)
+    /** Care profile warnings from a refused save; non-empty turns the button into "Log anyway". */
+    val warnings: List<CardWarning> = emptyList(),
+) {
+    /** Saving now means "Log anyway". */
+    val needsAck: Boolean get() = warnings.any { it.needsAck }
+}
 
 /** One-shot navigation/feedback events the screen reacts to. */
 sealed interface MealDetailEvent {
@@ -332,6 +339,8 @@ class MealDetailViewModel
                     _events.send(MealDetailEvent.Logged)
                 } catch (exc: CancellationException) {
                     throw exc
+                } catch (exc: MealNeedsAckException) {
+                    _sheetState.update { it.copy(submitting = false, warnings = exc.warnings) }
                 } catch (exc: Exception) {
                     _sheetState.update { it.copy(submitting = false, error = "Couldn't log that. Try again.") }
                 }
@@ -348,9 +357,11 @@ class MealDetailViewModel
                     items = loadedIngredients.map { it.toCardItem() },
                     mealType = sheet.mealType,
                     portion = sheet.portion,
+                    warnings = sheet.warnings,
                 )
-            when (chatRepository.confirmCard(card)) {
+            when (val outcome = chatRepository.confirmCard(card)) {
                 is LogOutcome.Logged, LogOutcome.Queued -> Unit
+                is LogOutcome.NeedsAck -> throw MealNeedsAckException(outcome.warnings)
             }
         }
 
@@ -359,13 +370,13 @@ class MealDetailViewModel
             sheet: LogAgainSheetState,
         ) {
             if (sheet.portion == 1.0) {
-                myMealsRepository.quickLog(mode.id, sheet.mealType)
+                myMealsRepository.quickLog(mode.id, sheet.mealType, sheet.needsAck)
             } else {
                 val overrides =
                     loadedIngredients.mapIndexed { index, ingredient ->
                         SavedMealOverride(index = index, qtyG = ingredient.qtyG)
                     }
-                myMealsRepository.logCustomized(mode.id, sheet.mealType, overrides, sheet.portion)
+                myMealsRepository.logCustomized(mode.id, sheet.mealType, overrides, sheet.portion, sheet.needsAck)
             }
         }
 

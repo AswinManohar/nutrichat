@@ -2,6 +2,7 @@ package app.mealsy.data.api
 
 import app.mealsy.domain.CandidateDetail
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.Goals
 import kotlinx.serialization.EncodeDefault
@@ -62,7 +63,33 @@ data class LogTurnResponse(
     val readback: ReadbackDto? = null,
     /** The "Kept ..." sentence naming the limits a shown recipe respects; set only with [recipe]. */
     @SerialName("constraint_note") val constraintNote: String? = null,
+    /** The card's Care profile check (spec 013 FR-044); set only on a paused card. */
+    val safety: MealSafetyDto? = null,
 )
+
+/** The Care profile check of a card's items; [needsAck] means "Log anyway" is required. */
+@Serializable
+data class MealSafetyDto(
+    val warnings: List<MealWarningDto> = emptyList(),
+    @SerialName("needs_ack") val needsAck: Boolean = false,
+)
+
+/** One reminder; [severity] is `"confirm"` (needs "Log anyway") or `"note"`. */
+@Serializable
+data class MealWarningDto(
+    val rule: String,
+    val severity: String,
+    val text: String,
+)
+
+/** A 409 from a meal save: `detail.code` is `"meal_needs_ack"`. */
+@Serializable
+data class MealNeedsAckError(val detail: Detail) {
+    @Serializable
+    data class Detail(val code: String, val safety: MealSafetyDto)
+}
+
+fun MealSafetyDto.toWarnings(): List<CardWarning> = warnings.map { CardWarning(it.text, it.severity == "confirm") }
 
 /** The latest readback question: [kind] is `"add"` (confirm a new fact) or `"retire"` (stop using one). */
 @Serializable
@@ -337,6 +364,7 @@ fun LogTurnResponse.toCard(): ConfirmationCard? {
     return ConfirmationCard(
         message = message,
         items = items.map { it.toCardItem() },
+        warnings = safety?.toWarnings().orEmpty(),
     )
 }
 
@@ -406,6 +434,8 @@ data class LogItemsRequest(
     val items: List<ItemDto>,
     @SerialName("client_request_id") val clientRequestId: String? = null,
     @SerialName("conversation_id") val conversationId: String? = null,
+    /** The patient tapped "Log anyway" on a card whose warnings need it (FR-044). */
+    @SerialName("acknowledged_warnings") val acknowledgedWarnings: Boolean = false,
 )
 
 @Serializable
@@ -744,6 +774,8 @@ data class LogMyMealRequest(
     @SerialName("meal_type") val mealType: String,
     val portion: Double = 1.0,
     val ingredients: List<IngredientOverrideDto>? = null,
+    /** The patient tapped "Log anyway" on an allergy or interaction warning (FR-044). */
+    @SerialName("acknowledged_warnings") val acknowledgedWarnings: Boolean = false,
 )
 
 /**

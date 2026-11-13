@@ -43,11 +43,14 @@ import app.mealsy.android.design.theme.MealsyType
 import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
+import app.mealsy.android.ui.common.MealWarnings
+import app.mealsy.data.api.MealNeedsAckException
 import app.mealsy.data.repo.MyMealsRepository
 import app.mealsy.data.repo.SavedMealItem
 import app.mealsy.data.repo.SavedMealOverride
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import app.mealsy.domain.FoodNameHumanizer
 import app.mealsy.domain.Totals
@@ -192,7 +195,12 @@ internal sealed interface CustomizeUiState {
 
     data class Error(val kind: ErrorKind) : CustomizeUiState
 
-    data class Loaded(val state: CustomizeSheetState, val submitting: Boolean) : CustomizeUiState
+    /** [warnings]: Care profile warnings from a refused save; the button then reads "Log anyway". */
+    data class Loaded(
+        val state: CustomizeSheetState,
+        val submitting: Boolean,
+        val warnings: List<CardWarning> = emptyList(),
+    ) : CustomizeUiState
 }
 
 /**
@@ -267,10 +275,13 @@ class CustomizeSheetViewModel
                         mealType = current.state.mealType,
                         overrides = current.state.overridePayload,
                         portion = current.state.portion,
+                        acknowledgedWarnings = current.warnings.any { it.needsAck },
                     )
                     _logged.send(Unit)
                 } catch (exc: CancellationException) {
                     throw exc
+                } catch (exc: MealNeedsAckException) {
+                    _uiState.value = current.copy(submitting = false, warnings = exc.warnings)
                 } catch (exc: Exception) {
                     _uiState.value = current.copy(submitting = false)
                 }
@@ -330,6 +341,7 @@ fun CustomizeSheet(
                 CustomizeSheetContent(
                     state = state.state,
                     submitting = state.submitting,
+                    warnings = state.warnings,
                     onMealTypeSelect = { viewModel.update { s -> s.withMealType(it) } },
                     onPortionSelect = { viewModel.update { s -> s.withPortion(it) } },
                     onQtyChange = { index, qty -> viewModel.update { s -> s.withQty(index, qty) } },
@@ -344,6 +356,7 @@ fun CustomizeSheet(
 internal fun CustomizeSheetContent(
     state: CustomizeSheetState,
     submitting: Boolean,
+    warnings: List<CardWarning> = emptyList(),
     onMealTypeSelect: (String) -> Unit,
     onPortionSelect: (Double) -> Unit,
     onQtyChange: (Int, Int) -> Unit,
@@ -433,13 +446,21 @@ internal fun CustomizeSheetContent(
             label = { portionLabels.getValue(it) },
         )
 
+        if (warnings.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            MealWarnings(warnings = warnings)
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
 
         // #48 item 3: pinned below the scrollable content and padded for the
         // gesture/navigation bar, so "Log meal" is always fully visible and
         // tappable rather than clipped under the system nav area.
         MealsyButton(
-            text = stringResource(R.string.customize_sheet_confirm),
+            text =
+                stringResource(
+                    if (warnings.any { it.needsAck }) R.string.meal_log_anyway else R.string.customize_sheet_confirm,
+                ),
             onClick = onConfirm,
             enabled = !submitting && state.keptIngredients.isNotEmpty(),
             style = MealsyButtonStyle.Primary,

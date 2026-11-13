@@ -11,12 +11,15 @@ import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.ReadbackDto
 import app.mealsy.data.api.RecipeDto
 import app.mealsy.data.api.toCard
+import app.mealsy.data.api.mealNeedsAckWarnings
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import retrofit2.HttpException
 import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
@@ -83,6 +86,13 @@ sealed interface LogOutcome {
      * No server round trip completed.
      */
     data object Queued : LogOutcome
+
+    /**
+     * Nothing was saved: the backend's Care profile check found an allergy
+     * or interaction the card did not show (the profile changed since the
+     * card was built). Show [warnings] on the card and wait for "Log anyway".
+     */
+    data class NeedsAck(val warnings: List<CardWarning>) : LogOutcome
 }
 
 /**
@@ -285,11 +295,17 @@ class ChatRepository
                     items = card.items.map { it.toItemDto() },
                     clientRequestId = clientRequestId,
                     conversationId = conversationId(),
+                    // The button on such a card reads "Log anyway", so tapping it is the acknowledgement.
+                    acknowledgedWarnings = card.needsAck,
                 )
 
             val response =
                 try {
                     api.logItems(request)
+                } catch (exc: HttpException) {
+                    val warnings = exc.mealNeedsAckWarnings() ?: throw exc
+                    pendingConfirmation = null
+                    return LogOutcome.NeedsAck(warnings)
                 } catch (exc: IOException) {
                     // The request may or may not have committed server-side, but
                     // the same client_request_id travels with the replayed payload

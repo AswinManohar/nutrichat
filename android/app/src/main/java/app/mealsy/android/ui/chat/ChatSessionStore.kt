@@ -708,6 +708,9 @@ class ChatSessionStore
                             _offline.value = true
                             appendCoach("Saved — will sync when you're back online")
                         }
+                        // Not saved: the card stays open, now showing the warnings and "Log anyway".
+                        is LogOutcome.NeedsAck ->
+                            replaceActiveCard(card.copy(warnings = outcome.warnings), CardState.Active)
                     }
                 } catch (exc: CancellationException) {
                     throw exc

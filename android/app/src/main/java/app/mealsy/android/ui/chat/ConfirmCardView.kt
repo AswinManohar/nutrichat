@@ -73,6 +73,7 @@ import app.mealsy.android.design.icons.MealsyIcons
 import app.mealsy.android.design.theme.MealsyShapes
 import app.mealsy.android.design.theme.MealsyTheme
 import app.mealsy.android.design.theme.MealsyType
+import app.mealsy.android.ui.common.MealWarnings
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
 import app.mealsy.domain.ConfirmationCard
@@ -218,9 +219,14 @@ fun ConfirmCardView(
                     onPortionChange = callbacks::onPortionChange,
                 )
 
+                if (card.warnings.isNotEmpty()) {
+                    MealWarnings(warnings = card.warnings)
+                }
+
                 ActionsRow(
                     busy = busy,
                     swapping = swapping,
+                    needsAck = card.needsAck,
                     onCancel = callbacks::onCancel,
                     onConfirm = callbacks::onConfirm,
                 )
@@ -462,12 +468,14 @@ private fun PortionSection(
 private fun ActionsRow(
     busy: Boolean,
     swapping: Boolean,
+    needsAck: Boolean,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     val enabled = !busy && !swapping
     val cancelLabel = stringResource(R.string.confirm_card_cancel)
-    val confirmLabel = stringResource(R.string.confirm_card_confirm)
+    val confirmLabel =
+        stringResource(if (needsAck) R.string.meal_log_anyway else R.string.confirm_card_confirm)
     if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
         // #53: side-by-side buttons can't fit their labels at large font scales.
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {

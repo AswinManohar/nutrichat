@@ -7,6 +7,7 @@ import app.mealsy.data.api.TokenProvider
 import app.mealsy.data.offline.PendingLogQueue
 import app.mealsy.domain.CardEditor
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.async
@@ -313,6 +314,63 @@ class ChatRepositoryTest {
                 // expected — a rejected payload must never be queued for replay.
             }
 
+            assertTrue(queue.enqueued.isEmpty())
+        }
+
+    @Test
+    @Suppress("ktlint:standard:max-line-length")
+    fun `a paused card carries its Care profile warnings`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """
+                    {"status":"success","message":"Got it.","paused":true,
+                     "items":[{"food_name":"Peanuts","qty_g":50,"kcal":280,"protein_g":13,"carbs_g":8,"fat_g":24,"fiber_g":4,"fdc_id":1}],
+                     "safety":{"needs_ack":true,"warnings":[
+                       {"rule":"allergen","severity":"confirm","entry_id":"e1","text":"Peanuts may contain peanut."},
+                       {"rule":"nutrient_limit","severity":"note","entry_id":"e2","text":"Sodium over."}]}}
+                    """.trimIndent(),
+                ),
+            )
+
+            val card = (buildRepository().sendTurn("peanuts") as TurnResult.Card).card
+
+            assertTrue(card.needsAck)
+            assertEquals(listOf(true, false), card.warnings.map { it.needsAck })
+            assertEquals("Peanuts may contain peanut.", card.warnings[0].text)
+        }
+
+    @Test
+    fun `confirmCard on a card that needs it sends acknowledged_warnings`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"meal_id":"m_1","meal_type":"breakfast","n_items":1,"kcal":1,"protein_g":0,"carbs_g":0,"fat_g":0,"fiber_g":0,"message":"Logged.","deduplicated":false}""",
+                ),
+            )
+            val card = sampleCard().copy(warnings = listOf(CardWarning("Peanut.", needsAck = true)))
+
+            buildRepository().confirmCard(card)
+
+            assertTrue(server.takeRequest().body.readUtf8().contains("\"acknowledged_warnings\":true"))
+        }
+
+    @Test
+    fun `confirmCard on 409 meal_needs_ack returns the warnings and queues nothing`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(409).setBody(
+                    """
+                    {"detail":{"code":"meal_needs_ack","safety":{"needs_ack":true,"warnings":[
+                      {"rule":"allergen","severity":"confirm","entry_id":"e1","text":"Peanut."}]}}}
+                    """.trimIndent(),
+                ),
+            )
+            val queue = FakePendingLogQueue()
+
+            val outcome = buildRepository(pendingLogQueue = queue).confirmCard(sampleCard())
+
+            assertEquals(LogOutcome.NeedsAck(listOf(CardWarning("Peanut.", needsAck = true))), outcome)
             assertTrue(queue.enqueued.isEmpty())
         }
 

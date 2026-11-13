@@ -1,9 +1,11 @@
 package app.mealsy.data.repo
 
 import app.mealsy.data.api.AuthInterceptor
+import app.mealsy.data.api.MealNeedsAckException
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.TokenProvider
 import app.mealsy.domain.CardItem
+import app.mealsy.domain.CardWarning
 import app.mealsy.domain.ConfirmationCard
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.async
@@ -262,6 +264,37 @@ class MyMealsRepositoryTest {
             assertTrue(body.contains("\"meal_type\":\"lunch\""))
             assertFalse(body.contains("ingredients"))
             assertEquals(Unit, emitted.await())
+        }
+
+    @Test
+    fun `quickLog on 409 meal_needs_ack throws the warnings and refreshes nothing`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(409).setBody(
+                    """
+                    {"detail":{"code":"meal_needs_ack","safety":{"needs_ack":true,"warnings":[
+                      {"rule":"interaction","severity":"confirm","entry_id":"e1","text":"Parmesan can interact."}]}}}
+                    """.trimIndent(),
+                ),
+            )
+
+            val thrown = runCatching { buildRepository().quickLog("meal_1", "lunch") }.exceptionOrNull()
+
+            assertEquals(listOf(CardWarning("Parmesan can interact.", needsAck = true)), (thrown as MealNeedsAckException).warnings)
+        }
+
+    @Test
+    fun `quickLog with acknowledged warnings says so`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """{"meal_id":"l","meal_type":"lunch","n_items":1,"kcal":1,"protein_g":0,"carbs_g":0,"fat_g":0,"fiber_g":0,"message":"Logged"}""",
+                ),
+            )
+
+            buildRepository().quickLog("meal_1", "lunch", acknowledgedWarnings = true)
+
+            assertTrue(server.takeRequest().body.readUtf8().contains("\"acknowledged_warnings\":true"))
         }
 
     @Test

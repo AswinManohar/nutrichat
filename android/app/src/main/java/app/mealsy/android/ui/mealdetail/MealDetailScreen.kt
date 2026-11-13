@@ -54,6 +54,7 @@ import app.mealsy.android.design.theme.mealsyScreenPadding
 import app.mealsy.android.ui.common.ErrorKind
 import app.mealsy.android.ui.common.ErrorState
 import app.mealsy.android.ui.common.LoadingState
+import app.mealsy.android.ui.common.MealWarnings
 import app.mealsy.android.ui.meals.formatLoggedAtTime
 import app.mealsy.android.ui.mymeals.CustomizeSheet
 import kotlinx.coroutines.delay
@@ -458,10 +459,15 @@ internal fun LogAgainSheet(
                 Text(text = sheet.error, style = MealsyType.label, color = colors.muted)
             }
 
+            if (sheet.warnings.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                MealWarnings(warnings = sheet.warnings)
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
 
             MealsyButton(
-                text = stringResource(R.string.meal_detail_sheet_confirm),
+                text = stringResource(if (sheet.needsAck) R.string.meal_log_anyway else R.string.meal_detail_sheet_confirm),
                 onClick = onConfirm,
                 enabled = !sheet.submitting,
                 style = MealsyButtonStyle.Primary,

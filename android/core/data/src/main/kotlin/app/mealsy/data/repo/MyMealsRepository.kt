@@ -3,13 +3,16 @@ package app.mealsy.data.repo
 import app.mealsy.data.api.IngredientOverrideDto
 import app.mealsy.data.api.ItemDto
 import app.mealsy.data.api.LogMyMealRequest
+import app.mealsy.data.api.MealNeedsAckException
 import app.mealsy.data.api.MealsyApi
 import app.mealsy.data.api.MyMealDetailDto
 import app.mealsy.data.api.SaveMealRequest
 import app.mealsy.data.api.SavedMealDto
+import app.mealsy.data.api.mealNeedsAckWarnings
 import app.mealsy.data.api.toSavedIngredientDto
 import app.mealsy.domain.ConfirmationCard
 import kotlinx.serialization.json.JsonObject
+import retrofit2.HttpException
 import javax.inject.Inject
 
 /** One saved "quick log" meal, per `MyMealSummary` in `src/backend/api/my_meals.py`. */
@@ -92,35 +95,51 @@ class MyMealsRepository
             myMealsRefreshSignal.notifyChanged()
         }
 
-        /** Quick-logs the saved meal [id] verbatim (1x) at [mealType]. */
+        /**
+         * Quick-logs the saved meal [id] verbatim (1x) at [mealType].
+         *
+         * @throws MealNeedsAckException The meal hits an allergy or interaction
+         *   and [acknowledgedWarnings] was false; nothing was saved.
+         */
         suspend fun quickLog(
             id: String,
             mealType: String,
-        ) {
-            api.logMyMeal(id, LogMyMealRequest(mealType = mealType))
-            todayRefreshSignal.notifyLogged()
-        }
+            acknowledgedWarnings: Boolean = false,
+        ) = logMyMeal(id, LogMyMealRequest(mealType = mealType, acknowledgedWarnings = acknowledgedWarnings))
 
         /**
          * Logs saved meal [id] at [mealType], keeping only [overrides] (by stored
          * index) at their edited gram weights, scaled by [portion]. The rest of
          * the meal's ingredients are dropped, per the backend's "customize"
          * contract.
+         *
+         * @throws MealNeedsAckException As for [quickLog].
          */
         suspend fun logCustomized(
             id: String,
             mealType: String,
             overrides: List<SavedMealOverride>,
             portion: Double = 1.0,
+            acknowledgedWarnings: Boolean = false,
+        ) = logMyMeal(
+            id,
+            LogMyMealRequest(
+                mealType = mealType,
+                portion = portion,
+                ingredients = overrides.map { IngredientOverrideDto(index = it.index, qtyG = it.qtyG) },
+                acknowledgedWarnings = acknowledgedWarnings,
+            ),
+        )
+
+        private suspend fun logMyMeal(
+            id: String,
+            request: LogMyMealRequest,
         ) {
-            api.logMyMeal(
-                id,
-                LogMyMealRequest(
-                    mealType = mealType,
-                    portion = portion,
-                    ingredients = overrides.map { IngredientOverrideDto(index = it.index, qtyG = it.qtyG) },
-                ),
-            )
+            try {
+                api.logMyMeal(id, request)
+            } catch (exc: HttpException) {
+                throw MealNeedsAckException(exc.mealNeedsAckWarnings() ?: throw exc)
+            }
             todayRefreshSignal.notifyLogged()
         }
 
