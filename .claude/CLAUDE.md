@@ -71,11 +71,13 @@ nutrichat/
 │   │       ├── replace_ingredient.py
 │   │       ├── saved_meals.py
 │   │       └── history.py      # get_history hybrid search
-│   ├── api/                    # FastAPI routers: meals, goals, my_meals, foods,
+│   ├── api/                    # FastAPI routers: meals, goals, profile, my_meals, foods,
 │   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
 │   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
-│   ├── config/                 # tunables.yaml, prompts/
+│   ├── safety/                 # spec 013, model-free: profile.py (hard profile),
+│   │                           # tables.py (clinical YAML), matching.py, limits.py
+│   ├── config/                 # tunables.yaml, prompts/, clinical/ (dietitian tables)
 │   ├── core/                   # nutrition_day.py (day boundaries)
 │   ├── guidelines/             # curated dietary-guideline corpus
 │   │   ├── chunking.py         # markdown + frontmatter -> Chunk

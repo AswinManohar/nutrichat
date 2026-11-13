@@ -189,8 +189,8 @@ facts, top-3 by embedding similarity).
 
 | Part | Where it lives | Who changes it |
 |---|---|---|
-| Diet settings (vegetarian, gluten free, ...) | `user_goal.dietary_prefs` | Settings; chat statements that match a setting |
-| Facts: restriction, dislike, like, habit, context | `user_memory` | curators, coach tools, `/memory` API |
+| Hard facts: allergies, diagnoses, medications, physical limitations, nutrient limits, diet settings, food exclusions | `profile_entry` (see 4.8) | Settings and the Care profile screen; chat statements become *pending* entries |
+| Soft facts: dislike, like, habit, context | `user_memory` | curators, coach tools, `/memory` API |
 | Staple foods per meal type | derived from `meal_log` on read, cached in Redis | nothing stores them |
 
 **One write path.** Everything goes through `apply_ops(user_id, ops, actor)`,
@@ -251,6 +251,39 @@ alone, so nothing follows one message from draft to score to storage to a later
 reply; the weekly job has no eval; coaching cases use profiles of one or two
 facts. Turn latency with the profile on has not been measured in production.
 
+### 4.8 Patient safety profile (`safety/`, spec 013)
+
+The hard facts that must never be broken live in `profile_entry`, one row per
+version of a fact. `safety/profile.py` is the only writer. A database trigger
+keeps rows append-only: a value is never rewritten, an edit retires the old row
+and inserts a new one that `replaces_id` it, and state only moves forward
+(`pending` → `confirmed` → `retired`). Only `confirmed` entries bind.
+
+| Source of an entry | State on arrival |
+|---|---|
+| Settings, the Care profile screen (`POST /profile/entries`, `PUT /goals`) | confirmed, source `patient` |
+| The coach's `remember` / `set_diet` tools, the curator | pending, read back to the patient |
+| A removal from chat (`forget`, switching a diet setting off) | the entry keeps binding with `retire_requested_at` set until the patient confirms |
+| Migration 019 backfill of `user_goal.conditions`, `dietary_prefs` and `restriction` facts | confirmed, `created_by='backfill'` |
+
+**Read path.** `build_context` and the fallback `load_restrictions` render the
+whole confirmed profile for every user with `render_block` (one indexed query);
+pending entries are listed as "do not apply". If the profile cannot be loaded or
+is over `safety.hard_profile_max_entries`, the coaching turn does not answer and
+replies `safety.profile_unavailable_text` (FR-007). Nothing is ever truncated.
+
+**Clinical tables.** `config/clinical/*.yaml` (allergen groups, drug-food
+interactions, texture, physical, condition limits, red flags) are loaded by
+`safety/tables.py`, validated, versioned by SHA-256 and re-read when their
+mtime changes. They carry `reviewed_by: PENDING DIETITIAN REVIEW` until a
+dietitian signs them off. `safety/` never imports the agent or a model client.
+
+**API.** `/profile` (view, history, today's limit progress, add, edit, confirm,
+deny, retire) backs the Android Care profile screen. `GET /profile` returns
+`care_team: []`, a placeholder for a future clinician role. `/goals` keeps its
+response shape but reads and writes diagnoses and diet settings through the
+profile.
+
 ### 4.7 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction tier
@@ -263,16 +296,19 @@ to Logfire. Override the tunables file with `NUTRICHAT_TUNABLES_PATH`.
 
 ## 5. Data layer
 
-### Postgres (Supabase, pgvector, pg_trgm) — `db/models.py`, Alembic `001…018`
+### Postgres (Supabase, pgvector, pg_trgm) — `db/models.py`, Alembic `001…019`
 
 | Table | Role |
 |---|---|
-| `user_goal` | per-user goals, conditions, tracking mode, LLM quota |
+| `user_goal` | per-user goals, tracking mode, LLM quota (`conditions` and `dietary_prefs` are no longer read; dropped in 020) |
+| `profile_entry` | the hard profile: append-only, versioned facts (see 4.8) |
+| `recommendation`, `check_failure` | every checked meal suggestion and every failed check (spec 013) |
+| `red_flag_escalation`, `review_item` | red-flag matches and the reviewer queue (spec 013) |
 | `meal_log` | the ledger: macros, `entities` JSONB, label, `embedding vector(768)`, `client_request_id`, soft delete |
 | `food_source` | USDA / LLM-estimate cache keyed by `fdc_id`, trigram index on `food_name` |
 | `food_correction` | user corrections from the food picker |
 | `user_meal` | "My Meals" saved recipes with embeddings |
-| `user_memory` | the coach's preference profile: typed facts, source, tombstones (see 4.5) |
+| `user_memory` | the coach's soft preferences: typed facts, source, tombstones (see 4.6) |
 | `guideline_chunk` | curated dietary-guideline corpus, embedded and condition-tagged |
 | `coaching_response` | every coaching turn plus its rating |
 | `daily_summary`, `weekly_summary`, `nutrient_checkup` | worker outputs |
