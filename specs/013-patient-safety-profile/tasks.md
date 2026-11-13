@@ -301,5 +301,5 @@ Beside:   T051 recipe prompt · T060 Android DTOs
    (PR 7).
 
 Each PR goes to `feat/android-app` from `user_memory`; production only through `/ship`.
-- [x] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
+- [ ] T106 [US2] Send the constraint sentence as its own `constraint_note` field in the chat response (backend `CoachingResult` → orchestrator) and use it in `ChatRepository` instead of parsing the "Kept ..." paragraph out of `message` (found in review: `render_recipe` joins lines with single newlines and appends notes after the sentence, so the parse misses it)
 - [x] T107 [US6] Give `safety.profile.replace` (and `add_entry`) `source`/`created_by` parameters and make `api/review.py` use them instead of importing `profile.py`'s private helpers (found in review)
