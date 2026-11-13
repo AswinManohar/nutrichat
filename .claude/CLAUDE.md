@@ -231,6 +231,12 @@ uv run pytest`. Never point tests at the production `DATABASE_URL`.
 - **Branches.** Work on a feature branch (`feat/<name>` or the spec's
   `NNN-name`). `master` is the main branch and the PR target. `production` is
   what gets deployed.
+- **Memory work goes on `user_memory`.** Any change to user memory — the
+  patient safety profile (spec 013), preference memory, the memory curator
+  and judge, profile rendering in prompts, the `/memory` and `/profile` APIs,
+  and the Android profile screen — is made on the `user_memory` branch
+  (worktree `~/nutrichat-user-memory`), not on a new feature branch. Merge it
+  into `feat/android-app` through a PR when a phase is ready.
 - **Never commit, cherry-pick or push to `production` directly.** Ship only
   through `scripts/push-to-production.sh` (or `/ship`), and only when asked to
   in that turn. A plain "commit" or "push" means the feature branch.
