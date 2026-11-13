@@ -73,7 +73,7 @@ nutrichat/
 │   │       ├── replace_ingredient.py
 │   │       ├── saved_meals.py
 │   │       └── history.py      # get_history hybrid search
-│   ├── api/                    # FastAPI routers: meals, goals, profile, my_meals, foods,
+│   ├── api/                    # FastAPI routers: meals, goals, profile, review, my_meals, foods,
 │   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
 │   ├── auth/                   # supabase.py (JWT/JWKS), integration.py (API keys)
@@ -117,6 +117,7 @@ ANTHROPIC_API_KEY=       # reserved; not used by current code
 FASTINO_API_KEY=         # GLiDE judgments (routing, memory); unset = Gemini routes everything
 SAFETY_WEBHOOK_URL=      # red-flag escalations (Slack-compatible); unset = stored + error logged
 SAFETY_REVIEW_BASE_URL=  # base URL for the review link in escalation notices
+REVIEWER_USER_IDS=       # comma-separated user ids allowed on /admin/review; empty = nobody
 DATABASE_URL=            # postgresql://...
 REDIS_URL=               # redis://...
 SUPABASE_URL=            # https://xxx.supabase.co
@@ -163,6 +164,7 @@ PYTHONPATH=src python eval/eval_profile_curator.py --runs 3      # memory curato
 PYTHONPATH=src python eval/eval_profile_coaching.py --runs 3     # restrictions gate
 PYTHONPATH=src python eval/eval_safety_profile.py --offline       # checker on fixtures (prod-checks)
 PYTHONPATH=src python eval/eval_reply_guard.py --offline          # reply guard, layers 1-2
+PYTHONPATH=src python eval/eval_hard_fact_inference.py --split tune --sweep  # inference bands
 ```
 
 ---

@@ -326,6 +326,35 @@ card is left untouched. If the rule file cannot be read, every message gets the
 fixed fallback text and no model is called until it loads again. Cost on an
 ordinary turn: one `stat` and a few regex searches.
 
+**Learning hard facts from chat (PR 4).** On a coaching turn the curator
+runs alongside `parse_query` and drafts typed hard candidates, each with the
+patient's own words as evidence; a draft whose evidence is not in the
+patient's message is discarded. GLiDE scores each candidate with a yes/no
+question for its type, and `memory_judge.select_hard_ops` places it in a band:
+
+| Band | Rule | Result |
+|---|---|---|
+| accept | p >= `memory.hard_accept_min_probability` and the fact adds a constraint | confirmed, source `inferred`; the coach mentions it once |
+| ask | between the thresholds, any removal or loosening, or no score | pending (or a retirement request); read back in chat |
+| drop | p < `memory.hard_ask_min_probability` (additions only) | not saved |
+
+Thresholds are placeholders until the sweep on the synthetic inference set
+(`eval/eval_hard_fact_inference.py`). `agent/readback.py` appends the fixed
+question to the reply and reads the answer before routing: a short yes
+confirms, a no denies, a no that states a corrected fact of the same type is
+denied and the new fact read back, and anything else leaves the entry pending
+and is answered normally. An unanswered question is asked again in the next
+session (after `memory.coaching_history_ttl_s`). Logging turns run the same
+extraction in Celery after the reply.
+
+**Review queue (PR 6).** `/admin/review/*` (`api/review.py`) lists pending
+entries, red-flag escalations, rule conflicts, unknown medications and a
+sample of shown recipes (`safety.plan_sample_rate`), and takes approve,
+reject, edit or handled decisions. Access needs a Supabase JWT whose user id
+is in `REVIEWER_USER_IDS`; every decision is recorded as `reviewer:<id>`, and
+only this router can create entries with source `clinician`. No screen exists
+yet: the clinician role is a placeholder (spec 013, decision Q1).
+
 ### 4.8 LLM config
 
 `agent/llm.py` reads `config/tunables.yaml`: extraction tier
