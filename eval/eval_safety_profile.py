@@ -392,6 +392,7 @@ def run_live(patients: list[Patient]) -> int:
     """Replay the sessions through extraction and score the result (not wired)."""
     raise SystemExit(
         "live mode needs the typed hard-fact extraction (spec 013 T073-T077); "
+        "per-message inference is scored by eval/eval_hard_fact_inference.py. "
         f"{len(patients)} cases are ready and score_profiles() is the scorer."
     )
 
