@@ -8,11 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from backend.db.models import CoachingResponse
+from backend.db.models import CoachingResponse, Recommendation, ReviewItem
 from backend.guidelines.export_feedback import (
+    build_plan_sample_query,
     build_query,
     export_feedback,
+    export_plan_samples,
     main,
+    plan_sample_to_record,
     row_to_record,
 )
 
@@ -52,6 +55,7 @@ def test_row_to_record_has_spec_keys_and_no_user_id() -> None:
     record = row_to_record(_response(), ["prediabetes"])
 
     assert set(record) == {
+        "source",
         "response_id",
         "created_at",
         "query",
@@ -160,3 +164,61 @@ def test_main_writes_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
         '{"response_id": "a"}',
         '{"response_id": "b"}',
     ]
+
+
+def _plan_sample() -> tuple[ReviewItem, Recommendation]:
+    rec = Recommendation(
+        id="5d1e0000-0000-0000-0000-000000000001",
+        user_id="user-1",
+        recipe={"name": "Satay bowl", "ingredients": []},
+        check_snapshot={
+            "passed": True,
+            "applied": [{"entry_id": "e", "phrase": "your peanut allergy"}],
+            "notes": [],
+        },
+        attempts=1,
+        status="shown",
+        created_at=datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
+    )
+    item = ReviewItem(
+        user_id="user-1",
+        kind="plan_sample",
+        subject_id=rec.id,
+        decision="rejected",
+        decided_at=datetime(2026, 11, 2, 9, 0, tzinfo=UTC),
+        comment="Contains peanut oil",
+    )
+    return item, rec
+
+
+def test_plan_sample_record_carries_the_comment_and_no_user_id() -> None:
+    record = plan_sample_to_record(*_plan_sample())
+
+    assert record["source"] == "plan_sample"
+    assert record["review_comment"] == "Contains peanut oil"
+    assert record["recipe"]["name"] == "Satay bowl"
+    assert record["check"]["applied"] == ["your peanut allergy"]
+    assert "user-1" not in json.dumps(record)
+
+
+def test_plan_sample_query_takes_only_rejected_samples() -> None:
+    sql = str(
+        build_plan_sample_query(since=date(2026, 11, 1)).compile(
+            dialect=postgresql.dialect()
+        )
+    )
+
+    assert "review_item.kind" in sql and "review_item.decision" in sql
+    assert "decided_at >=" in sql
+
+
+async def test_export_plan_samples_reads_one_query() -> None:
+    result = MagicMock()
+    result.all.return_value = [_plan_sample()]
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=result)
+
+    records = await export_plan_samples(session, since=None)
+
+    assert session.execute.await_count == 1
+    assert [r["source"] for r in records] == ["plan_sample"]

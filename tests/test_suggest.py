@@ -55,6 +55,12 @@ class _Match:
         self.description = name.title()
 
 
+@pytest.fixture(autouse=True)
+def no_plan_sampling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sampling is by id hash: switch it off so other tests see no plan_sample."""
+    monkeypatch.setattr(suggest._SAFETY, "plan_sample_rate", 0.0)
+
+
 @pytest.fixture
 def prompts() -> list[str]:
     """The instructions each generation attempt was given."""
@@ -244,3 +250,40 @@ async def test_conflicts_and_unknown_medications_open_review_items_once(
     assert set(conflict.detail["entries"]) == {loose.id, strict.id}
     medication = next(i for i in items if i.kind == "unknown_medication")
     assert medication.subject_id == unknown.id
+
+
+def test_plan_sampling_is_deterministic_and_follows_the_rate() -> None:
+    ids = [str(uuid.UUID(int=n * 7919)) for n in range(1, 2001)]
+
+    assert not any(suggest.plan_sampled(i, 0.0) for i in ids)
+    assert all(suggest.plan_sampled(i, 1.0) for i in ids)
+    first = [suggest.plan_sampled(i, 0.1) for i in ids]
+    assert first == [suggest.plan_sampled(i, 0.1) for i in ids]
+    assert 0.05 < sum(first) / len(ids) < 0.15
+    # A recipe sampled at a low rate stays sampled at a higher one.
+    assert all(suggest.plan_sampled(i, 0.5) for i, hit in zip(ids, first) if hit)
+
+
+async def test_a_shown_recipe_is_queued_as_a_plan_sample(
+    db_user, generator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(suggest._SAFETY, "plan_sample_rate", 1.0)
+    generator(_RICE)
+
+    result = await run(db_user, [])
+
+    items = await user_rows(ReviewItem, db_user)
+    assert [(i.kind, i.subject_id, i.decision) for i in items] == [
+        ("plan_sample", result.recommendation_id, None)
+    ]
+
+
+async def test_a_dropped_request_is_never_sampled(
+    db_user, generator, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(suggest._SAFETY, "plan_sample_rate", 1.0)
+    generator(_PEANUT, _PEANUT, _PEANUT)
+
+    await run(db_user, [peanut_allergy()])
+
+    assert await user_rows(ReviewItem, db_user) == []

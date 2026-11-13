@@ -527,6 +527,11 @@ safety:
   # no suitable meal was found (agent/suggest.py).
   max_recipe_attempts: 3
 
+  # Share of shown recommendations queued for dietitian spot-check review
+  # (agent/suggest.py). The recommendation id is hashed, so the same
+  # recommendation is always in or out. 0 disables sampling.
+  plan_sample_rate: 0.1
+
   # Probability from the reply guard's GLiDE judgment at or above which a
   # reply is treated as unsafe and replaced by reply_guard_fallback_text.
   # Placeholder until measured on the guard eval (T062).

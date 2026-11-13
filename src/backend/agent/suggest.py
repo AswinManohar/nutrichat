@@ -15,6 +15,7 @@ attempt that passes costs one call; each failed attempt adds one.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from collections.abc import Sequence
@@ -153,6 +154,22 @@ async def _generate(deps: _Deps, prompt: str) -> Recipe | str:
     return run.output
 
 
+def plan_sampled(recommendation_id: str, rate: float) -> bool:
+    """Whether a shown recommendation is queued for dietitian spot-check.
+
+    Deterministic: the id is hashed, so a recommendation is always in or out.
+
+    Args:
+        recommendation_id: The recommendation's UUID.
+        rate: Share to sample, 0 to 1 (``safety.plan_sample_rate``).
+
+    Returns:
+        True when the recommendation falls in the sampled share.
+    """
+    digest = hashlib.sha256(recommendation_id.encode()).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64 < rate
+
+
 def _review_rows(
     user_id: str, entries: list[profile.HardEntry], tables: ClinicalTables
 ) -> list[dict]:
@@ -227,6 +244,17 @@ async def _store(
                 )
             )
         rows = _review_rows(user_id, entries, tables)
+        if recommendation_id and plan_sampled(
+            recommendation_id, _SAFETY.plan_sample_rate
+        ):
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "kind": "plan_sample",
+                    "subject_id": recommendation_id,
+                    "detail": None,
+                }
+            )
         if rows:
             await session.execute(insert(ReviewItem).on_conflict_do_nothing(), rows)
     return recommendation_id

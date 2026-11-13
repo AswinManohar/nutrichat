@@ -25,6 +25,7 @@ from backend.api import (
     profile,
     push,
     quota,
+    review,
     telegram_link,
 )
 from backend.db.checkpointer import pooled_checkpointer
@@ -91,6 +92,7 @@ app.include_router(foods.router)
 app.include_router(coaching_feedback.router)
 app.include_router(memory.router)
 app.include_router(profile.router)
+app.include_router(review.router)
 
 if os.environ.get("TELEGRAM_USE_WEBHOOK", "false").lower() == "true":
     from backend.telegram.bot import setup_webhook
