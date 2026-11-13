@@ -27,10 +27,12 @@ class ProfileScreenGoldenTest : AppScreenshotTestBase() {
     private fun render() {
         ProfileContent(
             uiState = state,
+            careState = CareProfileUiState.Loaded(CareFixtures.typical),
             onOpenGoals = {},
             onOpenFood = {},
             onOpenReminders = {},
             onOpenAccount = {},
+            onOpenCare = {},
             onSignOut = {},
             modifier = Modifier.fillMaxSize(),
         )

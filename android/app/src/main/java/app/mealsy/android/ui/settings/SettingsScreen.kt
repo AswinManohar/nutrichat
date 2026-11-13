@@ -425,7 +425,7 @@ private fun SubScreenFrame(
 }
 
 @Composable
-private fun HeaderRow(
+internal fun HeaderRow(
     title: String,
     onBack: () -> Unit,
 ) {

@@ -749,3 +749,98 @@ data class CoachingFeedbackRequest(
     val rating: Int,
     val comment: String? = null,
 )
+
+// ---------------------------------------------------------------------------
+// /profile (spec 013): the patient safety profile, per `src/backend/api/profile.py`
+// ---------------------------------------------------------------------------
+
+/** A clinician the profile is shared with. The role does not exist yet, so the list is empty. */
+@Serializable
+data class CareTeamMemberDto(
+    val name: String = "",
+    val role: String = "",
+)
+
+/**
+ * One hard entry (allergy, diagnosis, medication, physical limitation,
+ * nutrient limit, diet setting or food exclusion). [value] is the typed
+ * payload exactly as the server stores it; [label] is the server-derived
+ * display text.
+ */
+@Serializable
+data class HardEntryDto(
+    val id: String,
+    val type: String,
+    val label: String = "",
+    val value: JsonObject = JsonObject(emptyMap()),
+    val source: String = "patient",
+    val state: String = "confirmed",
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("confirmed_at") val confirmedAt: String? = null,
+    @SerialName("retire_requested") val retireRequested: Boolean = false,
+    // Only on GET /profile/history.
+    @SerialName("retired_at") val retiredAt: String? = null,
+    @SerialName("retired_by") val retiredBy: String? = null,
+    @SerialName("retired_reason") val retiredReason: String? = null,
+    @SerialName("replaces_id") val replacesId: String? = null,
+)
+
+/** One soft preference the coach remembers. */
+@Serializable
+data class SoftFactDto(
+    val id: String,
+    val kind: String = "",
+    val text: String = "",
+)
+
+/** Response of `GET /profile`. */
+@Serializable
+data class ProfileDto(
+    val version: String = "",
+    val hard: List<HardEntryDto> = emptyList(),
+    @SerialName("pending_count") val pendingCount: Int = 0,
+    @SerialName("care_team") val careTeam: List<CareTeamMemberDto> = emptyList(),
+    val soft: List<SoftFactDto> = emptyList(),
+    @SerialName("missing_values") val missingValues: List<String> = emptyList(),
+)
+
+/** One nutrient limit with today's intake against it. */
+@Serializable
+data class LimitProgressDto(
+    @SerialName("entry_id") val entryId: String,
+    val nutrient: String,
+    val label: String = "",
+    val amount: Double,
+    @SerialName("min_amount") val minAmount: Double? = null,
+    val unit: String = "",
+    val period: String = "per_day",
+    @SerialName("so_far") val soFar: Double = 0.0,
+    @SerialName("unknown_items") val unknownItems: Int = 0,
+    @SerialName("on_track") val onTrack: Boolean = true,
+)
+
+/** Response of `GET /profile/limits/today`. */
+@Serializable
+data class LimitsTodayDto(
+    @SerialName("on_track") val onTrack: Int = 0,
+    val total: Int = 0,
+    val limits: List<LimitProgressDto> = emptyList(),
+)
+
+/** Body of `POST /profile/entries`; [replacesId] makes it an edit of that entry. */
+@Serializable
+data class EntryRequest(
+    val type: String,
+    val value: JsonObject,
+    val label: String? = null,
+    @SerialName("client_request_id") val clientRequestId: String? = null,
+    @SerialName("replaces_id") val replacesId: String? = null,
+)
+
+/** Body of `POST /profile/entries/{id}/retire`; the server answers 422 unless [confirm] is true. */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class RetireRequest(
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val confirm: Boolean = true,
+    @SerialName("client_request_id") val clientRequestId: String? = null,
+)

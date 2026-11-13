@@ -206,6 +206,23 @@ private class FakeMealsyApi(
         id: String,
         body: CoachingFeedbackRequest,
     ) = error("not used")
+
+    override suspend fun profile(): app.mealsy.data.api.ProfileDto = error("unused")
+
+    override suspend fun profileHistory(): List<app.mealsy.data.api.HardEntryDto> = error("unused")
+
+    override suspend fun limitsToday(): app.mealsy.data.api.LimitsTodayDto = error("unused")
+
+    override suspend fun addProfileEntry(body: app.mealsy.data.api.EntryRequest): app.mealsy.data.api.HardEntryDto = error("unused")
+
+    override suspend fun confirmProfileEntry(id: String): app.mealsy.data.api.HardEntryDto = error("unused")
+
+    override suspend fun denyProfileEntry(id: String): app.mealsy.data.api.HardEntryDto = error("unused")
+
+    override suspend fun retireProfileEntry(
+        id: String,
+        body: app.mealsy.data.api.RetireRequest,
+    ): app.mealsy.data.api.HardEntryDto = error("unused")
 }
 
 private fun echoGoals() =

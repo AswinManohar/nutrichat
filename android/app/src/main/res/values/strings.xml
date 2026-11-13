@@ -393,4 +393,97 @@
     <string name="update_required_body">This version of Mealsy is no longer supported. Update to continue.</string>
     <string name="update_required_cta">Update on Play Store</string>
 
+
+    <!-- Care profile (spec 013) -->
+    <string name="care_title">Care profile</string>
+    <string name="care_eyebrow">Profile</string>
+    <string name="care_shared_with">Shared with %1$s</string>
+    <string name="care_team_member">%1$s, %2$s</string>
+    <string name="care_updated">Updated %1$s</string>
+    <string name="care_nothing_yet">Nothing added yet</string>
+    <string name="care_empty">Add allergies, conditions, medications and limits so Mealsy can keep your meals safe.</string>
+    <string name="care_loading">Loading your care profile…</string>
+    <string name="care_error_load_failed">Something went wrong loading your care profile.</string>
+    <string name="care_add">Add to your profile</string>
+    <string name="care_awaiting">Awaiting confirmation</string>
+    <string name="care_expand">Show %1$s</string>
+    <string name="care_collapse">Hide %1$s</string>
+    <string name="care_so_far">%1$s %2$s so far</string>
+    <string name="care_so_far_unknown">%1$s %2$s so far, some foods have no value</string>
+    <string name="care_over_limit">Over the limit</string>
+    <plurals name="care_limits_on_track">
+        <item quantity="one">%1$d of %2$d limit on track</item>
+        <item quantity="other">%1$d of %2$d limits on track</item>
+    </plurals>
+    <string name="care_today">today</string>
+    <plurals name="care_chip_allergy">
+        <item quantity="one">%1$d allergy</item>
+        <item quantity="other">%1$d allergies</item>
+    </plurals>
+    <plurals name="care_chip_diagnosis">
+        <item quantity="one">%1$d diagnosis</item>
+        <item quantity="other">%1$d diagnoses</item>
+    </plurals>
+    <plurals name="care_chip_medication">
+        <item quantity="one">%1$d medication</item>
+        <item quantity="other">%1$d medications</item>
+    </plurals>
+    <plurals name="care_chip_limitation">
+        <item quantity="one">%1$d limitation</item>
+        <item quantity="other">%1$d limitations</item>
+    </plurals>
+    <plurals name="care_chip_nutrient_limit">
+        <item quantity="one">%1$d nutrient limit</item>
+        <item quantity="other">%1$d nutrient limits</item>
+    </plurals>
+    <string name="care_type_allergy">Allergies</string>
+    <string name="care_type_diagnosis">Diagnoses</string>
+    <string name="care_type_medication">Medications</string>
+    <string name="care_type_limitation">Physical limitations</string>
+    <string name="care_type_nutrient_limit">Nutrient limits</string>
+    <string name="care_type_diet_setting">Diet settings</string>
+    <string name="care_type_food_exclusion">Foods you avoid</string>
+    <string name="entry_sheet_add_title">Add to your care profile</string>
+    <string name="entry_sheet_edit_title">Edit entry</string>
+    <string name="entry_field_type">What are you adding</string>
+    <string name="entry_field_allergen">Allergen</string>
+    <string name="entry_field_custom_allergen">What are you allergic to</string>
+    <string name="entry_field_condition">Condition</string>
+    <string name="entry_field_medication">Medication name</string>
+    <string name="entry_field_limitation">Limitation</string>
+    <string name="entry_field_max_minutes">Longest time on your feet (minutes, optional)</string>
+    <string name="entry_field_nutrient">Nutrient</string>
+    <string name="entry_field_amount">Limit</string>
+    <string name="entry_field_min_amount">Lower end (optional)</string>
+    <string name="entry_field_unit">Unit</string>
+    <string name="entry_field_period">Per</string>
+    <string name="entry_error_range">The lower end must be below the limit.</string>
+    <string name="entry_error_save">Couldn\'t save. Try again.</string>
+    <string name="entry_save">Save</string>
+    <string name="entry_retire">Remove from profile</string>
+    <string name="entry_retire_title">Remove this entry</string>
+    <string name="entry_retire_body">Mealsy will stop applying \"%1$s\" to your meals and advice.</string>
+    <string name="entry_retire_confirm">Remove</string>
+    <string name="allergen_peanut">Peanut</string>
+    <string name="allergen_tree_nut">Tree nuts</string>
+    <string name="allergen_milk">Milk</string>
+    <string name="allergen_egg">Egg</string>
+    <string name="allergen_fish">Fish</string>
+    <string name="allergen_shellfish">Shellfish</string>
+    <string name="allergen_soy">Soy</string>
+    <string name="allergen_wheat_gluten">Wheat and gluten</string>
+    <string name="allergen_sesame">Sesame</string>
+    <string name="allergen_other">Other</string>
+    <string name="limitation_chewing">Chewing</string>
+    <string name="limitation_swallowing">Swallowing</string>
+    <string name="limitation_grip">Grip</string>
+    <string name="limitation_standing_time">Time on your feet</string>
+    <string name="nutrient_sodium">Sodium</string>
+    <string name="nutrient_potassium">Potassium</string>
+    <string name="nutrient_phosphorus">Phosphorus</string>
+    <string name="nutrient_protein">Protein</string>
+    <string name="nutrient_carbohydrate">Carbohydrate</string>
+    <string name="nutrient_fluid">Fluid</string>
+    <string name="limit_period_day">Day</string>
+    <string name="limit_period_meal">Meal</string>
 </resources>

@@ -149,4 +149,38 @@ interface MealsyApi {
         @Path("id") id: String,
         @Body body: CoachingFeedbackRequest,
     )
+
+    /** The hard profile (live entries) and soft preferences; 503 when it cannot be loaded. */
+    @GET("profile")
+    suspend fun profile(): ProfileDto
+
+    /** Every hard entry including retired ones, newest first. */
+    @GET("profile/history")
+    suspend fun profileHistory(): List<HardEntryDto>
+
+    /** Today's intake against the confirmed nutrient limits. */
+    @GET("profile/limits/today")
+    suspend fun limitsToday(): LimitsTodayDto
+
+    /** Adds a patient-entered entry, or edits one when `replaces_id` is set. */
+    @POST("profile/entries")
+    suspend fun addProfileEntry(
+        @Body body: EntryRequest,
+    ): HardEntryDto
+
+    @POST("profile/entries/{id}/confirm")
+    suspend fun confirmProfileEntry(
+        @Path("id") id: String,
+    ): HardEntryDto
+
+    @POST("profile/entries/{id}/deny")
+    suspend fun denyProfileEntry(
+        @Path("id") id: String,
+    ): HardEntryDto
+
+    @POST("profile/entries/{id}/retire")
+    suspend fun retireProfileEntry(
+        @Path("id") id: String,
+        @Body body: RetireRequest,
+    ): HardEntryDto
 }

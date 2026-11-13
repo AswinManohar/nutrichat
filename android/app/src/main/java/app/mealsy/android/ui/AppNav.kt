@@ -51,6 +51,7 @@ import app.mealsy.android.ui.meals.MealTypeListScreen
 import app.mealsy.android.ui.mymeals.MyMealsScreen
 import app.mealsy.android.ui.onboarding.OnboardingAccountGate
 import app.mealsy.android.ui.onboarding.OnboardingScreen
+import app.mealsy.android.ui.profile.CareProfileScreen
 import app.mealsy.android.ui.profile.ProfileScreen
 import app.mealsy.android.ui.settings.AccountScreen
 import app.mealsy.android.ui.settings.FoodPreferencesScreen
@@ -97,6 +98,7 @@ private const val ROUTE_PROFILE_GOALS = "profile/goals"
 private const val ROUTE_PROFILE_FOOD = "profile/food"
 private const val ROUTE_PROFILE_REMINDERS = "profile/reminders"
 private const val ROUTE_PROFILE_ACCOUNT = "profile/account"
+private const val ROUTE_CARE_PROFILE = "profile/care"
 private const val ROUTE_MEAL_TYPE = "meals"
 private const val ARG_MEAL_TYPE = "mealType"
 private const val ROUTE_MEAL_TYPE_PATTERN = "$ROUTE_MEAL_TYPE/{$ARG_MEAL_TYPE}"
@@ -598,6 +600,7 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                                 onOpenFood = { navController.navigate(ROUTE_PROFILE_FOOD) },
                                 onOpenReminders = { navController.navigate(ROUTE_PROFILE_REMINDERS) },
                                 onOpenAccount = { navController.navigate(ROUTE_PROFILE_ACCOUNT) },
+                                onOpenCare = { navController.navigate(ROUTE_CARE_PROFILE) },
                             )
                         }
                         // The sub-screens share the Profile tab's SettingsViewModel (scoped to
@@ -619,6 +622,12 @@ fun AppNav(navController: NavHostController = rememberNavController()) {
                             RemindersScreen(
                                 onBack = { navController.popBackStack() },
                                 viewModel = profileViewModel(navController, entry),
+                            )
+                        }
+                        composable(ROUTE_CARE_PROFILE) { entry ->
+                            CareProfileScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(ROUTE_PROFILE) }),
                             )
                         }
                         composable(ROUTE_PROFILE_ACCOUNT) { entry ->
