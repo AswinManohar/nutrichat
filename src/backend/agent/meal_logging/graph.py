@@ -9,16 +9,18 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from backend.agent.food.usda import usda_lookup_batch
+from backend.agent.food.usda import USDAResult, usda_lookup_batch
 from backend.agent.meal_logging.decompose import decompose_to_entities
 from backend.agent.meal_logging.meals import (
     FoodEntity,
+    _meal_label,
     apply_correction,
     classify_food_image,
     classify_intent,
     extract_entities,
     format_confirmation_card,
     log_meal,
+    normalize_meal_type,
 )
 from backend.agent.meal_logging.saved_meals import (
     find_saved_meal,
@@ -70,6 +72,13 @@ class AgentState(TypedDict):
 # ---------------------------------------------------------------------------
 
 
+def _last_human(state: AgentState) -> HumanMessage | None:
+    """Return the most recent human message in the thread, if any."""
+    return next(
+        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
+    )
+
+
 async def router_node(state: AgentState) -> dict:
     """No-op — routing is handled by conditional edges."""
     return {}
@@ -113,9 +122,7 @@ async def saved_lookup_node(state: AgentState) -> dict:
     "break into ingredients" result can't leak into the new card (decompose_node
     returns the cache verbatim when present).
     """
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
-    )
+    last_human = _last_human(state)
     text = last_human.content if last_human else ""
     meal = await find_saved_meal(state["user_id"], text)
     if meal is None:
@@ -247,9 +254,7 @@ async def combine_node(state: AgentState) -> dict:
 
 async def extract_node(state: AgentState) -> dict:
     """Parse the last human message into structured FoodEntity list."""
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
-    )
+    last_human = _last_human(state)
     if last_human is None:
         return {"entities": [], "pre_decompose_entities": []}
     try:
@@ -325,8 +330,6 @@ async def usda_batch_node(state: AgentState) -> dict:
 
 async def present_node(state: AgentState) -> dict:
     """Format and send the confirmation card to the user."""
-    from backend.agent.food.usda import USDAResult
-
     if not state["usda_results"]:
         return {
             "messages": [
@@ -347,9 +350,7 @@ async def intent_router_node(state: AgentState) -> dict:
 
 async def apply_correction_node(state: AgentState) -> dict:
     """Apply user correction to the current entity list."""
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
-    )
+    last_human = _last_human(state)
     correction_text = last_human.content if last_human else ""
     result = await asyncio.to_thread(
         apply_correction, state["entities"], correction_text
@@ -364,9 +365,6 @@ async def cancel_node(state: AgentState) -> dict:
 
 async def log_node(state: AgentState) -> dict:
     """Persist confirmed meal to Postgres and Redis."""
-    from backend.agent.food.usda import USDAResult
-    from backend.agent.meal_logging.meals import _meal_label, normalize_meal_type
-
     results = [USDAResult(**r) for r in state["usda_results"]]
     meal_type = normalize_meal_type(state.get("meal_type"))
     saved_meal_id = state.get("saved_meal_id")
@@ -416,9 +414,7 @@ def _route_response(state: AgentState) -> str:
         return "decompose"
     if state.get("action") == "combine":
         return "combine"
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None
-    )
+    last_human = _last_human(state)
     if last_human is None:
         return "cancel"
     intent = classify_intent(last_human.content)
