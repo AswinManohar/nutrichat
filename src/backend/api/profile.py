@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from backend.agent import meal_history
+from backend.agent.coaching import meal_history
 from backend.agent.memory.facts import (
     MAX_FACT_CHARS,
     FactKind,

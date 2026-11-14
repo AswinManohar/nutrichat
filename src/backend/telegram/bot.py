@@ -16,7 +16,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from fastapi import FastAPI, Request, Response
 
-from backend.agent.system_one import warm_up, warn_if_unconfigured
+from backend.agent.routing.system_one import warm_up, warn_if_unconfigured
 from backend.db.checkpointer import pooled_checkpointer
 from backend.observability import configure_observability
 from backend.telegram.handlers import router

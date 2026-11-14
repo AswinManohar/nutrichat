@@ -12,7 +12,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from sqlalchemy import select
 
-from backend.agent import suggest
+from backend.agent.coaching import suggest
 from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.db.models import CheckFailure, MealLog, Recommendation, ReviewItem
@@ -180,7 +180,8 @@ async def test_a_failed_history_read_does_not_stop_the_recipe(
     generator(_RICE)
 
     with patch(
-        "backend.agent.meal_history.load_suggested", side_effect=OSError("down")
+        "backend.agent.coaching.meal_history.load_suggested",
+        side_effect=OSError("down"),
     ):
         result = await run(db_user, [])
 

@@ -7,7 +7,7 @@ import uuid
 
 from sqlalchemy import update
 
-from backend.agent.coaching import CoachingResult
+from backend.agent.coaching.agent import CoachingResult
 from backend.db.models import CoachingResponse, Recommendation
 from backend.db.session import get_session
 

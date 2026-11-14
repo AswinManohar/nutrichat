@@ -195,7 +195,7 @@ def no_turn_database_reads():
     with (
         patch("backend.agent.orchestrator._load_entries", AsyncMock(return_value=[])),
         patch(
-            "backend.agent.coaching.extract_turn",
+            "backend.agent.coaching.agent.extract_turn",
             AsyncMock(return_value=TurnExtraction()),
         ),
     ):

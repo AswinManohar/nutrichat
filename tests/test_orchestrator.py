@@ -8,9 +8,9 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from backend.agent import orchestrator
-from backend.agent.coaching import CoachingResult, QueryParsed
+from backend.agent.coaching.agent import CoachingResult, QueryParsed
 from backend.agent.orchestrator import _IntentResult, _route, handle_message
-from backend.agent.system_one import RoutingJudgment
+from backend.agent.routing.system_one import RoutingJudgment
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn
 

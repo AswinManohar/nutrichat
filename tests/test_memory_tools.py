@@ -13,8 +13,8 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from backend.agent import coaching
-from backend.agent.coaching import generate_response
+from backend.agent.coaching import agent as coaching
+from backend.agent.coaching.agent import generate_response
 from backend.agent.memory.facts import (
     PENDING_ADD,
     PENDING_REMOVAL,

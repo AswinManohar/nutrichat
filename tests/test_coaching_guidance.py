@@ -8,8 +8,8 @@ from pydantic_ai import capture_run_messages
 from pydantic_ai.messages import ModelRequest
 from pydantic_ai.models.test import TestModel
 
-from backend.agent import coaching
-from backend.agent.coaching import (
+from backend.agent.coaching import agent as coaching
+from backend.agent.coaching.agent import (
     Citation,
     CoachingAgent,
     CoachingResult,
@@ -18,7 +18,7 @@ from backend.agent.coaching import (
     format_passages,
     generate_response,
 )
-from backend.agent.context import ContextBundle
+from backend.agent.coaching.context import ContextBundle
 from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
 from backend.guidelines.retrieval import RetrievedChunk
@@ -30,17 +30,17 @@ from tests.profile_helpers import hard_entry
 def _no_user_state():
     with (
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=[],
         ),
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             new_callable=AsyncMock,
             return_value=ContextBundle(today_totals=TodayTotals()),
         ),
         patch(
-            "backend.agent.coaching.get_coaching_history",
+            "backend.agent.coaching.agent.get_coaching_history",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -104,7 +104,7 @@ def test_format_passages_empty_when_no_chunks() -> None:
 def test_extract_citations_returns_empty_without_passages(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="backend.agent.coaching"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.coaching.agent"):
         citations = extract_citations("A bracketed [1] with nothing behind it.", [])
 
     assert citations == []
@@ -115,7 +115,7 @@ def test_extract_citations_maps_valid_numbers_and_drops_invalid(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     text = "Keep added sugar under 10% [1]. Also see [7] and again [1]."
-    with caplog.at_level(logging.WARNING, logger="backend.agent.coaching"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.coaching.agent"):
         citations = extract_citations(text, _CHUNKS)
 
     assert citations == [
@@ -166,21 +166,21 @@ async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None
     )
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=900, protein_g=40, fiber_g=8, n_meals=1),
         ),
         patch(
-            "backend.agent.coaching.get_session",
+            "backend.agent.coaching.agent.get_session",
             return_value=_mock_session_factory(goal),
         ),
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=[
                 hard_entry(profile.DiagnosisValue(condition="prediabetes")),
@@ -188,12 +188,12 @@ async def test_handle_retrieves_when_needs_guidance_and_returns_result() -> None
             ],
         ),
         patch(
-            "backend.agent.coaching.retrieve",
+            "backend.agent.coaching.agent.retrieve",
             new_callable=AsyncMock,
             return_value=_CHUNKS,
         ) as retrieve_mock,
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="Keep added sugar under 10% of calories [1].",
         ) as gen_mock,
@@ -213,20 +213,20 @@ async def test_handle_skips_retrieval_when_needs_guidance_false() -> None:
     parsed = QueryParsed(time_range="today", nutrients=["kcal"])
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=900, n_meals=1),
         ),
         patch(
-            "backend.agent.coaching.retrieve", new_callable=AsyncMock
+            "backend.agent.coaching.agent.retrieve", new_callable=AsyncMock
         ) as retrieve_mock,
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="900 kcal so far.",
         ) as gen_mock,
@@ -242,12 +242,12 @@ async def test_handle_no_micronutrient_data_returns_result_not_str() -> None:
     parsed = QueryParsed(time_range="today", nutrients=["Vitamin B-12"])
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_micronutrients_for_range",
+            "backend.agent.coaching.agent.get_micronutrients_for_range",
             new_callable=AsyncMock,
             return_value={},
         ),
@@ -270,26 +270,26 @@ async def test_handle_answers_from_passages_when_nutrient_has_no_logged_data() -
     )
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_micronutrients_for_range",
+            "backend.agent.coaching.agent.get_micronutrients_for_range",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.get_session",
+            "backend.agent.coaching.agent.get_session",
             return_value=_mock_session_factory(None),
         ),
         patch(
-            "backend.agent.coaching.retrieve",
+            "backend.agent.coaching.agent.retrieve",
             new_callable=AsyncMock,
             return_value=_CHUNKS,
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="Keep sodium under 2,300 mg a day [1].",
         ) as gen_mock,

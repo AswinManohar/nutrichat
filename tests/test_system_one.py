@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from backend.agent import glide, system_one
-from backend.agent.system_one import (
+from backend.agent import glide
+from backend.agent.routing import system_one
+from backend.agent.routing.system_one import (
     ROUTING_QUESTIONS,
     judge_message,
     warm_up,
@@ -135,7 +136,7 @@ async def test_unconfigured_returns_none_without_network(monkeypatch):
 @pytest.mark.parametrize("status", [401, 402, 422, 425, 429, 503])
 async def test_error_statuses_become_unavailable(status, caplog):
     handler = _answering({"detail": "my secret meal text"}, status=status)
-    with caplog.at_level(logging.WARNING, logger="backend.agent.system_one"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.routing.system_one"):
         result = await _judge(handler, "my secret meal text")
 
     assert result == (None, f"http_{status}")
@@ -156,7 +157,7 @@ async def test_transport_errors_become_unavailable(error, reason, caplog):
     def handler(request: httpx.Request) -> httpx.Response:
         raise error
 
-    with caplog.at_level(logging.WARNING, logger="backend.agent.system_one"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.routing.system_one"):
         result = await _judge(handler, "my secret meal text")
 
     assert result == (None, reason)
@@ -199,13 +200,13 @@ async def test_cancellation_propagates():
 
 def test_warn_if_unconfigured(monkeypatch, caplog):
     monkeypatch.delenv("FASTINO_API_KEY", raising=False)
-    with caplog.at_level(logging.WARNING, logger="backend.agent.system_one"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.routing.system_one"):
         warn_if_unconfigured()
     assert caplog.text.count("FASTINO_API_KEY") == 1
 
     caplog.clear()
     monkeypatch.setenv("FASTINO_API_KEY", "test-key")
-    with caplog.at_level(logging.WARNING, logger="backend.agent.system_one"):
+    with caplog.at_level(logging.WARNING, logger="backend.agent.routing.system_one"):
         warn_if_unconfigured()
     assert caplog.text == ""
 
@@ -242,7 +243,7 @@ async def test_warm_up_never_raises_and_sends_no_user_text(caplog):
 
     with (
         patch.object(system_one, "_get_client", return_value=_client(handler)),
-        caplog.at_level(logging.WARNING, logger="backend.agent.system_one"),
+        caplog.at_level(logging.WARNING, logger="backend.agent.routing.system_one"),
     ):
         await warm_up()
 

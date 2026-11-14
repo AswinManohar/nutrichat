@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.agent.system_one import warm_up, warn_if_unconfigured
+from backend.agent.routing.system_one import warm_up, warn_if_unconfigured
 from backend.api import (
     account,
     billing,

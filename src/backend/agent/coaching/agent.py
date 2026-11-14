@@ -23,12 +23,14 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.usage import UsageLimits
 from redis.exceptions import RedisError
 
-from backend.agent.context import (
+from backend.agent.coaching.context import (
     build_context,
     build_restrictions_prompt,
     build_system_prompt,
     load_restrictions,
 )
+from backend.agent.coaching.reply_judge import guard as guard_reply_text
+from backend.agent.coaching.suggest import suggest_meal
 from backend.agent.cost import record_run_cost
 from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.agent.intake.history import (
@@ -40,8 +42,6 @@ from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, gemini_provider
 from backend.agent.memory.curator import TurnExtraction, extract_turn
 from backend.agent.memory.readback import Plan, Readback, commit_readback, plan_readback
 from backend.agent.memory.tools import hard_writes, memory_toolset
-from backend.agent.reply_judge import guard as guard_reply_text
-from backend.agent.suggest import suggest_meal
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today
 from backend.db.models import CheckFailure, UserGoal

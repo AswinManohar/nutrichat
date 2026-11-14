@@ -255,7 +255,7 @@ async def _route_one(text: str) -> tuple[str, str | None, bool | None]:
     route = getattr(orchestrator, "_route", None)
     if route is None:
         return await orchestrator._classify_intent(text, TEST_USER), None, None
-    from backend.agent.system_one import judge_message
+    from backend.agent.routing.system_one import judge_message
 
     # handle_message starts the judgment as a task; mirror that here, or
     # _route sees no judgment and every case goes to Gemini.

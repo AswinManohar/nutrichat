@@ -10,8 +10,8 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, Text
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from backend.agent import coaching
-from backend.agent.coaching import (
+from backend.agent.coaching import agent as coaching
+from backend.agent.coaching.agent import (
     CoachingAgent,
     QueryParsed,
     RestrictionsUnavailableError,
@@ -20,12 +20,12 @@ from backend.agent.coaching import (
     generate_response,
     parse_query,
 )
-from backend.agent.context import ContextBundle, GoalSummary
+from backend.agent.coaching.context import ContextBundle, GoalSummary
+from backend.agent.coaching.suggest import SuggestionResult
 from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.agent.memory.curator import TurnExtraction
 from backend.agent.memory.facts import MemoryFact
 from backend.agent.memory.tools import hard_writes
-from backend.agent.suggest import SuggestionResult
 from backend.config import get_tunables
 from backend.db.models import UserGoal
 from backend.db.redis_client import CoachingTurn, TodayTotals
@@ -42,17 +42,17 @@ def hard_entries():
     entries: list = []
     with (
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=entries,
         ),
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             new_callable=AsyncMock,
             return_value=ContextBundle(today_totals=TodayTotals()),
         ),
         patch(
-            "backend.agent.coaching.get_coaching_history",
+            "backend.agent.coaching.agent.get_coaching_history",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -176,12 +176,12 @@ async def test_fetch_data_today_macro_uses_redis(hard_entries):
 
     with (
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=1240, protein_g=85, fiber_g=10, n_meals=2),
         ) as today_mock,
         patch(
-            "backend.agent.coaching.get_session",
+            "backend.agent.coaching.agent.get_session",
             return_value=_mock_session_factory(goal),
         ),
     ):
@@ -199,7 +199,7 @@ async def test_fetch_data_micronutrient_queries_jsonb():
     )
 
     with patch(
-        "backend.agent.coaching.get_micronutrients_for_range",
+        "backend.agent.coaching.agent.get_micronutrients_for_range",
         new_callable=AsyncMock,
         return_value={"Vitamin B12, total": {"amount": 2.1, "unit": "UG"}},
     ) as micro_mock:
@@ -216,12 +216,12 @@ async def test_fetch_data_redis_failure_falls_back_to_postgres():
 
     with (
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             side_effect=ConnectionError("redis down"),
         ),
         patch(
-            "backend.agent.coaching.get_macros_for_range",
+            "backend.agent.coaching.agent.get_macros_for_range",
             new_callable=AsyncMock,
             return_value={
                 "kcal": 1240.0,
@@ -256,7 +256,7 @@ async def test_fetch_data_include_foods_attaches_breakdown():
 
     with (
         patch(
-            "backend.agent.coaching.get_macros_for_range",
+            "backend.agent.coaching.agent.get_macros_for_range",
             new_callable=AsyncMock,
             return_value={
                 "kcal": 0.0,
@@ -268,7 +268,7 @@ async def test_fetch_data_include_foods_attaches_breakdown():
             },
         ),
         patch(
-            "backend.agent.coaching.get_food_breakdown_for_range",
+            "backend.agent.coaching.agent.get_food_breakdown_for_range",
             new_callable=AsyncMock,
             return_value=breakdown,
         ) as foods_mock,
@@ -296,12 +296,12 @@ async def test_handle_food_only_question_skips_no_data_exit():
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_macros_for_range",
+            "backend.agent.coaching.agent.get_macros_for_range",
             new_callable=AsyncMock,
             return_value={
                 "kcal": 0.0,
@@ -313,12 +313,12 @@ async def test_handle_food_only_question_skips_no_data_exit():
             },
         ),
         patch(
-            "backend.agent.coaching.get_food_breakdown_for_range",
+            "backend.agent.coaching.agent.get_food_breakdown_for_range",
             new_callable=AsyncMock,
             return_value=breakdown,
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="Your most frequent food is the cheeseburger.",
         ) as gen_mock,
@@ -336,17 +336,17 @@ async def test_handle_no_data_delegates_to_generate_response():
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="Nothing logged for today yet.",
         ) as gen_mock,
@@ -364,17 +364,17 @@ async def test_handle_missing_micronutrient_returns_graceful_message():
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_micronutrients_for_range",
+            "backend.agent.coaching.agent.get_micronutrients_for_range",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response", new_callable=AsyncMock
+            "backend.agent.coaching.agent.generate_response", new_callable=AsyncMock
         ) as gen_mock,
     ):
         response = await CoachingAgent().handle("user-1", "how much B12 today?")
@@ -388,17 +388,17 @@ async def test_handle_with_data_calls_generate_response():
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=1240, protein_g=85, fiber_g=10, n_meals=2),
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="You've had 1,240 kcal today.",
         ) as gen_mock,
@@ -430,21 +430,21 @@ async def test_handle_meal_plan_feeds_today_totals_and_goals(hard_entries):
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=1450, protein_g=78, fiber_g=14, n_meals=2),
         ),
         patch(
-            "backend.agent.coaching.get_session",
+            "backend.agent.coaching.agent.get_session",
             return_value=_mock_session_factory(goal),
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="**🥗 Your plan to hit today's goals**\n...",
         ) as gen_mock,
@@ -560,27 +560,27 @@ async def test_handle_threads_context_and_history_into_both_llm_calls():
 
     with (
         patch(
-            "backend.agent.coaching.get_coaching_history",
+            "backend.agent.coaching.agent.get_coaching_history",
             new_callable=AsyncMock,
             return_value=_HISTORY,
         ),
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             new_callable=AsyncMock,
             return_value=ctx,
         ) as ctx_mock,
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ) as parse_mock,
         patch(
-            "backend.agent.coaching.get_macros_for_range",
+            "backend.agent.coaching.agent.get_macros_for_range",
             new_callable=AsyncMock,
             return_value={"protein_g": 120, "n_meals": 3},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="120g yesterday.",
         ) as gen_mock,
@@ -609,27 +609,27 @@ async def test_handle_keeps_restrictions_when_build_context_fails():
 
     with (
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             new_callable=AsyncMock,
             side_effect=RuntimeError("embedding API down"),
         ),
         patch(
-            "backend.agent.coaching.load_restrictions",
+            "backend.agent.coaching.agent.load_restrictions",
             new_callable=AsyncMock,
             return_value=restrictions,
         ),
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=1240, protein_g=85, fiber_g=10, n_meals=2),
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="1,240 kcal today.",
         ) as gen_mock,
@@ -647,22 +647,22 @@ async def test_handle_keeps_restrictions_when_build_context_fails():
 async def test_handle_fails_when_restrictions_cannot_be_loaded():
     with (
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             new_callable=AsyncMock,
             side_effect=RuntimeError("embedding API down"),
         ),
         patch(
-            "backend.agent.coaching.load_restrictions",
+            "backend.agent.coaching.agent.load_restrictions",
             new_callable=AsyncMock,
             side_effect=OSError("postgres down"),
         ),
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
         ),
         patch(
-            "backend.agent.coaching.generate_response", new_callable=AsyncMock
+            "backend.agent.coaching.agent.generate_response", new_callable=AsyncMock
         ) as gen_mock,
         pytest.raises(RestrictionsUnavailableError),
     ):
@@ -691,17 +691,17 @@ async def test_handle_answers_a_meal_request_with_a_checked_recipe(hard_entries)
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.suggest_meal",
+            "backend.agent.coaching.agent.suggest_meal",
             new_callable=AsyncMock,
             return_value=suggestion,
         ) as suggest_mock,
         patch(
-            "backend.agent.coaching.generate_response", new_callable=AsyncMock
+            "backend.agent.coaching.agent.generate_response", new_callable=AsyncMock
         ) as gen_mock,
     ):
         result = await CoachingAgent().handle("user-1", "what should I eat tonight?")
@@ -728,29 +728,31 @@ async def test_handle_loads_the_hard_profile_once_per_turn(hard_entries):
 
     with (
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=hard_entries,
         ) as load_mock,
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching.get_today_totals",
+            "backend.agent.coaching.agent.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=1240),
         ),
         patch(
-            "backend.agent.coaching.get_session",
+            "backend.agent.coaching.agent.get_session",
             return_value=_mock_session_factory(goal),
         ),
         patch(
-            "backend.agent.coaching.retrieve", new_callable=AsyncMock, return_value=[]
+            "backend.agent.coaching.agent.retrieve",
+            new_callable=AsyncMock,
+            return_value=[],
         ) as retrieve_mock,
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ),
@@ -764,16 +766,18 @@ async def test_handle_loads_the_hard_profile_once_per_turn(hard_entries):
 async def test_handle_stops_when_the_profile_cannot_be_loaded():
     with (
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             side_effect=OSError("postgres down"),
         ),
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", suggests_meal=True),
         ),
-        patch("backend.agent.coaching.suggest_meal", new_callable=AsyncMock) as mock,
+        patch(
+            "backend.agent.coaching.agent.suggest_meal", new_callable=AsyncMock
+        ) as mock,
         pytest.raises(RestrictionsUnavailableError),
     ):
         await CoachingAgent().handle("user-1", "dinner idea?")
@@ -822,7 +826,7 @@ async def test_the_reply_guard_replaces_a_reply_that_never_gets_safe():
 
     with (
         coaching._response_agent.override(model=model),
-        patch("backend.agent.coaching.get_session", return_value=factory),
+        patch("backend.agent.coaching.agent.get_session", return_value=factory),
     ):
         text = await generate_response(
             "lunch?", {}, user_id="user-1", entries=_peanut_allergy()
@@ -852,7 +856,7 @@ async def test_the_reply_is_replaced_when_the_guard_cannot_run():
     with (
         coaching._response_agent.override(model=model),
         patch(
-            "backend.agent.coaching.guard_reply_text",
+            "backend.agent.coaching.agent.guard_reply_text",
             new_callable=AsyncMock,
             side_effect=FoodDbUnavailable("missing"),
         ),
@@ -890,17 +894,17 @@ def _meal_patches(extraction: TurnExtraction | None):
     )
     return (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", suggests_meal=True),
         ),
         patch(
-            "backend.agent.coaching._extract_facts",
+            "backend.agent.coaching.agent._extract_facts",
             new_callable=AsyncMock,
             return_value=extraction,
         ),
         patch(
-            "backend.agent.coaching.suggest_meal",
+            "backend.agent.coaching.agent.suggest_meal",
             new_callable=AsyncMock,
             return_value=suggestion,
         ),
@@ -996,22 +1000,22 @@ async def test_an_accepted_fact_is_in_the_reply_prompt_and_guard(hard_entries):
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=parsed,
         ),
         patch(
-            "backend.agent.coaching._extract_facts",
+            "backend.agent.coaching.agent._extract_facts",
             new_callable=AsyncMock,
             return_value=_extraction(accepted=[accepted]),
         ),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ) as gen_mock,
@@ -1051,15 +1055,15 @@ async def test_fact_extraction_runs_alongside_the_query_parse(hard_entries):
         return TurnExtraction()
 
     with (
-        patch("backend.agent.coaching.parse_query", parse),
-        patch("backend.agent.coaching.extract_turn", extract),
+        patch("backend.agent.coaching.agent.parse_query", parse),
+        patch("backend.agent.coaching.agent.extract_turn", extract),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ),
@@ -1074,22 +1078,22 @@ async def test_every_user_gets_the_full_in_turn_extraction(
 ):
     with (
         patch(
-            "backend.agent.coaching.extract_turn",
+            "backend.agent.coaching.agent.extract_turn",
             new_callable=AsyncMock,
             return_value=TurnExtraction(),
         ) as extract_mock,
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
         ),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ),
@@ -1112,23 +1116,23 @@ async def test_a_pending_fact_the_remember_tool_adds_is_read_back_from_the_templ
 
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
         ),
         patch(
-            "backend.agent.coaching._extract_facts",
+            "backend.agent.coaching.agent._extract_facts",
             new_callable=AsyncMock,
             return_value=TurnExtraction(),
         ),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
-        patch("backend.agent.coaching.generate_response", reply),
+        patch("backend.agent.coaching.agent.generate_response", reply),
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=[pending],
         ),
@@ -1150,27 +1154,27 @@ async def test_a_pending_fact_the_remember_tool_adds_is_read_back_from_the_templ
 async def test_a_turn_without_a_tool_write_does_not_reread_the_profile(hard_entries):
     with (
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
         ),
         patch(
-            "backend.agent.coaching._extract_facts",
+            "backend.agent.coaching.agent._extract_facts",
             new_callable=AsyncMock,
             return_value=TurnExtraction(),
         ),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ),
         patch(
-            "backend.agent.coaching.load_hard_profile",
+            "backend.agent.coaching.agent.load_hard_profile",
             new_callable=AsyncMock,
             return_value=[],
         ) as load_mock,
@@ -1185,22 +1189,22 @@ async def test_a_failed_extraction_does_not_fail_the_turn_and_leaves_celery_to_r
 ):
     with (
         patch(
-            "backend.agent.coaching.extract_turn",
+            "backend.agent.coaching.agent.extract_turn",
             new_callable=AsyncMock,
             side_effect=RuntimeError("gemini 429"),
         ),
         patch(
-            "backend.agent.coaching.parse_query",
+            "backend.agent.coaching.agent.parse_query",
             new_callable=AsyncMock,
             return_value=QueryParsed(time_range="today", nutrients=["kcal"]),
         ),
         patch(
-            "backend.agent.coaching.fetch_data",
+            "backend.agent.coaching.agent.fetch_data",
             new_callable=AsyncMock,
             return_value={},
         ),
         patch(
-            "backend.agent.coaching.generate_response",
+            "backend.agent.coaching.agent.generate_response",
             new_callable=AsyncMock,
             return_value="ok",
         ),

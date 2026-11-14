@@ -387,7 +387,7 @@ def test_resolved_flag_reset_on_fresh_meal_logging_turn() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from backend.agent.orchestrator import handle_message
-    from backend.agent.system_one import RoutingJudgment
+    from backend.agent.routing.system_one import RoutingJudgment
 
     def _log_judgment() -> RoutingJudgment:
         return RoutingJudgment(

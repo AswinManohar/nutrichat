@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.coaching import CoachingResult, QueryParsed
+from backend.agent.coaching.agent import CoachingResult, QueryParsed
 from backend.quota import UPGRADE_MSG
 
 
@@ -66,7 +66,7 @@ async def test_routing_never_spends_a_credit(judgment_result):
     """Spec FR-005: no routing path touches usage credits."""
     from backend.agent import orchestrator
     from backend.agent.orchestrator import _IntentResult, _route
-    from backend.agent.system_one import RoutingJudgment
+    from backend.agent.routing.system_one import RoutingJudgment
 
     judgment = {
         "confident": RoutingJudgment(
@@ -111,7 +111,7 @@ async def test_routing_never_spends_a_credit(judgment_result):
 async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
     """A question is never turned into a meal card by the user's balance."""
     from backend.agent.orchestrator import handle_message
-    from backend.agent.system_one import RoutingJudgment
+    from backend.agent.routing.system_one import RoutingJudgment
 
     graph = MagicMock()
     graph.aget_state = AsyncMock(return_value=MagicMock(next=()))
@@ -257,7 +257,7 @@ async def test_meal_logging_paused_resume_skips_quota():
 
 
 async def test_coaching_replies_with_the_unavailable_text_without_a_profile():
-    from backend.agent.coaching import RestrictionsUnavailableError
+    from backend.agent.coaching.agent import RestrictionsUnavailableError
     from backend.agent.orchestrator import _handle_coaching
     from backend.config import get_tunables
 

@@ -22,7 +22,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy import text as sa_text
 
-from backend.agent.coaching import CoachingAgent
+from backend.agent.coaching.agent import CoachingAgent
 from backend.db.session import dispose_engine, get_session
 
 SYNTHETIC_USER_IDS = [

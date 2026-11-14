@@ -38,8 +38,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.agent.coaching import _context_prompt, generate_response
-from backend.agent.context import ContextBundle, GoalSummary, build_system_prompt
+from backend.agent.coaching.agent import _context_prompt, generate_response
+from backend.agent.coaching.context import (
+    ContextBundle,
+    GoalSummary,
+    build_system_prompt,
+)
 from backend.agent.memory.facts import ApplyOutcome, MemoryFact, MemoryOp, OpResult
 from backend.db.models import UserGoal
 from backend.db.redis_client import TodayTotals
@@ -318,11 +322,11 @@ async def _run_once() -> int:
     recorder = _Recorder()
     with (
         patch(
-            "backend.agent.coaching.build_context",
+            "backend.agent.coaching.agent.build_context",
             AsyncMock(side_effect=RuntimeError("simulated context failure")),
         ),
-        patch("backend.agent.context.get_session", recorder.session_factory),
-        patch("backend.agent.context.load_profile", recorder.load_profile),
+        patch("backend.agent.coaching.context.get_session", recorder.session_factory),
+        patch("backend.agent.coaching.context.load_profile", recorder.load_profile),
         # One patch covers context.py and the memory tools: both reach it
         # through the safety.profile module.
         patch("backend.safety.profile.load_hard_profile", recorder.load_hard_profile),

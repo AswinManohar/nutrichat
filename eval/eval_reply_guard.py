@@ -33,7 +33,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.agent import reply_judge
+from backend.agent.coaching import reply_judge
 from backend.agent.food import usda_local
 from backend.safety import profile, reply_guard
 from backend.safety.matching import term_rules

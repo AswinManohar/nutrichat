@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisError
 
-from backend.agent.context import fetch_staples
+from backend.agent.coaching.context import fetch_staples
 from backend.agent.intake.history import get_staple_foods
 from backend.db.redis_client import get_cached_staples, set_cached_staples
 
@@ -92,7 +92,7 @@ async def testfetch_staples_uses_cache_and_skips_database_on_hit() -> None:
     client = _FakeRedis()
     with (
         patch("backend.db.redis_client.get_redis", return_value=client),
-        patch("backend.agent.context.get_staple_foods", query),
+        patch("backend.agent.coaching.context.get_staple_foods", query),
     ):
         first = await fetch_staples("user-1")
         second = await fetch_staples("user-1")
@@ -105,7 +105,7 @@ async def testfetch_staples_caches_an_empty_result() -> None:
     query = AsyncMock(return_value={})
     with (
         patch("backend.db.redis_client.get_redis", return_value=_FakeRedis()),
-        patch("backend.agent.context.get_staple_foods", query),
+        patch("backend.agent.coaching.context.get_staple_foods", query),
     ):
         await fetch_staples("user-1")
         await fetch_staples("user-1")
@@ -117,7 +117,7 @@ async def testfetch_staples_degrades_to_empty_when_everything_is_down() -> None:
     with (
         patch("backend.db.redis_client.get_redis", return_value=_BrokenRedis()),
         patch(
-            "backend.agent.context.get_staple_foods",
+            "backend.agent.coaching.context.get_staple_foods",
             AsyncMock(side_effect=RuntimeError("db down")),
         ),
     ):

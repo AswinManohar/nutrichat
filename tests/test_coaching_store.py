@@ -6,8 +6,8 @@ from uuid import UUID
 
 import pytest
 
-from backend.agent.coaching import Citation, CoachingResult, QueryParsed
-from backend.agent.coaching_store import save_coaching_response
+from backend.agent.coaching.agent import Citation, CoachingResult, QueryParsed
+from backend.agent.coaching.store import save_coaching_response
 from backend.db.models import CoachingResponse
 from backend.guidelines.retrieval import RetrievedChunk
 
@@ -45,7 +45,7 @@ async def test_save_writes_row_and_returns_its_id() -> None:
     session.commit = AsyncMock()
 
     with patch(
-        "backend.agent.coaching_store.get_session",
+        "backend.agent.coaching.store.get_session",
         return_value=_session_factory(session),
     ):
         response_id = await save_coaching_response(
@@ -99,10 +99,10 @@ async def test_save_returns_none_and_logs_when_commit_fails(
 
     with (
         patch(
-            "backend.agent.coaching_store.get_session",
+            "backend.agent.coaching.store.get_session",
             return_value=_session_factory(session),
         ),
-        caplog.at_level(logging.ERROR, logger="backend.agent.coaching_store"),
+        caplog.at_level(logging.ERROR, logger="backend.agent.coaching.store"),
     ):
         response_id = await save_coaching_response(
             user_id="user-1",
@@ -131,7 +131,7 @@ async def test_save_stores_routing_record_beside_gemini_parse() -> None:
     }
 
     with patch(
-        "backend.agent.coaching_store.get_session",
+        "backend.agent.coaching.store.get_session",
         return_value=_session_factory(session),
     ):
         await save_coaching_response(
@@ -155,7 +155,7 @@ async def test_save_without_routing_has_no_routing_key() -> None:
     session.commit = AsyncMock()
 
     with patch(
-        "backend.agent.coaching_store.get_session",
+        "backend.agent.coaching.store.get_session",
         return_value=_session_factory(session),
     ):
         await save_coaching_response(
@@ -173,7 +173,7 @@ async def test_save_without_routing_has_no_routing_key() -> None:
 async def test_link_recommendation_sets_the_response_id(db_user: str) -> None:
     import uuid
 
-    from backend.agent.coaching_store import link_recommendation
+    from backend.agent.coaching.store import link_recommendation
     from backend.db.models import Recommendation
     from backend.db.session import get_session
 
@@ -208,11 +208,11 @@ async def test_link_recommendation_sets_the_response_id(db_user: str) -> None:
 
 
 async def test_link_recommendation_logs_a_failure_and_does_not_raise(caplog) -> None:
-    from backend.agent.coaching_store import link_recommendation
+    from backend.agent.coaching.store import link_recommendation
 
     with (
         patch(
-            "backend.agent.coaching_store.get_session",
+            "backend.agent.coaching.store.get_session",
             side_effect=OSError("postgres down"),
         ),
         caplog.at_level(logging.ERROR),
@@ -224,7 +224,7 @@ async def test_link_recommendation_logs_a_failure_and_does_not_raise(caplog) -> 
 
 async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
     from backend.agent import orchestrator
-    from backend.agent.coaching import QueryParsed
+    from backend.agent.coaching.agent import QueryParsed
 
     result = CoachingResult(
         message="Recipe",
@@ -255,7 +255,7 @@ async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
 
 async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
     from backend.agent import orchestrator
-    from backend.agent.coaching import QueryParsed
+    from backend.agent.coaching.agent import QueryParsed
     from tests.recipe_helpers import make_recipe
 
     note = "Kept this free of peanut because of your peanut allergy."
@@ -284,7 +284,7 @@ async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
 
 async def test_a_reply_without_a_recipe_has_no_constraint_note() -> None:
     from backend.agent import orchestrator
-    from backend.agent.coaching import QueryParsed
+    from backend.agent.coaching.agent import QueryParsed
 
     result = CoachingResult(
         message="120 g today.", parsed=QueryParsed(time_range="today")

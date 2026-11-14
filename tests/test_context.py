@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.context import (
+from backend.agent.coaching.context import (
     ContextBundle,
     GoalSummary,
     WeeklyPattern,
@@ -16,7 +16,7 @@ from backend.agent.context import (
     build_system_prompt,
     load_restrictions,
 )
-from backend.agent.meal_history import (
+from backend.agent.coaching.meal_history import (
     EatenMeal,
     SuggestedMeal,
     build_history_block,
@@ -35,10 +35,12 @@ def soft_context() -> Iterator[None]:
     """No soft profile or staples unless a test patches them in."""
     with (
         patch(
-            "backend.agent.context.load_profile",
+            "backend.agent.coaching.context.load_profile",
             AsyncMock(return_value=[]),
         ),
-        patch("backend.agent.context.fetch_staples", AsyncMock(return_value={})),
+        patch(
+            "backend.agent.coaching.context.fetch_staples", AsyncMock(return_value={})
+        ),
     ):
         yield
 
@@ -48,7 +50,7 @@ def hard_entries() -> Iterator[list[HardEntry]]:
     """The user's live hard profile; empty unless a test fills it."""
     entries: list[HardEntry] = []
     with patch(
-        "backend.agent.context.hard_profile.load_hard_profile",
+        "backend.agent.coaching.context.hard_profile.load_hard_profile",
         AsyncMock(return_value=entries),
     ):
         yield entries
@@ -81,11 +83,13 @@ async def test_build_context_no_goals_no_history():
 
     with (
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
-        patch("backend.agent.context.get_session", return_value=session_factory),
+        patch(
+            "backend.agent.coaching.context.get_session", return_value=session_factory
+        ),
     ):
         ctx = await build_context("user-1")
 
@@ -116,11 +120,13 @@ async def test_build_context_populates_goals_and_weekly():
 
     with (
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(kcal=640, protein_g=17, fiber_g=2, n_meals=1),
         ),
-        patch("backend.agent.context.get_session", return_value=session_factory),
+        patch(
+            "backend.agent.coaching.context.get_session", return_value=session_factory
+        ),
     ):
         ctx = await build_context("user-1")
 
@@ -200,18 +206,20 @@ async def test_build_context_loads_the_whole_profile_for_every_user():
 
     with (
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
-        patch("backend.agent.context.get_session", return_value=session_factory),
         patch(
-            "backend.agent.context.load_profile",
+            "backend.agent.coaching.context.get_session", return_value=session_factory
+        ),
+        patch(
+            "backend.agent.coaching.context.load_profile",
             new_callable=AsyncMock,
             return_value=facts,
         ) as load,
         patch(
-            "backend.agent.context.fetch_staples",
+            "backend.agent.coaching.context.fetch_staples",
             new_callable=AsyncMock,
             return_value={"breakfast": ["Oats"]},
         ),
@@ -258,11 +266,13 @@ async def test_hard_block_is_built_without_any_soft_profile(hard_entries):
     ]
     with (
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
+        patch(
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
     ):
         ctx = await build_context("user-1")
 
@@ -277,9 +287,11 @@ async def test_hard_block_is_built_without_any_soft_profile(hard_entries):
 async def test_pending_entries_are_listed_as_not_applied(hard_entries):
     hard_entries += [hard_entry(profile.DietSettingValue(setting="vegan"), "pending")]
     with (
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
+        patch(
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
@@ -295,12 +307,14 @@ async def test_pending_entries_are_listed_as_not_applied(hard_entries):
 async def test_build_context_fails_when_the_hard_profile_cannot_load():
     with (
         patch(
-            "backend.agent.context.hard_profile.load_hard_profile",
+            "backend.agent.coaching.context.hard_profile.load_hard_profile",
             AsyncMock(side_effect=OSError("postgres down")),
         ),
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
+        patch(
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
@@ -319,9 +333,11 @@ async def test_build_context_fails_when_the_profile_is_too_large(hard_entries):
     tunables.safety.hard_profile_max_entries = cap
     with (
         patch("backend.safety.profile.get_tunables", return_value=tunables),
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
+        patch(
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
@@ -346,9 +362,10 @@ async def test_load_restrictions_reads_goal_row_and_hard_profile(hard_entries):
     load = AsyncMock()
     with (
         patch(
-            "backend.agent.context.get_session", return_value=_mock_session(goal=goal)
+            "backend.agent.coaching.context.get_session",
+            return_value=_mock_session(goal=goal),
         ),
-        patch("backend.agent.context.load_profile", load),
+        patch("backend.agent.coaching.context.load_profile", load),
     ):
         ctx = await load_restrictions("user-1")
 
@@ -364,9 +381,11 @@ async def test_load_restrictions_reads_goal_row_and_hard_profile(hard_entries):
 
 async def test_load_restrictions_fails_when_the_hard_profile_cannot_load():
     with (
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
         patch(
-            "backend.agent.context.hard_profile.load_hard_profile",
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
+        patch(
+            "backend.agent.coaching.context.hard_profile.load_hard_profile",
             AsyncMock(side_effect=OSError("postgres down")),
         ),
         pytest.raises(OSError),
@@ -434,10 +453,12 @@ def test_history_block_is_empty_without_history() -> None:
 async def test_history_block_is_omitted_and_logged_when_the_read_fails(caplog) -> None:
     with (
         patch(
-            "backend.agent.meal_history.load_suggested",
+            "backend.agent.coaching.meal_history.load_suggested",
             AsyncMock(side_effect=OSError("postgres down")),
         ),
-        patch("backend.agent.meal_history.load_eaten", AsyncMock(return_value=[])),
+        patch(
+            "backend.agent.coaching.meal_history.load_eaten", AsyncMock(return_value=[])
+        ),
         caplog.at_level(logging.WARNING),
     ):
         block = await build_history_block("user-1")
@@ -449,8 +470,10 @@ async def test_history_block_is_omitted_and_logged_when_the_read_fails(caplog) -
 async def test_history_block_reads_the_configured_window() -> None:
     suggested = AsyncMock(return_value=[_suggested("Soup")])
     with (
-        patch("backend.agent.meal_history.load_suggested", suggested),
-        patch("backend.agent.meal_history.load_eaten", AsyncMock(return_value=[])),
+        patch("backend.agent.coaching.meal_history.load_suggested", suggested),
+        patch(
+            "backend.agent.coaching.meal_history.load_eaten", AsyncMock(return_value=[])
+        ),
     ):
         block = await build_history_block("user-1")
 
@@ -464,13 +487,15 @@ async def test_build_context_omits_the_soft_profile_when_it_cannot_be_read(
     hard_entries.append(hard_entry(profile.AllergyValue(allergen_group="peanut")))
     with (
         patch(
-            "backend.agent.context.get_today_totals",
+            "backend.agent.coaching.context.get_today_totals",
             new_callable=AsyncMock,
             return_value=TodayTotals(),
         ),
-        patch("backend.agent.context.get_session", return_value=_mock_session()),
         patch(
-            "backend.agent.context.load_profile",
+            "backend.agent.coaching.context.get_session", return_value=_mock_session()
+        ),
+        patch(
+            "backend.agent.coaching.context.load_profile",
             AsyncMock(side_effect=OSError("postgres down")),
         ),
         caplog.at_level(logging.WARNING),

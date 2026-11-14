@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.agent.coaching import CoachingAgent
+from backend.agent.coaching.agent import CoachingAgent
 
 USER_ID = "5c3f42d5-4955-4ca6-acd2-3dcb0a043b6d"
 

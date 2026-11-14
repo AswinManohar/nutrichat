@@ -15,14 +15,14 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from opentelemetry import trace
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.coaching import CoachingAgent, RestrictionsUnavailableError
-from backend.agent.coaching_store import link_recommendation, save_coaching_response
+from backend.agent.coaching.agent import CoachingAgent, RestrictionsUnavailableError
+from backend.agent.coaching.store import link_recommendation, save_coaching_response
 from backend.agent.food.usda import NULLABLE_MACROS
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, make_llm
 from backend.agent.meal_logging.graph import build_graph
 from backend.agent.memory import readback
 from backend.agent.memory.curator import TurnExtraction, extract_turn
-from backend.agent.system_one import RoutingJudgment, judge_message
+from backend.agent.routing.system_one import RoutingJudgment, judge_message
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
 from backend.quota import UPGRADE_MSG, consume_llm_credit

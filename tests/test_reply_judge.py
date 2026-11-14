@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent import reply_judge
+from backend.agent.coaching import reply_judge
 from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.agent.glide import GlideResponse, GlideUnavailable
 from backend.config import get_tunables
