@@ -141,10 +141,16 @@ class MealLogResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 _RETRIES = _TUNABLES.models.meal_logging_retries
-_extraction_llm = make_llm(retries=_RETRIES).with_structured_output(ExtractionResult)
-_classifier_llm = make_llm(retries=_RETRIES).with_structured_output(ImageClassification)
-_correction_llm = make_llm(retries=_RETRIES).with_structured_output(ExtractionResult)
-_log_reply_llm = make_llm(retries=_RETRIES)
+_extraction_llm = make_llm(
+    retries=_RETRIES, operation="extract_entities"
+).with_structured_output(ExtractionResult)
+_classifier_llm = make_llm(
+    retries=_RETRIES, operation="classify_food_image"
+).with_structured_output(ImageClassification)
+_correction_llm = make_llm(
+    retries=_RETRIES, operation="apply_correction"
+).with_structured_output(ExtractionResult)
+_log_reply_llm = make_llm(retries=_RETRIES, operation="log_reply")
 
 _EXTRACTION_SYSTEM = _TUNABLES.prompts.extraction_system
 _CLASSIFY_SYSTEM = _TUNABLES.prompts.image_classify_system

@@ -7,6 +7,7 @@ from google.genai import types as genai_types
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from pydantic_ai.providers.google import GoogleProvider
 
+from backend.agent.cost import LlmCostCallback
 from backend.config import get_tunables
 
 _TUNABLES = get_tunables()
@@ -22,6 +23,7 @@ def make_llm(
     *,
     thinking_budget: int | None = None,
     retries: int | None = None,
+    operation: str | None = None,
     **kwargs: object,
 ) -> ChatGoogleGenerativeAI:
     """Construct a Gemini chat model with the project's API key.
@@ -33,6 +35,8 @@ def make_llm(
             extraction-tier caller skips the ~1-3s dynamic-thinking phase on
             these structured-output tasks. Pass an explicit value to override.
         retries: Retries after a failed call; None keeps the client default.
+        operation: Call-site label. When given, each call is priced and
+            recorded as an ``llm_cost`` record under that operation.
         **kwargs: Extra constructor args, e.g. max_output_tokens.
 
     Returns:
@@ -46,6 +50,11 @@ def make_llm(
         thinking_budget=thinking_budget,
         # The client counts attempts, the first call included.
         **({"max_retries": retries + 1} if retries is not None else {}),
+        **(
+            {"callbacks": [LlmCostCallback(model, operation)]}
+            if operation is not None
+            else {}
+        ),
         **kwargs,
     )
 

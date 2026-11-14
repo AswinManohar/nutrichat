@@ -165,7 +165,9 @@ class CuratorOutput(HardCuratorOutput):
     ops: list[CuratorOp] = Field(default_factory=list, max_length=_MAX_DRAFTS)
 
 
-_curator_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(CuratorOutput)
+_curator_llm = make_llm(
+    FLASH_LITE_MODEL, operation="memory_curator"
+).with_structured_output(CuratorOutput)
 
 
 def label_hard(entries: list[HardEntry]) -> list[tuple[str, HardEntry]]:
@@ -543,7 +545,9 @@ class LogHabitsOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-_log_habits_llm = make_llm(FLASH_LITE_MODEL).with_structured_output(LogHabitsOutput)
+_log_habits_llm = make_llm(
+    FLASH_LITE_MODEL, operation="memory_log_habits"
+).with_structured_output(LogHabitsOutput)
 
 
 def build_log_habits_input(

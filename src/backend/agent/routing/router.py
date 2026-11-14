@@ -62,6 +62,7 @@ class RouteDecision(BaseModel):
 # structured JSON — too low a limit truncates output (see tunables.yaml).
 _intent_llm = make_llm(
     FLASH_LITE_MODEL,
+    operation="intent_second_opinion",
     max_output_tokens=_TUNABLES.token_limits.intent_classifier_max_output,
 ).with_structured_output(_IntentResult)
 

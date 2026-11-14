@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend import tracing
+from backend.agent.cost import record_run_cost
 from backend.agent.food import usda_local
 from backend.agent.food.usda_match import (
     _ENERGY_KEYS,
@@ -495,6 +496,7 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
         logger.error("LLM nutrition estimate failed for %s: %s", food_name, exc)
         tracing.record_handled(exc, stage="estimate_nutrition")
         return _miss_result(entity_like)
+    record_run_cost(run, FLASH_LITE_MODEL, operation="estimate_nutrition")
 
     # Store per-100g so qty scaling works the same as USDA cache rows.
     scale_to_100 = 100.0 / qty_g if qty_g else 0.0

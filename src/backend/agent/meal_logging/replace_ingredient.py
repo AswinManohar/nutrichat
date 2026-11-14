@@ -80,7 +80,9 @@ class ResolveUnavailable(Exception):
     """Raised when the LLM call failed or timed out; the client may retry."""
 
 
-_replace_llm = make_llm().with_structured_output(ReplacementResult)
+_replace_llm = make_llm(operation="replace_ingredient").with_structured_output(
+    ReplacementResult
+)
 
 
 def _build_message(

@@ -55,7 +55,7 @@ class DecomposeResult(BaseModel):
 
 
 _decompose_llm = make_llm(
-    retries=_TUNABLES.models.meal_logging_retries
+    retries=_TUNABLES.models.meal_logging_retries, operation="decompose"
 ).with_structured_output(DecomposeResult)
 _DECOMPOSE_SYSTEM = _TUNABLES.prompts.decompose_system
 
