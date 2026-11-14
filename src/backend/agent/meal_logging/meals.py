@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text as sa_text
 
+from backend import tracing
 from backend.agent.food.usda import sum_known
 from backend.agent.llm import make_llm
 from backend.config import get_tunables
@@ -417,7 +418,9 @@ async def _generate_log_reply(
             ]
         )
         return result.content.strip()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — a canned reply replaces the LLM one
+        logger.warning("log reply generation failed: %s", type(exc).__name__)
+        tracing.record_handled(exc, stage="log_reply")
         return (
             f"{label} logged. "
             f"{totals['kcal']:.0f} kcal, "

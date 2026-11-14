@@ -14,13 +14,17 @@ composite-dish decomposition in the meal graph — one engine, two triggers.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend import tracing
 from backend.agent.llm import make_llm
 from backend.agent.meal_logging.meals import FoodEntity
 from backend.config import get_tunables
+
+logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
 
@@ -74,7 +78,9 @@ def decompose_to_entities(description: str) -> list[FoodEntity]:
                 {"role": "user", "content": description},
             ]
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — caller keeps the dish as one item
+        logger.warning("dish decomposition failed: %s", type(exc).__name__)
+        tracing.record_handled(exc, stage="decompose")
         return []
     entities: list[FoodEntity] = []
     for ing in result.ingredients:

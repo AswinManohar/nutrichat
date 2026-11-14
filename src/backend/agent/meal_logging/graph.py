@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from typing import Annotated
 
@@ -9,6 +10,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from backend import tracing
 from backend.agent.food.usda import USDAResult, usda_lookup_batch
 from backend.agent.meal_logging.decompose import decompose_to_entities
 from backend.agent.meal_logging.meals import (
@@ -28,6 +30,8 @@ from backend.agent.meal_logging.saved_meals import (
 )
 from backend.config import get_tunables
 from backend.safety.meal_check import gate_log
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # State
@@ -261,7 +265,9 @@ async def extract_node(state: AgentState) -> dict:
         result = await asyncio.to_thread(extract_entities, last_human.content)
         # Filter out any entity the LLM returned with qty_g <= 0 (can't be logged)
         valid = [e for e in result.entities if e.qty_g > 0]
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — extraction failure means no entities
+        logger.warning("entity extraction failed: %s", type(exc).__name__)
+        tracing.record_handled(exc, stage="extract_entities")
         valid = []
     return {
         "entities": [e.model_dump() for e in valid],

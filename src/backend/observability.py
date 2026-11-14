@@ -45,6 +45,26 @@ def _scrub_extra(match: logfire.ScrubMatch) -> str | None:
     return None
 
 
+def _attach_backend_logs() -> None:
+    """Send the ``backend`` logger's records to Logfire, under the open span.
+
+    Only the ``backend`` logger: the root logger also carries third-party
+    libraries, whose volume would swamp the trace. Logfire logs through its
+    own ``logfire`` logger, which is outside this tree, so there is no loop.
+    A ``backend`` logger with no level of its own is set to INFO, otherwise
+    the effective level (root's WARNING) would drop every INFO record before
+    the handler sees it.
+    """
+    backend_logger = logging.getLogger("backend")
+    if any(
+        isinstance(h, logfire.LogfireLoggingHandler) for h in backend_logger.handlers
+    ):
+        return
+    backend_logger.addHandler(logfire.LogfireLoggingHandler(level=logging.INFO))
+    if backend_logger.level == logging.NOTSET:
+        backend_logger.setLevel(logging.INFO)
+
+
 def configure_observability(app: FastAPI | None = None) -> None:
     """Configure Logfire tracing and instrumentation for this process.
 
@@ -78,6 +98,7 @@ def configure_observability(app: FastAPI | None = None) -> None:
         send_to_logfire="if-token-present",
         scrubbing=logfire.ScrubbingOptions(callback=_scrub_extra),
     )
+    _attach_backend_logs()
 
     if app is not None:
         try:

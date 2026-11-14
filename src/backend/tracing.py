@@ -61,6 +61,23 @@ def stage_span(name: str, **attributes: Any) -> logfire.LogfireSpan:
     return logfire.span(name, **attributes)
 
 
+def record_handled(exc: BaseException, *, stage: str) -> None:
+    """Record a failure that was caught and replaced by a fallback.
+
+    Adds the exception as an event on the open span and tags the span with
+    ``handled_error=<stage>``, without marking the span as failed: the turn
+    went on. Only a span that is still recording is touched.
+
+    Args:
+        exc: The exception that was caught.
+        stage: Short name of the step that fell back, for example
+            ``extract_entities``.
+    """
+    span = trace.get_current_span()
+    span.record_exception(exc)
+    span.set_attribute("handled_error", stage)
+
+
 def set_current_attribute(key: str, value: str | int | float | bool) -> None:
     """Set an attribute on whichever span is open right now.
 

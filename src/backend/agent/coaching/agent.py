@@ -650,6 +650,7 @@ async def _context_prompt(user_id: str, entries: list[HardEntry]) -> str:
                 exc,
             )
             span.set_attribute("fallback", "restrictions_only")
+            tracing.record_handled(exc, stage="build_context")
         try:
             return build_restrictions_prompt(await load_restrictions(user_id, entries))
         except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn

@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend import tracing
 from backend.agent.meal_logging.decompose import normalize_meal_name
 from backend.db.models import UserMeal
 from backend.db.session import get_session
@@ -75,6 +76,7 @@ async def find_saved_meal(user_id: str, text: str) -> UserMeal | None:
             meals = result.scalars().all()
     except (SQLAlchemyError, OSError) as exc:
         logger.warning("Saved-meal lookup failed for %s: %s", user_id, exc)
+        tracing.record_handled(exc, stage="find_saved_meal")
         return None
     return _best_saved_match(text, meals)
 

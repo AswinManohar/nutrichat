@@ -493,6 +493,7 @@ async def estimate_nutrition_llm(food_name: str, qty_g: float) -> USDAResult:
         estimate = run.output
     except Exception as exc:  # noqa: BLE001 — any LLM/provider failure -> miss
         logger.error("LLM nutrition estimate failed for %s: %s", food_name, exc)
+        tracing.record_handled(exc, stage="estimate_nutrition")
         return _miss_result(entity_like)
 
     # Store per-100g so qty scaling works the same as USDA cache rows.

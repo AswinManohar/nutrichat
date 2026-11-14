@@ -385,6 +385,7 @@ async def _record_turn(
         await append_coaching_turns(user_id, turns)
     except Exception as exc:  # noqa: BLE001 — see docstring
         logger.warning("coaching history append failed for %s: %s", user_id, exc)
+        tracing.record_handled(exc, stage="record_turn")
 
 
 def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) -> None:
