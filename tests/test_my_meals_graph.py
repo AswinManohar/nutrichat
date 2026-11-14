@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import HumanMessage
 
+from backend.agent.meal_logging.card import saved_meal_payload
 from backend.agent.meal_logging.graph import (
     _route_after_saved_lookup,
     _route_input,
@@ -16,8 +17,8 @@ from backend.agent.meal_logging.graph import (
     log_node,
     saved_lookup_node,
 )
+from backend.agent.meal_logging.handler import get_pending_card
 from backend.agent.meal_logging.saved_meals import saved_meal_to_results
-from backend.agent.orchestrator import _saved_meal_payload, get_pending_card
 
 # The save paths are tested here; tests/test_meal_check.py tests the check.
 pytestmark = pytest.mark.usefixtures("no_meal_warnings")
@@ -132,7 +133,7 @@ async def test_saved_lookup_node_miss_clears_saved_meal(monkeypatch) -> None:
 
 
 def test_saved_meal_payload_hit_and_miss() -> None:
-    assert _saved_meal_payload(
+    assert saved_meal_payload(
         {
             "saved_meal_id": "sm1",
             "saved_meal_name": "my usual",
@@ -143,9 +144,9 @@ def test_saved_meal_payload_hit_and_miss() -> None:
         "name": "my usual",
         "updated_at": "2026-10-01T12:00:00+00:00",
     }
-    assert _saved_meal_payload({"saved_meal_id": None}) is None
+    assert saved_meal_payload({"saved_meal_id": None}) is None
     # Thread checkpointed before the field existed.
-    assert _saved_meal_payload({}) is None
+    assert saved_meal_payload({}) is None
 
 
 def _pending_checkpoint(values: dict) -> tuple[MagicMock, AsyncMock]:
@@ -166,14 +167,18 @@ async def test_pending_card_includes_saved_meal(monkeypatch) -> None:
             "saved_meal_updated_at": "ts",
         }
     )
-    monkeypatch.setattr("backend.agent.orchestrator._graph_for", lambda cp: graph)
+    monkeypatch.setattr(
+        "backend.agent.meal_logging.handler.graph_for", lambda cp: graph
+    )
     out = await get_pending_card("u1", "t1", object())
     assert out["saved_meal"] == {"id": "sm1", "name": "my usual", "updated_at": "ts"}
 
 
 async def test_pending_card_saved_meal_null_for_old_thread(monkeypatch) -> None:
     graph = _pending_checkpoint({"messages": [], "usda_results": []})
-    monkeypatch.setattr("backend.agent.orchestrator._graph_for", lambda cp: graph)
+    monkeypatch.setattr(
+        "backend.agent.meal_logging.handler.graph_for", lambda cp: graph
+    )
     out = await get_pending_card("u1", "t1", object())
     assert out["saved_meal"] is None
 

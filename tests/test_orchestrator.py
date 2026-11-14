@@ -189,7 +189,7 @@ async def test_handle_message_paused_graph_always_resumes_meal_logging():
 
     llm = _gemini("coaching")
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch.object(router, "_intent_llm", llm),
         patch(
@@ -211,7 +211,7 @@ async def test_handle_message_image_always_meal_logging():
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message", new=_judged("coaching")
         ) as judge_mock,
@@ -219,7 +219,7 @@ async def test_handle_message_image_always_meal_logging():
             "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
     ):
@@ -237,7 +237,7 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
             "backend.agent.orchestrator.consume_llm_credit",
@@ -272,10 +272,10 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("log_meal")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
@@ -293,10 +293,10 @@ async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("log_meal")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
     ):
@@ -308,7 +308,9 @@ async def test_handle_message_enqueues_fact_extraction(_mock_fact_task):
 async def test_handle_message_skips_fact_extraction_for_card_actions(_mock_fact_task):
     for user_input, action in (("break it down", "decompose"), ("   ", None)):
         graph = _mock_graph(is_paused=True)
-        with patch("backend.agent.orchestrator.build_graph", return_value=graph):
+        with patch(
+            "backend.agent.meal_logging.handler.build_graph", return_value=graph
+        ):
             await handle_message("user-1", user_input, "thread-1", None, action=action)
 
     _mock_fact_task.delay.assert_not_called()
@@ -347,7 +349,7 @@ async def test_coaching_turn_is_recorded_verbatim(_mock_history_store):
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
             "backend.agent.orchestrator.consume_llm_credit",
@@ -379,10 +381,10 @@ async def test_paused_logging_turn_is_recorded_as_card_summary(_mock_history_sto
     )
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("log_meal")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
     ):
@@ -410,7 +412,7 @@ async def test_completed_logging_turn_is_recorded_with_reply(_mock_history_store
         "meal_id": "m-1",
     }
 
-    with patch("backend.agent.orchestrator.build_graph", return_value=graph):
+    with patch("backend.agent.meal_logging.handler.build_graph", return_value=graph):
         await handle_message("user-1", "confirm", "thread-1", None)
 
     _, turns = _mock_history_store.await_args.args
@@ -426,9 +428,9 @@ async def test_image_turn_without_text_is_recorded_as_photo(_mock_history_store)
     graph = _mock_graph(is_paused=False, still_paused=True, usda_results=[_EGG_ITEM])
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
     ):
@@ -443,7 +445,7 @@ async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store)
     graph = _mock_graph(is_paused=False)
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
             "backend.agent.orchestrator.consume_llm_credit",
@@ -470,7 +472,7 @@ async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store)
 async def test_mixed_message_reply_ends_with_offer_to_log():
     graph = _mock_graph(is_paused=False)
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message",
             new=_judged("coaching", reports_food=0.95),
@@ -499,7 +501,7 @@ async def test_mixed_message_reply_ends_with_offer_to_log():
 async def test_pure_question_reply_has_no_offer():
     graph = _mock_graph(is_paused=False)
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message",
             new=_judged("coaching", reports_food=0.1),
@@ -525,7 +527,7 @@ async def test_pure_question_reply_has_no_offer():
 async def test_coaching_turn_passes_routing_record_to_store():
     graph = _mock_graph(is_paused=False)
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message",
             new=_judged("coaching", reports_food=0.02, needs_guidance=0.9),
@@ -567,7 +569,7 @@ async def test_coaching_turn_passes_routing_record_to_store():
 async def test_unavailable_judgment_stores_no_routing_record():
     graph = _mock_graph(is_paused=False)
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message",
             new=AsyncMock(return_value=(None, "not_configured")),
@@ -610,7 +612,7 @@ async def test_pending_card_cancels_the_in_flight_judgment():
         finished.set()
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=never_answers),
     ):
         result = await asyncio.wait_for(
@@ -627,13 +629,13 @@ async def test_pending_card_cancels_the_in_flight_judgment():
 async def test_blank_text_starts_no_judgment():
     graph = _mock_graph(is_paused=False)
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message", new=_judged("coaching")
         ) as judge_mock,
         patch.object(router, "_intent_llm", _gemini("log_meal")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.meal_logging.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
     ):
@@ -656,7 +658,7 @@ async def test_judgment_overlaps_the_checkpoint_read():
         return _judgment("coaching"), None
 
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=slow_judgment),
         patch(
             "backend.agent.orchestrator._handle_coaching",

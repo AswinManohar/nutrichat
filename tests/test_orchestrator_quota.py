@@ -100,6 +100,7 @@ async def test_routing_never_spends_a_credit(judgment_result):
     credit = AsyncMock(return_value=False)
     with (
         patch("backend.agent.orchestrator.consume_llm_credit", new=credit),
+        patch("backend.agent.meal_logging.handler.consume_llm_credit", new=credit),
         patch.object(router, "_intent_llm", llm),
     ):
         decision = await route_message("is rice ok?", asyncio.ensure_future(finished()))
@@ -127,7 +128,7 @@ async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
         input_tokens=700,
     )
     with (
-        patch("backend.agent.orchestrator.build_graph", return_value=graph),
+        patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch(
             "backend.agent.orchestrator.judge_message",
             new=AsyncMock(return_value=(judgment, None)),
@@ -208,16 +209,16 @@ async def test_coaching_omits_response_id_when_persistence_fails():
 
 
 async def test_meal_logging_over_quota_returns_upgrade_message():
-    from backend.agent.orchestrator import _handle_meal_logging
+    from backend.agent.meal_logging.handler import handle_meal_logging
 
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock()
 
     with patch(
-        "backend.agent.orchestrator.consume_llm_credit",
+        "backend.agent.meal_logging.handler.consume_llm_credit",
         new=AsyncMock(return_value=False),
     ):
-        result = await _handle_meal_logging(
+        result = await handle_meal_logging(
             graph=mock_graph,
             config={"configurable": {"thread_id": "t1", "user_id": "user-1"}},
             user_input="I had rice",
@@ -233,7 +234,7 @@ async def test_meal_logging_over_quota_returns_upgrade_message():
 
 
 async def test_meal_logging_paused_resume_skips_quota():
-    from backend.agent.orchestrator import _handle_meal_logging
+    from backend.agent.meal_logging.handler import handle_meal_logging
 
     mock_state = MagicMock()
     mock_state.next = []
@@ -243,8 +244,10 @@ async def test_meal_logging_paused_resume_skips_quota():
     mock_graph.aupdate_state = AsyncMock()
 
     mock_credit = AsyncMock(return_value=False)
-    with patch("backend.agent.orchestrator.consume_llm_credit", new=mock_credit):
-        await _handle_meal_logging(
+    with patch(
+        "backend.agent.meal_logging.handler.consume_llm_credit", new=mock_credit
+    ):
+        await handle_meal_logging(
             graph=mock_graph,
             config={"configurable": {"thread_id": "t1", "user_id": "user-1"}},
             user_input="yes confirm",

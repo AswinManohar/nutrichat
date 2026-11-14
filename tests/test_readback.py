@@ -249,7 +249,7 @@ def turn(writes) -> Iterator[SimpleNamespace]:
         return_value=SimpleNamespace(next=(), values={}, created_at=None)
     )
     with (
-        patch.object(orchestrator, "_graph_for", return_value=graph),
+        patch.object(orchestrator, "graph_for", return_value=graph),
         patch.object(orchestrator, "_load_entries", new=AsyncMock()) as entries,
         patch.object(
             orchestrator,
@@ -281,7 +281,7 @@ def turn(writes) -> Iterator[SimpleNamespace]:
         ) as coaching,
         patch.object(
             orchestrator,
-            "_handle_meal_logging",
+            "handle_meal_logging",
             new=AsyncMock(
                 return_value={
                     "status": "success",

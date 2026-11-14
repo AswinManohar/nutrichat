@@ -18,8 +18,8 @@ from backend.agent.food.usda import (
     _result_from_local,
     sum_known,
 )
+from backend.agent.meal_logging.card import serialize_items
 from backend.agent.meal_logging.meals import _is_junk, format_confirmation_card
-from backend.agent.orchestrator import _serialize_items
 from backend.api.my_meals import _scaled_result
 from backend.scripts import build_usda_db as build
 from backend.scripts.build_usda_db import (
@@ -119,7 +119,7 @@ def test_json_wire_is_legacy_safe_but_names_unknowns() -> None:
 
 
 def test_serialize_items_marks_unknowns() -> None:
-    item = _serialize_items([_result().model_dump()])[0]
+    item = serialize_items([_result().model_dump()])[0]
     assert item["fiber_g"] == 0.0
     assert item["sugar_g"] is None
     assert "fiber_g" in item["unknown_nutrients"]

@@ -215,4 +215,4 @@ def no_meal_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
         return meal_check.MealCheck(warnings=[], needs_ack=False)
 
     monkeypatch.setattr(meal_check, "check_meal_for", _clean)
-    monkeypatch.setattr("backend.agent.orchestrator.check_meal_for", _clean)
+    monkeypatch.setattr("backend.agent.meal_logging.card.check_meal_for", _clean)

@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.agent import orchestrator
+from backend.agent.meal_logging import card
 from backend.agent.meal_logging.meals import MealLogResult
 from backend.api import meals
 from backend.safety import meal_check, profile
@@ -288,12 +288,12 @@ async def test_the_card_carries_the_check_and_its_text(monkeypatch) -> None:
     async def _check(user_id, items):
         return check_meal(items, [allergy()], {}, load_tables())
 
-    monkeypatch.setattr(orchestrator, "check_meal_for", _check)
+    monkeypatch.setattr(card, "check_meal_for", _check)
     values = {"usda_results": [_BODY["items"][0] | {"input_phrase": "peanuts"}]}
-    monkeypatch.setattr(orchestrator, "_serialize_items", lambda r: r)
-    monkeypatch.setattr(orchestrator, "_saved_meal_payload", lambda v: None)
+    monkeypatch.setattr(card, "serialize_items", lambda r: r)
+    monkeypatch.setattr(card, "saved_meal_payload", lambda v: None)
 
-    fields = await orchestrator._card_fields("u1", values, "Here's your card.")
+    fields = await card.card_fields("u1", values, "Here's your card.")
 
     assert fields["safety"]["needs_ack"] is True
     assert fields["message"].startswith("Here's your card.\n\nBefore you log this:")

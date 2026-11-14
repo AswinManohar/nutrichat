@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.agent import orchestrator
+from backend.agent.meal_logging import handler
 from backend.api import meals as meals_api
 
 # Note: asyncio_mode = "auto" (pyproject.toml) runs async def tests without
@@ -23,8 +23,8 @@ pytestmark = pytest.mark.usefixtures("no_meal_warnings")
 async def test_not_paused_returns_false():
     graph = AsyncMock()
     graph.aget_state.return_value = SimpleNamespace(next=(), values={})
-    with patch.object(orchestrator, "_graph_for", return_value=graph):
-        out = await orchestrator.get_pending_card("u1", "t1", checkpointer=object())
+    with patch.object(handler, "graph_for", return_value=graph):
+        out = await handler.get_pending_card("u1", "t1", checkpointer=object())
     assert out == {"paused": False}
 
 
@@ -63,8 +63,8 @@ async def test_paused_returns_card():
         next=("intent_router",),
         values={"usda_results": [fake_result], "messages": [Msg()]},
     )
-    with patch.object(orchestrator, "_graph_for", return_value=graph):
-        out = await orchestrator.get_pending_card("u1", "t1", checkpointer=object())
+    with patch.object(handler, "graph_for", return_value=graph):
+        out = await handler.get_pending_card("u1", "t1", checkpointer=object())
     assert out["paused"] is True
     assert out["items"][0]["food_name"] == "banana, raw"
     assert out["message"] == "Here's your card"

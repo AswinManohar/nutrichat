@@ -414,13 +414,13 @@ def test_resolved_flag_reset_on_fresh_meal_logging_turn() -> None:
             }
         )
         with (
-            patch("backend.agent.orchestrator.build_graph", return_value=graph),
+            patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
             patch(
                 "backend.agent.orchestrator.judge_message",
                 AsyncMock(return_value=(_log_judgment(), None)),
             ),
             patch(
-                "backend.agent.orchestrator.consume_llm_credit",
+                "backend.agent.meal_logging.handler.consume_llm_credit",
                 AsyncMock(return_value=True),
             ),
         ):
