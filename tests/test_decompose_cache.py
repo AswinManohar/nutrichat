@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from backend.agent.graph import decompose_node
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.graph import decompose_node
+from backend.agent.meal_logging.meals import FoodEntity
 
 
 def _entity(name: str, qty: float = 200) -> dict:
@@ -37,7 +37,7 @@ async def test_cache_miss_calls_llm_and_warms_cache() -> None:
     """First decompose: LLM is called, result stored in decomposed_entities."""
     state = _state([_entity("chicken biryani")])
     with patch(
-        "backend.agent.graph.decompose_to_entities",
+        "backend.agent.meal_logging.graph.decompose_to_entities",
         return_value=[_RICE, _CHICKEN],
     ) as mock_decompose:
         out = await decompose_node(state)
@@ -59,7 +59,9 @@ async def test_cache_hit_skips_llm() -> None:
     cached = [_RICE.model_dump(), _CHICKEN.model_dump()]
     state = _state([_entity("chicken biryani")], decomposed_entities=cached)
 
-    with patch("backend.agent.graph.decompose_to_entities") as mock_decompose:
+    with patch(
+        "backend.agent.meal_logging.graph.decompose_to_entities"
+    ) as mock_decompose:
         out = await decompose_node(state)
 
     mock_decompose.assert_not_called()
@@ -73,7 +75,9 @@ async def test_cache_hit_skips_llm() -> None:
 async def test_failed_decompose_does_not_populate_cache() -> None:
     """If LLM returns empty, decomposed_entities stays unset (next press retries)."""
     state = _state([_entity("mystery stew")])
-    with patch("backend.agent.graph.decompose_to_entities", return_value=[]):
+    with patch(
+        "backend.agent.meal_logging.graph.decompose_to_entities", return_value=[]
+    ):
         out = await decompose_node(state)
 
     assert out == {"action": None}
@@ -82,6 +86,6 @@ async def test_failed_decompose_does_not_populate_cache() -> None:
 
 async def test_decomposed_entities_in_agent_state_type() -> None:
     """AgentState TypedDict must include decomposed_entities key."""
-    from backend.agent.graph import AgentState
+    from backend.agent.meal_logging.graph import AgentState
 
     assert "decomposed_entities" in AgentState.__annotations__

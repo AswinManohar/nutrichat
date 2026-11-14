@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 from backend.agent.food.usda import USDAResult
-from backend.agent.graph import usda_batch_node
+from backend.agent.meal_logging.graph import usda_batch_node
 
 
 def _result(food_name: str) -> USDAResult:
@@ -48,7 +48,7 @@ async def test_source_dish_propagated_onto_results() -> None:
         ]
     }
     fake = AsyncMock(return_value=[_result("rice white cooked"), _result("apple raw")])
-    with patch("backend.agent.graph.usda_lookup_batch", fake):
+    with patch("backend.agent.meal_logging.graph.usda_lookup_batch", fake):
         out = await usda_batch_node(state)
 
     results = out["usda_results"]
@@ -79,7 +79,7 @@ async def test_input_phrase_always_set_even_when_substring_of_match() -> None:
         ]
     }
     fake = AsyncMock(return_value=[_result("Bread, egg, toasted"), _result("Apple")])
-    with patch("backend.agent.graph.usda_lookup_batch", fake):
+    with patch("backend.agent.meal_logging.graph.usda_lookup_batch", fake):
         out = await usda_batch_node(state)
 
     assert out["usda_results"][0]["input_phrase"] == "toast"

@@ -18,8 +18,8 @@ from backend.agent.food.usda import (
     _result_from_local,
     sum_known,
 )
+from backend.agent.meal_logging.meals import _is_junk, format_confirmation_card
 from backend.agent.orchestrator import _serialize_items
-from backend.agent.tools.meals import _is_junk, format_confirmation_card
 from backend.api.my_meals import _scaled_result
 from backend.scripts import build_usda_db as build
 from backend.scripts.build_usda_db import (

@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import HumanMessage
 
-from backend.agent.graph import (
+from backend.agent.meal_logging.graph import (
     _route_after_saved_lookup,
     _route_input,
     _route_response,
     log_node,
     saved_lookup_node,
 )
+from backend.agent.meal_logging.saved_meals import saved_meal_to_results
 from backend.agent.orchestrator import _saved_meal_payload, get_pending_card
-from backend.agent.tools.saved_meals import saved_meal_to_results
 
 # The save paths are tested here; tests/test_meal_check.py tests the check.
 pytestmark = pytest.mark.usefixtures("no_meal_warnings")
@@ -64,7 +64,9 @@ async def test_saved_lookup_node_uses_last_human_message(monkeypatch) -> None:
         captured["text"] = text
         return None
 
-    monkeypatch.setattr("backend.agent.graph.find_saved_meal", fake_find_saved_meal)
+    monkeypatch.setattr(
+        "backend.agent.meal_logging.graph.find_saved_meal", fake_find_saved_meal
+    )
     state = {
         "user_id": "u1",
         "messages": [
@@ -101,7 +103,9 @@ async def test_saved_lookup_node_hit_clears_decomposed(monkeypatch) -> None:
     async def fake_find_saved_meal(user_id: str, text: str):
         return meal
 
-    monkeypatch.setattr("backend.agent.graph.find_saved_meal", fake_find_saved_meal)
+    monkeypatch.setattr(
+        "backend.agent.meal_logging.graph.find_saved_meal", fake_find_saved_meal
+    )
     state = {"user_id": "u1", "messages": [HumanMessage(content="my usual")]}
     out = await saved_lookup_node(state)
     assert out["from_saved"] is True
@@ -114,7 +118,7 @@ async def test_saved_lookup_node_hit_clears_decomposed(monkeypatch) -> None:
 
 async def test_saved_lookup_node_miss_clears_saved_meal(monkeypatch) -> None:
     monkeypatch.setattr(
-        "backend.agent.graph.find_saved_meal", AsyncMock(return_value=None)
+        "backend.agent.meal_logging.graph.find_saved_meal", AsyncMock(return_value=None)
     )
     state = {
         "user_id": "u1",
@@ -186,7 +190,7 @@ def _log_state(**extra) -> dict:
 
 async def test_log_node_stamps_saved_meal_flag_and_label(monkeypatch) -> None:
     logged = AsyncMock(return_value=SimpleNamespace(meal_id="m1", message="ok"))
-    monkeypatch.setattr("backend.agent.graph.log_meal", logged)
+    monkeypatch.setattr("backend.agent.meal_logging.graph.log_meal", logged)
     await log_node(_log_state(saved_meal_id="sm1", saved_meal_name="My Usual"))
     assert logged.call_args.kwargs["label"] == "My Usual"
     assert logged.call_args.kwargs["extra_flags"] == {"saved_meal_id": "sm1"}
@@ -194,7 +198,7 @@ async def test_log_node_stamps_saved_meal_flag_and_label(monkeypatch) -> None:
 
 async def test_log_node_without_saved_meal_has_no_flag(monkeypatch) -> None:
     logged = AsyncMock(return_value=SimpleNamespace(meal_id="m1", message="ok"))
-    monkeypatch.setattr("backend.agent.graph.log_meal", logged)
+    monkeypatch.setattr("backend.agent.meal_logging.graph.log_meal", logged)
     await log_node(_log_state())
     assert logged.call_args.kwargs["label"] == "rice"
     assert logged.call_args.kwargs["extra_flags"] is None

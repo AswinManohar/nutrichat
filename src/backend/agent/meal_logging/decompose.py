@@ -19,7 +19,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent.llm import make_llm
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.meals import FoodEntity
 from backend.config import get_tunables
 
 _TUNABLES = get_tunables()

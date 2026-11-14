@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.agent.food.usda import USDAResult, usda_lookup_batch
 from backend.agent.llm import make_llm
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.meals import FoodEntity
 from backend.config import get_tunables
 from backend.quota import consume_llm_credit
 

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from backend.agent.tools.saved_meals import _best_saved_match, _contiguous_sublist
+from backend.agent.meal_logging.saved_meals import (
+    _best_saved_match,
+    _contiguous_sublist,
+)
 
 
 def _meal(name_normalized: str) -> SimpleNamespace:

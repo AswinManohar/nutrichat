@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.agent.tools.decompose import (
+from backend.agent.meal_logging.decompose import (
     DecomposedIngredient,
     DecomposeResult,
     decompose_to_entities,
@@ -39,7 +39,7 @@ def test_decompose_builds_entities_and_filters_junk() -> None:
             DecomposedIngredient(food_name="water", qty_g=0, unit="g"),
         ]
     )
-    with patch("backend.agent.tools.decompose._decompose_llm", mock_llm):
+    with patch("backend.agent.meal_logging.decompose._decompose_llm", mock_llm):
         out = decompose_to_entities("chicken biryani")
 
     assert [(e.food_name, e.qty_g, e.unit) for e in out] == [
@@ -53,6 +53,6 @@ def test_decompose_builds_entities_and_filters_junk() -> None:
 def test_decompose_returns_empty_on_llm_error() -> None:
     mock_llm = MagicMock()
     mock_llm.invoke.side_effect = RuntimeError("LLM down")
-    with patch("backend.agent.tools.decompose._decompose_llm", mock_llm):
+    with patch("backend.agent.meal_logging.decompose._decompose_llm", mock_llm):
         out = decompose_to_entities("chicken biryani")
     assert out == []

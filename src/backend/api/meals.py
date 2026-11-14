@@ -12,14 +12,14 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.intake.history import get_category_breakdown
-from backend.agent.orchestrator import get_pending_card, handle_message, resolve_pending
-from backend.agent.tools.meals import (
+from backend.agent.meal_logging.meals import (
     MEAL_CATEGORIES,
     MealLogResult,
     _meal_label,
     soft_delete_meal,
 )
-from backend.agent.tools.meals import log_meal as persist_meal
+from backend.agent.meal_logging.meals import log_meal as persist_meal
+from backend.agent.orchestrator import get_pending_card, handle_message, resolve_pending
 from backend.api.my_meals import _scaled_result, safety_flags
 from backend.auth.supabase import get_current_user_id
 from backend.core.nutrition_day import (

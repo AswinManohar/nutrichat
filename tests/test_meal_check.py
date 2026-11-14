@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.agent import orchestrator
-from backend.agent.tools.meals import MealLogResult
+from backend.agent.meal_logging.meals import MealLogResult
 from backend.api import meals
 from backend.safety import meal_check, profile
 from backend.safety.meal_check import MealCheck, MealNeedsAck, check_meal, gate_log

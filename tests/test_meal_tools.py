@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.agent.food.usda import NutrientValue, USDAResult
-from backend.agent.tools.meals import (
+from backend.agent.meal_logging.meals import (
     FoodEntity,
     ImageClassification,
     classify_intent,
@@ -165,12 +165,12 @@ async def test_log_meal_returns_result():
 
     with (
         patch(
-            "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
+            "backend.agent.meal_logging.meals._insert_meal_log", new_callable=AsyncMock
         ) as mock_insert,
-        patch("backend.agent.tools.meals.embed_meal_summary"),
+        patch("backend.agent.meal_logging.meals.embed_meal_summary"),
     ):
         mock_insert.return_value = "test-meal-uuid"
-        from backend.agent.tools.meals import log_meal
+        from backend.agent.meal_logging.meals import log_meal
 
         result = await log_meal("user1", results, "breakfast")
 
@@ -199,12 +199,12 @@ async def test_log_meal_excludes_misses():
 
     with (
         patch(
-            "backend.agent.tools.meals._insert_meal_log", new_callable=AsyncMock
+            "backend.agent.meal_logging.meals._insert_meal_log", new_callable=AsyncMock
         ) as mock_insert,
-        patch("backend.agent.tools.meals.embed_meal_summary"),
+        patch("backend.agent.meal_logging.meals.embed_meal_summary"),
     ):
         mock_insert.return_value = "uuid-2"
-        from backend.agent.tools.meals import log_meal
+        from backend.agent.meal_logging.meals import log_meal
 
         result = await log_meal("user1", [miss, good], "lunch")
 

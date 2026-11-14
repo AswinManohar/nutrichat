@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
-from backend.agent.tools.meals import MealLogResult
+from backend.agent.meal_logging.meals import MealLogResult
 from backend.api import meals
 
 # The save paths are tested here; tests/test_meal_check.py tests the check.

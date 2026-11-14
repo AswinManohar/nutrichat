@@ -26,7 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.tools.meals import classify_intent
+from backend.agent.meal_logging.meals import classify_intent
 from backend.config import get_tunables
 from backend.safety import profile
 from backend.safety.profile import HardEntry, label_for

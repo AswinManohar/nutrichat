@@ -166,7 +166,7 @@ async def score_entity_recall(sem: asyncio.Semaphore) -> float:
     Calls extract_entities directly (pre-decomposition) because this measures
     extraction, not what the graph later does with the result.
     """
-    from backend.agent.tools.meals import extract_entities
+    from backend.agent.meal_logging.meals import extract_entities
 
     cases = load_cases("entity_recall")
 
@@ -189,7 +189,7 @@ async def score_entity_recall(sem: asyncio.Semaphore) -> float:
 
 async def score_quantity(sem: asyncio.Semaphore) -> float:
     """Percent of foods whose counted grams scale linearly from the singular phrase."""
-    from backend.agent.tools.meals import extract_entities
+    from backend.agent.meal_logging.meals import extract_entities
 
     cases = load_cases("quantity")
 
@@ -344,7 +344,7 @@ async def score_decomposition(sem: asyncio.Semaphore) -> dict[str, float]:
     delta against them.
     """
     from backend.agent.food.usda import usda_lookup_batch
-    from backend.agent.tools.decompose import decompose_to_entities
+    from backend.agent.meal_logging.decompose import decompose_to_entities
 
     cases = load_cases("decomposition")
 
@@ -378,7 +378,7 @@ async def score_ingredient_replace(
         (pass %, details) where details holds failing case ids and the
         non-gating fdc match rate (over cases that list `expect_fdc_ids`).
     """
-    from backend.agent.tools.replace_ingredient import (
+    from backend.agent.meal_logging.replace_ingredient import (
         RephraseRequired,
         ReplacingIngredient,
         resolve_ingredient,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.agent.tools.meals import (
+from backend.agent.meal_logging.meals import (
     MEAL_CATEGORIES,
     _meal_type_from_hour,
     normalize_meal_type,

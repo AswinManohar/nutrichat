@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.agent.graph import _route_response, combine_node
+from backend.agent.meal_logging.graph import _route_response, combine_node
 
 
 def _ing(name: str, dish: str | None, qty: float = 100) -> dict:

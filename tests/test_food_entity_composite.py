@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.meals import FoodEntity
 
 
 def test_defaults_are_atomic_and_unsourced() -> None:

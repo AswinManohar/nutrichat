@@ -12,7 +12,7 @@ from backend.agent.food.usda import (
     usda_lookup_batch,
 )
 from backend.agent.food.usda_local import LocalMatch
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.meals import FoodEntity
 from backend.config import get_tunables
 
 

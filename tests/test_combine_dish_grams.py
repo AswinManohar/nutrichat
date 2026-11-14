@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from backend.agent.graph import (
+from backend.agent.meal_logging.graph import (
     auto_decompose_node,
     combine_node,
     decompose_node,
 )
-from backend.agent.tools.meals import FoodEntity
+from backend.agent.meal_logging.meals import FoodEntity
 from backend.config import get_tunables
 
 
@@ -39,8 +39,14 @@ def _sub() -> list[FoodEntity]:
 async def test_auto_decompose_then_combine_keeps_dish_grams() -> None:
     state = {"entities": [_entity("mutton biryani", 350), _entity("apple", 100, False)]}
     with (
-        patch("backend.agent.graph._auto_decompose_enabled", return_value=True),
-        patch("backend.agent.graph.decompose_to_entities", return_value=_sub()),
+        patch(
+            "backend.agent.meal_logging.graph._auto_decompose_enabled",
+            return_value=True,
+        ),
+        patch(
+            "backend.agent.meal_logging.graph.decompose_to_entities",
+            return_value=_sub(),
+        ),
     ):
         out = await auto_decompose_node(state)
     assert out["pre_decompose_entities"][0]["qty_g"] == 350
@@ -62,7 +68,10 @@ async def test_manual_decompose_then_combine_round_trip_repeats() -> None:
         "messages": [],
     }
     for _ in range(2):  # toggle break/combine repeatedly
-        with patch("backend.agent.graph.decompose_to_entities", return_value=_sub()):
+        with patch(
+            "backend.agent.meal_logging.graph.decompose_to_entities",
+            return_value=_sub(),
+        ):
             state.update(await decompose_node(state))
         assert all(e["source_dish"] == "mutton biryani" for e in state["entities"])
         assert len(state["entities"]) == 2
@@ -105,8 +114,11 @@ def test_flag_off_by_default_on_android_branch() -> None:
 async def test_flag_off_composite_arrives_as_one_item() -> None:
     state = {"entities": [_entity("mutton biryani", 350)]}
     with (
-        patch("backend.agent.graph._auto_decompose_enabled", return_value=False),
-        patch("backend.agent.graph.decompose_to_entities") as deco,
+        patch(
+            "backend.agent.meal_logging.graph._auto_decompose_enabled",
+            return_value=False,
+        ),
+        patch("backend.agent.meal_logging.graph.decompose_to_entities") as deco,
     ):
         out = await auto_decompose_node(state)
     deco.assert_not_called()

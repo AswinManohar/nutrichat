@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.agent.tools.decompose import normalize_meal_name
+from backend.agent.meal_logging.decompose import normalize_meal_name
 from backend.db.models import UserMeal
 from backend.db.session import get_session
 

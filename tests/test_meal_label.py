@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.agent.tools.meals import _meal_label
+from backend.agent.meal_logging.meals import _meal_label
 
 
 def _e(food_name: str, dish: str | None) -> dict:
