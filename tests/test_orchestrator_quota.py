@@ -64,8 +64,8 @@ async def test_coaching_under_quota_calls_agent():
 )
 async def test_routing_never_spends_a_credit(judgment_result):
     """Spec FR-005: no routing path touches usage credits."""
-    from backend.agent import orchestrator
-    from backend.agent.orchestrator import _IntentResult, _route
+    from backend.agent.routing import router
+    from backend.agent.routing.router import _IntentResult, route_message
     from backend.agent.routing.system_one import RoutingJudgment
 
     judgment = {
@@ -100,9 +100,9 @@ async def test_routing_never_spends_a_credit(judgment_result):
     credit = AsyncMock(return_value=False)
     with (
         patch("backend.agent.orchestrator.consume_llm_credit", new=credit),
-        patch.object(orchestrator, "_intent_llm", llm),
+        patch.object(router, "_intent_llm", llm),
     ):
-        decision = await _route("is rice ok?", asyncio.ensure_future(finished()))
+        decision = await route_message("is rice ok?", asyncio.ensure_future(finished()))
 
     credit.assert_not_called()
     assert decision.intent == "coaching"

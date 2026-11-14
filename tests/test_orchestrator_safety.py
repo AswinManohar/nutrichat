@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.agent import orchestrator
+from backend.agent.routing.router import RouteDecision
 from backend.safety import escalation, red_flags, tables
 
 FLAGGED = "I stopped my insulin yesterday and I am tired"
@@ -165,11 +166,13 @@ async def test_ordinary_message_takes_the_normal_path(paths, store) -> None:
         "paused": False,
         "items": [],
     }
-    decision = orchestrator.RouteDecision(
+    decision = RouteDecision(
         intent="log_meal", path="judgment", judgment=None, offer_to_log=False
     )
 
-    with patch.object(orchestrator, "_route", new=AsyncMock(return_value=decision)):
+    with patch.object(
+        orchestrator, "route_message", new=AsyncMock(return_value=decision)
+    ):
         result = await _handle("2 eggs and toast")
 
     assert "kind" not in result

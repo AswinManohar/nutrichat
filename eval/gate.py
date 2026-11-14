@@ -242,7 +242,7 @@ async def _route_one(text: str) -> tuple[str, str | None, bool | None]:
     """Route one message with whichever router the checked-out code has.
 
     The legacy router (`_classify_intent`, keyword lists + Gemini) returns only
-    the intent; the judgment router (`_route`) also says which path decided and
+    the intent; the judgment router (`route_message`) also says which path decided and
     whether the coaching reply would carry the offer to log. Supporting both is
     what lets one gate measure the legacy baseline and the replacement against
     the same cases.
@@ -250,15 +250,18 @@ async def _route_one(text: str) -> tuple[str, str | None, bool | None]:
     Returns:
         (intent, path or None, offer_to_log or None).
     """
-    from backend.agent import orchestrator
-
-    route = getattr(orchestrator, "_route", None)
+    try:
+        from backend.agent.routing.router import route_message as route
+    except ImportError:
+        route = None
     if route is None:
+        from backend.agent import orchestrator
+
         return await orchestrator._classify_intent(text, TEST_USER), None, None
     from backend.agent.routing.system_one import judge_message
 
     # handle_message starts the judgment as a task; mirror that here, or
-    # _route sees no judgment and every case goes to Gemini.
+    # route_message sees no judgment and every case goes to Gemini.
     decision = await route(text, asyncio.ensure_future(judge_message(text)))
     return decision.intent, decision.path, decision.offer_to_log
 

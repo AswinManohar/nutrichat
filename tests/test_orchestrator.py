@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage
 
-from backend.agent import orchestrator
 from backend.agent.coaching.agent import CoachingResult, QueryParsed
-from backend.agent.orchestrator import _IntentResult, _route, handle_message
+from backend.agent.orchestrator import handle_message
+from backend.agent.routing import router
+from backend.agent.routing.router import _IntentResult, route_message
 from backend.agent.routing.system_one import RoutingJudgment
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn
@@ -70,7 +71,7 @@ def _judged(*args, **kwargs) -> AsyncMock:
 
 
 def _task(result):
-    """A finished judgment task, as handle_message would pass to _route."""
+    """A finished judgment task, as handle_message would pass to route_message."""
     return asyncio.ensure_future(AsyncMock(return_value=result)())
 
 
@@ -81,15 +82,17 @@ def _gemini(intent: str) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# _route: the decision rule (spec FR-004 to FR-006, data-model.md)
+# route_message: the decision rule (spec FR-004 to FR-006, data-model.md)
 # ---------------------------------------------------------------------------
 
 
 async def test_route_confident_judgment_is_acted_on_without_gemini():
     # "protein" in the message: the deleted keyword lists sent this to coaching.
     llm = _gemini("coaching")
-    with patch.object(orchestrator, "_intent_llm", llm):
-        decision = await _route("protein shake", _task((_judgment("log_meal"), None)))
+    with patch.object(router, "_intent_llm", llm):
+        decision = await route_message(
+            "protein shake", _task((_judgment("log_meal"), None))
+        )
 
     assert decision.intent == "log_meal"
     assert decision.path == "judgment"
@@ -99,8 +102,8 @@ async def test_route_confident_judgment_is_acted_on_without_gemini():
 
 async def test_route_confident_coaching_judgment():
     llm = _gemini("log_meal")
-    with patch.object(orchestrator, "_intent_llm", llm):
-        decision = await _route(
+    with patch.object(router, "_intent_llm", llm):
+        decision = await route_message(
             "how much protein have I had today?", _task((_judgment("coaching"), None))
         )
 
@@ -110,8 +113,8 @@ async def test_route_confident_coaching_judgment():
 
 async def test_route_unavailable_judgment_asks_gemini():
     llm = _gemini("coaching")
-    with patch.object(orchestrator, "_intent_llm", llm):
-        decision = await _route("is rice healthy", _task((None, "TimeoutError")))
+    with patch.object(router, "_intent_llm", llm):
+        decision = await route_message("is rice healthy", _task((None, "TimeoutError")))
 
     llm.ainvoke.assert_awaited_once()
     assert decision.intent == "coaching"
@@ -123,8 +126,8 @@ async def test_route_unavailable_judgment_asks_gemini():
 
 async def test_route_without_a_judgment_task_asks_gemini():
     llm = _gemini("log_meal")
-    with patch.object(orchestrator, "_intent_llm", llm):
-        decision = await _route("coffee", None)
+    with patch.object(router, "_intent_llm", llm):
+        decision = await route_message("coffee", None)
 
     assert decision.path == "second_opinion_unavailable"
     assert decision.intent == "log_meal"
@@ -132,15 +135,15 @@ async def test_route_without_a_judgment_task_asks_gemini():
 
 async def test_route_offer_to_log_only_for_coaching_that_reports_food():
     llm = _gemini("coaching")
-    with patch.object(orchestrator, "_intent_llm", llm):
-        mixed = await _route(
+    with patch.object(router, "_intent_llm", llm):
+        mixed = await route_message(
             "I had pizza, was that bad?",
             _task((_judgment("coaching", reports_food=0.97), None)),
         )
-        pure = await _route(
+        pure = await route_message(
             "is pizza healthy?", _task((_judgment("coaching", reports_food=0.02), None))
         )
-        meal = await _route(
+        meal = await route_message(
             "pizza", _task((_judgment("log_meal", reports_food=0.99), None))
         )
 
@@ -150,7 +153,7 @@ async def test_route_offer_to_log_only_for_coaching_that_reports_food():
 
 
 async def test_route_record_has_the_documented_keys():
-    decision = await _route(
+    decision = await route_message(
         "I had pizza, was that bad?",
         _task((_judgment("coaching", reports_food=0.9, needs_guidance=0.8), None)),
     )
@@ -188,7 +191,7 @@ async def test_handle_message_paused_graph_always_resumes_meal_logging():
     with (
         patch("backend.agent.orchestrator.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
-        patch.object(orchestrator, "_intent_llm", llm),
+        patch.object(router, "_intent_llm", llm),
         patch(
             "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
@@ -569,7 +572,7 @@ async def test_unavailable_judgment_stores_no_routing_record():
             "backend.agent.orchestrator.judge_message",
             new=AsyncMock(return_value=(None, "not_configured")),
         ),
-        patch.object(orchestrator, "_intent_llm", _gemini("coaching")),
+        patch.object(router, "_intent_llm", _gemini("coaching")),
         patch(
             "backend.agent.orchestrator.consume_llm_credit",
             new=AsyncMock(return_value=True),
@@ -628,7 +631,7 @@ async def test_blank_text_starts_no_judgment():
         patch(
             "backend.agent.orchestrator.judge_message", new=_judged("coaching")
         ) as judge_mock,
-        patch.object(orchestrator, "_intent_llm", _gemini("log_meal")),
+        patch.object(router, "_intent_llm", _gemini("log_meal")),
         patch(
             "backend.agent.orchestrator.consume_llm_credit",
             new=AsyncMock(return_value=True),

@@ -258,7 +258,7 @@ def turn(writes) -> Iterator[SimpleNamespace]:
         ),
         patch.object(
             orchestrator,
-            "_route",
+            "route_message",
             new=AsyncMock(
                 return_value=SimpleNamespace(
                     intent="coaching",
