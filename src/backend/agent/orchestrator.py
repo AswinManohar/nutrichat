@@ -10,6 +10,7 @@ from typing import Any
 import logfire
 from kombu.exceptions import OperationalError
 
+from backend import tracing
 from backend.agent.coaching.handler import handle_coaching
 from backend.agent.meal_logging.card import card_fields
 from backend.agent.meal_logging.handler import graph_for, handle_meal_logging
@@ -62,8 +63,8 @@ async def handle_message(
     Returns:
         Dict with status, message, paused, and items.
     """
-    with logfire.span(
-        "handle_message",
+    with tracing.stage_span(
+        tracing.TURN,
         user_id=user_id,
         thread_id=thread_id,
         has_image=bool(image_b64),
@@ -235,7 +236,7 @@ async def _answer_readback(
     ("no, it's prawns") arrives with the extraction of its new fact already
     written; the reply asks about it. The reply names the open meal card.
     """
-    with logfire.span("readback_reply", answer=answer):
+    with tracing.stage_span(tracing.MEMORY_READBACK_REPLY, answer=answer):
         text = await readback.apply_reply(user_id, awaiting, answer)
         response = turn_response(text)
         if extraction is not None and extraction.changed_hard:
@@ -311,7 +312,7 @@ async def _screen_red_flags(
     """
     if not user_input.strip():
         return None
-    with logfire.span("red_flag_screen") as span:
+    with tracing.stage_span(tracing.SAFETY_RED_FLAG_SCREEN) as span:
         started = time.perf_counter()
         try:
             match = screen(user_input)

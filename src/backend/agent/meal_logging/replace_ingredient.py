@@ -14,13 +14,13 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
-import logfire
 from google.api_core.exceptions import GoogleAPIError
 from google.genai.errors import APIError as GenaiAPIError
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from backend import tracing
 from backend.agent.food.usda import USDAResult, usda_lookup_batch
 from backend.agent.llm import make_llm
 from backend.agent.meal_logging.meals import FoodEntity
@@ -125,7 +125,9 @@ async def resolve_ingredient(
         ResolveUnavailable: LLM error or timeout.
     """
     started = time.monotonic()
-    with logfire.span("resolve_ingredient", mode=mode, text_len=len(text)) as span:
+    with tracing.stage_span(
+        tracing.MEAL_LOGGING_RESOLVE_INGREDIENT, mode=mode, text_len=len(text)
+    ) as span:
         if not await consume_credit(user_id):
             raise QuotaExhausted()
 

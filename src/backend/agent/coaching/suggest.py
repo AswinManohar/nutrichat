@@ -21,13 +21,13 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-import logfire
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy.dialects.postgresql import insert
 
+from backend import tracing
 from backend.agent.coaching.meal_history import build_history_block
 from backend.agent.cost import record_run_cost
 from backend.agent.food import usda_local
@@ -291,7 +291,7 @@ async def suggest_meal(
         (``safety.no_suitable_meal_text``, or ``safety.food_db_unavailable_text``
         when the food database or the clinical tables cannot be read).
     """
-    with logfire.span("suggest_meal") as span:
+    with tracing.stage_span(tracing.COACHING_SUGGEST_MEAL) as span:
         try:
             result = await _suggest(user_id, request, history, entries, conversation_id)
         except (usda_local.FoodDbUnavailable, TablesUnavailable) as exc:
@@ -332,7 +332,9 @@ async def _suggest(
             )
             attempts.append(_Attempt(number, {"error": failure.detail}, [failure]))
         else:
-            with logfire.span("check_recipe", attempt=number) as span:
+            with tracing.stage_span(
+                tracing.COACHING_CHECK_RECIPE, attempt=number
+            ) as span:
                 resolved = await resolve(generated, usda_local.lookup)
                 result = check(generated, resolved, entries, intake, tables, number)
                 span.set_attribute("passed", result.passed)

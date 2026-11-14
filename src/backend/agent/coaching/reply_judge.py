@@ -17,8 +17,8 @@ from __future__ import annotations
 import logging
 
 import httpx
-import logfire
 
+from backend import tracing
 from backend.agent import glide
 from backend.agent.food import usda_local
 from backend.agent.glide import GlideUnavailable, noul
@@ -115,7 +115,7 @@ async def guard(
         TablesUnavailable: A confirmed entry names a group the tables lack.
         FoodDbUnavailable: The USDA database cannot be read.
     """
-    with logfire.span("reply_guard") as span:
+    with tracing.stage_span(tracing.COACHING_REPLY_GUARD) as span:
         verdict = await reply_guard.scan(text, entries, tables, usda_local.lookup)
         span.set_attribute("layer", verdict.layer)
         if verdict.violations or not verdict.food_phrases:

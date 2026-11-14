@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from typing import Literal
 
-import logfire
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
+from backend import tracing
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.agent.routing.system_one import RoutingJudgment
 from backend.config import get_tunables
@@ -68,7 +68,7 @@ _intent_llm = make_llm(
 
 async def _classify_with_gemini(message: str) -> Literal["log_meal", "coaching"]:
     """Second opinion: the Gemini intent classifier. Never costs a usage credit."""
-    with logfire.span("classify_intent_llm"):
+    with tracing.stage_span(tracing.ROUTING_SECOND_OPINION):
         result = await _intent_llm.ainvoke(
             [
                 SystemMessage(content=_INTENT_SYSTEM),
@@ -103,7 +103,7 @@ async def route_message(
         end with the offer to log.
     """
     cfg = _TUNABLES.glide
-    with logfire.span("route_message") as span:
+    with tracing.stage_span(tracing.ROUTING_DECIDE) as span:
         if judgment_task is None:
             judgment, failure = None, "not_requested"
         else:

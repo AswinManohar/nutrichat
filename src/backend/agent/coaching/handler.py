@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import logfire
 from opentelemetry import trace
 
+from backend import tracing
 from backend.agent.coaching.agent import CoachingAgent, RestrictionsUnavailableError
 from backend.agent.coaching.store import link_recommendation, save_coaching_response
 from backend.agent.llm import COACHING_MODEL
@@ -54,7 +54,7 @@ async def handle_coaching(
     granted = await consume_llm_credit(user_id)
     if not granted:
         return turn_response(UPGRADE_MSG)
-    with logfire.span("coaching") as span:
+    with tracing.stage_span(tracing.COACHING_TURN) as span:
         try:
             result = await _coaching_agent.handle(user_id, user_input, conversation_id)
         except RestrictionsUnavailableError:

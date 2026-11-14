@@ -27,11 +27,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-import logfire
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from backend import tracing
 from backend.config import get_tunables
 from backend.db.models import UserGoal, UserMemory
 from backend.db.session import get_session
@@ -604,7 +604,9 @@ async def apply_ops(user_id: str, ops: list[MemoryOp], actor: Actor) -> ApplyOut
     """
     if not ops:
         return ApplyOutcome()
-    with logfire.span("memory.apply_ops", actor=actor, n_ops=len(ops)) as span:
+    with tracing.stage_span(
+        tracing.MEMORY_APPLY_OPS, actor=actor, n_ops=len(ops)
+    ) as span:
         soft = [op for op in ops if not isinstance(op, SetDietChip | AddRestriction)]
         soft_results, evicted = (
             await _apply_soft_ops(user_id, soft, actor) if soft else ([], [])

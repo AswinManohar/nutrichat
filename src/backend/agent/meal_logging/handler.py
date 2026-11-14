@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import logfire
 from langchain_core.messages import AIMessage, HumanMessage
 
+from backend import tracing
 from backend.agent.llm import FLASH_LITE_MODEL
 from backend.agent.meal_logging.card import card_fields
 from backend.agent.meal_logging.graph import build_graph
@@ -128,8 +128,8 @@ async def handle_meal_logging(
     # The graph is LangGraph, not Pydantic AI, so the agent span is written
     # here with the OTel GenAI attributes Logfire's Agents view reads.
     thread_id = config["configurable"]["thread_id"]
-    with logfire.span(
-        "invoke_agent meal_logging",
+    with tracing.stage_span(
+        tracing.MEAL_LOGGING_AGENT,
         **{
             "gen_ai.operation.name": "invoke_agent",
             "gen_ai.agent.name": "meal_logging",
