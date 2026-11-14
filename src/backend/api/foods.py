@@ -17,8 +17,8 @@ import logfire
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.agent.tools import usda_local
-from backend.agent.tools.usda import (
+from backend.agent.food import usda_local
+from backend.agent.food.usda import (
     NULLABLE_MACROS,
     NutrientValue,
     USDAResult,

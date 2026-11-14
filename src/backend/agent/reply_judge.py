@@ -20,8 +20,8 @@ import httpx
 import logfire
 
 from backend.agent import glide
+from backend.agent.food import usda_local
 from backend.agent.glide import GlideUnavailable, noul
-from backend.agent.tools import usda_local
 from backend.config import get_tunables
 from backend.safety import reply_guard
 from backend.safety.checker import Failure

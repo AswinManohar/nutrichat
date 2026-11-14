@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.agent.food.usda import NutrientValue, USDAResult
 from backend.agent.tools.meals import (
     FoodEntity,
     ImageClassification,
     classify_intent,
     format_confirmation_card,
 )
-from backend.agent.tools.usda import NutrientValue, USDAResult
 
 # ---------------------------------------------------------------------------
 # Model tests

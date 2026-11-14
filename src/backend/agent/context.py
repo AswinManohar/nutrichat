@@ -6,16 +6,16 @@ import logging
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
+from backend.agent.intake.history import get_staple_foods
+from backend.agent.intake.mindful import (
+    SafetyAlert,
+    evaluate_safety,
+    get_daily_intake,
+)
 from backend.agent.memory import (
     MemoryFact,
     load_profile,
     render_profile_block,
-)
-from backend.agent.tools.history import get_staple_foods
-from backend.agent.tools.mindful import (
-    SafetyAlert,
-    evaluate_safety,
-    get_daily_intake,
 )
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today

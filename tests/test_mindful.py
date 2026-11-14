@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-from backend.agent.tools.mindful import (
+from backend.agent.intake.mindful import (
     NutrientAmount,
     evaluate_safety,
     get_daily_intake,
@@ -27,11 +27,11 @@ async def test_get_daily_intake_merges_macros_and_micros():
     }
     with (
         patch(
-            "backend.agent.tools.mindful.get_macros_for_range",
+            "backend.agent.intake.mindful.get_macros_for_range",
             new=AsyncMock(return_value=macros),
         ),
         patch(
-            "backend.agent.tools.mindful.get_micronutrients_for_range",
+            "backend.agent.intake.mindful.get_micronutrients_for_range",
             new=AsyncMock(return_value=micros),
         ),
     ):

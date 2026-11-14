@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.tools.meals import FoodEntity
-from backend.agent.tools.usda import (
+from backend.agent.food.usda import (
     NutritionEstimate,
     _confidence,
     _nutrients_by_name,
     estimate_nutrition_llm,
     usda_lookup_batch,
 )
-from backend.agent.tools.usda_local import LocalMatch
+from backend.agent.food.usda_local import LocalMatch
+from backend.agent.tools.meals import FoodEntity
 from backend.config import get_tunables
 
 
@@ -22,7 +22,7 @@ def _force_api_path():
     aiohttp/_cache_lookup). use_local_db defaults to true, so force the
     dispatch point to route through _fetch_usda_api unless a test
     overrides this."""
-    with patch("backend.agent.tools.usda._use_local", return_value=False):
+    with patch("backend.agent.food.usda._use_local", return_value=False):
         yield
 
 
@@ -72,11 +72,11 @@ async def test_cache_miss_hits_fdc():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
@@ -94,11 +94,11 @@ async def test_scales_nutrients_to_qty_g():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
@@ -128,22 +128,22 @@ async def test_usda_miss_falls_back_to_estimate_when_llm_succeeds():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
-        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             return_value=fake_run,
         ),
@@ -162,21 +162,21 @@ async def test_usda_miss_returns_bare_miss_when_llm_also_fails():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LLM unavailable"),
         ),
@@ -201,7 +201,7 @@ async def test_cache_hit_skips_fdc():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=cached,
         ),
@@ -225,23 +225,23 @@ async def test_batch_parallel_multiple_entities():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
-        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             return_value=fake_run,
         ),
@@ -307,7 +307,7 @@ def test_nutrients_by_name_prefers_kcal_over_kj():
 def test_energy_falls_back_to_atwater_names():
     # Foundation entries often lack a plain "Energy" row and report kcal
     # under Atwater names instead.
-    from backend.agent.tools.usda import _energy_kcal
+    from backend.agent.food.usda import _energy_kcal
 
     raw = {
         "Energy (Atwater General Factors)": (47.0, "kcal"),
@@ -356,23 +356,23 @@ async def test_low_confidence_match_falls_back_to_llm_estimate():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
-        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(WEAK_MATCH_RESPONSE),
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             return_value=fake_run,
         ),
@@ -397,22 +397,22 @@ async def test_no_match_falls_back_to_llm_estimate():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
-        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get", return_value=_mock_http_response({"foods": []})
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             return_value=fake_run,
         ),
@@ -440,12 +440,12 @@ async def test_estimate_uses_cache_when_present():
 
     with (
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=cached,
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
         ) as mock_run,
     ):
@@ -463,17 +463,17 @@ async def test_high_confidence_match_is_not_overridden():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
         ),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
         ) as mock_run,
     ):
@@ -513,10 +513,10 @@ async def test_local_path_scales_macros_and_skips_cache_lookup():
     entity = FoodEntity(food_name="grilled chicken breast", qty_g=250.0, unit="g")
 
     with (
-        patch("backend.agent.tools.usda._use_local", return_value=True),
-        patch("backend.agent.tools.usda.usda_local.lookup", return_value=_LOCAL_MATCH),
+        patch("backend.agent.food.usda._use_local", return_value=True),
+        patch("backend.agent.food.usda.usda_local.lookup", return_value=_LOCAL_MATCH),
         patch(
-            "backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock
+            "backend.agent.food.usda._cache_lookup", new_callable=AsyncMock
         ) as mock_cache_lookup,
     ):
         results = await usda_lookup_batch([entity])
@@ -577,12 +577,12 @@ async def test_local_path_populates_candidate_details_in_order():
     entity = FoodEntity(food_name="grilled chicken breast", qty_g=100.0, unit="g")
 
     with (
-        patch("backend.agent.tools.usda._use_local", return_value=True),
+        patch("backend.agent.food.usda._use_local", return_value=True),
         patch(
-            "backend.agent.tools.usda.usda_local.lookup",
+            "backend.agent.food.usda.usda_local.lookup",
             return_value=_LOCAL_MATCH_WITH_DETAILS,
         ),
-        patch("backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_lookup", new_callable=AsyncMock),
     ):
         results = await usda_lookup_batch([entity])
 
@@ -599,11 +599,11 @@ async def test_fdc_api_path_leaves_candidate_details_empty():
 
     with (
         patch(
-            "backend.agent.tools.usda._cache_lookup",
+            "backend.agent.food.usda._cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._cache_write", new_callable=AsyncMock),
         patch(
             "aiohttp.ClientSession.get",
             return_value=_mock_http_response(MOCK_FDC_RESPONSE),
@@ -638,19 +638,19 @@ async def test_local_path_low_confidence_falls_back_to_llm_estimate():
     fake_run.output = _FAKE_ESTIMATE
 
     with (
-        patch("backend.agent.tools.usda._use_local", return_value=True),
-        patch("backend.agent.tools.usda.usda_local.lookup", return_value=weak_match),
+        patch("backend.agent.food.usda._use_local", return_value=True),
+        patch("backend.agent.food.usda.usda_local.lookup", return_value=weak_match),
         patch(
-            "backend.agent.tools.usda._cache_lookup", new_callable=AsyncMock
+            "backend.agent.food.usda._cache_lookup", new_callable=AsyncMock
         ) as mock_cache_lookup,
         patch(
-            "backend.agent.tools.usda._estimate_cache_lookup",
+            "backend.agent.food.usda._estimate_cache_lookup",
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch("backend.agent.tools.usda._estimate_cache_write", new_callable=AsyncMock),
+        patch("backend.agent.food.usda._estimate_cache_write", new_callable=AsyncMock),
         patch(
-            "backend.agent.tools.usda._estimate_agent.run",
+            "backend.agent.food.usda._estimate_agent.run",
             new_callable=AsyncMock,
             return_value=fake_run,
         ),

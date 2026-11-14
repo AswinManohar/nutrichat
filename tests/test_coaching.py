@@ -21,11 +21,11 @@ from backend.agent.coaching import (
     parse_query,
 )
 from backend.agent.context import ContextBundle, GoalSummary
+from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.agent.memory import MemoryFact
 from backend.agent.memory_curator import TurnExtraction
 from backend.agent.memory_tools import hard_writes
 from backend.agent.suggest import SuggestionResult
-from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.db.models import UserGoal
 from backend.db.redis_client import CoachingTurn, TodayTotals

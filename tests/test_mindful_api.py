@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.agent.tools.mindful import NutrientAmount, SafetyAlert
+from backend.agent.intake.mindful import NutrientAmount, SafetyAlert
 from backend.api import mindful
 
 

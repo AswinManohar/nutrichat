@@ -1,4 +1,4 @@
-"""Tests for the SQLite read path in ``backend.agent.tools.usda_local``."""
+"""Tests for the SQLite read path in ``backend.agent.food.usda_local``."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from backend.agent.tools import usda_local
-from backend.agent.tools.usda_match import _confidence, _normalize_preparation
+from backend.agent.food import usda_local
+from backend.agent.food.usda_match import _confidence, _normalize_preparation
 from backend.scripts.build_usda_db import create_schema, insert_food_row
 
 _ROWS: list[tuple[int, str]] = [
@@ -265,7 +265,7 @@ def test_normalize_preparation_does_not_touch_substrings() -> None:
 
 
 def test_generic_rank_only_fires_when_all_modifiers_are_generic() -> None:
-    from backend.agent.tools.usda_match import _generic_rank
+    from backend.agent.food.usda_match import _generic_rank
 
     assert _generic_rank("Cheese, NFS") == 1.0
     assert _generic_rank("Apple, raw") == 1.0

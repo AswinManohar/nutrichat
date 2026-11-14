@@ -213,7 +213,7 @@ async def score_quantity(sem: asyncio.Semaphore) -> float:
 
 async def score_food_identity(sem: asyncio.Semaphore) -> float:
     """Recall@1 of the USDA match for a food name."""
-    from backend.agent.tools.usda import _EntityShim, usda_lookup_batch
+    from backend.agent.food.usda import _EntityShim, usda_lookup_batch
 
     cases = load_cases("food_identity")
     async with sem:
@@ -343,8 +343,8 @@ async def score_decomposition(sem: asyncio.Semaphore) -> dict[str, float]:
     with stay put, so the raw totals are the score and the tolerance is a percentage
     delta against them.
     """
+    from backend.agent.food.usda import usda_lookup_batch
     from backend.agent.tools.decompose import decompose_to_entities
-    from backend.agent.tools.usda import usda_lookup_batch
 
     cases = load_cases("decomposition")
 

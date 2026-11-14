@@ -29,6 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
+from backend.agent.intake.history import get_category_breakdown, get_staple_foods
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.agent.memory import (
     MAX_FACT_CHARS,
@@ -53,7 +54,6 @@ from backend.agent.memory_judge import (
     select_hard_ops,
     select_ops,
 )
-from backend.agent.tools.history import get_category_breakdown, get_staple_foods
 from backend.config import get_tunables
 from backend.safety import profile
 from backend.safety.matching import allergen_group_for

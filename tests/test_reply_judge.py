@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.agent import reply_judge
+from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.agent.glide import GlideResponse, GlideUnavailable
-from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.safety import profile
 from backend.safety.tables import load_tables

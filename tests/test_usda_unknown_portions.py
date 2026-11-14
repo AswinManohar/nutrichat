@@ -12,14 +12,14 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.agent.orchestrator import _serialize_items
-from backend.agent.tools import usda_local
-from backend.agent.tools.meals import _is_junk, format_confirmation_card
-from backend.agent.tools.usda import (
+from backend.agent.food import usda_local
+from backend.agent.food.usda import (
     USDAResult,
     _result_from_local,
     sum_known,
 )
+from backend.agent.orchestrator import _serialize_items
+from backend.agent.tools.meals import _is_junk, format_confirmation_card
 from backend.api.my_meals import _scaled_result
 from backend.scripts import build_usda_db as build
 from backend.scripts.build_usda_db import (

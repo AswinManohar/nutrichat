@@ -20,14 +20,14 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.agent.llm import FLASH_LITE_MODEL
-from backend.agent.tools import usda_local
-from backend.agent.tools.usda_match import (
+from backend.agent.food import usda_local
+from backend.agent.food.usda_match import (
     _ENERGY_KEYS,
     _MACRO_MAP,
     _confidence,
     _energy_kcal,
 )
+from backend.agent.llm import FLASH_LITE_MODEL
 from backend.config import get_tunables
 from backend.db.session import get_session
 

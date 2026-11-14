@@ -15,6 +15,7 @@ from pydantic import (
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from backend.agent.food.usda import USDAResult
 from backend.agent.tools.decompose import normalize_meal_name
 from backend.agent.tools.meals import MEAL_CATEGORIES, MealLogResult, log_meal
 from backend.agent.tools.replace_ingredient import (
@@ -25,7 +26,6 @@ from backend.agent.tools.replace_ingredient import (
     resolve_ingredient,
 )
 from backend.agent.tools.saved_meals import find_saved_meal  # re-exported for callers
-from backend.agent.tools.usda import USDAResult
 from backend.auth.supabase import get_current_user_id
 from backend.db.models import MealLog, UserMeal
 from backend.db.redis_client import current_day_bounds

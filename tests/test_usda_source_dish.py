@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+from backend.agent.food.usda import USDAResult
 from backend.agent.graph import usda_batch_node
-from backend.agent.tools.usda import USDAResult
 
 
 def _result(food_name: str) -> USDAResult:

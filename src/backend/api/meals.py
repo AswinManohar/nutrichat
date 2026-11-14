@@ -11,8 +11,8 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.agent.intake.history import get_category_breakdown
 from backend.agent.orchestrator import get_pending_card, handle_message, resolve_pending
-from backend.agent.tools.history import get_category_breakdown
 from backend.agent.tools.meals import (
     MEAL_CATEGORIES,
     MealLogResult,

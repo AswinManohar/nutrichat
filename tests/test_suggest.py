@@ -13,7 +13,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from sqlalchemy import select
 
 from backend.agent import suggest
-from backend.agent.tools.usda_local import FoodDbUnavailable
+from backend.agent.food.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.db.models import CheckFailure, MealLog, Recommendation, ReviewItem
 from backend.db.session import get_session

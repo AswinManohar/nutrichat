@@ -14,8 +14,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text as sa_text
 
+from backend.agent.food.usda import sum_known
 from backend.agent.llm import make_llm
-from backend.agent.tools.usda import sum_known
 from backend.config import get_tunables
 from backend.db.session import get_session
 from backend.workers.tasks import embed_meal_summary

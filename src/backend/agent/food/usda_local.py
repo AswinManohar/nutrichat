@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import backend
-from backend.agent.tools.usda_match import (
+from backend.agent.food.usda_match import (
     _MATCH_STOPWORDS,
     _confidence,
     _description_coverage,

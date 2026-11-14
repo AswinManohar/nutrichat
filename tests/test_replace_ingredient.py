@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.agent.food.usda import USDAResult
 from backend.agent.tools import replace_ingredient as svc
 from backend.agent.tools.replace_ingredient import (
     QuotaExhausted,
@@ -19,7 +20,6 @@ from backend.agent.tools.replace_ingredient import (
     ReplacingIngredient,
     ResolveUnavailable,
 )
-from backend.agent.tools.usda import USDAResult
 from backend.api import my_meals
 from backend.quota import UPGRADE_MSG
 

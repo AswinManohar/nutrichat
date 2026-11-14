@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.tools.mindful import (
+from backend.agent.intake.mindful import (
     NutrientAmount,
     SafetyAlert,
     evaluate_safety,

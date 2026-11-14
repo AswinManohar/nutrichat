@@ -17,8 +17,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
+from src.backend.agent.food.usda import usda_lookup_batch
 from src.backend.agent.tools.meals import extract_entities
-from src.backend.agent.tools.usda import usda_lookup_batch
 
 # (label, singular phrase, counted phrase, expected count)
 CASES = [

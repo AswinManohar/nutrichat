@@ -15,13 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from backend.agent.llm import embed_text
-from backend.agent.memory_curator import curate_turn
-from backend.agent.memory_curator import infer_log_habits as _infer_log_habits
-from backend.agent.tools.history import (
+from backend.agent.intake.history import (
     get_nutrient_checkup_aggregates,
     summarize_nutrient_checkup,
 )
+from backend.agent.llm import embed_text
+from backend.agent.memory_curator import curate_turn
+from backend.agent.memory_curator import infer_log_habits as _infer_log_habits
 from backend.config import get_tunables
 from backend.core.nutrition_day import (
     NUTRITION_DATE_SQL,

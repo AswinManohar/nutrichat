@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.agent.tools import usda_local
+from backend.agent.food import usda_local
 from backend.api import foods
 from backend.scripts.build_usda_db import create_schema, insert_food_row
 

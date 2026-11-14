@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.tools.history import (
+from backend.agent.intake.history import (
     get_category_breakdown,
     get_food_breakdown_for_range,
     get_history,
@@ -55,7 +55,7 @@ async def test_get_category_breakdown_computes_share():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         out = await get_category_breakdown("user-1", days=30)
 
     assert [c["meal_type"] for c in out] == ["dinner", "breakfast"]
@@ -73,7 +73,7 @@ async def test_get_category_breakdown_empty_no_div_zero():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         out = await get_category_breakdown("user-1", days=30)
 
     assert out == []
@@ -89,7 +89,7 @@ async def test_get_macros_for_range_sums_columns():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         totals = await get_macros_for_range(
             "user-1", date(2026, 6, 1), date(2026, 6, 7)
         )
@@ -112,7 +112,7 @@ async def test_get_macros_for_range_empty_returns_zeros():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         totals = await get_macros_for_range(
             "user-1", date(2026, 6, 1), date(2026, 6, 7)
         )
@@ -129,7 +129,7 @@ async def test_get_micronutrients_for_range_returns_amount_and_unit():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         result = await get_micronutrients_for_range(
             "user-1", date(2026, 6, 11), date(2026, 6, 11), ["Vitamin B-12"]
         )
@@ -145,7 +145,7 @@ async def test_get_micronutrients_for_range_omits_missing_nutrients():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         result = await get_micronutrients_for_range(
             "user-1", date(2026, 6, 11), date(2026, 6, 11), ["Vitamin B-12"]
         )
@@ -180,7 +180,7 @@ async def test_get_food_breakdown_for_range_returns_expected_shape():
     )
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         result = await get_food_breakdown_for_range(
             "user-1", date(2026, 5, 13), date(2026, 6, 11)
         )
@@ -226,7 +226,7 @@ async def test_get_history_falls_back_to_recency_without_embedding():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         results = await get_history("user-1")
 
     assert len(results) == 1
@@ -243,7 +243,7 @@ async def test_get_history_uses_ann_with_embedding():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         await get_history("user-1", query_embedding=[0.1] * 768)
 
     stmt = session.execute.call_args[0][0]
@@ -257,7 +257,7 @@ async def test_get_history_applies_meal_type_and_date_filters():
     session.execute = AsyncMock(return_value=exec_result)
     factory = _mock_session_factory(session)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         await get_history(
             "user-1",
             meal_type="breakfast",
@@ -297,12 +297,12 @@ async def test_nutrient_checkup_computes_averages_and_trend():
 
     with (
         patch(
-            "backend.agent.tools.history.get_macros_for_range",
+            "backend.agent.intake.history.get_macros_for_range",
             new_callable=AsyncMock,
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.intake.history.get_micronutrients_for_range",
             new_callable=AsyncMock,
             side_effect=[cur_micro, prev_micro],
         ),
@@ -338,12 +338,12 @@ async def test_nutrient_checkup_handles_missing_data():
 
     with (
         patch(
-            "backend.agent.tools.history.get_macros_for_range",
+            "backend.agent.intake.history.get_macros_for_range",
             new_callable=AsyncMock,
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.intake.history.get_micronutrients_for_range",
             new_callable=AsyncMock,
             side_effect=[{}, {}],
         ),
@@ -370,12 +370,12 @@ async def test_nutrient_checkup_no_prior_baseline_is_up_not_division_error():
 
     with (
         patch(
-            "backend.agent.tools.history.get_macros_for_range",
+            "backend.agent.intake.history.get_macros_for_range",
             new_callable=AsyncMock,
             side_effect=[cur_macros, prev_macros],
         ),
         patch(
-            "backend.agent.tools.history.get_micronutrients_for_range",
+            "backend.agent.intake.history.get_micronutrients_for_range",
             new_callable=AsyncMock,
             side_effect=[{}, {}],
         ),

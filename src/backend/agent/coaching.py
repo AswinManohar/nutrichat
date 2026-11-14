@@ -30,18 +30,18 @@ from backend.agent.context import (
     load_restrictions,
 )
 from backend.agent.cost import record_run_cost
+from backend.agent.food.usda_local import FoodDbUnavailable
+from backend.agent.intake.history import (
+    get_food_breakdown_for_range,
+    get_macros_for_range,
+    get_micronutrients_for_range,
+)
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, gemini_provider
 from backend.agent.memory_curator import TurnExtraction, extract_turn
 from backend.agent.memory_tools import hard_writes, memory_toolset
 from backend.agent.readback import Plan, Readback, commit_readback, plan_readback
 from backend.agent.reply_judge import guard as guard_reply_text
 from backend.agent.suggest import suggest_meal
-from backend.agent.tools.history import (
-    get_food_breakdown_for_range,
-    get_macros_for_range,
-    get_micronutrients_for_range,
-)
-from backend.agent.tools.usda_local import FoodDbUnavailable
 from backend.config import get_tunables
 from backend.core.nutrition_day import nutrition_today
 from backend.db.models import CheckFailure, UserGoal

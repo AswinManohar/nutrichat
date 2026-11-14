@@ -33,7 +33,7 @@ from pathlib import Path
 from statistics import median
 from zipfile import ZipFile
 
-from backend.agent.tools.usda_match import _ENERGY_KEYS, _MACRO_MAP, _energy_kcal
+from backend.agent.food.usda_match import _ENERGY_KEYS, _MACRO_MAP, _energy_kcal
 
 # Target FDC data types and the exact per-type row counts this importer must
 # reproduce against the 2026-04-30 release. A mismatch means the release

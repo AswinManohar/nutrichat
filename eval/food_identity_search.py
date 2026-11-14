@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from backend.agent.tools import usda_local  # noqa: E402
+from backend.agent.food import usda_local  # noqa: E402
 
 CASES_PATH = Path(__file__).parent / "cases" / "food_identity_expanded.jsonl"
 

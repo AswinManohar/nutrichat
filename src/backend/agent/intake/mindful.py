@@ -12,7 +12,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.tools.history import (
+from backend.agent.intake.history import (
     get_macros_for_range,
     get_micronutrients_for_range,
 )

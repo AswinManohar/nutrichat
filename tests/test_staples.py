@@ -7,7 +7,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from backend.agent.context import fetch_staples
-from backend.agent.tools.history import get_staple_foods
+from backend.agent.intake.history import get_staple_foods
 from backend.db.redis_client import get_cached_staples, set_cached_staples
 
 
@@ -54,7 +54,7 @@ async def test_get_staple_foods_groups_orders_and_truncates() -> None:
     ]
     factory = _session_returning(rows)
 
-    with patch("backend.agent.tools.history.get_session", return_value=factory):
+    with patch("backend.agent.intake.history.get_session", return_value=factory):
         staples = await get_staple_foods("user-1", days=30, min_count=3)
 
     assert list(staples) == ["breakfast", "dinner", "brunch"]

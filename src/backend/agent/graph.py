@@ -9,6 +9,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from backend.agent.food.usda import usda_lookup_batch
 from backend.agent.tools.decompose import decompose_to_entities
 from backend.agent.tools.meals import (
     FoodEntity,
@@ -20,7 +21,6 @@ from backend.agent.tools.meals import (
     log_meal,
 )
 from backend.agent.tools.saved_meals import find_saved_meal, saved_meal_to_results
-from backend.agent.tools.usda import usda_lookup_batch
 from backend.config import get_tunables
 from backend.safety.meal_check import gate_log
 
@@ -322,7 +322,7 @@ async def usda_batch_node(state: AgentState) -> dict:
 
 async def present_node(state: AgentState) -> dict:
     """Format and send the confirmation card to the user."""
-    from backend.agent.tools.usda import USDAResult
+    from backend.agent.food.usda import USDAResult
 
     if not state["usda_results"]:
         return {
@@ -361,8 +361,8 @@ async def cancel_node(state: AgentState) -> dict:
 
 async def log_node(state: AgentState) -> dict:
     """Persist confirmed meal to Postgres and Redis."""
+    from backend.agent.food.usda import USDAResult
     from backend.agent.tools.meals import _meal_label, normalize_meal_type
-    from backend.agent.tools.usda import USDAResult
 
     results = [USDAResult(**r) for r in state["usda_results"]]
     meal_type = normalize_meal_type(state.get("meal_type"))
