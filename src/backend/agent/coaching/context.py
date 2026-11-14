@@ -252,9 +252,9 @@ def build_system_prompt(ctx: ContextBundle) -> str:
     every live fact, capped at ``memory.profile_max_chars`` (~350 tokens)
     plus one staples line.
 
-    Note: this is consumed by the coaching agent (agent/coaching.py), not
+    Note: this is consumed by the coaching agent (agent/coaching/agent.py), not
     the meal-logging graph — extraction/classification prompts in
-    agent/tools/meals.py are self-contained and don't need live user state.
+    agent/meal_logging/meals.py are self-contained and don't need live user state.
 
     Args:
         ctx: Context bundle from build_context().

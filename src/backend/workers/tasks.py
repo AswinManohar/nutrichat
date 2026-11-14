@@ -162,7 +162,7 @@ def embed_meal_summary(meal_id: str) -> None:
 def extract_and_store_facts(user_id: str, user_input: str, agent_reply: str) -> None:
     """Update the user's profile from one conversation turn.
 
-    One curator call (agent/memory_curator.py) drafts soft and hard facts;
+    One curator call (agent/memory/curator.py) drafts soft and hard facts;
     soft ones can be added, replaced and removed under memory.apply_ops.
 
     Args:
@@ -481,7 +481,7 @@ def build_nutrient_checkup(target_date: str | None = None) -> None:
 
 async def _send_daily_summary_telegram(target_date: date) -> None:
     # Imported here, not at module level: backend.telegram.bot -> handlers ->
-    # agent.orchestrator -> agent.tools.meals -> backend.workers.tasks would
+    # agent.orchestrator -> agent.meal_logging.meals -> backend.workers.tasks would
     # otherwise be a circular import at module load time.
     import backend.telegram.bot as telegram_bot
 

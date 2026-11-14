@@ -128,7 +128,7 @@ class USDAResult(BaseModel):
     # Full nutrient breakdown scaled to qty_g (~50 nutrients)
     nutrients: dict[str, NutrientValue]
 
-    # Plan A — LLM nutrition estimation fallback (agent/tools/usda.py
+    # Plan A — LLM nutrition estimation fallback (agent/food/usda.py
     # estimate_nutrition_llm). "USDA" for real FoodData Central matches
     # (incl. cache hits), "LLM_ESTIMATE" when no confident USDA match was
     # found and the model estimated macros instead.

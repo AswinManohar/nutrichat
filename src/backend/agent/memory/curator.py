@@ -5,9 +5,9 @@
   remove), typed hard-fact candidates (allergy, diagnosis, medication,
   physical limitation, nutrient limit, diet setting, food exclusion) and
   retirements of confirmed hard entries. GLiDE scores each candidate
-  (agent/memory_judge.py); the model's draft is never saved as is.
+  (agent/memory/judge.py); the model's draft is never saved as is.
   On a coaching turn it runs inside the turn, concurrently with the query
-  parse (agent/coaching.py); on a logging turn it runs in Celery after the
+  parse (agent/coaching/agent.py); on a logging turn it runs in Celery after the
   reply (:func:`curate_turn`, workers/tasks.py).
 * :func:`infer_log_habits` runs weekly per active logger and rewrites the
   few facts inferred from their meal logs. It can only produce soft facts.
@@ -15,7 +15,7 @@
 A hard candidate must quote the patient's own words (``evidence``): one that
 does not appear in the patient's message is discarded in code, so nothing the
 assistant said or the logs showed can become a hard fact (spec 013 FR-023).
-agent/memory.py apply_ops enforces what each soft write is allowed to do.
+agent/memory/facts.py apply_ops enforces what each soft write is allowed to do.
 """
 
 from __future__ import annotations

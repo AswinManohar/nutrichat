@@ -96,7 +96,7 @@ class QueryParsed(BaseModel):
     # healthy, how to change intake) rather than a readback of their data.
     needs_guidance: bool = False
     # True when the user asks for a meal, a recipe, a meal idea or a plan; the
-    # reply is then a checked recipe (agent/suggest.py), not free text.
+    # reply is then a checked recipe (agent/coaching/suggest.py), not free text.
     suggests_meal: bool = False
 
     model_config = ConfigDict(extra="forbid")
@@ -328,7 +328,7 @@ async def _guard_reply(ctx: RunContext[_ResponseDeps], text: str) -> str:
 @_response_agent.instructions
 def _user_context_instructions(ctx: RunContext[_ResponseDeps]) -> str:
     """Append the per-user context block (today, goals, weekly pattern,
-    preferences) built by agent/context.py, then any guideline passages,
+    preferences) built by agent/coaching/context.py, then any guideline passages,
     to the static coaching rules. Signed-in users also get the profile
     rules, ahead of the context they govern."""
     blocks = (
@@ -738,7 +738,7 @@ class CoachingAgent:
 
     Both LLM calls see the user's recent conversation (Redis, see
     db/redis_client.py get_coaching_history), and the response call also
-    gets the per-user context block from agent/context.py.
+    gets the per-user context block from agent/coaching/context.py.
     """
 
     async def handle(

@@ -196,7 +196,7 @@ class MealLog(Base):
 class UserMemory(Base):
     """One fact in a user's curated preference profile.
 
-    All writes go through agent/memory.py apply_ops (background curator,
+    All writes go through agent/memory/facts.py apply_ops (background curator,
     weekly log-habits job, the coach's remember/forget tools, the /memory
     API). build_context() reads every live row for the user and renders the
     whole profile into the coaching prompt.

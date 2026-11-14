@@ -29,7 +29,7 @@ async def test_not_paused_returns_false():
 
 
 async def test_paused_returns_card():
-    # usda_results entries are dicts (see _serialize_items / _handle_meal_logging),
+    # usda_results entries are dicts (see serialize_items / handle_meal_logging),
     # not attribute-bearing objects.
     fake_result = {
         "fdc_id": 123,

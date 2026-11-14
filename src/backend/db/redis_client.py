@@ -220,7 +220,7 @@ async def set_cached_staples(user_id: str, staples: dict[str, list[str]]) -> Non
 
     Args:
         user_id: Supabase Auth UUID.
-        staples: Output of ``agent.tools.history.get_staple_foods``.
+        staples: Output of ``agent.intake.history.get_staple_foods``.
     """
     try:
         await get_redis().set(

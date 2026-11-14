@@ -5,8 +5,8 @@ probabilities instead of generated text. One request carries one ``state``
 and any number of named questions; the answers come back under the same
 names (``POST /v1/systemone``, see docs.fastino.ai/inference/systemone).
 
-Two callers: agent/system_one.py (routing, on the reply path) and
-agent/memory_judge.py (memory save decision, in Celery). Each owns its
+Two callers: agent/routing/system_one.py (routing, on the reply path) and
+agent/memory/judge.py (memory save decision, in Celery). Each owns its
 ``httpx`` client because their timeouts and event loops differ; this module
 owns the request and response format.
 

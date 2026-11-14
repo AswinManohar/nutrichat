@@ -1,6 +1,6 @@
 """GLiDE decides which proposed memory changes are saved.
 
-The curator model (agent/memory_curator.py) only drafts candidates: it
+The curator model (agent/memory/curator.py) only drafts candidates: it
 writes the fact text and names the operation. Whether a candidate is kept
 is a Fastino GLiDE judgment (agent/glide.py): one calibrated probability
 per candidate, compared with a threshold from tunables by
@@ -23,7 +23,7 @@ Soft facts run in Celery after the reply is sent, so they add nothing to a
 chat turn; hard facts run inside a coaching turn, so :func:`judge_hard` uses
 the short ``memory.hard_judge_timeout_s``.
 Each Celery task has its own event loop, so the client is opened and closed
-per call instead of reusing the routing client in agent/system_one.py.
+per call instead of reusing the routing client in agent/routing/system_one.py.
 
 Sent to GLiDE: the message text and the candidate fact text. No user id,
 history or goals. Neither text is logged here.
@@ -325,7 +325,7 @@ class HardAdd(BaseModel):
     """A typed hard fact the patient stated, as the curator drafted it.
 
     ``evidence`` is the patient's own words, already checked to be a substring
-    of their message (agent/memory_curator.py).
+    of their message (agent/memory/curator.py).
     """
 
     type: EntryType

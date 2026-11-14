@@ -1110,7 +1110,7 @@ async def test_a_pending_fact_the_remember_tool_adds_is_read_back_from_the_templ
     pending = _inferred("pending", created_by="patient")
 
     async def reply(*args, **kwargs):
-        # What memory_tools does when it adds a pending hard entry.
+        # What agent/memory/tools.py does when it adds a pending hard entry.
         hard_writes.get().append(True)
         return "Noted, I'll remember that."
 

@@ -2,7 +2,7 @@
 
 Offered to the response agent for every signed-in user, and
 only called on an explicit request, so an ordinary coaching turn makes no
-extra model round trip. Soft facts go through agent/memory.py apply_ops as
+extra model round trip. Soft facts go through agent/memory/facts.py apply_ops as
 the "user" actor. Hard facts (restrictions, diet settings) become pending
 hard-profile entries that bind only after the user confirms; removing one
 only requests its retirement. The tool's reply tells the model to ask.
@@ -45,7 +45,7 @@ _CONFIRM_NOTE = (
 
 # A coaching turn sets a list here before the reply is generated; a tool that
 # adds a pending hard entry appends to it, so the turn can read it back from
-# the template (agent/coaching.py) instead of leaving it for the next turn.
+# the template (agent/coaching/agent.py) instead of leaving it for the next turn.
 hard_writes: ContextVar[list[bool] | None] = ContextVar("hard_writes", default=None)
 
 

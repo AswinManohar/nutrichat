@@ -6,7 +6,7 @@ constraint words in the reply itself. Layer 2 resolves the food phrases in the
 reply in the USDA database and matches the constraint words against the
 matched descriptions, which catches a dish whose description names the
 allergen ("satay sauce"). Layer 3, a GLiDE judgment, lives in
-``agent/reply_judge.py``.
+``agent/coaching/reply_judge.py``.
 
 This module must not import ``backend.agent`` (tests/safety/test_boundaries.py),
 so the USDA lookup is passed in.

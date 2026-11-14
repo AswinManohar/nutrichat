@@ -8,7 +8,7 @@ Single source of truth: pending profile entries and red-flag escalations are
 not copied into ``review_item``. They are listed straight from their own
 tables, and a ``review_item`` row is created only when a reviewer decides
 (its ``subject_id`` then points back at the entry or escalation). Conflicts,
-plan samples and unknown medications are queued by ``agent/suggest.py``.
+plan samples and unknown medications are queued by ``agent/coaching/suggest.py``.
 """
 
 from __future__ import annotations

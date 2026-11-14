@@ -165,7 +165,7 @@ class UpperLimitEntry(BaseModel):
 
 
 class RoutingConfig(BaseModel):
-    """Keyword lists for replies to a pending meal card (tools/meals.py)."""
+    """Keyword lists for replies to a pending meal card (meal_logging/meals.py)."""
 
     confirm_keywords: list[str]
     reject_keywords: list[str]
@@ -176,7 +176,7 @@ class RoutingConfig(BaseModel):
 
 
 class GlideConfig(BaseModel):
-    """Fastino GLiDE judgments; see agent/glide.py and agent/system_one.py."""
+    """Fastino GLiDE judgments; see agent/glide.py and agent/routing/system_one.py."""
 
     base_url: str = Field(min_length=1)
     model: str

@@ -12,7 +12,7 @@ Usage:
 Without ``--apply`` it is a dry run: it prints what it would do and writes
 nothing. With ``--apply`` it first appends each user's rows to the
 ``--backup`` JSONL file, since the curator's removals are hard deletes.
-Changes go through agent/memory.py apply_ops as the curator, so
+Changes go through agent/memory/facts.py apply_ops as the curator, so
 the usual rules hold (duplicates merge, the cap applies). Idempotent: a
 second run finds no ``preference`` rows left for the users it processed.
 """

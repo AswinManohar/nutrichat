@@ -11,8 +11,8 @@ models:
   # Entity extraction, image classification, corrections, intent routing,
   # query parsing, fact extraction. Cheapest/fastest tier — every user
   # message touches this model at least once.
-  # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/tools/meals.py,
-  #          agent/orchestrator.py, agent/coaching.py, workers/tasks.py
+  # Used in: agent/llm.py (FLASH_LITE_MODEL), agent/meal_logging/meals.py,
+  #          agent/routing/router.py, agent/coaching/agent.py, workers/tasks.py
   extraction: "gemini-3.1-flash-lite"
 
   # Conversational coaching responses (grounded answers to nutrition
@@ -20,14 +20,14 @@ models:
   # project behind GOOGLE_API_KEY was replaced, and gemini-2.5-flash is not
   # offered to new projects. A larger model here is the first thing to try
   # if coaching answer quality drops.
-  # Used in: agent/coaching.py generate_response()
+  # Used in: agent/coaching/agent.py generate_response()
   coaching: "gemini-3.1-flash-lite"
 
   # Embedding model for meal summaries, preference facts, and query-time
   # ANN search. MUST stay consistent with embedding_dim below and with the
   # vector(768) columns in meal_log / user_memory — changing the model
   # without re-embedding all stored vectors breaks similarity search.
-  # Used in: agent/llm.py embed_text(), agent/context.py _embed_query()
+  # Used in: agent/llm.py embed_text(), agent/coaching/context.py _embed_query()
   embedding: "models/gemini-embedding-001"
 
   # Output dimensionality requested from the embedding model. Must equal
@@ -36,8 +36,8 @@ models:
   embedding_dim: 768
 
   # Retries after a failed Gemini call (429, 5xx, timeout), per agent: the
-  # meal-logging graph's calls (agent/tools/meals.py, decompose.py) and the
-  # coaching agents (agent/coaching.py). For the coaching reply the same
+  # meal-logging graph's calls (agent/meal_logging/meals.py, decompose.py) and the
+  # coaching agents (agent/coaching/agent.py). For the coaching reply the same
   # count also caps the reply guard's rewrites (spec 013 R10). Each retry
   # adds a model call to a failing turn only, never to a healthy one.
   # PROVISIONAL (2026-11-13): set from production traces (failure rate per
@@ -47,7 +47,7 @@ models:
 
 token_limits:
   # Max output tokens for the log_meal/coaching intent classifier in
-  # agent/orchestrator.py. Gemini 3.1 flash-lite spends "thinking" tokens
+  # agent/routing/router.py. Gemini 3.1 flash-lite spends "thinking" tokens
   # from this same budget before emitting the structured JSON — values
   # below ~100 cause truncated/empty output and OutputParserException.
   # 200 is safe; raise if you see intent-classification parse errors.
@@ -86,7 +86,7 @@ usda:
   # ─────────────────────────────────────────────────────────────────────────
 
   # FoodData Central search endpoint.
-  # Used in: agent/tools/usda.py
+  # Used in: agent/food/usda.py
   search_url: "https://api.nal.usda.gov/fdc/v1/foods/search"
 
   # Which FDC data types to search. Foundation + SR Legacy are whole-food
@@ -201,7 +201,7 @@ memory:
   # Confidence assigned to newly curated preference facts by memory.apply_ops.
   new_fact_confidence: 0.8
 
-  # --- Curated preference profile (agent/memory.py) -----------------------
+  # --- Curated preference profile (agent/memory/facts.py) -----------------------
   # Every user has one: the coach gets the whole soft profile on every turn
   # (no embedding call), written by the curators and the coach's tools.
 
@@ -217,7 +217,7 @@ memory:
   # learned again. Oldest beyond this are purged.
   profile_max_tombstones: 50
 
-  # Save decision (agent/memory_judge.py). The curator model drafts
+  # Save decision (agent/memory/judge.py). The curator model drafts
   # candidate changes; GLiDE scores each one and only those at or above
   # save_min_probability are written. The score is stored as the fact's
   # confidence. Probe 2026-10-13 on eval/cases/memory_judge.jsonl (32
@@ -232,14 +232,14 @@ memory:
   # timeout, error). true = save it on the curator's word, as before the
   # judge existed; false = drop it. Applies only to soft adds and diet
   # settings: an unscored new restriction is always saved, and an unscored
-  # removal or replacement is always held (agent/memory_judge.py).
+  # removal or replacement is always held (agent/memory/judge.py).
   save_unjudged: true
 
   # Per-request wait for a memory judgment. Background work, so far more
   # patient than glide.request_timeout_s on the reply path.
   judge_timeout_s: 5.0
 
-  # --- Hard facts the patient states in chat (agent/memory_judge.py) --------
+  # --- Hard facts the patient states in chat (agent/memory/judge.py) --------
   # GLiDE scores each typed hard candidate; code places it in a band.
   # p >= accept AND the candidate adds a constraint: saved confirmed
   # (source inferred, confirmed_by inference) and mentioned once. ask <= p <
@@ -255,7 +255,7 @@ memory:
   # to the ask band, never to accept.
   hard_judge_timeout_s: 1.5
 
-  # Fixed texts for the readback in chat (agent/readback.py). Built from the
+  # Fixed texts for the readback in chat (agent/memory/readback.py). Built from the
   # entry's label in code, never from model text. {label} is the entry label.
   readback_text: "I'll note this on your profile: {label}. Is that right?"
   retire_readback_text: "Should I stop applying this from now on: {label}?"
@@ -283,7 +283,7 @@ memory:
   # "Often eats" block: foods logged at least staples_min_count times in
   # the last staples_window_days, per meal type. Derived from meal_log on
   # read and cached in Redis for staples_cache_ttl_s.
-  # Used in: agent/tools/history.py get_staple_foods
+  # Used in: agent/intake/history.py get_staple_foods
   staples_window_days: 30
   staples_min_count: 3
   staples_cache_ttl_s: 21600
@@ -291,7 +291,7 @@ memory:
   # Meal history given to the recipe prompt for variety (spec 013 FR-026):
   # recipes shown and meals logged in the last history_days, de-duplicated,
   # at most history_max_lines lines. Read from recommendation and meal_log.
-  # Used in: agent/meal_history.py
+  # Used in: agent/coaching/meal_history.py
   history_days: 21
   history_max_lines: 30
   # Most rows GET /profile/meals reads per list, so a long window stays bounded.
@@ -359,7 +359,7 @@ nutrient_checkup:
   # .nutrients (exact USDA names, via get_micronutrients_for_range). Note:
   # LLM-estimated items contribute macros but no vitamins, so vitamin
   # averages may undercount for users with many estimated foods.
-  # Used in: agent/tools/history.py get_nutrient_checkup_aggregates
+  # Used in: agent/intake/history.py get_nutrient_checkup_aggregates
   micronutrients:
     Sugar:
       usda_name: "Total Sugars"
@@ -406,10 +406,10 @@ features:
 glide:
   # Fastino GLiDE (System One): one request per fresh text message answers
   # "log a meal or ask the coach?" plus two yes/no questions (does it also
-  # report food; does it need guidance). See agent/system_one.py and
+  # report food; does it need guidance). See agent/routing/system_one.py and
   # specs/009-migrate-jev-to-glide/. Needs FASTINO_API_KEY; without it every
   # fresh message is routed by the Gemini classifier instead. Also answers
-  # the memory save decision (agent/memory_judge.py).
+  # the memory save decision (agent/memory/judge.py).
   base_url: "https://api.fastino.ai"
   model: "fastino/GLiDE"
 
@@ -446,7 +446,7 @@ routing:
   # its keyword lists were deleted. What remains is the card-reply classifier.
   #
   # Keyword sets for the confirmation-card reply classifier in
-  # agent/tools/meals.py classify_intent (no LLM). Word-level match after
+  # agent/meal_logging/meals.py classify_intent (no LLM). Word-level match after
   # punctuation stripping; multi-word entries match as substrings.
   # Anything matching neither set is treated as a correction.
   confirm_keywords:
@@ -569,11 +569,11 @@ safety:
   hard_profile_max_entries: 40
 
   # Attempts to produce a recipe that passes the check before the coach says
-  # no suitable meal was found (agent/suggest.py).
+  # no suitable meal was found (agent/coaching/suggest.py).
   max_recipe_attempts: 3
 
   # Share of shown recommendations queued for dietitian spot-check review
-  # (agent/suggest.py). The recommendation id is hashed, so the same
+  # (agent/coaching/suggest.py). The recommendation id is hashed, so the same
   # recommendation is always in or out. 0 disables sampling.
   plan_sample_rate: 0.1
 
@@ -582,7 +582,7 @@ safety:
   # Placeholder until measured on the guard eval (T062).
   reply_guard_min_probability: 0.5
 
-  # Shown instead of a reply the guard rejected (agent/coaching.py).
+  # Shown instead of a reply the guard rejected (agent/coaching/agent.py).
   reply_guard_fallback_text: "I can't suggest that safely with what I know about you. Check your profile, or ask your care team if you are unsure."
 
   # Most n-gram food phrases of one reply looked up in USDA by the reply guard
@@ -624,10 +624,10 @@ safety:
   mass_balance_min_g: 97
 
   # Shown when the hard profile cannot be read, so the coach never answers
-  # without the patient's restrictions (agent/context.py).
+  # without the patient's restrictions (agent/coaching/context.py).
   profile_unavailable_text: "I can't reach your health profile right now, so I won't suggest meals yet. Please try again in a moment."
 
-  # Shown when every recipe attempt failed the check (agent/suggest.py).
+  # Shown when every recipe attempt failed the check (agent/coaching/suggest.py).
   no_suitable_meal_text: "I couldn't find a meal that fits everything on your profile. Tell me what you have at home and I'll try again."
 
   # Shown when the food database cannot be reached, so a recipe cannot be

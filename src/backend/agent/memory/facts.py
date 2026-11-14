@@ -703,7 +703,7 @@ def render_profile_block(
     Kinds are added while the fact text stays within ``max_chars`` (the dates
     add at most about 19 characters per fact), so the prompt is bounded even
     if the table is not. The staples line is bounded by its
-    producer (agent/tools/history.py get_staple_foods). Hard facts are
+    producer (agent/intake/history.py get_staple_foods). Hard facts are
     rendered separately by ``safety.profile.render_block``.
 
     Args:

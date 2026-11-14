@@ -1,7 +1,7 @@
 """Readback in chat: ask about a hard fact, mention an inferred one, take the answer.
 
 Hard facts the patient states reach the profile as pending entries (ask band)
-or inferred confirmed ones (accept band), see agent/memory_judge.py. This
+or inferred confirmed ones (accept band), see agent/memory/judge.py. This
 module turns them into the sentences the coach appends to a reply and reads
 the patient's answer to them (spec 013 US4, research R13). Sentences come from
 fixed templates in tunables and the entry's label, never from model text.
@@ -10,7 +10,7 @@ An entry is *awaiting* an answer when it is pending, or confirmed with a
 retirement request. The coach asks once per session (the conversation id
 within the coaching-history window) and records when (``readback_asked_at``).
 The answer is read with the same keyword classifier the meal card uses
-(agent/tools/meals.py classify_intent), made stricter: a yes is a short
+(agent/meal_logging/meals.py classify_intent), made stricter: a yes is a short
 message that opens with a yes word and a no opens with a no word, so
 "what's a good dinner?" or "no carb ideas, please" never answer.
 """

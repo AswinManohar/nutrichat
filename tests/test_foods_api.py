@@ -2,7 +2,7 @@
 
 T002 finding: `resolve_local`/`usda_local.lookup` is a synchronous SQLite
 read. The only existing async call site, `_fetch_one` in
-`backend/agent/tools/usda.py` (~line 496), already wraps it in
+`backend/agent/food/usda.py` (~line 496), already wraps it in
 `asyncio.to_thread(usda_local.lookup, entity.food_name, ...)` before
 awaiting it -- it is never called directly from an `async def` without that
 wrapper. The new `GET /foods/search` and `GET /foods/{fdc_id}` endpoints
