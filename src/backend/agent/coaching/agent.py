@@ -23,6 +23,7 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.usage import UsageLimits
 from redis.exceptions import RedisError
 
+from backend.agent.aio import resolved
 from backend.agent.coaching.context import (
     build_context,
     build_restrictions_prompt,
@@ -677,11 +678,6 @@ def _plan_notices(entries: list[HardEntry], conversation_id: str | None) -> Plan
         return Plan()
 
 
-async def _none() -> list[RetrievedChunk]:
-    """Awaitable empty result, so gather() has a uniform shape."""
-    return []
-
-
 async def _extract_facts(user_id: str, message: str) -> TurnExtraction | None:
     """Extract hard and soft facts from the patient's message, inside the turn.
 
@@ -832,7 +828,7 @@ class CoachingAgent:
             fetch_data(user_id, parsed, entries),
             retrieve(message, declared_conditions(entries))
             if parsed.needs_guidance
-            else _none(),
+            else resolved([]),
         )
 
         micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]

@@ -42,6 +42,7 @@ import logfire
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent import glide
+from backend.agent.aio import resolved
 from backend.agent.glide import GlideUnavailable, Question, Questions, noul
 from backend.agent.memory.facts import (
     AddFact,
@@ -261,16 +262,11 @@ async def judge_ops(
                 *[
                     _judge_one(client, message, *candidate)
                     if candidate is not None
-                    else _no_answer()
+                    else resolved(None)
                     for candidate in candidates
                 ]
             )
         )
-
-
-async def _no_answer() -> None:
-    """Placeholder so unjudgeable ops keep their position in the gather."""
-    return None
 
 
 def _keep_unjudged(op: MemoryOp, *, save_unjudged: bool) -> bool:
@@ -425,7 +421,7 @@ async def judge_hard(
                 *[
                     _judge_one(client, message, *text)
                     if text is not None
-                    else _no_answer()
+                    else resolved(None)
                     for text in texts
                 ]
             )

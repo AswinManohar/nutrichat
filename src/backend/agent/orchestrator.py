@@ -237,12 +237,7 @@ async def _answer_readback(
     """
     with logfire.span("readback_reply", answer=answer):
         text = await readback.apply_reply(user_id, awaiting, answer)
-        response: dict[str, Any] = {
-            "status": "success",
-            "message": text,
-            "paused": False,
-            "items": [],
-        }
+        response = turn_response(text)
         if extraction is not None and extraction.changed_hard:
             response = await _read_back_new(user_id, thread_id, response)
     if state.next:
