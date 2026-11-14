@@ -225,6 +225,7 @@ async def _judge_one(
             client,
             {"message": message, "candidate": candidate},
             {question: _ALL_QUESTIONS[question]},
+            purpose="memory_judge",
         )
         return response.noul(question)
     except GlideUnavailable as exc:

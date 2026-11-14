@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from backend import tracing
 from backend.agent.food.usda import NULLABLE_MACROS
 from backend.safety.meal_check import check_meal_for
 
@@ -91,7 +92,9 @@ async def card_fields(
     profile read, plus today's meals when the patient has a nutrient limit.
     """
     usda_results = values.get("usda_results", [])
-    check = await check_meal_for(user_id, usda_results)
+    with tracing.stage_span(tracing.MEAL_LOGGING_CARD_CHECK) as span:
+        check = await check_meal_for(user_id, usda_results)
+        span.set_attribute("n_warnings", len(check.warnings))
     return {
         "message": f"{message}\n\n{check.text}" if check.warnings else message,
         "items": serialize_items(usda_results),

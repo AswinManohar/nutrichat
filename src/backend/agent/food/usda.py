@@ -20,6 +20,7 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend import tracing
 from backend.agent.food import usda_local
 from backend.agent.food.usda_match import (
     _ENERGY_KEYS,
@@ -574,21 +575,40 @@ async def _fetch_one(session: aiohttp.ClientSession | None, entity) -> USDAResul
     (fdc_id == -1), discard the weak hit and fall back to
     estimate_nutrition_llm() instead.
     """
-    if _use_local():
-        match = await asyncio.to_thread(
-            usda_local.lookup,
-            entity.food_name,
-            pool_size=_TUNABLES.usda.candidate_pool_size,
-            max_candidates=_TUNABLES.usda.max_candidates,
-        )
-        result = _result_from_local(entity, match) if match else _miss_result(entity)
-    else:
-        result = await _fetch_usda_api(session, entity)
+    with tracing.stage_span(tracing.FOOD_RESOLVE) as span:
+        if _use_local():
+            match = await asyncio.to_thread(
+                usda_local.lookup,
+                entity.food_name,
+                pool_size=_TUNABLES.usda.candidate_pool_size,
+                max_candidates=_TUNABLES.usda.max_candidates,
+            )
+            result = (
+                _result_from_local(entity, match) if match else _miss_result(entity)
+            )
+            lookup_source = "local"
+        else:
+            result = await _fetch_usda_api(session, entity)
+            # A Postgres cache hit and a live FDC call both come back as a
+            # USDA result; telling them apart would mean threading a flag
+            # through _fetch_usda_api, so they share one value.
+            lookup_source = "fdc_api"
 
-    floor = _TUNABLES.usda.match_confidence_floor
-    if result.fdc_id == -1 or result.match_confidence < floor:
-        return await estimate_nutrition_llm(entity.food_name, entity.qty_g)
-    return result
+        floor = _TUNABLES.usda.match_confidence_floor
+        fell_back = result.fdc_id == -1 or result.match_confidence < floor
+        if fell_back:
+            result = await estimate_nutrition_llm(entity.food_name, entity.qty_g)
+            lookup_source = "llm_estimate" if result.estimated else "miss"
+        # Never the food name: free text stays out of telemetry.
+        span.set_attributes(
+            {
+                "source": lookup_source,
+                "match_confidence": result.match_confidence,
+                "fdc_id": result.fdc_id,
+                "fell_back": fell_back,
+            }
+        )
+        return result
 
 
 async def _fetch_usda_api(session: aiohttp.ClientSession, entity) -> USDAResult:
@@ -667,8 +687,22 @@ async def usda_lookup_batch(entities: list) -> list[USDAResult]:
     Returns:
         List of USDAResult in same order. Failed lookups have fdc_id=-1.
     """
-    if _use_local():
-        return list(await asyncio.gather(*[_fetch_one(None, e) for e in entities]))
-
-    async with aiohttp.ClientSession() as session:
-        return list(await asyncio.gather(*[_fetch_one(session, e) for e in entities]))
+    with tracing.stage_span(
+        tracing.FOOD_LOOKUP_BATCH, n_entities=len(entities)
+    ) as span:
+        if _use_local():
+            results = list(
+                await asyncio.gather(*[_fetch_one(None, e) for e in entities])
+            )
+        else:
+            async with aiohttp.ClientSession() as session:
+                results = list(
+                    await asyncio.gather(*[_fetch_one(session, e) for e in entities])
+                )
+        span.set_attributes(
+            {
+                "n_estimated": sum(r.estimated for r in results),
+                "n_miss": sum(r.fdc_id == -1 and not r.estimated for r in results),
+            }
+        )
+        return results

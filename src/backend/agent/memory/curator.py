@@ -29,6 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
+from backend import tracing
 from backend.agent.aio import resolved
 from backend.agent.intake.history import get_category_breakdown, get_staple_foods
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
@@ -456,43 +457,49 @@ async def extract_turn(
     """
     if not user_input.strip():
         return TurnExtraction()
-    state, entries = await asyncio.gather(
-        load_state(user_id), profile.load_hard_profile(user_id)
-    )
-    try:
-        tables: ClinicalTables | None = load_tables()
-    except TablesUnavailable as exc:
-        logger.error("clinical tables unavailable, no hard facts this turn: %s", exc)
-        tables = None
-    output: CuratorOutput = await _curator_llm.ainvoke(
-        [
-            SystemMessage(content=_CURATOR_SYSTEM),
-            HumanMessage(
-                content=build_curator_input(
-                    state, user_input, agent_reply, entries, tables
-                )
-            ),
-        ]
-    )
-    soft_candidates = to_memory_ops(output.ops, state)
-    hard_candidates = (
-        to_hard_candidates(output, user_input, entries, tables) if tables else []
-    )
-    if not soft_candidates and not hard_candidates:
-        return TurnExtraction()
-    soft_scores, hard_scores = await asyncio.gather(
-        judge_ops(user_input, soft_candidates, state),
-        judge_hard(user_input, hard_candidates, entries, tables)
-        if tables
-        else resolved([]),
-    )
-    soft_ops = select_ops(soft_candidates, soft_scores)
-    decisions = select_hard_ops(hard_candidates, hard_scores, entries)
-    result = TurnExtraction()
-    await asyncio.gather(
-        _apply_soft(user_id, soft_ops, result), _apply_hard(user_id, decisions, result)
-    )
-    return result
+    with tracing.stage_span(tracing.MEMORY_EXTRACT_TURN) as span:
+        state, entries = await asyncio.gather(
+            load_state(user_id), profile.load_hard_profile(user_id)
+        )
+        try:
+            tables: ClinicalTables | None = load_tables()
+        except TablesUnavailable as exc:
+            logger.error(
+                "clinical tables unavailable, no hard facts this turn: %s", exc
+            )
+            tables = None
+        output: CuratorOutput = await _curator_llm.ainvoke(
+            [
+                SystemMessage(content=_CURATOR_SYSTEM),
+                HumanMessage(
+                    content=build_curator_input(
+                        state, user_input, agent_reply, entries, tables
+                    )
+                ),
+            ]
+        )
+        soft_candidates = to_memory_ops(output.ops, state)
+        hard_candidates = (
+            to_hard_candidates(output, user_input, entries, tables) if tables else []
+        )
+        span.set_attribute("n_proposed", len(soft_candidates) + len(hard_candidates))
+        if not soft_candidates and not hard_candidates:
+            return TurnExtraction()
+        soft_scores, hard_scores = await asyncio.gather(
+            judge_ops(user_input, soft_candidates, state),
+            judge_hard(user_input, hard_candidates, entries, tables)
+            if tables
+            else resolved([]),
+        )
+        soft_ops = select_ops(soft_candidates, soft_scores)
+        decisions = select_hard_ops(hard_candidates, hard_scores, entries)
+        span.set_attribute("n_kept", len(soft_ops) + len(decisions))
+        result = TurnExtraction()
+        await asyncio.gather(
+            _apply_soft(user_id, soft_ops, result),
+            _apply_hard(user_id, decisions, result),
+        )
+        return result
 
 
 async def _apply_soft(
@@ -513,7 +520,10 @@ async def curate_turn(user_id: str, user_input: str, agent_reply: str) -> ApplyO
     Returns:
         What was applied to the soft profile; empty when nothing changed.
     """
-    return (await extract_turn(user_id, user_input, agent_reply)).soft
+    with tracing.stage_span(tracing.MEMORY_CURATE_TURN) as span:
+        outcome = (await extract_turn(user_id, user_input, agent_reply)).soft
+        span.set_attribute("n_applied", outcome.n_applied)
+        return outcome
 
 
 class LogHabit(BaseModel):
@@ -621,31 +631,35 @@ async def infer_log_habits(user_id: str) -> ApplyOutcome:
     Returns:
         What was applied; empty when there is nothing to infer from.
     """
-    cfg = _TUNABLES.memory
-    days = cfg.staples_window_days
-    staples = await get_staple_foods(user_id, days=days)
-    if not staples:
-        return ApplyOutcome()
-    by_meal_type = await get_category_breakdown(user_id, days)
-    state = await load_state(user_id)
-    output: LogHabitsOutput = await _log_habits_llm.ainvoke(
-        [
-            SystemMessage(content=_LOG_HABITS_SYSTEM),
-            HumanMessage(
-                content=build_log_habits_input(
-                    state,
-                    staples,
-                    by_meal_type,
-                    days=days,
-                    max_facts=cfg.weekly_habits_max_facts,
-                )
-            ),
-        ]
-    )
-    ops = plan_log_habit_ops(output.facts, state, cfg.weekly_habits_max_facts)
-    if not ops:
-        return ApplyOutcome()
-    return await apply_ops(user_id, ops, "weekly")
+    with tracing.stage_span(tracing.MEMORY_INFER_LOG_HABITS) as span:
+        cfg = _TUNABLES.memory
+        days = cfg.staples_window_days
+        staples = await get_staple_foods(user_id, days=days)
+        if not staples:
+            return ApplyOutcome()
+        by_meal_type = await get_category_breakdown(user_id, days)
+        state = await load_state(user_id)
+        output: LogHabitsOutput = await _log_habits_llm.ainvoke(
+            [
+                SystemMessage(content=_LOG_HABITS_SYSTEM),
+                HumanMessage(
+                    content=build_log_habits_input(
+                        state,
+                        staples,
+                        by_meal_type,
+                        days=days,
+                        max_facts=cfg.weekly_habits_max_facts,
+                    )
+                ),
+            ]
+        )
+        ops = plan_log_habit_ops(output.facts, state, cfg.weekly_habits_max_facts)
+        span.set_attributes({"n_proposed": len(output.facts), "n_kept": len(ops)})
+        if not ops:
+            return ApplyOutcome()
+        outcome = await apply_ops(user_id, ops, "weekly")
+        span.set_attribute("n_applied", outcome.n_applied)
+        return outcome
 
 
 __all__ = [

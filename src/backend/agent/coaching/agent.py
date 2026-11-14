@@ -23,6 +23,7 @@ from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.usage import UsageLimits
 from redis.exceptions import RedisError
 
+from backend import tracing
 from backend.agent.aio import resolved
 from backend.agent.coaching.context import (
     build_context,
@@ -451,58 +452,74 @@ async def fetch_data(
         Dict with any of "today_totals", "macros", "micronutrients",
         "goals", "foods" depending on the query.
     """
-    macro_nutrients = [n for n in parsed.nutrients if n in _MACRO_ALIASES]
-    micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
+    with tracing.stage_span(
+        tracing.COACHING_FETCH_DATA, time_range=parsed.time_range
+    ) as span:
+        macro_nutrients = [n for n in parsed.nutrients if n in _MACRO_ALIASES]
+        micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
 
-    data: dict = {}
+        # Redis serves only today's macro totals; everything else, and the
+        # fallback when Redis is down, is Postgres.
+        span.set_attributes(
+            {"source": "postgres", "n_micronutrients": len(micro_nutrients)}
+        )
 
-    if macro_nutrients or not parsed.nutrients:
-        if parsed.time_range == "today" and not micro_nutrients:
-            try:
-                totals = await get_today_totals(user_id)
-                data["today_totals"] = totals.model_dump()
-                today = nutrition_today()
-                data["period"] = _build_period(today, today, "today")
-            except (RedisError, OSError):
-                # Redis unavailable — fall back to Postgres (coaching spec §6).
+        data: dict = {}
+
+        if macro_nutrients or not parsed.nutrients:
+            if parsed.time_range == "today" and not micro_nutrients:
+                try:
+                    totals = await get_today_totals(user_id)
+                    span.set_attribute("source", "redis")
+                    data["today_totals"] = totals.model_dump()
+                    today = nutrition_today()
+                    data["period"] = _build_period(today, today, "today")
+                except (RedisError, OSError):
+                    # Redis unavailable — fall back to Postgres (coaching spec §6).
+                    date_from, date_to = _resolve_date_range(parsed)
+                    data["macros"] = await get_macros_for_range(
+                        user_id, date_from, date_to
+                    )
+                    data["period"] = _build_period(
+                        date_from, date_to, parsed.time_range
+                    )
+            else:
                 date_from, date_to = _resolve_date_range(parsed)
                 data["macros"] = await get_macros_for_range(user_id, date_from, date_to)
                 data["period"] = _build_period(date_from, date_to, parsed.time_range)
-        else:
+
+        if micro_nutrients:
             date_from, date_to = _resolve_date_range(parsed)
-            data["macros"] = await get_macros_for_range(user_id, date_from, date_to)
-            data["period"] = _build_period(date_from, date_to, parsed.time_range)
+            data["micronutrients"] = await get_micronutrients_for_range(
+                user_id, date_from, date_to, micro_nutrients
+            )
+            if "period" not in data:
+                data["period"] = _build_period(date_from, date_to, parsed.time_range)
 
-    if micro_nutrients:
-        date_from, date_to = _resolve_date_range(parsed)
-        data["micronutrients"] = await get_micronutrients_for_range(
-            user_id, date_from, date_to, micro_nutrients
-        )
-        if "period" not in data:
-            data["period"] = _build_period(date_from, date_to, parsed.time_range)
+        if parsed.include_goals:
+            session_factory = get_session()
+            async with session_factory() as session:
+                goal = await session.get(UserGoal, user_id)
+                if goal is not None:
+                    data["goals"] = {
+                        "kcal_goal": goal.kcal_goal,
+                        "protein_goal": goal.protein_goal,
+                        "fiber_goal": goal.fiber_goal,
+                        "dietary_prefs": {
+                            setting: True
+                            for setting in active_diet_settings(
+                                entries
+                                if entries is not None
+                                else await load_hard_profile(user_id)
+                            )
+                        },
+                    }
 
-    if parsed.include_goals:
-        session_factory = get_session()
-        async with session_factory() as session:
-            goal = await session.get(UserGoal, user_id)
-            if goal is not None:
-                data["goals"] = {
-                    "kcal_goal": goal.kcal_goal,
-                    "protein_goal": goal.protein_goal,
-                    "fiber_goal": goal.fiber_goal,
-                    "dietary_prefs": {
-                        setting: True
-                        for setting in active_diet_settings(
-                            entries
-                            if entries is not None
-                            else await load_hard_profile(user_id)
-                        )
-                    },
-                }
-
-    if parsed.include_foods:
-        date_from, date_to = _resolve_date_range(parsed)
-        data["foods"] = await get_food_breakdown_for_range(user_id, date_from, date_to)
+        if parsed.include_foods:
+            date_from, date_to = _resolve_date_range(parsed)
+            data["foods"] = await get_food_breakdown_for_range(
+                user_id, date_from, date_to
+            )
 
     return data
 
@@ -623,19 +640,21 @@ async def _context_prompt(user_id: str, entries: list[HardEntry]) -> str:
             either. Answering without them could suggest a food the user
             must not eat.
     """
-    try:
-        return build_system_prompt(await build_context(user_id, entries))
-    except Exception as exc:  # noqa: BLE001 — see docstring
-        logger.warning(
-            "build_context failed for %s, coaching with restrictions only: %s",
-            user_id,
-            exc,
-        )
-    try:
-        return build_restrictions_prompt(await load_restrictions(user_id, entries))
-    except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
-        logger.error("loading restrictions failed for %s: %s", user_id, exc)
-        raise RestrictionsUnavailableError(user_id) from exc
+    with tracing.stage_span(tracing.COACHING_CONTEXT, fallback="none") as span:
+        try:
+            return build_system_prompt(await build_context(user_id, entries))
+        except Exception as exc:  # noqa: BLE001 — see docstring
+            logger.warning(
+                "build_context failed for %s, coaching with restrictions only: %s",
+                user_id,
+                exc,
+            )
+            span.set_attribute("fallback", "restrictions_only")
+        try:
+            return build_restrictions_prompt(await load_restrictions(user_id, entries))
+        except Exception as exc:  # noqa: BLE001 — any failure here must stop the turn
+            logger.error("loading restrictions failed for %s: %s", user_id, exc)
+            raise RestrictionsUnavailableError(user_id) from exc
 
 
 async def _profile_and_context(user_id: str) -> tuple[list[HardEntry], str]:
@@ -650,6 +669,16 @@ async def _profile_and_context(user_id: str) -> tuple[list[HardEntry], str]:
         logger.error("loading hard profile failed for %s: %s", user_id, exc)
         raise RestrictionsUnavailableError(user_id) from exc
     return entries, await _context_prompt(user_id, entries)
+
+
+async def _retrieve_passages(
+    message: str, conditions: list[str]
+) -> list[RetrievedChunk]:
+    """Guideline retrieval for the turn, as one traced stage."""
+    with tracing.stage_span(tracing.COACHING_RETRIEVE) as span:
+        passages = await retrieve(message, conditions)
+        span.set_attribute("n_passages", len(passages))
+        return passages
 
 
 async def _replan(
@@ -767,10 +796,12 @@ class CoachingAgent:
 
         if parsed.suggests_meal and planned.asks:
             # A fact the recipe must respect is not confirmed yet: ask first.
+            tracing.set_current_attribute("branch", "withheld")
             result = CoachingResult(
                 message=_TUNABLES.memory.recipe_withheld_text, parsed=parsed
             )
         elif parsed.suggests_meal:
+            tracing.set_current_attribute("branch", "recipe")
             result = await self._recipe_reply(
                 user_id, message, history, entries, parsed
             )
@@ -826,7 +857,7 @@ class CoachingAgent:
         # Data fetch and guideline retrieval are independent too.
         data, retrieved = await asyncio.gather(
             fetch_data(user_id, parsed, entries),
-            retrieve(message, declared_conditions(entries))
+            _retrieve_passages(message, declared_conditions(entries))
             if parsed.needs_guidance
             else resolved([]),
         )
@@ -838,6 +869,7 @@ class CoachingAgent:
         # let the model answer from them instead of short-circuiting on the
         # absence of logged data.
         if micro_nutrients and not data.get("micronutrients") and not retrieved:
+            tracing.set_current_attribute("branch", "no_data")
             names = ", ".join(_humanize_nutrient_name(n) for n in micro_nutrients)
             return (
                 CoachingResult(
@@ -847,6 +879,7 @@ class CoachingAgent:
                 planned,
             )
 
+        tracing.set_current_attribute("branch", "answer")
         tool_writes = hard_writes.set([])
         try:
             text = await generate_response(

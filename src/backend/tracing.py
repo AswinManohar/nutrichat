@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 import logfire
+from opentelemetry import trace
 
 TURN = "turn"
 ROUTING_DECIDE = "routing.decide"
@@ -31,6 +32,16 @@ MEMORY_READBACK_REPLY = "memory.readback_reply"
 MEMORY_APPLY_OPS = "memory.apply_ops"
 MEAL_LOGGING_AGENT = "invoke_agent meal_logging"
 MEAL_LOGGING_RESOLVE_INGREDIENT = "meal_logging.resolve_ingredient"
+FOOD_LOOKUP_BATCH = "food.lookup_batch"
+FOOD_RESOLVE = "food.resolve"
+MEAL_LOGGING_CARD_CHECK = "meal_logging.card_check"
+GLIDE_ASK = "glide.ask"
+COACHING_CONTEXT = "coaching.context"
+COACHING_FETCH_DATA = "coaching.fetch_data"
+COACHING_RETRIEVE = "coaching.retrieve"
+MEMORY_EXTRACT_TURN = "memory.extract_turn"
+MEMORY_CURATE_TURN = "memory.curate_turn"
+MEMORY_INFER_LOG_HABITS = "memory.infer_log_habits"
 COACHING_TURN = "coaching.turn"
 COACHING_SUGGEST_MEAL = "coaching.suggest_meal"
 COACHING_CHECK_RECIPE = "coaching.check_recipe"
@@ -48,3 +59,16 @@ def stage_span(name: str, **attributes: Any) -> logfire.LogfireSpan:
         A context manager yielding the span.
     """
     return logfire.span(name, **attributes)
+
+
+def set_current_attribute(key: str, value: str | int | float | bool) -> None:
+    """Set an attribute on whichever span is open right now.
+
+    For a caller that runs inside a span it does not own, such as the branch a
+    coaching turn took. A no-op when no span is recording.
+
+    Args:
+        key: Attribute name.
+        value: An id, count, enum, flag or timing, never text from the user.
+    """
+    trace.get_current_span().set_attribute(key, value)

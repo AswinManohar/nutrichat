@@ -17,11 +17,12 @@ surface as :class:`GlideUnavailable` carrying a short reason only.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend import tracing
 from backend.config import get_tunables
 
 _CONFIG = get_tunables().glide
@@ -30,6 +31,7 @@ _PATH = "/v1/systemone"
 
 Question = dict[str, Any]
 Questions = dict[str, Question]
+Purpose = Literal["routing", "memory_judge", "reply_guard", "warm_up"]
 
 
 class GlideUnavailable(Exception):
@@ -124,6 +126,7 @@ async def ask(
     state: dict[str, str],
     questions: Questions,
     *,
+    purpose: Purpose,
     timeout_s: float | None = None,
 ) -> GlideResponse:
     """Send one System One request. One attempt, no retries.
@@ -132,6 +135,7 @@ async def ask(
         client: A client from :func:`make_client`.
         state: What the questions are about. Only what the judgment needs.
         questions: Named questions from :func:`noul` / :func:`choice`.
+        purpose: Which caller asks, recorded on the ``glide.ask`` span.
         timeout_s: Overrides the client's timeout for this request.
 
     Returns:
@@ -141,6 +145,31 @@ async def ask(
         GlideUnavailable: Timeout, transport failure, a non-200 status, or a
             body that is not a System One response.
     """
+    with tracing.stage_span(
+        tracing.GLIDE_ASK, purpose=purpose, model=_CONFIG.model
+    ) as span:
+        try:
+            response = await _request(client, state, questions, timeout_s)
+        except GlideUnavailable as exc:
+            # Recorded as an outcome, not an error: callers handle it, and a
+            # raise through the span would mark the span as failed too.
+            span.set_attribute("outcome", exc.reason)
+            failure = exc
+        else:
+            span.set_attributes(
+                {"outcome": "ok", "input_tokens": response.input_tokens}
+            )
+            return response
+    raise failure
+
+
+async def _request(
+    client: httpx.AsyncClient,
+    state: dict[str, str],
+    questions: Questions,
+    timeout_s: float | None,
+) -> GlideResponse:
+    """Post the questions and decode the answers; see :func:`ask`."""
     body = {"model": _CONFIG.model, "state": state, "questions": questions}
     try:
         if timeout_s is None:
@@ -170,6 +199,7 @@ __all__ = [
     "API_KEY_ENV",
     "GlideResponse",
     "GlideUnavailable",
+    "Purpose",
     "Question",
     "Questions",
     "api_key",

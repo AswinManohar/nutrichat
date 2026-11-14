@@ -91,6 +91,7 @@ async def judge(reply: str, avoid: list[str]) -> float | None:
             client,
             {"reply": reply, "avoid": ", ".join(avoid)},
             {_KEY: _QUESTION},
+            purpose="reply_guard",
         )
         return response.noul(_KEY)
     except GlideUnavailable as exc:

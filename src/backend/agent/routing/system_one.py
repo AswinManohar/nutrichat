@@ -191,6 +191,7 @@ async def warm_up() -> None:
                 client,
                 {"message": "warm up"},
                 ROUTING_QUESTIONS,
+                purpose="warm_up",
                 timeout_s=_CONFIG.warm_up_timeout_s,
             )
         except GlideUnavailable as exc:
@@ -228,7 +229,9 @@ async def judge_message(message: str) -> tuple[RoutingJudgment | None, str | Non
 
     start = time.perf_counter()
     try:
-        response = await glide.ask(client, {"message": message}, ROUTING_QUESTIONS)
+        response = await glide.ask(
+            client, {"message": message}, ROUTING_QUESTIONS, purpose="routing"
+        )
         raw_choice, probabilities = response.choice("intent")
         p_log = probabilities["log_meal"]
         judgment = RoutingJudgment(
