@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 
 from backend.agent.intake.history import get_category_breakdown, get_staple_foods
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     MAX_FACT_CHARS,
     AddFact,
     ApplyOutcome,
@@ -44,7 +44,7 @@ from backend.agent.memory import (
     load_state,
     normalize_fact,
 )
-from backend.agent.memory_judge import (
+from backend.agent.memory.judge import (
     HardAdd,
     HardCandidate,
     HardDecision,

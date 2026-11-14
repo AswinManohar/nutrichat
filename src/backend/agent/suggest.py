@@ -32,7 +32,7 @@ from backend.agent.cost import record_run_cost
 from backend.agent.food import usda_local
 from backend.agent.llm import FLASH_LITE_MODEL
 from backend.agent.meal_history import build_history_block
-from backend.agent.memory import load_profile, render_profile_block
+from backend.agent.memory.facts import load_profile, render_profile_block
 from backend.config import get_tunables
 from backend.db.models import CheckFailure, Recommendation, ReviewItem
 from backend.db.redis_client import CoachingTurn

@@ -15,7 +15,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from backend.agent import coaching
 from backend.agent.coaching import generate_response
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     PENDING_ADD,
     PENDING_REMOVAL,
     AddFact,
@@ -26,7 +26,7 @@ from backend.agent.memory import (
     RemoveFact,
     SetDietChip,
 )
-from backend.agent.memory_tools import forget_fact, remember_fact, set_diet_setting
+from backend.agent.memory.tools import forget_fact, remember_fact, set_diet_setting
 from backend.safety import profile
 from backend.safety.tables import load_tables
 from tests.profile_helpers import hard_entry
@@ -63,7 +63,7 @@ def _no_hard() -> AsyncMock:
 
 async def test_remember_fact_writes_as_the_user() -> None:
     apply = _apply()
-    with patch("backend.agent.memory_tools.apply_ops", apply):
+    with patch("backend.agent.memory.tools.apply_ops", apply):
         message = await remember_fact(USER, " Dislikes mushrooms ", "dislike")
 
     apply.assert_awaited_once_with(
@@ -73,7 +73,7 @@ async def test_remember_fact_writes_as_the_user() -> None:
 
 
 async def test_remember_fact_reports_a_rejection() -> None:
-    with patch("backend.agent.memory_tools.apply_ops", _apply(False, "already known")):
+    with patch("backend.agent.memory.tools.apply_ops", _apply(False, "already known")):
         message = await remember_fact(USER, "Dislikes mushrooms", "dislike")
 
     assert message == "Nothing saved: already known."
@@ -83,11 +83,11 @@ async def test_forget_fact_matches_by_substring() -> None:
     apply = _apply()
     with (
         patch(
-            "backend.agent.memory_tools.load_profile",
+            "backend.agent.memory.tools.load_profile",
             _profile("Dislikes mushrooms", "Likes dal"),
         ),
-        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
-        patch("backend.agent.memory_tools.apply_ops", apply),
+        patch("backend.agent.memory.tools.profile.load_hard_profile", _no_hard()),
+        patch("backend.agent.memory.tools.apply_ops", apply),
     ):
         message = await forget_fact(USER, "mushrooms")
 
@@ -101,11 +101,11 @@ async def test_forget_fact_prefers_an_exact_match_over_substrings() -> None:
     apply = _apply()
     with (
         patch(
-            "backend.agent.memory_tools.load_profile",
+            "backend.agent.memory.tools.load_profile",
             _profile("Dislikes fish", "Dislikes fish sauce"),
         ),
-        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
-        patch("backend.agent.memory_tools.apply_ops", apply),
+        patch("backend.agent.memory.tools.profile.load_hard_profile", _no_hard()),
+        patch("backend.agent.memory.tools.apply_ops", apply),
     ):
         await forget_fact(USER, "dislikes fish")
 
@@ -116,11 +116,11 @@ async def test_forget_fact_ambiguous_or_missing_changes_nothing() -> None:
     apply = _apply()
     with (
         patch(
-            "backend.agent.memory_tools.load_profile",
+            "backend.agent.memory.tools.load_profile",
             _profile("Dislikes fish", "Dislikes fish sauce"),
         ),
-        patch("backend.agent.memory_tools.profile.load_hard_profile", _no_hard()),
-        patch("backend.agent.memory_tools.apply_ops", apply),
+        patch("backend.agent.memory.tools.profile.load_hard_profile", _no_hard()),
+        patch("backend.agent.memory.tools.apply_ops", apply),
     ):
         ambiguous = await forget_fact(USER, "fish")
         missing = await forget_fact(USER, "okra")
@@ -133,7 +133,7 @@ async def test_forget_fact_ambiguous_or_missing_changes_nothing() -> None:
 
 async def test_set_diet_setting_normalizes_the_key() -> None:
     apply = _apply()
-    with patch("backend.agent.memory_tools.apply_ops", apply):
+    with patch("backend.agent.memory.tools.apply_ops", apply):
         message = await set_diet_setting(USER, "Gluten-Free", True)
 
     apply.assert_awaited_once_with(
@@ -145,10 +145,10 @@ async def test_set_diet_setting_normalizes_the_key() -> None:
 
 async def test_set_diet_setting_reports_unknown_and_unchanged() -> None:
     with patch(
-        "backend.agent.memory_tools.apply_ops", _apply(False, "unknown diet setting")
+        "backend.agent.memory.tools.apply_ops", _apply(False, "unknown diet setting")
     ):
         unknown = await set_diet_setting(USER, "carnivore", True)
-    with patch("backend.agent.memory_tools.apply_ops", _apply(True, "no change")):
+    with patch("backend.agent.memory.tools.apply_ops", _apply(True, "no change")):
         unchanged = await set_diet_setting(USER, "vegan", False)
 
     assert unknown == "Nothing changed: unknown diet setting."
@@ -157,7 +157,7 @@ async def test_set_diet_setting_reports_unknown_and_unchanged() -> None:
 
 async def test_remember_a_restriction_creates_a_pending_hard_entry() -> None:
     apply = _apply(True, PENDING_ADD)
-    with patch("backend.agent.memory_tools.apply_ops", apply):
+    with patch("backend.agent.memory.tools.apply_ops", apply):
         message = await remember_fact(USER, "Allergic to peanuts", "restriction")
 
     apply.assert_awaited_once_with(
@@ -172,14 +172,14 @@ async def test_forget_a_confirmed_hard_fact_only_requests_retirement() -> None:
     request = AsyncMock()
     apply = _apply()
     with (
-        patch("backend.agent.memory_tools.load_profile", _profile("Likes dal")),
+        patch("backend.agent.memory.tools.load_profile", _profile("Likes dal")),
         patch(
-            "backend.agent.memory_tools.profile.load_hard_profile",
+            "backend.agent.memory.tools.profile.load_hard_profile",
             AsyncMock(return_value=[allergy]),
         ),
-        patch("backend.agent.memory_tools.load_tables", load_tables),
-        patch("backend.agent.memory_tools.profile.request_retirement", request),
-        patch("backend.agent.memory_tools.apply_ops", apply),
+        patch("backend.agent.memory.tools.load_tables", load_tables),
+        patch("backend.agent.memory.tools.profile.request_retirement", request),
+        patch("backend.agent.memory.tools.apply_ops", apply),
     ):
         message = await forget_fact(USER, "peanut allergy")
 
@@ -195,12 +195,12 @@ async def test_forget_a_pending_hard_fact_denies_it() -> None:
     )
     deny = AsyncMock()
     with (
-        patch("backend.agent.memory_tools.load_profile", _profile()),
+        patch("backend.agent.memory.tools.load_profile", _profile()),
         patch(
-            "backend.agent.memory_tools.profile.load_hard_profile",
+            "backend.agent.memory.tools.profile.load_hard_profile",
             AsyncMock(return_value=[pending]),
         ),
-        patch("backend.agent.memory_tools.profile.deny", deny),
+        patch("backend.agent.memory.tools.profile.deny", deny),
     ):
         message = await forget_fact(USER, "vegan")
 
@@ -209,7 +209,7 @@ async def test_forget_a_pending_hard_fact_denies_it() -> None:
 
 
 async def test_set_diet_off_reports_the_pending_removal() -> None:
-    with patch("backend.agent.memory_tools.apply_ops", _apply(True, PENDING_REMOVAL)):
+    with patch("backend.agent.memory.tools.apply_ops", _apply(True, PENDING_REMOVAL)):
         message = await set_diet_setting(USER, "vegan", False)
 
     assert PENDING_REMOVAL in message
@@ -218,9 +218,9 @@ async def test_set_diet_off_reports_the_pending_removal() -> None:
 
 async def test_forget_says_so_when_the_profile_cannot_be_read() -> None:
     with (
-        patch("backend.agent.memory_tools.load_profile", _profile()),
+        patch("backend.agent.memory.tools.load_profile", _profile()),
         patch(
-            "backend.agent.memory_tools.profile.load_hard_profile",
+            "backend.agent.memory.tools.profile.load_hard_profile",
             AsyncMock(side_effect=OSError("down")),
         ),
     ):
@@ -291,7 +291,7 @@ async def test_explicit_remember_runs_the_tool_then_answers() -> None:
 
     apply = _apply()
     with (
-        patch("backend.agent.memory_tools.apply_ops", apply),
+        patch("backend.agent.memory.tools.apply_ops", apply),
         coaching._response_agent.override(model=FunctionModel(respond)),
         capture_run_messages() as msgs,
     ):

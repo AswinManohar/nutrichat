@@ -22,7 +22,7 @@ from backend.agent.meal_history import (
     build_history_block,
     render_history_block,
 )
-from backend.agent.memory import MemoryFact
+from backend.agent.memory.facts import MemoryFact
 from backend.db.models import UserGoal, WeeklySummary
 from backend.db.redis_client import TodayTotals
 from backend.safety import profile

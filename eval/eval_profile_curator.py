@@ -22,14 +22,14 @@ from datetime import UTC, datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from backend.agent.memory import MemoryFact, ProfileState
-from backend.agent.memory_curator import (
+from backend.agent.memory.curator import (
     _CURATOR_SYSTEM,
     CuratorOutput,
     _curator_llm,
     build_curator_input,
     evidence_in,
 )
+from backend.agent.memory.facts import MemoryFact, ProfileState
 from backend.safety import profile
 from backend.safety.profile import HardEntry
 from backend.safety.tables import load_tables

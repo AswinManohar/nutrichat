@@ -37,7 +37,7 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from backend.agent import glide  # noqa: E402
 from backend.agent.glide import GlideUnavailable  # noqa: E402
-from backend.agent.memory_judge import _QUESTIONS as MEMORY_QUESTIONS  # noqa: E402
+from backend.agent.memory.judge import _QUESTIONS as MEMORY_QUESTIONS  # noqa: E402
 from backend.agent.system_one import ROUTING_QUESTIONS  # noqa: E402
 from backend.config import get_tunables  # noqa: E402
 

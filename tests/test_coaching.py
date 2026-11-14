@@ -22,9 +22,9 @@ from backend.agent.coaching import (
 )
 from backend.agent.context import ContextBundle, GoalSummary
 from backend.agent.food.usda_local import FoodDbUnavailable
-from backend.agent.memory import MemoryFact
-from backend.agent.memory_curator import TurnExtraction
-from backend.agent.memory_tools import hard_writes
+from backend.agent.memory.curator import TurnExtraction
+from backend.agent.memory.facts import MemoryFact
+from backend.agent.memory.tools import hard_writes
 from backend.agent.suggest import SuggestionResult
 from backend.config import get_tunables
 from backend.db.models import UserGoal
@@ -904,8 +904,14 @@ def _meal_patches(extraction: TurnExtraction | None):
             new_callable=AsyncMock,
             return_value=suggestion,
         ),
-        patch("backend.agent.readback.profile.mark_readback", new_callable=AsyncMock),
-        patch("backend.agent.readback.profile.mark_mentioned", new_callable=AsyncMock),
+        patch(
+            "backend.agent.memory.readback.profile.mark_readback",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.agent.memory.readback.profile.mark_mentioned",
+            new_callable=AsyncMock,
+        ),
     )
 
 
@@ -1009,7 +1015,10 @@ async def test_an_accepted_fact_is_in_the_reply_prompt_and_guard(hard_entries):
             new_callable=AsyncMock,
             return_value="ok",
         ) as gen_mock,
-        patch("backend.agent.readback.profile.mark_mentioned", new_callable=AsyncMock),
+        patch(
+            "backend.agent.memory.readback.profile.mark_mentioned",
+            new_callable=AsyncMock,
+        ),
     ):
         await CoachingAgent().handle("user-1", "I'm allergic to shellfish", THREAD)
 
@@ -1124,7 +1133,8 @@ async def test_a_pending_fact_the_remember_tool_adds_is_read_back_from_the_templ
             return_value=[pending],
         ),
         patch(
-            "backend.agent.readback.profile.mark_readback", new_callable=AsyncMock
+            "backend.agent.memory.readback.profile.mark_readback",
+            new_callable=AsyncMock,
         ) as asked,
     ):
         result = await CoachingAgent().handle(

@@ -43,7 +43,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.agent import glide
 from backend.agent.glide import GlideUnavailable, Question, Questions, noul
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     AddFact,
     AddRestriction,
     MemoryOp,

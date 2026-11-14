@@ -190,7 +190,7 @@ def no_turn_database_reads():
     """
     from unittest.mock import patch
 
-    from backend.agent.memory_curator import TurnExtraction
+    from backend.agent.memory.curator import TurnExtraction
 
     with (
         patch("backend.agent.orchestrator._load_entries", AsyncMock(return_value=[])),

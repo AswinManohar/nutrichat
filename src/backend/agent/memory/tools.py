@@ -17,7 +17,7 @@ from typing import Literal, Protocol
 from pydantic_ai import RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     MAX_FACT_CHARS,
     PENDING_ADD,
     PENDING_REMOVAL,

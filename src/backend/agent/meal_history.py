@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
-from backend.agent.memory import normalize_fact
+from backend.agent.memory.facts import normalize_fact
 from backend.config import get_tunables
 from backend.db.models import MealLog, Recommendation
 from backend.db.session import get_session

@@ -20,8 +20,8 @@ from backend.agent.intake.history import (
     summarize_nutrient_checkup,
 )
 from backend.agent.llm import embed_text
-from backend.agent.memory_curator import curate_turn
-from backend.agent.memory_curator import infer_log_habits as _infer_log_habits
+from backend.agent.memory.curator import curate_turn
+from backend.agent.memory.curator import infer_log_habits as _infer_log_habits
 from backend.config import get_tunables
 from backend.core.nutrition_day import (
     NUTRITION_DATE_SQL,

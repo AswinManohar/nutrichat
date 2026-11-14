@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent import orchestrator, readback
-from backend.agent.memory_curator import TurnExtraction
+from backend.agent import orchestrator
+from backend.agent.memory import readback
+from backend.agent.memory.curator import TurnExtraction
 from backend.config import get_tunables
 from backend.safety.profile import (
     AllergyValue,

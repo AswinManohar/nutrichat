@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     LEGACY_KIND,
     MAX_FACT_CHARS,
     AddRestriction,

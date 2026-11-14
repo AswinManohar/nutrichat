@@ -6,8 +6,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from backend.agent import memory_judge
-from backend.agent.memory import (
+from backend.agent.memory import judge as memory_judge
+from backend.agent.memory.facts import (
     AddFact,
     AddRestriction,
     MemoryFact,
@@ -16,7 +16,7 @@ from backend.agent.memory import (
     ReplaceFact,
     SetDietChip,
 )
-from backend.agent.memory_judge import (
+from backend.agent.memory.judge import (
     HardAdd,
     HardRetire,
     adds_constraint,

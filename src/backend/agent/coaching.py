@@ -37,9 +37,9 @@ from backend.agent.intake.history import (
     get_micronutrients_for_range,
 )
 from backend.agent.llm import COACHING_MODEL, FLASH_LITE_MODEL, gemini_provider
-from backend.agent.memory_curator import TurnExtraction, extract_turn
-from backend.agent.memory_tools import hard_writes, memory_toolset
-from backend.agent.readback import Plan, Readback, commit_readback, plan_readback
+from backend.agent.memory.curator import TurnExtraction, extract_turn
+from backend.agent.memory.readback import Plan, Readback, commit_readback, plan_readback
+from backend.agent.memory.tools import hard_writes, memory_toolset
 from backend.agent.reply_judge import guard as guard_reply_text
 from backend.agent.suggest import suggest_meal
 from backend.config import get_tunables

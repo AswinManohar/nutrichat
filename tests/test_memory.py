@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     PENDING_ADD,
     PENDING_REMOVAL,
     AddFact,
@@ -378,7 +378,7 @@ async def test_apply_ops_round_trip_against_live_postgres() -> None:
 
     from sqlalchemy import delete
 
-    from backend.agent.memory import apply_ops, load_profile, load_state
+    from backend.agent.memory.facts import apply_ops, load_profile, load_state
     from backend.db.models import UserGoal
     from backend.db.session import dispose_engine, get_session
     from backend.safety import profile

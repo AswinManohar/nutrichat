@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.context import fetch_staples
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     RemoveFact,
     apply_ops,
     load_state,

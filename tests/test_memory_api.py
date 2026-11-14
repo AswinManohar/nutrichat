@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     ApplyOutcome,
     MemoryFact,
     OpResult,

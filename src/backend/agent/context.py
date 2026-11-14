@@ -12,7 +12,7 @@ from backend.agent.intake.mindful import (
     evaluate_safety,
     get_daily_intake,
 )
-from backend.agent.memory import (
+from backend.agent.memory.facts import (
     MemoryFact,
     load_profile,
     render_profile_block,

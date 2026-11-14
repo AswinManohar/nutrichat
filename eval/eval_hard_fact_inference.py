@@ -49,8 +49,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
-from backend.agent.memory import AddFact, ProfileState, ReplaceFact
-from backend.agent.memory_curator import (
+from backend.agent.memory.curator import (
     _CURATOR_SYSTEM,
     CuratorOutput,
     _curator_llm,
@@ -58,7 +57,8 @@ from backend.agent.memory_curator import (
     to_hard_candidates,
     to_memory_ops,
 )
-from backend.agent.memory_judge import HardAdd, judge_hard, judge_ops
+from backend.agent.memory.facts import AddFact, ProfileState, ReplaceFact
+from backend.agent.memory.judge import HardAdd, judge_hard, judge_ops
 from backend.config import get_tunables
 from backend.safety import profile
 from backend.safety.tables import load_tables

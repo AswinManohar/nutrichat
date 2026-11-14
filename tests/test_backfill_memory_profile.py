@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agent.memory import AddRestriction, MemoryFact, RemoveFact, ReplaceFact
+from backend.agent.memory.facts import (
+    AddRestriction,
+    MemoryFact,
+    RemoveFact,
+    ReplaceFact,
+)
 from backend.db.models import UserMemory
 from backend.scripts import backfill_memory_profile as backfill
 from backend.scripts.backfill_memory_profile import (

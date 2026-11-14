@@ -2,15 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.agent.memory import (
-    AddFact,
-    ApplyOutcome,
-    MemoryFact,
-    ProfileState,
-    RemoveFact,
-    ReplaceFact,
-)
-from backend.agent.memory_curator import (
+from backend.agent.memory.curator import (
     CuratorOp,
     CuratorOutput,
     HardDraft,
@@ -27,7 +19,15 @@ from backend.agent.memory_curator import (
     to_hard_candidates,
     to_memory_ops,
 )
-from backend.agent.memory_judge import HardAdd, HardRetire
+from backend.agent.memory.facts import (
+    AddFact,
+    ApplyOutcome,
+    MemoryFact,
+    ProfileState,
+    RemoveFact,
+    ReplaceFact,
+)
+from backend.agent.memory.judge import HardAdd, HardRetire
 from backend.safety.profile import (
     AllergyValue,
     DietSettingValue,
@@ -289,22 +289,22 @@ def _patched(llm, *, soft_scores=(), hard_scores=(), apply=None, entries=()):
     }
     patches = [
         patch(
-            "backend.agent.memory_curator.load_state", AsyncMock(return_value=_state())
+            "backend.agent.memory.curator.load_state", AsyncMock(return_value=_state())
         ),
         patch(
-            "backend.agent.memory_curator.profile.load_hard_profile",
+            "backend.agent.memory.curator.profile.load_hard_profile",
             AsyncMock(return_value=list(entries)),
         ),
-        patch("backend.agent.memory_curator._curator_llm", llm),
+        patch("backend.agent.memory.curator._curator_llm", llm),
         patch(
-            "backend.agent.memory_curator.judge_ops",
+            "backend.agent.memory.curator.judge_ops",
             AsyncMock(return_value=list(soft_scores)),
         ),
-        patch("backend.agent.memory_curator.judge_hard", mocks["judge_hard"]),
-        patch("backend.agent.memory_curator.apply_ops", mocks["apply"]),
-        patch("backend.agent.memory_curator.profile.add_entry", mocks["add_entry"]),
+        patch("backend.agent.memory.curator.judge_hard", mocks["judge_hard"]),
+        patch("backend.agent.memory.curator.apply_ops", mocks["apply"]),
+        patch("backend.agent.memory.curator.profile.add_entry", mocks["add_entry"]),
         patch(
-            "backend.agent.memory_curator.profile.request_retirement", mocks["request"]
+            "backend.agent.memory.curator.profile.request_retirement", mocks["request"]
         ),
     ]
     return mocks, patches
@@ -452,8 +452,8 @@ async def test_blank_input_makes_no_calls() -> None:
     llm = _llm_returning(CuratorOutput())
 
     with (
-        patch("backend.agent.memory_curator.load_state", load),
-        patch("backend.agent.memory_curator._curator_llm", llm),
+        patch("backend.agent.memory.curator.load_state", load),
+        patch("backend.agent.memory.curator._curator_llm", llm),
     ):
         await curate_turn("user-1", "   ", "Logged.")
 
@@ -555,19 +555,19 @@ async def test_infer_log_habits_applies_as_weekly_actor() -> None:
 
     with (
         patch(
-            "backend.agent.memory_curator.get_staple_foods",
+            "backend.agent.memory.curator.get_staple_foods",
             AsyncMock(return_value={"dinner": ["Dal"]}),
         ),
         patch(
-            "backend.agent.memory_curator.get_category_breakdown",
+            "backend.agent.memory.curator.get_category_breakdown",
             AsyncMock(return_value=[]),
         ),
         patch(
-            "backend.agent.memory_curator.load_state",
+            "backend.agent.memory.curator.load_state",
             AsyncMock(return_value=ProfileState()),
         ),
-        patch("backend.agent.memory_curator._log_habits_llm", llm),
-        patch("backend.agent.memory_curator.apply_ops", apply),
+        patch("backend.agent.memory.curator._log_habits_llm", llm),
+        patch("backend.agent.memory.curator.apply_ops", apply),
     ):
         await infer_log_habits("user-1")
 
@@ -582,9 +582,9 @@ async def test_infer_log_habits_without_staples_makes_no_model_call() -> None:
 
     with (
         patch(
-            "backend.agent.memory_curator.get_staple_foods", AsyncMock(return_value={})
+            "backend.agent.memory.curator.get_staple_foods", AsyncMock(return_value={})
         ),
-        patch("backend.agent.memory_curator._log_habits_llm", llm),
+        patch("backend.agent.memory.curator._log_habits_llm", llm),
     ):
         outcome = await infer_log_habits("user-1")
 

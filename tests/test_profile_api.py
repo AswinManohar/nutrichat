@@ -367,7 +367,7 @@ async def test_requests_without_a_token_are_401(
 
 
 async def _remember(user_id: str, text: str, kind: str = "like") -> str:
-    from backend.agent.memory import AddFact, apply_ops, load_state
+    from backend.agent.memory.facts import AddFact, apply_ops, load_state
 
     await apply_ops(user_id, [AddFact(fact=text, kind=kind)], "user")
     facts = (await load_state(user_id)).facts
@@ -449,7 +449,7 @@ async def test_soft_patch_validation_and_unknown_ids(
 async def test_deleting_a_soft_fact_is_idempotent_and_not_relearned(
     client: httpx.AsyncClient, db_user: str
 ) -> None:
-    from backend.agent.memory import AddFact, apply_ops
+    from backend.agent.memory.facts import AddFact, apply_ops
 
     fact_id = await _remember(db_user, "Coriander", "dislike")
 
@@ -484,7 +484,7 @@ async def test_the_soft_routes_only_touch_the_callers_facts(
 
         patched = await client.patch(f"/profile/soft/{theirs}", json={"text": "Kale"})
         deleted = await client.delete(f"/profile/soft/{theirs}")
-        from backend.agent.memory import load_state
+        from backend.agent.memory.facts import load_state
 
         still = (await load_state(other)).facts
     finally:
