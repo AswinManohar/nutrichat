@@ -771,23 +771,62 @@ class CoachingAgent:
 
         if parsed.suggests_meal and planned.asks:
             # A fact the recipe must respect is not confirmed yet: ask first.
-            return await finish(
-                CoachingResult(
-                    message=_TUNABLES.memory.recipe_withheld_text, parsed=parsed
-                )
+            result = CoachingResult(
+                message=_TUNABLES.memory.recipe_withheld_text, parsed=parsed
             )
-        if parsed.suggests_meal:
-            # A meal request is answered by a recipe that passed the check.
-            suggestion = await suggest_meal(user_id, message, history, entries)
-            return await finish(
-                CoachingResult(
-                    message=suggestion.message,
-                    parsed=parsed,
-                    recipe=suggestion.recipe,
-                    recommendation_id=suggestion.recommendation_id,
-                    constraint_note=suggestion.constraint_note,
-                )
+        elif parsed.suggests_meal:
+            result = await self._recipe_reply(
+                user_id, message, history, entries, parsed
             )
+        else:
+            # A tool write re-plans the notices, so `finish` sees the new plan.
+            result, planned = await self._data_reply(
+                user_id,
+                message,
+                conversation_id,
+                history,
+                entries,
+                parsed,
+                context_prompt,
+                planned,
+            )
+        return await finish(result)
+
+    async def _recipe_reply(
+        self,
+        user_id: str,
+        message: str,
+        history: list[CoachingTurn],
+        entries: list[HardEntry],
+        parsed: QueryParsed,
+    ) -> CoachingResult:
+        """A meal request is answered by a recipe that passed the check."""
+        suggestion = await suggest_meal(user_id, message, history, entries)
+        return CoachingResult(
+            message=suggestion.message,
+            parsed=parsed,
+            recipe=suggestion.recipe,
+            recommendation_id=suggestion.recommendation_id,
+            constraint_note=suggestion.constraint_note,
+        )
+
+    async def _data_reply(
+        self,
+        user_id: str,
+        message: str,
+        conversation_id: str | None,
+        history: list[CoachingTurn],
+        entries: list[HardEntry],
+        parsed: QueryParsed,
+        context_prompt: str,
+        planned: Plan,
+    ) -> tuple[CoachingResult, Plan]:
+        """Answer from the user's logged data and retrieved guidelines.
+
+        Returns:
+            The reply and the notice plan to finish it with: ``planned``, or a
+            fresh one when a coach tool wrote a hard fact during the reply.
+        """
         # Data fetch and guideline retrieval are independent too.
         data, retrieved = await asyncio.gather(
             fetch_data(user_id, parsed, entries),
@@ -804,11 +843,12 @@ class CoachingAgent:
         # absence of logged data.
         if micro_nutrients and not data.get("micronutrients") and not retrieved:
             names = ", ".join(_humanize_nutrient_name(n) for n in micro_nutrients)
-            return await finish(
+            return (
                 CoachingResult(
                     message=f"I don't have data on {names} for that period.",
                     parsed=parsed,
-                )
+                ),
+                planned,
             )
 
         tool_writes = hard_writes.set([])
@@ -830,13 +870,14 @@ class CoachingAgent:
             # The coach's remember / set_diet tool added a pending entry after
             # the entries were read: read it back from the template, once.
             planned = await _replan(user_id, entries, conversation_id, planned)
-        return await finish(
+        return (
             CoachingResult(
                 message=text,
                 parsed=parsed,
                 retrieved=list(retrieved),
                 citations=extract_citations(text, retrieved),
-            )
+            ),
+            planned,
         )
 
 
