@@ -6,9 +6,10 @@ Convention:
   ``agent/`` (``routing``, ``meal_logging``, ``food``, ``coaching``,
   ``memory``, ``safety``). The root span of a chat turn is plain ``turn``.
 * Attributes are ids, counts (``n_*``), enums and timings (``*_ms``). Never
-  the user's message, a reply, a food's free text or image data: spans are
-  exported, and the red-flag screen and spec 013 FR-015 already promise that
-  message text stays out of telemetry.
+  the user's message, a reply, a food's free text or image data. The spans
+  opened here are exported, and the red-flag screen (spec 013 FR-015) must
+  not leak message text through them. Prompts and completions are captured
+  separately, by the LangChain and Pydantic AI instrumentation.
 * Names live here, so a span can be found by grepping one file. Call sites
   open spans with :func:`stage_span` instead of ``logfire.span``.
 
@@ -64,9 +65,10 @@ def stage_span(name: str, **attributes: Any) -> logfire.LogfireSpan:
 def record_handled(exc: BaseException, *, stage: str) -> None:
     """Record a failure that was caught and replaced by a fallback.
 
-    Adds the exception as an event on the open span and tags the span with
-    ``handled_error=<stage>``, without marking the span as failed: the turn
-    went on. Only a span that is still recording is touched.
+    Adds an ``exception`` event carrying the exception type to the open span
+    and tags the span with ``handled_error=<stage>``, without marking the
+    span as failed: the turn went on. The exception's message and traceback
+    are left out, because a validation error can echo the user's text.
 
     Args:
         exc: The exception that was caught.
@@ -74,7 +76,7 @@ def record_handled(exc: BaseException, *, stage: str) -> None:
             ``extract_entities``.
     """
     span = trace.get_current_span()
-    span.record_exception(exc)
+    span.add_event("exception", {"exception.type": type(exc).__qualname__})
     span.set_attribute("handled_error", stage)
 
 

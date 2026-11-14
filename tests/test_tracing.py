@@ -275,7 +275,10 @@ async def test_context_span_fallback_is_none_on_success(capfire):
 async def test_extract_node_failure_is_recorded_and_still_falls_back(capfire):
     state = {"messages": [HumanMessage(content=SECRET)]}
     with (
-        patch.object(graph, "extract_entities", side_effect=RuntimeError("boom")),
+        # A validation error can echo the input, so the message carries it.
+        patch.object(
+            graph, "extract_entities", side_effect=RuntimeError(f"bad: {SECRET}")
+        ),
         tracing.stage_span(tracing.TURN),
     ):
         result = await graph.extract_node(state)
@@ -285,7 +288,8 @@ async def test_extract_node_failure_is_recorded_and_still_falls_back(capfire):
     assert turn.attributes["handled_error"] == "extract_entities"
     events = [e for e in turn.events if e.name == "exception"]
     assert len(events) == 1
-    assert events[0].attributes["exception.type"] == "RuntimeError"
+    # The type only: the exception's message never reaches the span.
+    assert dict(events[0].attributes) == {"exception.type": "RuntimeError"}
     # Recorded, not escaped: the turn span is not failed.
     assert turn.status.status_code.name != "ERROR"
 
