@@ -438,9 +438,10 @@ async def fetch_data(
 ) -> dict:
     """Fetch grounding data for the response generator per the data fetcher table.
 
-    Today + macro-only queries hit Redis (falling back to Postgres on
-    Redis errors). Any other macro range, or any micronutrient query, hits
-    Postgres directly. Goals are fetched alongside when requested.
+    Everything is read from Postgres. A today + macro-only query uses the
+    day's running totals (get_today_totals) and falls back to the range
+    query if that read fails. Any other macro range, or any micronutrient
+    query, uses the range queries. Goals are fetched alongside when requested.
 
     Args:
         user_id: Supabase Auth UUID.
@@ -458,10 +459,10 @@ async def fetch_data(
         macro_nutrients = [n for n in parsed.nutrients if n in _MACRO_ALIASES]
         micro_nutrients = [n for n in parsed.nutrients if n not in _MACRO_ALIASES]
 
-        # Redis serves only today's macro totals; everything else, and the
-        # fallback when Redis is down, is Postgres.
+        # Which read answered: the day's running totals, or a range query
+        # (also the fallback when the totals read fails). Both are Postgres.
         span.set_attributes(
-            {"source": "postgres", "n_micronutrients": len(micro_nutrients)}
+            {"query": "range", "n_micronutrients": len(micro_nutrients)}
         )
 
         data: dict = {}
@@ -470,7 +471,7 @@ async def fetch_data(
             if parsed.time_range == "today" and not micro_nutrients:
                 try:
                     totals = await get_today_totals(user_id)
-                    span.set_attribute("source", "redis")
+                    span.set_attribute("query", "today_totals")
                     data["today_totals"] = totals.model_dump()
                     today = nutrition_today()
                     data["period"] = _build_period(today, today, "today")

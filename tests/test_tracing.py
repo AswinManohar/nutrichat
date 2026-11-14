@@ -29,6 +29,7 @@ from backend.agent.food.usda_local import LocalMatch
 from backend.agent.llm import FLASH_LITE_MODEL, make_llm
 from backend.agent.meal_logging import graph
 from backend.agent.meal_logging.meals import FoodEntity
+from backend.db.redis_client import TodayTotals
 
 SECRET = "SECRET-USER-TEXT"
 
@@ -416,3 +417,40 @@ async def test_added_spans_carry_no_user_text(capfire):
             default=str,
         )
         assert SECRET not in dumped, span.name
+
+
+# (g) coaching.fetch_data -----------------------------------------------------
+
+
+async def test_fetch_data_span_names_the_today_totals_read(capfire):
+    parsed = coaching_agent.QueryParsed(time_range="today", nutrients=["kcal"])
+    with patch(
+        "backend.agent.coaching.agent.get_today_totals",
+        new_callable=AsyncMock,
+        return_value=TodayTotals(kcal=1240, protein_g=85, fiber_g=10, n_meals=2),
+    ):
+        await coaching_agent.fetch_data("user-1", parsed)
+
+    attrs = _only(capfire, tracing.COACHING_FETCH_DATA).attributes
+    assert attrs["query"] == "today_totals"
+    assert attrs["time_range"] == "today"
+    assert attrs["n_micronutrients"] == 0
+
+
+async def test_fetch_data_span_names_the_range_read_on_fallback(capfire):
+    parsed = coaching_agent.QueryParsed(time_range="today", nutrients=["kcal"])
+    with (
+        patch(
+            "backend.agent.coaching.agent.get_today_totals",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("down"),
+        ),
+        patch(
+            "backend.agent.coaching.agent.get_macros_for_range",
+            new_callable=AsyncMock,
+            return_value={"kcal": 1240.0},
+        ),
+    ):
+        await coaching_agent.fetch_data("user-1", parsed)
+
+    assert _only(capfire, tracing.COACHING_FETCH_DATA).attributes["query"] == "range"

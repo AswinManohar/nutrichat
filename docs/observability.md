@@ -96,7 +96,7 @@ crashing startup.
 | **httpx** | `logfire.instrument_httpx(capture_all=True)` | Raw HTTP to Gemini for Pydantic AI (its `GoogleModel` uses httpx) and to GLiDE. Request and response bodies and headers; secret headers are redacted (see §8). |
 | **aiohttp** | `logfire.instrument_aiohttp_client()` | USDA FoodData Central calls (URL, status, latency). |
 | **asyncpg** | `logfire.instrument_asyncpg()` | Every Postgres statement and its latency, including checkpoint reads and writes. |
-| **Redis** | `logfire.instrument_redis()` | Redis commands (today's totals, coaching history, rate limits, Celery broker). |
+| **Redis** | `logfire.instrument_redis()` | Redis commands (coaching history, staples cache, rate limits, Celery broker). |
 | **Celery** | `logfire.instrument_celery()` | Task enqueue and task execution spans. |
 
 ### Pydantic AI specifics
@@ -243,7 +243,7 @@ the code.
 | `meal_logging.resolve_ingredient` | `agent/meal_logging/replace_ingredient.py:resolve_ingredient` | `mode` (`swap`, `add`), `text_len`, `n_foods`, `amount_stated`, `source`, `estimated`, `latency_ms` |
 | `coaching.turn` | `agent/coaching/handler.py:handle_coaching` | `branch` (`withheld`, `recipe`, `no_data`, `answer`), `needs_guidance`, `retrieved_count`, `citation_count`, `response_id`, `profile_unavailable` (only when set) |
 | `coaching.context` | `agent/coaching/agent.py:_context_prompt` | `fallback` (`none`, `restrictions_only`) |
-| `coaching.fetch_data` | `agent/coaching/agent.py:fetch_data` | `time_range` (the parsed range, for example `today`, `this_week`), `source` (`redis`, `postgres`), `n_micronutrients` |
+| `coaching.fetch_data` | `agent/coaching/agent.py:fetch_data` | `time_range` (the parsed range, for example `today`, `this_week`), `query` (`today_totals` for the day's running totals, `range` for a date-range query; both read Postgres), `n_micronutrients` |
 | `coaching.retrieve` | `agent/coaching/agent.py:_retrieve_passages` | `n_passages` |
 | `coaching.suggest_meal` | `agent/coaching/suggest.py:suggest_meal` | `attempts`, `shown` (bool), `unavailable` (exception class name, when the safety tables or food DB could not be read) |
 | `coaching.check_recipe` | `agent/coaching/suggest.py:_suggest` | `attempt`, `passed` (bool), `failed_rules` (comma-separated rule names) |
