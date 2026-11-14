@@ -223,7 +223,7 @@ async def test_link_recommendation_logs_a_failure_and_does_not_raise(caplog) -> 
 
 
 async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
-    from backend.agent import orchestrator
+    from backend.agent.coaching import handler
     from backend.agent.coaching.agent import QueryParsed
 
     result = CoachingResult(
@@ -233,20 +233,18 @@ async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
     )
     for response_id, expected in (("resp-1", 1), (None, 0)):
         with (
+            patch.object(handler, "consume_llm_credit", AsyncMock(return_value=True)),
             patch.object(
-                orchestrator, "consume_llm_credit", AsyncMock(return_value=True)
+                handler._coaching_agent, "handle", AsyncMock(return_value=result)
             ),
             patch.object(
-                orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
-            ),
-            patch.object(
-                orchestrator,
+                handler,
                 "save_coaching_response",
                 AsyncMock(return_value=response_id),
             ),
-            patch.object(orchestrator, "link_recommendation", AsyncMock()) as link,
+            patch.object(handler, "link_recommendation", AsyncMock()) as link,
         ):
-            await orchestrator._handle_coaching("user-1", "dinner?")
+            await handler.handle_coaching("user-1", "dinner?")
 
         assert link.await_count == expected
         if expected:
@@ -254,7 +252,7 @@ async def test_the_orchestrator_links_a_recipe_to_its_reply() -> None:
 
 
 async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
-    from backend.agent import orchestrator
+    from backend.agent.coaching import handler
     from backend.agent.coaching.agent import QueryParsed
     from tests.recipe_helpers import make_recipe
 
@@ -267,15 +265,11 @@ async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
         constraint_note=note,
     )
     with (
-        patch.object(orchestrator, "consume_llm_credit", AsyncMock(return_value=True)),
-        patch.object(
-            orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
-        ),
-        patch.object(
-            orchestrator, "save_coaching_response", AsyncMock(return_value=None)
-        ),
+        patch.object(handler, "consume_llm_credit", AsyncMock(return_value=True)),
+        patch.object(handler._coaching_agent, "handle", AsyncMock(return_value=result)),
+        patch.object(handler, "save_coaching_response", AsyncMock(return_value=None)),
     ):
-        response = await orchestrator._handle_coaching("user-1", "dinner?")
+        response = await handler.handle_coaching("user-1", "dinner?")
 
     assert response["constraint_note"] == note
     assert response["recommendation_id"] == "rec-1"
@@ -283,21 +277,17 @@ async def test_a_recipe_reply_carries_the_constraint_note_on_its_own() -> None:
 
 
 async def test_a_reply_without_a_recipe_has_no_constraint_note() -> None:
-    from backend.agent import orchestrator
+    from backend.agent.coaching import handler
     from backend.agent.coaching.agent import QueryParsed
 
     result = CoachingResult(
         message="120 g today.", parsed=QueryParsed(time_range="today")
     )
     with (
-        patch.object(orchestrator, "consume_llm_credit", AsyncMock(return_value=True)),
-        patch.object(
-            orchestrator._coaching_agent, "handle", AsyncMock(return_value=result)
-        ),
-        patch.object(
-            orchestrator, "save_coaching_response", AsyncMock(return_value=None)
-        ),
+        patch.object(handler, "consume_llm_credit", AsyncMock(return_value=True)),
+        patch.object(handler._coaching_agent, "handle", AsyncMock(return_value=result)),
+        patch.object(handler, "save_coaching_response", AsyncMock(return_value=None)),
     ):
-        response = await orchestrator._handle_coaching("user-1", "protein?")
+        response = await handler.handle_coaching("user-1", "protein?")
 
     assert "constraint_note" not in response

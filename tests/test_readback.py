@@ -269,7 +269,7 @@ def turn(writes) -> Iterator[SimpleNamespace]:
         ),
         patch.object(
             orchestrator,
-            "_handle_coaching",
+            "handle_coaching",
             new=AsyncMock(
                 return_value={
                     "status": "success",

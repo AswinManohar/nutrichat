@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from backend.agent.llm import FLASH_LITE_MODEL
 from backend.agent.meal_logging.card import card_fields
 from backend.agent.meal_logging.graph import build_graph
+from backend.agent.turn import turn_response
 from backend.quota import UPGRADE_MSG, consume_llm_credit
 
 # Compiling the StateGraph is pure CPU work with no per-message state, so do it
@@ -157,12 +158,7 @@ async def handle_meal_logging(
             # Fresh start: consume one credit for the extraction LLM call.
             granted = await consume_llm_credit(user_id)
             if not granted:
-                return {
-                    "status": "success",
-                    "message": UPGRADE_MSG,
-                    "paused": False,
-                    "items": [],
-                }
+                return turn_response(UPGRADE_MSG)
             result = await graph.ainvoke(
                 {
                     "messages": [HumanMessage(content=user_input)],
@@ -202,12 +198,9 @@ async def handle_meal_logging(
         # Expose structured items so the frontend can render editable quantity
         # fields. Only included when paused (confirmation card shown); empty
         # after log/cancel.
-        response: dict[str, Any] = {
-            "status": "success",
-            "message": last_ai.content if last_ai else "",
-            "paused": still_paused,
-            "items": [],
-        }
+        response = turn_response(
+            last_ai.content if last_ai else "", paused=still_paused
+        )
         if still_paused:
             response.update(await card_fields(user_id, result, response["message"]))
         else:

@@ -12,13 +12,13 @@ from backend.quota import UPGRADE_MSG
 
 
 async def test_coaching_over_quota_returns_upgrade_message():
-    from backend.agent.orchestrator import _handle_coaching
+    from backend.agent.coaching.handler import handle_coaching
 
     with patch(
-        "backend.agent.orchestrator.consume_llm_credit",
+        "backend.agent.coaching.handler.consume_llm_credit",
         new=AsyncMock(return_value=False),
     ):
-        result = await _handle_coaching("user-1", "how much protein today?")
+        result = await handle_coaching("user-1", "how much protein today?")
 
     assert result["status"] == "success"
     assert result["message"] == UPGRADE_MSG
@@ -27,16 +27,16 @@ async def test_coaching_over_quota_returns_upgrade_message():
 
 
 async def test_coaching_under_quota_calls_agent():
-    from backend.agent.orchestrator import _handle_coaching
+    from backend.agent.coaching.handler import handle_coaching
 
     with (
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
-        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch("backend.agent.coaching.handler._coaching_agent") as mock_coaching,
         patch(
-            "backend.agent.orchestrator.save_coaching_response",
+            "backend.agent.coaching.handler.save_coaching_response",
             new=AsyncMock(return_value=None),
         ),
     ):
@@ -46,7 +46,7 @@ async def test_coaching_under_quota_calls_agent():
                 parsed=QueryParsed(time_range="today"),
             )
         )
-        result = await _handle_coaching("user-1", "how much protein today?")
+        result = await handle_coaching("user-1", "how much protein today?")
 
     assert result["message"] == "You had 120g protein today."
 
@@ -99,7 +99,7 @@ async def test_routing_never_spends_a_credit(judgment_result):
     llm.ainvoke = AsyncMock(return_value=_IntentResult(type="coaching"))
     credit = AsyncMock(return_value=False)
     with (
-        patch("backend.agent.orchestrator.consume_llm_credit", new=credit),
+        patch("backend.agent.coaching.handler.consume_llm_credit", new=credit),
         patch("backend.agent.meal_logging.handler.consume_llm_credit", new=credit),
         patch.object(router, "_intent_llm", llm),
     ):
@@ -134,7 +134,7 @@ async def test_out_of_credit_question_reaches_coach_and_gets_upgrade_message():
             new=AsyncMock(return_value=(judgment, None)),
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=False),
         ),
         patch("backend.agent.orchestrator.append_coaching_turns", new=AsyncMock()),
@@ -151,22 +151,22 @@ def _coaching_result(text: str) -> CoachingResult:
 
 
 async def test_coaching_persists_and_returns_response_id():
-    from backend.agent.orchestrator import _handle_coaching
+    from backend.agent.coaching.handler import handle_coaching
 
     with (
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
-        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch("backend.agent.coaching.handler._coaching_agent") as mock_coaching,
         patch(
-            "backend.agent.orchestrator.save_coaching_response",
+            "backend.agent.coaching.handler.save_coaching_response",
             new_callable=AsyncMock,
             return_value="resp-123",
         ) as save_mock,
     ):
         mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
-        result = await _handle_coaching(
+        result = await handle_coaching(
             "user-1", "protein today?", conversation_id="t-1"
         )
 
@@ -187,22 +187,22 @@ async def test_coaching_persists_and_returns_response_id():
 
 
 async def test_coaching_omits_response_id_when_persistence_fails():
-    from backend.agent.orchestrator import _handle_coaching
+    from backend.agent.coaching.handler import handle_coaching
 
     with (
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
-        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
+        patch("backend.agent.coaching.handler._coaching_agent") as mock_coaching,
         patch(
-            "backend.agent.orchestrator.save_coaching_response",
+            "backend.agent.coaching.handler.save_coaching_response",
             new_callable=AsyncMock,
             return_value=None,
         ),
     ):
         mock_coaching.handle = AsyncMock(return_value=_coaching_result("120g today."))
-        result = await _handle_coaching("user-1", "protein today?")
+        result = await handle_coaching("user-1", "protein today?")
 
     assert "response_id" not in result
     assert result["message"] == "120g today."
@@ -261,22 +261,22 @@ async def test_meal_logging_paused_resume_skips_quota():
 
 async def test_coaching_replies_with_the_unavailable_text_without_a_profile():
     from backend.agent.coaching.agent import RestrictionsUnavailableError
-    from backend.agent.orchestrator import _handle_coaching
+    from backend.agent.coaching.handler import handle_coaching
     from backend.config import get_tunables
 
     save = AsyncMock()
     with (
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
-        patch("backend.agent.orchestrator._coaching_agent") as mock_coaching,
-        patch("backend.agent.orchestrator.save_coaching_response", new=save),
+        patch("backend.agent.coaching.handler._coaching_agent") as mock_coaching,
+        patch("backend.agent.coaching.handler.save_coaching_response", new=save),
     ):
         mock_coaching.handle = AsyncMock(
             side_effect=RestrictionsUnavailableError("user-1")
         )
-        result = await _handle_coaching("user-1", "what should I eat for dinner?")
+        result = await handle_coaching("user-1", "what should I eat for dinner?")
 
     assert result == {
         "status": "success",

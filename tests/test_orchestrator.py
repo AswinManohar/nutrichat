@@ -27,7 +27,7 @@ def _mock_fact_task():
 def _no_response_store():
     """Keep coaching_response persistence off the database in every test."""
     with patch(
-        "backend.agent.orchestrator.save_coaching_response",
+        "backend.agent.coaching.handler.save_coaching_response",
         new_callable=AsyncMock,
         return_value=None,
     ):
@@ -193,7 +193,7 @@ async def test_handle_message_paused_graph_always_resumes_meal_logging():
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch.object(router, "_intent_llm", llm),
         patch(
-            "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
+            "backend.agent.orchestrator.handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
     ):
         result = await handle_message(
@@ -216,7 +216,7 @@ async def test_handle_message_image_always_meal_logging():
             "backend.agent.orchestrator.judge_message", new=_judged("coaching")
         ) as judge_mock,
         patch(
-            "backend.agent.orchestrator._handle_coaching", new_callable=AsyncMock
+            "backend.agent.orchestrator.handle_coaching", new_callable=AsyncMock
         ) as coaching_mock,
         patch(
             "backend.agent.meal_logging.handler.consume_llm_credit",
@@ -240,11 +240,11 @@ async def test_handle_message_fresh_coaching_intent_routes_to_coaching():
         patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="You've had 1,240 kcal today.",
@@ -279,7 +279,8 @@ async def test_handle_message_fresh_log_meal_intent_runs_graph():
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle", new_callable=AsyncMock
+            "backend.agent.coaching.handler._coaching_agent.handle",
+            new_callable=AsyncMock,
         ) as handle_mock,
     ):
         result = await handle_message("user-1", "I had 2 eggs", "thread-1", None)
@@ -352,11 +353,11 @@ async def test_coaching_turn_is_recorded_verbatim(_mock_history_store):
         patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="You've had 1,240 kcal today.",
@@ -448,11 +449,11 @@ async def test_history_write_failure_does_not_fail_the_turn(_mock_history_store)
         patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=_judged("coaching")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="ok", parsed=QueryParsed(time_range="today")
@@ -478,11 +479,11 @@ async def test_mixed_message_reply_ends_with_offer_to_log():
             new=_judged("coaching", reports_food=0.95),
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="One pizza won't derail you.",
@@ -507,11 +508,11 @@ async def test_pure_question_reply_has_no_offer():
             new=_judged("coaching", reports_food=0.1),
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="Pizza is fine in moderation.",
@@ -533,18 +534,18 @@ async def test_coaching_turn_passes_routing_record_to_store():
             new=_judged("coaching", reports_food=0.02, needs_guidance=0.9),
         ),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="ok", parsed=QueryParsed(time_range="today")
             ),
         ) as handle_mock,
         patch(
-            "backend.agent.orchestrator.save_coaching_response",
+            "backend.agent.coaching.handler.save_coaching_response",
             new_callable=AsyncMock,
             return_value=None,
         ) as save_mock,
@@ -576,18 +577,18 @@ async def test_unavailable_judgment_stores_no_routing_record():
         ),
         patch.object(router, "_intent_llm", _gemini("coaching")),
         patch(
-            "backend.agent.orchestrator.consume_llm_credit",
+            "backend.agent.coaching.handler.consume_llm_credit",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "backend.agent.orchestrator._coaching_agent.handle",
+            "backend.agent.coaching.handler._coaching_agent.handle",
             new_callable=AsyncMock,
             return_value=CoachingResult(
                 message="ok", parsed=QueryParsed(time_range="today")
             ),
         ),
         patch(
-            "backend.agent.orchestrator.save_coaching_response",
+            "backend.agent.coaching.handler.save_coaching_response",
             new_callable=AsyncMock,
             return_value=None,
         ) as save_mock,
@@ -661,7 +662,7 @@ async def test_judgment_overlaps_the_checkpoint_read():
         patch("backend.agent.meal_logging.handler.build_graph", return_value=graph),
         patch("backend.agent.orchestrator.judge_message", new=slow_judgment),
         patch(
-            "backend.agent.orchestrator._handle_coaching",
+            "backend.agent.orchestrator.handle_coaching",
             new_callable=AsyncMock,
             return_value={
                 "status": "success",

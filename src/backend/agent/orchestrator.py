@@ -9,20 +9,18 @@ from typing import Any
 
 import logfire
 from kombu.exceptions import OperationalError
-from opentelemetry import trace
 
-from backend.agent.coaching.agent import CoachingAgent, RestrictionsUnavailableError
-from backend.agent.coaching.store import link_recommendation, save_coaching_response
-from backend.agent.llm import COACHING_MODEL
+from backend.agent.coaching.handler import handle_coaching
 from backend.agent.meal_logging.card import card_fields
 from backend.agent.meal_logging.handler import graph_for, handle_meal_logging
 from backend.agent.memory import readback
 from backend.agent.memory.curator import TurnExtraction, extract_turn
 from backend.agent.routing.router import RouteDecision, route_message
 from backend.agent.routing.system_one import judge_message
+from backend.agent.turn import turn_response
 from backend.config import get_tunables
 from backend.db.redis_client import CoachingTurn, append_coaching_turns
-from backend.quota import UPGRADE_MSG, consume_llm_credit
+from backend.quota import UPGRADE_MSG
 from backend.safety import profile
 from backend.safety.escalation import record_escalation
 from backend.safety.red_flags import RedFlagsUnavailable, fallback_text, screen
@@ -32,8 +30,6 @@ from backend.workers.tasks import extract_and_store_facts
 logger = logging.getLogger(__name__)
 
 _TUNABLES = get_tunables()
-
-_coaching_agent = CoachingAgent()
 
 
 async def handle_message(
@@ -134,7 +130,7 @@ async def handle_message(
                 decision = await route_message(user_input, judgment_task)
             is_coaching = decision is not None and decision.intent == "coaching"
             if is_coaching:
-                result = await _handle_coaching(
+                result = await handle_coaching(
                     user_id,
                     user_input,
                     conversation_id=thread_id,
@@ -306,13 +302,7 @@ async def _read_back_new(
 
 def _safety_result(message: str) -> dict[str, Any]:
     """Fixed-reply response shape; the client renders it as a safety message."""
-    return {
-        "status": "success",
-        "message": message,
-        "paused": False,
-        "items": [],
-        "kind": "safety",
-    }
+    return turn_response(message, kind="safety")
 
 
 async def _screen_red_flags(
@@ -413,100 +403,3 @@ def _enqueue_fact_extraction(user_id: str, user_input: str, agent_reply: str) ->
         extract_and_store_facts.delay(user_id, user_input, agent_reply)
     except (OperationalError, OSError) as exc:
         logger.warning("Could not enqueue fact extraction: %s", exc)
-
-
-async def _handle_coaching(
-    user_id: str,
-    user_input: str,
-    conversation_id: str | None = None,
-    offer_to_log: bool = False,
-    routing: dict[str, float | str | bool] | None = None,
-) -> dict[str, Any]:
-    """Answer a nutrition question via the coaching agent.
-
-    Consumes one quota credit per coaching turn (not per internal LLM call
-    inside CoachingAgent). Returns an upgrade prompt when over quota.
-    Persists the reply to coaching_response so it can be rated and exported;
-    a failed write drops ``response_id`` but still returns the reply.
-
-    Args:
-        user_id: Supabase Auth UUID.
-        user_input: User's nutrition question.
-        conversation_id: Thread id from the request, stored with the reply.
-        offer_to_log: The message also reported food, so the reply ends with
-            ``glide.log_offer_text``. Never added to the upgrade message.
-        routing: GLiDE's routing record for this turn, stored beside Gemini's
-            parse as ``parsed_query["routing"]``; None when GLiDE gave no answer.
-
-    Returns:
-        Dict with status, message, paused=False, items=[] — same shape as
-        meal logging so web and Telegram channels stay uniform — plus
-        response_id when the reply was persisted, and recipe (the checked
-        Recipe as a dict) with recommendation_id and constraint_note when the
-        reply is a recipe.
-        When the hard profile cannot be loaded the message is
-        ``safety.profile_unavailable_text`` and nothing is persisted.
-    """
-    granted = await consume_llm_credit(user_id)
-    if not granted:
-        return {
-            "status": "success",
-            "message": UPGRADE_MSG,
-            "paused": False,
-            "items": [],
-        }
-    with logfire.span("coaching") as span:
-        try:
-            result = await _coaching_agent.handle(user_id, user_input, conversation_id)
-        except RestrictionsUnavailableError:
-            # Never answer without the patient's binding profile (FR-007).
-            span.set_attribute("profile_unavailable", True)
-            return {
-                "status": "success",
-                "message": _TUNABLES.safety.profile_unavailable_text,
-                "paused": False,
-                "items": [],
-            }
-        if offer_to_log and result.readback is None:
-            # Appended after citations were extracted, so [n] parsing is
-            # untouched; saved and remembered with the offer included.
-            result = result.model_copy(
-                update={
-                    "message": (f"{result.message}\n\n{_TUNABLES.glide.log_offer_text}")
-                }
-            )
-        span_ctx = trace.get_current_span().get_span_context()
-        trace_id = format(span_ctx.trace_id, "032x") if span_ctx.is_valid else None
-        response_id = await save_coaching_response(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            query=user_input,
-            result=result,
-            model=COACHING_MODEL,
-            trace_id=trace_id,
-            routing=routing,
-        )
-        if response_id is not None and result.recommendation_id is not None:
-            await link_recommendation(result.recommendation_id, response_id)
-        span.set_attribute("needs_guidance", result.parsed.needs_guidance)
-        span.set_attribute("retrieved_count", len(result.retrieved))
-        span.set_attribute("citation_count", len(result.citations))
-        span.set_attribute("response_id", response_id or "")
-
-    response: dict[str, Any] = {
-        "status": "success",
-        "message": result.message,
-        "paused": False,
-        "items": [],
-    }
-    if response_id is not None:
-        response["response_id"] = response_id
-    if result.recipe is not None:
-        response["recipe"] = result.recipe.model_dump(mode="json")
-        response["recommendation_id"] = result.recommendation_id
-        response["constraint_note"] = result.constraint_note
-    if result.readback is not None:
-        response["readback"] = result.readback.model_dump()
-    if result.facts_extracted:
-        response["facts_extracted"] = True
-    return response

@@ -25,7 +25,7 @@ def paths() -> Iterator[SimpleNamespace]:
     with (
         patch.object(orchestrator, "graph_for", return_value=graph),
         patch.object(orchestrator, "judge_message", new=AsyncMock()) as judge,
-        patch.object(orchestrator, "_handle_coaching", new=AsyncMock()) as coaching,
+        patch.object(orchestrator, "handle_coaching", new=AsyncMock()) as coaching,
         patch.object(orchestrator, "handle_meal_logging", new=AsyncMock()) as logging_,
         patch.object(orchestrator, "_record_turn", new=AsyncMock()) as record,
         patch.object(orchestrator, "_enqueue_fact_extraction") as facts,
