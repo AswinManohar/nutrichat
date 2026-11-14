@@ -59,7 +59,7 @@ calling out explicitly):
 ## Method
 
 1. Dumped all 13,694 `food.description` rows from the bundled SQLite DB
-   (`backend.agent.tools.usda_local.database_path()`) to inspect real FDC
+   (`backend.agent.food.usda_local.database_path()`) to inspect real FDC
    spellings before writing any `acceptable_name_substrings`.
 2. Wrote 179 candidate cases across the five categories, drawing `bare_noun`
    and `preparation` queries preferentially from `survey_fndds_food` rows.
@@ -153,7 +153,7 @@ both had to be listed:
 
 ## Matcher recall@1 (measured, not simulated)
 
-Ran `backend.agent.tools.usda_local.lookup()` directly on all 176 queries
+Ran `backend.agent.food.usda_local.lookup()` directly on all 176 queries
 and scored with `eval.gate._matches` (the actual scorer logic):
 
 | category | recall@1 | n |
@@ -304,7 +304,7 @@ rejected candidate answer prompted a review.
 - `steamed broccoli`: "Broccoli, fresh, cooked with oil" — cooked-with-oil
   reads closer to sauteed/roasted than steamed.
 
-**Recall@1 of the shipped matcher** (`backend.agent.tools.usda_local.lookup`),
+**Recall@1 of the shipped matcher** (`backend.agent.food.usda_local.lookup`),
 measured before and after this repair (top-1 match checked against each
 case's acceptance list):
 

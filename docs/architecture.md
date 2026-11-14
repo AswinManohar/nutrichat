@@ -81,25 +81,47 @@ via JWKS (cached by `kid`), legacy HS256 via `SUPABASE_JWT_SECRET`, audience
 
 ## 4. Agent layer
 
+`agent/` is grouped by what a module is about. Paths below are relative to
+`agent/`.
+
+| Package | Holds |
+|---|---|
+| `orchestrator.py` | `handle_message`: the red-flag screen, readback glue, turn side effects. Hands the turn to one of the three handlers below. |
+| `routing/` | `router.py` (`route_message`, `RouteDecision`, Gemini second opinion) and `system_one.py` (GLiDE routing judgment). |
+| `meal_logging/` | `handler.py` (`handle_meal_logging`, `graph_for`, pending-card recovery), `graph.py` (LangGraph), `card.py` (card shaping), `meals.py`, `decompose.py`, `replace_ingredient.py`, `saved_meals.py`. |
+| `coaching/` | `handler.py` (`handle_coaching`), `agent.py` (Pydantic AI agent), `context.py`, `suggest.py`, `reply_judge.py`, `meal_history.py`, `store.py`. |
+| `memory/` | `facts.py` (profile write rules and rendering), `curator.py`, `judge.py`, `tools.py`, `readback.py`. |
+| `food/` | `usda.py`, `usda_local.py`, `usda_match.py`: resolving a food phrase to nutrients. |
+| `intake/` | `history.py` (range aggregates, staples, check-up), `mindful.py` (daily intake against upper limits). |
+| `turn.py`, `aio.py` | `turn_response()`, the response shape every handler returns; `resolved()`, an awaitable for `asyncio.gather`. |
+| `llm.py`, `cost.py`, `glide.py` | Model clients, per-call cost, the GLiDE client. Shared by every package. |
+
+Imports run one way: `orchestrator` imports `routing`, `meal_logging`,
+`coaching` and `memory`; `coaching` imports `memory`, `intake` and `food`;
+`meal_logging` imports `food`; `memory` imports `intake` and
+`meal_logging.meals`. `routing`, `food` and `intake` import no sibling package.
+Span names for all of these live in `backend/tracing.py` (§10).
+
 ### 4.1 Orchestrator (`agent/orchestrator.py`)
 
 `handle_message(user_id, user_input, thread_id, checkpointer, image_b64, meal_type, action)`
 
-1. Start the GLiDE routing judgment (`system_one.judge_message`) as a task so it
-   overlaps the checkpoint read.
+1. Screen the message for red flags (§4.7), then start the GLiDE routing judgment
+   (`routing.system_one.judge_message`) as a task so it overlaps the checkpoint read.
 2. If the thread has a **paused graph** (interrupted after `present`), discard the
    judgment and resume the graph — the message is a confirmation, correction or
    cancel. Resumes cost no quota. An attached image also always means meal logging.
-3. Otherwise `_route` decides between `log_meal` and `coaching` (§4.2).
-4. The handler that does the work spends one LLM credit (`quota.consume_llm_credit`);
+3. Otherwise `routing.router.route_message` decides between `log_meal` and `coaching` (§4.2).
+4. The handler that does the work (`meal_logging.handler.handle_meal_logging` or
+   `coaching.handler.handle_coaching`) spends one LLM credit (`quota.consume_llm_credit`);
    over quota returns the upgrade message. Routing itself never costs a credit.
 5. After the reply: append the exchange to the short coaching history in Redis, and
    fire-and-forget `extract_and_store_facts.delay(...)` (broker errors are logged,
    never raised). §4.6 covers what that task does.
 
-Compiled graphs are cached per checkpointer identity.
+Compiled graphs are cached per checkpointer identity (`meal_logging.handler.graph_for`).
 
-### 4.2 Intent routing (`agent/system_one.py`, specs `001-jev-intent-routing`, `009-migrate-jev-to-glide`)
+### 4.2 Intent routing (`agent/routing/`, specs `001-jev-intent-routing`, `009-migrate-jev-to-glide`)
 
 Fastino GLiDE (which replaced TypeSafe Jev on 2026-10-13; client in
 `agent/glide.py`) returns calibrated probabilities for three fixed questions in one
@@ -117,7 +139,7 @@ When the route is coaching and `reports_food` ≥ `glide.log_offer_min_probabili
 problems. Wording changes to the questions must be re-run through the routing gate
 (§10).
 
-### 4.3 Meal-logging graph (`agent/graph.py`, LangGraph)
+### 4.3 Meal-logging graph (`agent/meal_logging/graph.py`, LangGraph)
 
 State (`AgentState`): messages, user id, image, entities, USDA results, meal type,
 card action, saved-meal fields, decomposition snapshots, `resolved`.
@@ -140,7 +162,7 @@ written to `meal_log` until `log`. `auto_decompose` is a pass-through unless
 `features.auto_decompose_enabled` is set (currently false). `GET /meals/pending`
 lets a client recover a paused card.
 
-### 4.4 Food resolution (`agent/tools/usda.py`, `usda_local.py`, `usda_match.py`)
+### 4.4 Food resolution (`agent/food/usda.py`, `usda_local.py`, `usda_match.py`)
 
 ```
 entity ─▶ use_local_db (default) ─▶ SQLite FTS5 lookup, lexical ranker (_rank_key)
@@ -156,11 +178,11 @@ primary path. User corrections made through the food picker are recorded in
 `food_correction` with the original phrase. The ranker is deliberately lexical; see
 `docs/usda-matching-methods.md`.
 
-### 4.5 Coaching (`agent/coaching.py`, Pydantic AI)
+### 4.5 Coaching (`agent/coaching/agent.py`, Pydantic AI)
 
 `CoachingAgent.handle` loads the recent history from Redis, then runs `parse_query`
 (Gemini Flash, thinking off, structured `QueryParsed`) → `fetch_data` (Postgres:
-`get_today_totals` for today, else `tools/history.py`) → `generate_response`
+`get_today_totals` for today, else `intake/history.py`) → `generate_response`
 (Gemini Flash, thinking **on**). Prompts live in `config/prompts/`.
 
 **Guideline retrieval and the feedback loop.** When `parse_query` sets
@@ -172,13 +194,13 @@ condition-filtered pgvector cosine search over `guideline_chunk` (the user's
 than the nearest irrelevant passage. Survivors are rendered as a numbered reference
 block the model cites as `[n]`; `extract_citations` maps the numbers back to chunk
 ids. Retrieval is enrichment only — any failure logs a warning and the coach answers
-without citations. Every coaching turn is persisted by `agent/coaching_store.py` as
+without citations. Every coaching turn is persisted by `agent/coaching/store.py` as
 a `coaching_response` row (query, parsed query with the GLiDE routing record, passages
 shown, citations, reply, model, trace id). Clients rate it via
 `POST /coaching/{id}/feedback`, and `guidelines/export_feedback.py` exports the rows
 as JSONL for a coaching eval set.
 
-### 4.6 Preference memory (`agent/memory.py`)
+### 4.6 Preference memory (`agent/memory/`)
 
 The coach keeps a small typed profile of soft preferences per user in
 `user_memory` and sees all of it, with the date each fact was learned, on every
@@ -227,7 +249,7 @@ explicit user request.
 query (no embedding call) and the staples from Redis, and
 `render_profile_block` renders it after the hard profile. The block is capped,
 so prompt size does not grow with history. Recipe requests also get the last 21
-days of suggested and logged meals (`agent/meal_history.py`, at most 30 lines)
+days of suggested and logged meals (`agent/coaching/meal_history.py`, at most 30 lines)
 for variety; a failed read omits the block. A coaching turn is still two
 model calls; only an explicit remember/forget adds a third. Meal-logging turns
 do not read the profile.
@@ -286,7 +308,7 @@ profile.
 
 **Checked meal suggestions (PR 2).** When `parse_query` sets
 `suggests_meal`, `CoachingAgent.handle` skips the prose answer and calls
-`agent/suggest.py`. The model returns a structured `Recipe` (ingredients in
+`agent/coaching/suggest.py`. The model returns a structured `Recipe` (ingredients in
 grams, texture, steps, minutes, equipment). `safety/recipe.py` totals it from
 the bundled USDA SQLite only (no FDC API, no model estimate; an unresolved
 ingredient makes a limited nutrient unknown, which fails the limit; missing
@@ -303,7 +325,7 @@ conflicts or unknown medications open `review_item` rows. The constraint
 sentence in the reply is built in code from the check (`safety/render.py`).
 
 **Reply guard.** Prose replies pass an output validator on the response agent
-(`agent/reply_judge.py`): word matching against the confirmed entries (with
+(`agent/coaching/reply_judge.py`): word matching against the confirmed entries (with
 negations such as "peanut-free" ignored), then food phrases resolved through
 USDA, then, only when a food was named and nothing matched, one GLiDE yes/no
 judgment. A violation makes the model rewrite (up to `models.coaching_retries`
@@ -323,7 +345,7 @@ Cost per turn: a recipe turn is one structured Flash-Lite call per attempt
 instead of the response call; a prose turn for a patient with food constraints
 adds a few milliseconds of local lookups and, on some turns, one GLiDE request.
 
-**Red-flag screen (PR 3).** `handle_message` screens every text message with
+**Red-flag screen (PR 3).** `handle_message` (`_screen_red_flags`) screens every text message with
 `safety/red_flags.py` before anything else: before the GLiDE routing task, the
 checkpoint read and any model call. Rules are regexes in
 `config/clinical/red_flags.yaml`, written by the dietitians; a match anywhere
@@ -349,7 +371,7 @@ question for its type, and `memory_judge.select_hard_ops` places it in a band:
 | drop | p < `memory.hard_ask_min_probability` (additions only) | not saved |
 
 Thresholds are placeholders until the sweep on the synthetic inference set
-(`eval/eval_hard_fact_inference.py`). `agent/readback.py` appends the fixed
+(`eval/eval_hard_fact_inference.py`). `agent/memory/readback.py` appends the fixed
 question to the reply and reads the answer before routing: a short yes
 confirms, a no denies, a no that states a corrected fact of the same type is
 denied and the new fact read back, and anything else leaves the entry pending
@@ -467,22 +489,46 @@ JWTs (PKCE deep link `mealsy://auth-callback`), registers its FCM token at
 system and per-screen QA checklist are in `android/CLAUDE.md`; setup is in
 `android/README.md`.
 
-## 10. Observability (`observability.py`)
+## 10. Observability (`observability.py`, `tracing.py`)
 
 Logfire (OpenTelemetry), service `nutrichat`; `LOGFIRE_ENABLED=false` disables all
-instrumentation. Instruments FastAPI, asyncpg, Redis, Celery, aiohttp, httpx,
-LangChain and Pydantic AI. Key spans: `handle_message`, `route_message`,
-`classify_intent_llm`, `invoke_agent meal_logging`, `coaching`, `resolve_ingredient`,
-`telegram_update`. The `route_message` span carries the routing path, certainty and
-GLiDE latency.
+instrumentation. `observability.py` instruments FastAPI, asyncpg, Redis, Celery,
+aiohttp, httpx, LangChain and Pydantic AI, and attaches Logfire's logging handler to
+the `backend` logger so stdlib log lines appear under the span that was open when
+they were written. `tracing.py` holds every span name and the helpers
+`stage_span`, `record_handled` and `set_current_attribute`. A span is named
+`<area>.<step>` after the package it lives in; the root span of a chat turn is
+`turn`. `docs/observability.md` has the full span reference and trace tree.
+
+Key spans, by name:
+
+| Area | Spans |
+|---|---|
+| Turn | `turn`, `safety.red_flag_screen` |
+| Routing | `routing.decide` (path, intent, certainty, GLiDE latency), `routing.second_opinion`, `glide.ask` (purpose, outcome) |
+| Meal logging | `invoke_agent meal_logging`, `meal_logging.card_check`, `meal_logging.resolve_ingredient`, `food.lookup_batch`, `food.resolve` |
+| Coaching | `coaching.turn`, `coaching.context`, `coaching.fetch_data`, `coaching.retrieve`, `coaching.suggest_meal`, `coaching.check_recipe`, `coaching.reply_guard` |
+| Memory | `memory.extract_turn`, `memory.curate_turn`, `memory.infer_log_habits`, `memory.apply_ops`, `memory.readback_reply` |
+| Telegram | `telegram_update` and its children |
+
+A failure that is caught and replaced by a fallback adds an `exception` event
+(the exception type only) and a `handled_error=<stage>` attribute to the open
+span, without marking it failed.
+
+Cost: every Gemini call is priced offline (`genai-prices`) and recorded as an
+`llm_cost` log record plus the `gen_ai.cost_usd` metric. Pydantic AI runs go
+through `record_run_cost`; LangChain calls through `LlmCostCallback`, which
+`make_llm(operation=...)` attaches. Embeddings are not in the price table and are
+skipped.
 
 Logfire's Agents view lists every span with `gen_ai.operation.name = invoke_agent`
 by `gen_ai.agent.name`, grouped into conversations by `gen_ai.conversation.id` (the
 chat thread). Pydantic AI writes these spans itself (instrumentation version 3) for
 the named agents `coaching`, `coaching_parse`, `meal_suggestion` and
-`usda_estimate`. The meal-logging graph is LangGraph, so the orchestrator writes its
-`invoke_agent meal_logging` span by hand, with the user message and the reply as
-`gen_ai.input.messages` and `gen_ai.output.messages`.
+`usda_estimate`. The meal-logging graph is LangGraph, so
+`meal_logging/handler.py` writes its `invoke_agent meal_logging` span by hand, with
+the user message and the reply as `gen_ai.input.messages` and
+`gen_ai.output.messages`.
 
 ## 11. Eval (`eval/`)
 

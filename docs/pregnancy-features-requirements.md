@@ -11,7 +11,7 @@
 
 NutriChat already tracks meals, macros, and a small set of micronutrients
 against per-user goals (`user_goal`), and flags "junk" meals via
-`agent/tools/meals.py`. Pregnancy features extend this with:
+`agent/meal_logging/meals.py`. Pregnancy features extend this with:
 
 - A **pregnancy profile** capturing pregnancy status and trimester.
 - **Adjusted nutrition targets** (kcal, protein, fiber, and new micronutrient
@@ -318,7 +318,7 @@ may understate your actual intake").
 ### 4.1 Extending `meal_log.flags`
 
 `meal_log.flags` is JSONB, currently `{"has_junk": bool, "junk_items":
-[...]}` written by `_junk_flags()` in `agent/tools/meals.py`. Add a parallel
+[...]}` written by `_junk_flags()` in `agent/meal_logging/meals.py`. Add a parallel
 key, **only populated when the logging user has an active pregnancy
 profile**:
 
@@ -544,7 +544,7 @@ cards), following the same `Card`/`CardHeader`/`CardContent` pattern:
 
 ## 7. Integration touchpoints
 
-### 7.1 Meal logging (`agent/tools/meals.py`)
+### 7.1 Meal logging (`agent/meal_logging/meals.py`)
 
 - `_insert_meal_log()` needs the caller's pregnancy status to compute
   `_pregnancy_risk_flags()`. `log_meal()` already receives `user_id` — the

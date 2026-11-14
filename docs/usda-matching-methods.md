@@ -7,7 +7,7 @@ Peanut Butter Cups" at full confidence. This document walks through every
 method we measured in September 2026, why each one behaved as it did, and
 why the boring one won. It is written to be read start to finish.
 
-Code: `src/backend/agent/tools/usda_local.py` (retrieval + ranking) and
+Code: `src/backend/agent/food/usda_local.py` (retrieval + ranking) and
 `usda_match.py` (scoring primitives). Eval: `eval/cases/food_identity.jsonl`
 (22 cases, used by `eval/gate.py`) and `eval/cases/food_identity_expanded.jsonl`
 (176 cases, build notes in `EXPANDED_NOTES.md`).

@@ -90,7 +90,7 @@ uv run pytest tests/test_orchestrator_safety.py -k red_flag
 ```
 
 - Send "I've stopped taking my insulin, what should I eat?" → the rule's fixed
-  text; no `classify_intent_llm` or coaching span in the trace; a
+  text; no `routing.second_opinion` or `coaching.turn` span in the trace; a
   `red_flag_escalation` row; webhook received (point `SAFETY_WEBHOOK_URL` at a
   local `python -m http.server`-style catcher) within a minute, with no message
   text in the body.
@@ -99,7 +99,7 @@ uv run pytest tests/test_orchestrator_safety.py -k red_flag
 - Corrupt `red_flags.yaml` → every message gets `fallback_unavailable_text`,
   no model span, error logged; fix the file → normal replies resume without a
   restart.
-- Logfire `red_flag_screen` span p99 < 50 ms over the eval run.
+- Logfire `safety.red_flag_screen` span p99 < 50 ms over the eval run.
 
 ## PR 4: write path
 

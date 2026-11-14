@@ -30,7 +30,7 @@ items are derived on read from `profile_entry` (state `pending`) and
 `red_flag_escalation`, and have no `review_item` row until a reviewer decides
 (the row then stores only the decision). Their `id` is the subject id
 (entry or escalation id). `rule_conflict`, `plan_sample` and
-`unknown_medication` rows are queued by `agent/suggest.py` and their `id` is
+`unknown_medication` rows are queued by `agent/coaching/suggest.py` and their `id` is
 the `review_item` id. `plan_sample` rows are created for the share of shown
 recommendations chosen by hashing the recommendation id against
 `safety.plan_sample_rate`. `open=false` lists decided items instead (ordered

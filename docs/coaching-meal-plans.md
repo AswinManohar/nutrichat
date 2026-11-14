@@ -29,7 +29,7 @@ dietitian. Only clinical/medical or weight-loss *calorie-prescription* requests
 
 ## Pipeline
 
-The coaching agent (`src/backend/agent/coaching.py`) is a linear three-stage
+The coaching agent (`src/backend/agent/coaching/agent.py`) is a linear three-stage
 pipeline. The orchestrator routes here when the intent is `coaching` (see
 Routing below).
 
@@ -146,7 +146,7 @@ Live smoke check against the seeded user (needs `GOOGLE_API_KEY`, `DATABASE_URL`
 python eval/eval_coaching.py
 # or a one-off:
 python -c "import asyncio; from dotenv import load_dotenv; load_dotenv(); \
-from backend.agent.coaching import CoachingAgent; \
+from backend.agent.coaching.agent import CoachingAgent; \
 print(asyncio.run(CoachingAgent().handle('<user-id>', \
 'what can I eat today to hit todays goals')))"
 ```

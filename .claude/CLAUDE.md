@@ -49,30 +49,44 @@ Update this file when the layout changes significantly.
 ```
 nutrichat/
 ├── src/backend/                # Python package `backend` (run with PYTHONPATH=src)
-│   ├── agent/
-│   │   ├── context.py          # build_context(), build_system_prompt()
-│   │   ├── graph.py            # LangGraph StateGraph (logging)
-│   │   ├── orchestrator.py     # handle_message(), _route() decision rule
+│   ├── agent/                  # imports run orchestrator -> routing, meal_logging,
+│   │   │                       # coaching, memory; see docs/architecture.md section 4
+│   │   ├── orchestrator.py     # handle_message(), red-flag screen, readback glue
+│   │   ├── turn.py · aio.py    # turn_response() shape; resolved() for gather()
 │   │   ├── glide.py            # Fastino GLiDE client (typed judgments)
-│   │   ├── system_one.py       # GLiDE routing judgment (judge_message)
-│   │   ├── coaching.py         # Pydantic AI coaching agent
-│   │   ├── suggest.py          # checked meal suggestions (spec 013)
-│   │   ├── reply_judge.py      # reply guard: GLiDE layer + output validator hook
-│   │   ├── coaching_store.py   # persist each coaching turn for feedback/eval
-│   │   ├── memory.py           # preference profile: apply_ops write rules, render
-│   │   ├── memory_curator.py   # background curators (per turn, weekly from logs)
-│   │   ├── memory_judge.py     # GLiDE scores curator candidates; threshold decides
-│   │   ├── memory_tools.py     # coach tools: remember, forget, set_diet
-│   │   ├── llm.py · cost.py    # model clients, token cost accounting
-│   │   └── tools/
-│   │       ├── meals.py        # extract_entities, log_meal
-│   │       ├── usda.py         # usda_lookup_batch (parallel)
-│   │       ├── usda_local.py   # bundled USDA SQLite lookup
-│   │       ├── usda_match.py   # lexical ranker (_rank_key)
-│   │       ├── decompose.py    # recipe -> ingredients
-│   │       ├── replace_ingredient.py
-│   │       ├── saved_meals.py
-│   │       └── history.py      # get_history hybrid search
+│   │   ├── llm.py · cost.py    # model clients, per-call dollar cost (LlmCostCallback)
+│   │   ├── routing/
+│   │   │   ├── system_one.py   # GLiDE routing judgment (judge_message)
+│   │   │   └── router.py       # route_message(), RouteDecision, Gemini second opinion
+│   │   ├── meal_logging/
+│   │   │   ├── handler.py      # handle_meal_logging(), graph_for(), pending card
+│   │   │   ├── graph.py        # LangGraph StateGraph (logging)
+│   │   │   ├── card.py         # confirmation-card shaping and safety check
+│   │   │   ├── meals.py        # extract_entities, log_meal
+│   │   │   ├── decompose.py    # recipe -> ingredients
+│   │   │   ├── replace_ingredient.py
+│   │   │   └── saved_meals.py
+│   │   ├── coaching/
+│   │   │   ├── handler.py      # handle_coaching(): credit, persist, response shape
+│   │   │   ├── agent.py        # Pydantic AI coaching agent
+│   │   │   ├── context.py      # build_context(), build_system_prompt()
+│   │   │   ├── suggest.py      # checked meal suggestions (spec 013)
+│   │   │   ├── reply_judge.py  # reply guard: GLiDE layer + output validator hook
+│   │   │   ├── meal_history.py # three weeks of suggested and logged meals
+│   │   │   └── store.py        # persist each coaching turn for feedback/eval
+│   │   ├── memory/
+│   │   │   ├── facts.py        # preference profile: apply_ops write rules, render
+│   │   │   ├── curator.py      # background curators (per turn, weekly from logs)
+│   │   │   ├── judge.py        # GLiDE scores curator candidates; threshold decides
+│   │   │   ├── tools.py        # coach tools: remember, forget, set_diet
+│   │   │   └── readback.py     # ask about a hard fact in chat, read the answer
+│   │   ├── food/
+│   │   │   ├── usda.py         # usda_lookup_batch (parallel)
+│   │   │   ├── usda_local.py   # bundled USDA SQLite lookup
+│   │   │   └── usda_match.py   # lexical ranker (_rank_key)
+│   │   └── intake/
+│   │       ├── history.py      # range aggregates, staples, check-up, get_history
+│   │       └── mindful.py      # daily intake vs upper limits
 │   ├── api/                    # FastAPI routers: meals, goals, profile, review, my_meals, foods,
 │   │                           # coaching_feedback, memory, nutrient_checkup, mindful, quota,
 │   │                           # billing, push, devices, telegram_link, integrations
@@ -96,6 +110,8 @@ nutrichat/
 │   ├── push/                   # FCM sender
 │   ├── telegram/               # aiogram bot
 │   ├── workers/tasks.py        # Celery tasks + beat schedule
+│   ├── observability.py        # Logfire setup, instrumentors, scrubber
+│   ├── tracing.py              # span names, stage_span(), record_handled()
 │   └── main.py                 # FastAPI app
 ├── frontend/src/               # web app, not in active development
 ├── android/                    # native app (own CLAUDE.md and README.md)

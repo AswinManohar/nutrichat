@@ -8,7 +8,7 @@ Builds two things from this single `docs/` source tree:
   in ``src/backend``.
 
 Importing ``backend.*`` modules for autodoc triggers module-level LLM client
-construction (see ``agent/coaching.py``), which raises if API keys are
+construction (see ``agent/coaching/agent.py``), which raises if API keys are
 missing. The dummy env vars below mirror ``tests/conftest.py`` so those
 imports succeed during a docs build without real credentials.
 """

@@ -1,6 +1,6 @@
 # Contract: Recipe, CheckResult and the suggestion loop
 
-Internal contract between `agent/suggest.py` (model side) and
+Internal contract between `agent/coaching/suggest.py` (model side) and
 `backend/safety/` (deterministic side). All models are Pydantic with
 `extra="forbid"`.
 
@@ -107,7 +107,7 @@ ignored. It never raises on a bad recipe; it returns
 failures. It raises `FoodDbUnavailable` when the SQLite file cannot be read, and
 the caller shows the retry message (spec edge case "Food database down").
 
-## Suggestion loop (agent/suggest.py, FR-011)
+## Suggestion loop (agent/coaching/suggest.py, FR-011)
 
 ```text
 profile = load hard profile            # failure → "try again" reply, no meal (FR-007)
@@ -124,7 +124,7 @@ built from `applied` ("Kept this soft and low in sodium because of your chewing
 difficulty and your sodium limit.") + missing-value and conflict notes. The
 model never writes the constraint sentence.
 
-## Reply guardrail (agent/coaching.py + safety/reply_guard.py, R10)
+## Reply guardrail (agent/coaching/agent.py + safety/reply_guard.py, R10)
 
 ```python
 @_response_agent.output_validator
@@ -146,12 +146,12 @@ class GuardVerdict(BaseModel):
 - `GuardVerdict` also carries `food_phrases` (phrases that resolved to a
   food), which decides whether layer 3 runs. Layers 1-2 are
   `reply_guard.scan(text, entries, tables, lookup)`; all three run in
-  `agent/reply_judge.guard(text, entries, tables)`, which the validator calls.
+  `agent/coaching/reply_judge.guard(text, entries, tables)`, which the validator calls.
   A guard that cannot run (tables or food database unreadable) replaces the
   reply with the fallback text.
 - Layers run in order and stop at the first violation: lexical terms, food
   phrases resolved through `usda_local`, then the GLiDE judgment
-  (`agent/reply_judge.py`) when a food phrase was found without a violation.
+  (`agent/coaching/reply_judge.py`) when a food phrase was found without a violation.
   A GLiDE probability ≥ `safety.reply_guard_min_probability` is a violation.
 - Negation: a lexical hit is dropped when, in the same sentence, one of
   `safety.reply_guard_negations` precedes it within 3 words, or "-free" /

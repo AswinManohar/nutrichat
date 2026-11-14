@@ -10,25 +10,25 @@ See [Architecture](../architecture.md) for how these modules fit together.
 
 ## LangGraph meal-logging graph
 
-```{automodule} backend.agent.graph
+```{automodule} backend.agent.meal_logging.graph
 :members:
 ```
 
 ## Coaching agent (Pydantic AI)
 
-```{automodule} backend.agent.coaching
+```{automodule} backend.agent.coaching.agent
 :members:
 ```
 
 ## Coaching response store
 
-```{automodule} backend.agent.coaching_store
+```{automodule} backend.agent.coaching.store
 :members:
 ```
 
 ## Context building
 
-```{automodule} backend.agent.context
+```{automodule} backend.agent.coaching.context
 :members:
 ```
 
@@ -48,18 +48,18 @@ See [Architecture](../architecture.md) for how these modules fit together.
 
 ### Meal extraction & logging
 
-```{automodule} backend.agent.tools.meals
+```{automodule} backend.agent.meal_logging.meals
 :members:
 ```
 
 ### USDA FoodData Central lookup
 
-```{automodule} backend.agent.tools.usda
+```{automodule} backend.agent.food.usda
 :members:
 ```
 
 ### History & aggregates
 
-```{automodule} backend.agent.tools.history
+```{automodule} backend.agent.intake.history
 :members:
 ```
